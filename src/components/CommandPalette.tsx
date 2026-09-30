@@ -193,8 +193,8 @@ export function buildActions({
       id: 'about',
       label: 'О MeTiger Ai',
       icon: ArrowLeftRight,
-      hint: `v${APP_VERSION}`,
-      run: () => notify(`MeTiger Ai · дизайн-превью v${APP_VERSION}`),
+      hint: APP_VERSION,
+      run: () => notify(`MeTiger Ai · дизайн-превью ${APP_VERSION}`),
     },
   ]
 }

@@ -15,7 +15,7 @@ export interface AgentProfile {
 export const AGENT: AgentProfile = {
   name: 'MeTiger Ai',
   desc: 'Один универсальный агент для любых задач: тексты, код, идеи, анализ и многое другое. Без ролей и переключений — он растёт и скоро сможет всё.',
-  version: `v${APP_VERSION}`,
+  version: APP_VERSION,
 }
 
 export interface Capability {

@@ -171,7 +171,7 @@ export function SettingsView({
               <div className="n">Версия</div>
               <div className="d">MeTiger Ai · дизайн-превью</div>
             </div>
-            <Badge tone="gray">v{APP_VERSION}</Badge>
+            <Badge tone="gray">{APP_VERSION}</Badge>
           </div>
         </div>
       </div>
