@@ -117,16 +117,18 @@ export function IconButton({
   label,
   onClick,
   size = 17,
+  className,
 }: {
   icon: IconType
   label: string
   onClick?: () => void
   size?: number
+  className?: string
 }) {
   return (
     <button
       type="button"
-      className="icon-btn"
+      className={cx('icon-btn', className)}
       aria-label={label}
       title={label}
       onClick={() => {

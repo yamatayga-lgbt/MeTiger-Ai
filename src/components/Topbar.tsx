@@ -1,62 +1,29 @@
-import { Moon, Search, Sun } from 'lucide-react'
+import { Folder, PanelLeft } from 'lucide-react'
 import { IconButton } from './ui'
-import { LogoMark } from './Logo'
-import { initials, type TgUser } from '../lib/telegram'
-import type { ViewId } from '../App'
-
-const TITLES: Record<ViewId, string> = {
-  chat: 'Чат',
-  agent: 'Агент',
-  tools: 'Инструменты',
-  settings: 'Настройки',
-}
 
 interface TopbarProps {
-  view: ViewId
-  resolvedTheme: 'light' | 'dark'
-  onToggleTheme: () => void
-  onOpenPalette: () => void
-  onProfile: () => void
-  user: TgUser
+  title: string
+  onOpenMenu: () => void
+  onOpenWorkspace: () => void
 }
 
-export function Topbar({
-  view,
-  resolvedTheme,
-  onToggleTheme,
-  onOpenPalette,
-  onProfile,
-  user,
-}: TopbarProps) {
+/** Верхняя панель: меню слева, заголовок по центру, Workspace справа. */
+export function Topbar({ title, onOpenMenu, onOpenWorkspace }: TopbarProps) {
   return (
     <header className="topbar">
-      <div className="brand" style={{ padding: 0, gap: 8 }}>
-        <LogoMark size={22} />
-      </div>
-      <div className="page-title">{TITLES[view]}</div>
-      <div className="topbar-spacer" />
-
-      <button type="button" className="search-pill" onClick={onOpenPalette}>
-        <Search size={13} />
-        Поиск и команды
-        <kbd>⌘K</kbd>
-      </button>
-
       <IconButton
-        icon={resolvedTheme === 'dark' ? Sun : Moon}
-        label="Сменить тему"
-        onClick={onToggleTheme}
+        icon={PanelLeft}
+        label="Меню"
+        onClick={onOpenMenu}
+        className="only-mobile"
       />
-
-      <button
-        type="button"
-        className="avatar"
-        style={{ width: 30, height: 30, fontSize: 11.5 }}
-        onClick={onProfile}
-        aria-label="Профиль"
-      >
-        {user.photo_url ? <img src={user.photo_url} alt="" /> : initials(user)}
-      </button>
+      <div className="page-title">{title}</div>
+      <div className="topbar-spacer" />
+      <IconButton
+        icon={Folder}
+        label="Workspace"
+        onClick={onOpenWorkspace}
+      />
     </header>
   )
 }

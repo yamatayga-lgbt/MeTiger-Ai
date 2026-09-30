@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   Bot,
   Command,
+  Folder,
   MessageSquarePlus,
   Moon,
   Puzzle,
@@ -133,12 +134,14 @@ export function buildActions({
   newChat,
   toggleTheme,
   resolvedTheme,
+  openWorkspace,
   notify,
 }: {
   navigate: (v: ViewId) => void
   newChat: () => void
   toggleTheme: () => void
   resolvedTheme: 'light' | 'dark'
+  openWorkspace: () => void
   notify: (msg: string) => void
 }): PaletteAction[] {
   return [
@@ -148,6 +151,12 @@ export function buildActions({
       icon: MessageSquarePlus,
       hint: '⌘N',
       run: newChat,
+    },
+    {
+      id: 'open-workspace',
+      label: 'Открыть Workspace',
+      icon: Folder,
+      run: openWorkspace,
     },
     {
       id: 'go-chat',
