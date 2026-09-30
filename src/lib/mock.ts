@@ -114,13 +114,6 @@ export const TOOLS: ToolData[] = [
   },
 ]
 
-export const SUGGESTIONS = [
-  { icon: 'pen', text: 'Напиши пост для соцсетей' },
-  { icon: 'code', text: 'Объясни, как работает этот код' },
-  { icon: 'image', text: 'Сделай логотип для проекта' },
-  { icon: 'calendar', text: 'Спланируй мне неделю' },
-]
-
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'

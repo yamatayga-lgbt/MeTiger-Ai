@@ -1,24 +1,8 @@
 import { useRef, useState } from 'react'
-import {
-  ArrowUp,
-  CalendarDays,
-  Code2,
-  ImagePlus,
-  Paperclip,
-  PenLine,
-  Sparkles,
-} from 'lucide-react'
+import { ArrowUp, Paperclip } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic, type TgUser } from '../lib/telegram'
-import { SUGGESTIONS, timeGreeting, type ChatMessage } from '../lib/mock'
-import type { IconType } from '../components/ui'
-
-const SUGGESTION_ICONS: Record<string, IconType> = {
-  pen: PenLine,
-  code: Code2,
-  image: ImagePlus,
-  calendar: CalendarDays,
-}
+import { timeGreeting, type ChatMessage } from '../lib/mock'
 
 function RichText({ text }: { text: string }) {
   const segments = text.split(/```/)
@@ -86,26 +70,6 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
             Универсальный ИИ-агент для любых задач: тексты, код, изображения, анализ и
             автоматизация.
           </p>
-
-          <div className="suggestions">
-            {SUGGESTIONS.map((s) => {
-              const Icon = SUGGESTION_ICONS[s.icon] ?? Sparkles
-              return (
-                <button
-                  key={s.text}
-                  type="button"
-                  className="suggestion"
-                  onClick={() => {
-                    haptic('light')
-                    onSend(s.text)
-                  }}
-                >
-                  <Icon size={16} />
-                  {s.text}
-                </button>
-              )
-            })}
-          </div>
         </div>
       ) : (
         <div className="thread">
@@ -190,9 +154,7 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
             <ArrowUp size={18} />
           </button>
         </form>
-        <p className="composer-hint">
-          MeTiger Ai может ошибаться — проверяйте важную информацию. Дизайн-превью v0.1.0
-        </p>
+        <p className="composer-hint">Может ошибаться — проверяйте важную информацию.</p>
       </div>
     </div>
   )
