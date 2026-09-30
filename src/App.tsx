@@ -95,21 +95,29 @@ export default function App() {
 
   const newChat = useCallback(() => {
     haptic('medium')
-    const chat: Chat = {
-      id: newChatId(),
-      title: NEW_CHAT_TITLE,
-      messages: [],
-      updatedAt: Date.now(),
-    }
-    setChats((prev) => [chat, ...prev])
-    setActiveChatId(chat.id)
     setTyping(false)
     setView('chat')
     setMenuOpen(false)
-  }, [])
+    setChats((prev) => {
+      const kept = prev.filter((c) => c.messages.length > 0 || c.id === activeChatId)
+      const active = kept.find((c) => c.id === activeChatId)
+      // уже открыт пустой черновик — не создаём новый
+      if (active && active.messages.length === 0) return kept
+      const chat: Chat = {
+        id: newChatId(),
+        title: NEW_CHAT_TITLE,
+        messages: [],
+        updatedAt: Date.now(),
+      }
+      setActiveChatId(chat.id)
+      return [...kept.filter((c) => c.messages.length > 0), chat]
+    })
+  }, [activeChatId])
 
   const selectChat = useCallback((id: string) => {
     haptic('select')
+    // пустые черновики выбрасываем — они не сохраняются
+    setChats((prev) => prev.filter((c) => c.messages.length > 0 || c.id === id))
     setActiveChatId(id)
     setTyping(false)
     setView('chat')
@@ -126,20 +134,20 @@ export default function App() {
     (id: string) => {
       haptic('medium')
       setChats((prev) => {
-        const next = prev.filter((c) => c.id !== id)
-        if (id === activeChatId) {
-          if (next.length > 0) {
-            setActiveChatId(next[0].id)
-          } else {
-            const chat: Chat = {
-              id: newChatId(),
-              title: NEW_CHAT_TITLE,
-              messages: [],
-              updatedAt: Date.now(),
-            }
-            setActiveChatId(chat.id)
-            return [chat]
+        // удаление окончательное: удаляем чат и выбрасываем пустые черновики
+        const next = prev.filter((c) => c.id !== id && c.messages.length > 0)
+        if (next.length === 0) {
+          const chat: Chat = {
+            id: newChatId(),
+            title: NEW_CHAT_TITLE,
+            messages: [],
+            updatedAt: Date.now(),
           }
+          setActiveChatId(chat.id)
+          return [chat]
+        }
+        if (id === activeChatId) {
+          setActiveChatId(next[0].id)
         }
         return next
       })
@@ -156,10 +164,6 @@ export default function App() {
           c.id === chatId
             ? {
                 ...c,
-                title:
-                  c.messages.length === 0 && c.title === NEW_CHAT_TITLE
-                    ? text.slice(0, 48)
-                    : c.title,
                 messages: [...c.messages, { id: nextId(), role: 'user', text }],
                 updatedAt: Date.now(),
               }
@@ -230,7 +234,7 @@ export default function App() {
         onClose={() => setMenuOpen(false)}
         view={view}
         onNavigate={navigate}
-        chats={chats}
+        chats={chats.filter((c) => c.messages.length > 0)}
         activeChatId={activeChatId}
         onSelectChat={selectChat}
         onNewChat={newChat}
