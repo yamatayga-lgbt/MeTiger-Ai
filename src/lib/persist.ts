@@ -15,14 +15,33 @@ const VIEW_KEY = 'mt-view'
 
 const MAX_MESSAGES_PER_CHAT = 300
 
-type RawMessage = { id?: unknown; role?: unknown; text?: unknown }
+type RawMessage = {
+  id?: unknown
+  role?: unknown
+  text?: unknown
+  src?: unknown
+  advice?: unknown
+  adviceTone?: unknown
+}
 
 function sanitizeMessage(m: RawMessage): Chat['messages'][number] | null {
   if (!m || typeof m !== 'object') return null
   if (typeof m.id !== 'string') return null
   if (m.role !== 'user' && m.role !== 'assistant') return null
   if (typeof m.text !== 'string') return null
-  return { id: m.id, role: m.role, text: m.text }
+  const tone = m.adviceTone === 'ok' || m.adviceTone === 'warn' || m.adviceTone === 'quiet' ? m.adviceTone : undefined
+  /* Картинки в хранилище НЕ пишутся намеренно: одна фотография в base64 весит
+     больше, чем все тексты переписки вместе, а квота localStorage кончается
+     молча и ломает сохранение всего чата. В сохранении — только текст. */
+  return {
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    /* подпись движка — строки, и только строки: из хранилища может прилететь что угодно */
+    ...(typeof m.src === 'string' ? { src: m.src } : {}),
+    ...(typeof m.advice === 'string' ? { advice: m.advice } : {}),
+    ...(tone ? { adviceTone: tone } : {}),
+  }
 }
 
 function sanitizeChat(raw: unknown): Chat | null {

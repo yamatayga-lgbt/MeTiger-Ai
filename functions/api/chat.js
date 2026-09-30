@@ -18,6 +18,8 @@ import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/c
    это время совета — те самые секунды, которые человек ждёт ответа. */
 const QUARANTINE = new Map();
 
+const MAX_IMG_BYTES = 4 * 1024 * 1024;
+
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, GET, OPTIONS',
@@ -54,6 +56,20 @@ export async function onRequestPost(context) {
   if (!text) return json({ ok: false, error: 'пустой запрос' }, 400);
   if (text.length > 24000) return json({ ok: false, error: 'слишком длинный запрос' }, 413);
 
+  /* Картинки: ровно столько, сколько принимает движок (две), и с потолком веса.
+     Бесплатный провайдер обрезает тело запроса раньше, чем мы успеем спросить,
+     а_pages function упирается в лимит запроса — лучше отказать словами сразу. */
+  /* Форму data URL проверяет движок (parseDataUrl), здесь — только тип и количество:
+     «длина больше 32» отрезало крошечные, но настоящие картинки и молча убивало
+     весь смысл запроса «что на фото». */
+  const images = Array.isArray(body.images)
+    ? body.images.filter((x) => typeof x === 'string' && x.indexOf('data:') === 0)
+    : [];
+  if (images.length > 2) return json({ ok: false, error: 'больше двух картинок я не спрашиваю' }, 413);
+  for (const im of images) {
+    if (im.length * 0.74 > MAX_IMG_BYTES) return json({ ok: false, error: 'картинка тяжелее ' + Math.round(MAX_IMG_BYTES / 1024 / 1024) + ' МБ — сожми её' }, 413);
+  }
+
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
   if (env.RATE_LIMIT !== '0' && limited(ip)) return json({ ok: false, error: 'слишком часто — подожди минуту' }, 429);
 
@@ -64,7 +80,7 @@ export async function onRequestPost(context) {
 
   const r = await engine.run({
     text, history,
-    images: Array.isArray(body.images) ? body.images.slice(0, 2) : [],
+    images,
     tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
     only: body.provider || undefined,
     temperature: typeof body.temperature === 'number' ? body.temperature : undefined,

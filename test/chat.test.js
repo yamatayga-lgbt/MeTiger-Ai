@@ -159,6 +159,14 @@ console.log('G — вход /api/chat (Pages Function): то, что видит 
   const sj = await st.json();
   ok('G7: GET /api/chat отдаёт живых провайдеров — это и есть наблюдаемость',
     sj.ok === true && Array.isArray(sj.alive) && sj.alive.indexOf('groq') >= 0, JSON.stringify(sj).slice(0, 160));
+  /* Охрана входа по весу: движок и бесплатные провайдеры спотыкаются о тело
+     запроса раньше, чем начинается толк, — отказываем словами и сразу. */
+  const many = await onRequestPost({ request: req({ text: 'что на фото?', images: ['data:image/png;base64,' + 'A'.repeat(64), 'data:image/png;base64,' + 'B'.repeat(64), 'data:image/png;base64,' + 'C'.repeat(64)] }), env: ENV });
+  ok('G8: три картинки — отказ словами, а не усечение втихую',
+    many.status === 413 && /двух/.test((await many.json()).error || ''), String(many.status));
+  const heavy = await onRequestPost({ request: req({ text: 'что на фото?', images: ['data:image/png;base64,' + 'A'.repeat(6 * 1024 * 1024)] }), env: ENV });
+  ok('G9: тяжёлую картинку не тащим до провайдера',
+    heavy.status === 413 && /МБ/.test((await heavy.json()).error || ''), String(heavy.status));
   globalThis.fetch = saved;
 }
 

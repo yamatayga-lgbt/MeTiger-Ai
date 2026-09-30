@@ -28,6 +28,13 @@ export interface ChatResult {
   error?: string
   /** Что перебрал движок: провайдеры и причины. */
   tried?: { provider: string; model?: string; why?: string }[]
+  /** Вердикт совета голов словами (пусто — значит совет молчал). */
+  ensemble?: string
+  /** Вердикт совета зрячих голов по картинке. */
+  vision?: string
+  /** Текст изменён большинством — это надо показать, а не спрятать. */
+  ensembleApplied?: boolean
+  visionApplied?: boolean
 }
 
 const ENDPOINT = (import.meta.env?.VITE_API_BASE || '') + '/api/chat'
@@ -58,6 +65,30 @@ export async function sendChat(
   } finally {
     clearTimeout(timer)
   }
+}
+
+
+/**
+ * Чем подписать ответ: кто говорил и что сказал совет.
+ *
+ * Совет не должен оставаться внутренней кухней движка. «сошлись 3/3» и
+ * «Головы не сошлись» — это ровно то, что отличает проверку от угадывания, и
+ * человек это видит. Тон подбирается по смыслу строк, а не по их наличию:
+ * промолчавший совет не кричит, исправленный ответ — подсвечен.
+ */
+export type AdviceTone = 'ok' | 'warn' | 'quiet'
+
+const OK_LINE = /сошлись\s+\d+\/\d+|подтверждаю|confirmed/i
+const WARN_LINE = /не сошлись|разошлись|overruled|взято большинство|большинство/i
+
+export function adviceLine(r: ChatResult): { text: string; tone: AdviceTone } | null {
+  const parts = [r.ensemble, r.vision].map((x) => (x || '').trim()).filter(Boolean)
+  if (!parts.length) return null
+  const text = parts.join(' · ')
+  const changed = r.ensembleApplied === true || r.visionApplied === true
+  if (WARN_LINE.test(text) || changed) return { text, tone: 'warn' }
+  if (OK_LINE.test(text)) return { text, tone: 'ok' }
+  return { text, tone: 'quiet' }
 }
 
 /** Короткая строка «кто ответил» — для отладочной подписи под сообщением. */

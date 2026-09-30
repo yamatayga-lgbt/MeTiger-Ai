@@ -118,6 +118,13 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
+  /** Кто отвечал и за сколько — подпись под пузырём (пусто для сообщений юзера). */
+  src?: string
+  /** Прикреплённые картинки реплики (в localStorage не сохраняются — см. persist). */
+  images?: string[]
+  /** Вердикт совета голов словами. Пока его нет — значит совет молчал, и это тоже честно. */
+  advice?: string
+  adviceTone?: 'ok' | 'warn' | 'quiet'
 }
 
 const REPLIES: { match: RegExp; text: string }[] = [

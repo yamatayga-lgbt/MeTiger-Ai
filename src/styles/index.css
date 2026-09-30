@@ -1781,3 +1781,100 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------------------ подпись под ответом:
+   кто говорил и что сказал совет голов. Тихо по умолчанию, заметно когда важно.
+   Цвета — только из токенов темы: жёсткий hex разъехался бы со светлой и тёмной раскладками. */
+.msg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+.msg-meta .msg-advice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 620;
+  color: var(--text-2);
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+}
+.msg-meta.is-ok .msg-advice {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+.msg-meta.is-warn .msg-advice {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+.msg-meta.is-quiet .msg-advice {
+  color: var(--text-3);
+  font-weight: 500;
+  background: none;
+}
+.msg-meta .msg-src {
+  font-family: var(--font-mono);
+  opacity: 0.8;
+}
+
+/* ------------------------------------------------------------ вложения: превью над
+   полем ввода и картинки в пузыре. Компактно, чтобы не съедать экран телефона. */
+.attach-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 8px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.attach-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  background: var(--surface-2);
+}
+.attach-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.attach-chip button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  cursor: pointer;
+}
+.attach-error { color: var(--danger); font-weight: 600; }
+.shot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.shot {
+  max-width: 168px;
+  max-height: 168px;
+  border-radius: 10px;
+  display: block;
+}

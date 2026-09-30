@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "api": "node scripts/api-dev.js",
-    "test": "node test/route.test.js && node test/chat.test.js && node test/council.test.js",
+    "test": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/front.test.js",
     "test:engine": "node test/route.test.js && node test/chat.test.js && node test/council.test.js"
   },
   "dependencies": {
