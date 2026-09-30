@@ -12,7 +12,7 @@
  * Ключи читаются из `.dev.vars` (формат Cloudflare: KEY=value) и из окружения.
  */
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { onRequestPost, onRequestGet, onRequestOptions } from '../functions/api/chat.js';
@@ -33,6 +33,37 @@ function loadEnv() {
 }
 
 const env = loadEnv();
+
+/**
+ * Локальное хранилище ПАМЯТИ (Этап 3): тот же контракт, что у связки KV на проде
+ * (get отдаёт разобранный JSON, put принимает строку), только на файлах.
+ * Это не «упрощённая память для разработки»: обработчик и движок те же самые,
+ * отличается только то, где лежат байты — иначе «локально работает» ничего не значит.
+ */
+function fileKV(dirName) {
+  const dir = join(root, dirName);
+  const pathFor = (key) => join(dir, key.replace(/[^a-zA-Z0-9_.-]/g, '_') + '.json');
+  return {
+    async get(key) {
+      try {
+        return JSON.parse(readFileSync(pathFor(key), 'utf8'));
+      } catch (e) {
+        return null;
+      }
+    },
+    async put(key, value) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(pathFor(key), typeof value === 'string' ? value : JSON.stringify(value));
+    },
+    async delete(key) {
+      try {
+        unlinkSync(pathFor(key));
+      } catch (e) {}
+    },
+  };
+}
+
+if (!env.MEMORY) env.MEMORY = fileKV('.mt-memory');
 const port = Number(process.env.PORT || 8788);
 
 createServer((req, res) => {

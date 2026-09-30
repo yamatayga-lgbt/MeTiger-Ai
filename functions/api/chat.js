@@ -12,6 +12,7 @@
  */
 import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/chat.js';
 import { TOOL_IDS } from '../../engine/tools.js';
+import { createMemory } from '../../engine/memory.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
    запрос, а «токен не принят» и «нет баланса» за одну request'у не лечатся.
@@ -20,6 +21,24 @@ import { TOOL_IDS } from '../../engine/tools.js';
 const QUARANTINE = new Map();
 
 const MAX_IMG_BYTES = 4 * 1024 * 1024;
+
+/**
+ * KV-адаптер памяти: Pages Function отдаёт связку MEMORY объектом с get/put/delete.
+ * Читаем как 'json' (иначе normalize получил бы строку), пишем строкой — KV не
+ * знает, что у нас внутри объект, и 25 МБ лимита считает по байтам.
+ */
+export function memoryStore(env) {
+  const kv = env && env.MEMORY;
+  if (!kv || typeof kv.get !== 'function' || typeof kv.put !== 'function') return null;
+  const store = {
+    get: async (key) => {
+      try { return await kv.get(key, 'json'); } catch (e) { return null; }
+    },
+    put: async (key, value) => { await kv.put(key, JSON.stringify(value)); },
+  };
+  if (typeof kv.delete === 'function') store.delete = (key) => kv.delete(key);
+  return store;
+}
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -74,13 +93,24 @@ export async function onRequestPost(context) {
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
   if (env.RATE_LIMIT !== '0' && limited(ip)) return json({ ok: false, error: 'слишком часто — подожди минуту' }, 429);
 
-  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE });
+  /* Чат, к которому приклеена память: свой chatId у клиента (телеграм- id
+     пользователя или id беседы), иначе — общий «web». Без него память
+     превратилась бы в один большой общий котёл. */
+  const chatId = String(body.chatId || request.headers.get('x-mt-chat') || 'web').slice(0, 80);
+  const store = memoryStore(env);
+  const memory = store ? createMemory({ store, env }) : null;
+  if (memory && body.forget === true) {
+    await memory.forget(chatId);
+    return json({ ok: true, forgotten: true, chatId, memory: await memory.stats(chatId) });
+  }
+  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE, memory });
   const history = Array.isArray(body.history)
     ? body.history.slice(-8).filter((m) => m && m.text).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text).slice(0, 4000) }))
     : [];
 
   const r = await engine.run({
     text, history,
+    chatId: memory ? chatId : undefined,
     images,
     tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
     only: body.provider || undefined,
@@ -108,6 +138,8 @@ export async function onRequestPost(context) {
        большинством; «пропущено: …» — что проверка не настроена или не к месту.
        Пустая строка — молчание контура, а оно в проде неотличимо от поломки (урок
        Yama 1.0.227: ансамбль «не работал» ровно потому, что молчал). */
+    /* что памяти реально наросло — чтобы «он забыл» можно было проверить, а не угадывать */
+    memory: r.memory || (memory ? null : { on: false, why: 'хранилище не подключено (нет связки MEMORY)' }),
     ensemble: r.ensemble ? ensemble.lineOf(r.ensemble) + (r.ensembleApplied ? ' → взято большинство' : '')
       : (r.ensembleSkip ? 'пропущено: ' + r.ensembleSkip : ''),
     vision: r.vision ? vcouncil.visionLine(r.vision) + (r.visionApplied ? ' → взято большинство' : '')

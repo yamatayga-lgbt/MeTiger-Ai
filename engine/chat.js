@@ -19,13 +19,14 @@ import { gatherTools } from './tools.js';
 import * as freedom from './freedom.js';
 import * as style from './style.js';
 import * as ensemble from './ensemble.js';
+import { createMemory } from './memory.js';
 import * as vcouncil from './vcouncil.js';
 
 export const PERSONA_SYSTEM =
   'Ты — MeTiger Ai, универсальный ИИ-агент в Telegram Mini App. Отвечаешь на языке '
   + 'человека, по делу и без вступлений («конечно», «отличный вопрос», «как модель я не могу»). '
   + 'Код и файлы — в fence с языком. Если факта не знаешь — говоришь прямо, что не знаешь, '
-  + 'и не додумываешь. Не извиняешься за себя и не добавляю дисклеймеров.';
+  + 'и не додумываешь. Не извиняйся за себя и не добавляй дисклеймеров.';
 
 /**
  * Сколько человек готов ждать совета. `COUNCIL_MS` / `COUNCIL_MS_VISION` — сколько
@@ -56,6 +57,9 @@ export function createEngine(opts) {
   const env = o.env || {};
   const fetchImpl = o.fetch || ((...a) => fetch(...a));
   const P = buildTable(env);
+  /* Память чата: либо готовый экземпляр (своё хранилище, свой кэш), либо store —
+     тогда соберём сами. Без того и другого движок работает ровно как раньше. */
+  const memory = o.memory || (o.store ? createMemory({ store: o.store, env, log: o.log }) : null);
   const health = Object.create(null);   /* id → [ключевое состояние] */
   const lastCallAt = Object.create(null);
   const usage = Object.create(null);    /* id → { calls, ok, refused, dead, t } */
@@ -163,7 +167,7 @@ export function createEngine(opts) {
     const images = Array.isArray(input.images) ? input.images.slice(0, MAX_IMAGES) : [];
     const intent = input.intent || classifyTask(text, images);
     const tier = input.tier || tierFor(intent);
-    const history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || 8));
+    let history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || 8));
     /* Инструменты агента: внешние данные (поиск, новости, курсы, погода…) ложатся
        в сообщение человека отдельным блоком — модель отвечает по ним, а не по
        памяти. Ошибка или тишина инструмента — блока просто нет. */
@@ -171,13 +175,33 @@ export function createEngine(opts) {
       ? { used: [], block: '' }
       : await gatherTools(text, env, fetchImpl);
     const userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
-    const messages = history.concat([{ role: 'user', content: userContent }]);
     const toolsHint = toolsRes.block
       ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных.'
       : '';
     const isDefaultSys = !input.system || input.system === PERSONA_SYSTEM;
     const styleHint = isDefaultSys ? style.hintFor(intent, env) : '';
-    const system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint;
+    let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint;
+
+    /* Память чата: прошлое доезжает до модели, а не живёт в браузере, и по реакции
+       на прошлый ответ собирается настройка на человека. Головы совета память не
+       читают — у них другая работа: проверить число, а не продолжать разговор
+       (иначе один и тот же диалог грузился бы впрок). Идёт ПОСЛЕ стиля и
+       инструментов: память — фон, а не указание, и перекрывать их не должна. */
+    const useMem = !!memory && !!input.chatId && !input.noCouncils;
+    if (useMem) {
+      try {
+        const ctx = await memory.contextFor(input.chatId, text, { fast: intent === 'fast' });
+        if (ctx.block) system = system + '\n\n' + ctx.block;
+        if (!history.length && ctx.recent.length) history = ctx.recent.map((mm) => ({ role: mm.role, content: mm.content }));
+        const lastA = history.slice().reverse().find((mm) => mm.role === 'assistant');
+        const lastU = history.slice().reverse().find((mm) => mm.role === 'user');
+        const cons = await memory.consider(input.chatId, text, lastA ? { reply: lastA.content, user: lastU ? lastU.content : '' } : null);
+        if (cons && cons.block) system = system + '\n\n' + cons.block;
+      } catch (e) {
+        /* память не имеет права сломать ответ — максимум, она молчит */
+      }
+    }
+    const messages = history.concat([{ role: 'user', content: userContent }]);
     const allowReframe = input.allowReframe !== false && freedom.canReframe(text, env);
     let reframed = false;
     let reframedCalls = 0;
@@ -255,6 +279,21 @@ export function createEngine(opts) {
           /* Советы голов (Этап 2): факт может поправить большинство, манеру не трогаем.
              Головы вызываются с других провайдеров и сами совет не собирают. */
           const final = input.noCouncils ? hit : await runCouncils(input, hit, tried);
+          if (useMem) {
+            try {
+              /* Порядок важен: сначала реплика человека, потом мой ответ. Наоборот —
+                 и история, подставленная из памяти в следующий запрос, читается задом
+                 наперёд: модель получала «ответ → вопрос» и начинала бормотать.
+                 Это поймали живым прогоном и тестом H1. */
+              await memory.addMessage(input.chatId, 'user', text);
+              const dd = await memory.addMessage(input.chatId, 'assistant', final.reply);
+              await memory.rememberFacts(input.chatId, text);
+              const after = dd || (await memory.load(input.chatId));
+              if (memory.needsCompact(after)) await memory.compact(input.chatId);
+              await memory.flush();
+              final.memory = await memory.stats(input.chatId);
+            } catch (e) {}
+          }
           return finish(final, tried, started, intent, tier);
         }
         if (r.soft && allowReframe) {
@@ -448,6 +487,7 @@ export function createEngine(opts) {
       ensembleApplied: hit ? !!hit.ensembleApplied : false,
       vision: hit ? hit.vision : null, visionSkip: hit ? (hit.visionSkip || '') : '',
       visionApplied: hit ? !!hit.visionApplied : false,
+      memory: hit ? (hit.memory || null) : null,
       intent, tier, ms: Date.now() - started, tried,
       error: hit ? '' : (why || 'нет ответа'),
     };

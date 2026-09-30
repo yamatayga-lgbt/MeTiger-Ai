@@ -12,3 +12,4 @@ npm-debug.log*
 .dev.vars
 .wrangler
 workers/stats/.wrangler
+.mt-memory/
