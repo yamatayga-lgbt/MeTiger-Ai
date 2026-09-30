@@ -1,9 +1,26 @@
-import { useRef, useState } from 'react'
-import { ArrowUp, Paperclip, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowUp, Mic, Paperclip, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic, type TgUser } from '../lib/telegram'
 import { timeGreeting, type ChatMessage } from '../lib/mock'
 import { fileToDataUrl, pickImages } from '../lib/images'
+import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
+
+function joinText(base: string, extra: string): string {
+  const b = base.trimEnd()
+  const e = extra.trim()
+  if (!b) return e
+  if (!e) return b
+  return `${b} ${e}`
+}
+
+function fmtTime(total: number): string {
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+const WAVE_WEIGHTS = [0.55, 0.95, 0.7, 1, 0.55, 0.85, 0.65]
 
 function RichText({ text }: { text: string }) {
   const segments = text.split(/```/)
@@ -51,15 +68,118 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const empty = messages.length === 0
 
+  // --- голосовой ввод ---
+  const voiceSupported = isVoiceSupported()
+  const [listening, setListening] = useState(false)
+  const [interim, setInterim] = useState('')
+  const [level, setLevel] = useState(0)
+  const [seconds, setSeconds] = useState(0)
+  const [voiceError, setVoiceError] = useState('')
+  const sessionRef = useRef<VoiceSession | null>(null)
+  const baseRef = useRef('') // подтверждённый текст (ввод + финальные куски)
+  const interimRef = useRef('') // незакреплённый кусок (для синхронного чтения)
+  const preVoiceRef = useRef('') // текст до старта — для кнопки «Отмена»
+
+  // таймер записи
+  useEffect(() => {
+    if (!listening) return
+    const id = window.setInterval(() => setSeconds((s) => s + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [listening])
+
+  // авто-высота поля и при программном изменении текста (голос)
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [value])
+
+  // при уходе со экрана микрофон выключается
+  useEffect(() => () => sessionRef.current?.cancel(), [])
+
+  const stopVoiceInput = (): string => {
+    const session = sessionRef.current
+    sessionRef.current = null
+    session?.stop()
+    const composed = joinText(baseRef.current, interimRef.current)
+    baseRef.current = composed
+    interimRef.current = ''
+    setValue(composed)
+    setInterim('')
+    setListening(false)
+    setLevel(0)
+    haptic('light')
+    return composed
+  }
+
+  const cancelVoiceInput = () => {
+    sessionRef.current?.cancel()
+    sessionRef.current = null
+    baseRef.current = preVoiceRef.current
+    interimRef.current = ''
+    setValue(preVoiceRef.current)
+    setInterim('')
+    setListening(false)
+    setLevel(0)
+    setSeconds(0)
+    haptic('light')
+  }
+
+  const startVoiceInput = () => {
+    if (!voiceSupported) {
+      setVoiceError('Голосовой ввод не поддерживается в этом браузере')
+      return
+    }
+    haptic('medium')
+    setVoiceError('')
+    preVoiceRef.current = value
+    baseRef.current = value
+    interimRef.current = ''
+    setInterim('')
+    setSeconds(0)
+    setLevel(0)
+    setListening(true)
+    const session = startVoice(
+      {
+        onFinal: (chunk) => {
+          baseRef.current = joinText(baseRef.current, chunk)
+          interimRef.current = ''
+          setValue(baseRef.current)
+          setInterim('')
+        },
+        onInterim: (chunk) => {
+          interimRef.current = chunk
+          setValue(joinText(baseRef.current, chunk))
+          setInterim(chunk)
+        },
+        onLevel: (l) => setLevel(l),
+        onError: (message) => {
+          setVoiceError(message)
+          cancelVoiceInput()
+        },
+      },
+      voiceLang(user.language_code),
+    )
+    if (!session) {
+      setListening(false)
+      setVoiceError('Не получилось запустить голосовой ввод — попробуйте ещё раз')
+      return
+    }
+    sessionRef.current = session
+  }
+
   const submit = () => {
-    const text = value.trim()
+    const text = (listening ? stopVoiceInput() : value).trim()
     /* Картинка без вопроса — это не запрос: движок не знает, что с ней делать. */
     if (!text && !shots.length) return
     haptic('medium')
     onSend(text || 'Что на картинке?', shots.length ? shots : undefined)
     setValue('')
+    baseRef.current = ''
     setShots([])
     setShotError('')
+    setVoiceError('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
@@ -149,6 +269,26 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
       )}
 
       <div className="composer-wrap">
+        {listening ? (
+          <div className="voice-panel">
+            <div className="voice-head">
+              <span className="voice-live">
+                <span className="voice-dot" />
+                Слушаю · {fmtTime(seconds)}
+              </span>
+              <button type="button" className="voice-cancel" onClick={cancelVoiceInput}>
+                Отмена
+              </button>
+            </div>
+            <div className="voice-wave" aria-hidden="true">
+              {WAVE_WEIGHTS.map((w, i) => (
+                <span key={i} style={{ height: `${3 + level * 21 * w}px` }} />
+              ))}
+            </div>
+            <div className="voice-interim">{interim || 'Говорите…'}</div>
+          </div>
+        ) : null}
+
         {shots.length || shotError ? (
           <div className="attach-strip">
             {shots.map((src, i) => (
@@ -201,8 +341,9 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
             value={value}
             placeholder="Спросите что угодно…"
             onChange={(e) => {
-              setValue(e.target.value)
               const el = e.target
+              if (!listening) baseRef.current = el.value
+              setValue(el.value)
               el.style.height = 'auto'
               el.style.height = `${Math.min(el.scrollHeight, 160)}px`
             }}
@@ -211,8 +352,23 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
                 e.preventDefault()
                 submit()
               }
+              if (e.key === 'Escape' && listening) {
+                e.preventDefault()
+                stopVoiceInput()
+              }
             }}
           />
+          {voiceSupported ? (
+            <button
+              type="button"
+              className={`icon-btn voice-btn${listening ? ' is-on' : ''}`}
+              aria-label={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+              title={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+              onClick={() => (listening ? stopVoiceInput() : startVoiceInput())}
+            >
+              {listening ? <Square size={13} /> : <Mic size={17} />}
+            </button>
+          ) : null}
           <button
             type="submit"
             className="send-btn"
@@ -222,6 +378,7 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
             <ArrowUp size={18} />
           </button>
         </form>
+        {voiceError ? <div className="voice-error">{voiceError}</div> : null}
         <p className="composer-hint">Может ошибаться — проверяйте важную информацию.</p>
       </div>
     </div>

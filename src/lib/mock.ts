@@ -41,10 +41,10 @@ export const CAPABILITIES: Capability[] = [
   { id: 'answers', label: 'Ответы на вопросы', icon: 'lightbulb' },
   { id: 'analysis', label: 'Анализ', icon: 'chart' },
   { id: 'translate', label: 'Переводы', icon: 'languages' },
+  { id: 'voice', label: 'Голос', icon: 'mic' },
   { id: 'web', label: 'Поиск в интернете', icon: 'globe', soon: true },
   { id: 'image', label: 'Изображения', icon: 'image', soon: true },
   { id: 'files', label: 'Файлы', icon: 'file', soon: true },
-  { id: 'voice', label: 'Голос', icon: 'mic', soon: true },
   { id: 'memory', label: 'Память', icon: 'brain', soon: true },
 ]
 
@@ -101,10 +101,10 @@ export const TOOLS: ToolData[] = [
   {
     id: 'voice',
     name: 'Голосовой ввод',
-    desc: 'Распознавание голосовых сообщений и ответ голосом.',
+    desc: 'Диктуйте сообщения прямо в поле ввода — кнопка микрофона.',
     icon: 'mic',
-    enabled: false,
-    available: false,
+    enabled: true,
+    available: true,
   },
   {
     id: 'mail',

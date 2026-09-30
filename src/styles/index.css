@@ -1187,6 +1187,132 @@ kbd {
   background: linear-gradient(to top, var(--bg) 72%, transparent);
 }
 
+/* ---------- Voice input ---------- */
+.voice-panel {
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  animation: fadeUp var(--t-fast) both;
+}
+
+.voice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.voice-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--accent-strong);
+}
+
+.voice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: voicePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voicePulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+.voice-cancel {
+  padding: 4px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+
+.voice-cancel:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.voice-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 24px;
+  margin: 9px 0 7px;
+}
+
+.voice-wave span {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.85;
+  transition: height 90ms linear;
+}
+
+.voice-interim {
+  min-height: 19px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.voice-interim:empty::before {
+  content: 'Говорите…';
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.voice-btn.is-on {
+  background: var(--accent);
+  color: var(--accent-fg);
+  position: relative;
+}
+
+.voice-btn.is-on::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  animation: voiceRing 1.4s ease-out infinite;
+}
+
+@keyframes voiceRing {
+  0% {
+    transform: scale(0.88);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+.voice-error {
+  margin-top: 7px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  animation: fadeUp var(--t-fast) both;
+}
+
 .composer {
   display: flex;
   align-items: flex-end;
