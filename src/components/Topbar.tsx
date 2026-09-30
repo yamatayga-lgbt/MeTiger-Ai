@@ -6,7 +6,7 @@ import type { ViewId } from '../App'
 
 const TITLES: Record<ViewId, string> = {
   chat: 'Чат',
-  agents: 'Агенты',
+  agent: 'Агент',
   tools: 'Инструменты',
   settings: 'Настройки',
 }

@@ -8,7 +8,7 @@ import {
   PenLine,
   Sparkles,
 } from 'lucide-react'
-import { LogoMark } from '../components/Logo'
+import avatarUrl from '../assets/agent-avatar.png'
 import { haptic, type TgUser } from '../lib/telegram'
 import { SUGGESTIONS, timeGreeting, type ChatMessage } from '../lib/mock'
 import type { IconType } from '../components/ui'
@@ -76,7 +76,7 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
     <div className="chat-root">
       {empty ? (
         <div className="chat-hero">
-          <LogoMark size={60} className="hero-mark" />
+          <img className="hero-mark" src={avatarUrl} alt="MeTiger Ai" />
           <h1 className="hero-title">
             {timeGreeting()}, {user.first_name}.
             <br />
@@ -117,7 +117,7 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
             ) : (
               <div key={m.id} className="msg msg-ai">
                 <div className="msg-avatar">
-                  <LogoMark size={18} />
+                  <img src={avatarUrl} alt="" />
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="ai-name">MeTiger Ai</div>
@@ -132,7 +132,7 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
           {typing ? (
             <div className="msg msg-ai">
               <div className="msg-avatar">
-                <LogoMark size={18} />
+                <img src={avatarUrl} alt="" />
               </div>
               <div>
                 <div className="ai-name">MeTiger Ai</div>

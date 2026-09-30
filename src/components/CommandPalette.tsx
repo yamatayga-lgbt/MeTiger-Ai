@@ -156,10 +156,10 @@ export function buildActions({
       run: () => navigate('chat'),
     },
     {
-      id: 'go-agents',
-      label: 'Перейти к агентам',
+      id: 'go-agent',
+      label: 'Профиль агента',
       icon: Bot,
-      run: () => navigate('agents'),
+      run: () => navigate('agent'),
     },
     {
       id: 'go-tools',

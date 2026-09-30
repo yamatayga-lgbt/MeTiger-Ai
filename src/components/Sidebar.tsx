@@ -12,7 +12,7 @@ import type { ViewId } from '../App'
 
 const NAV: { id: ViewId; label: string; icon: typeof MessagesSquare }[] = [
   { id: 'chat', label: 'Чат', icon: MessagesSquare },
-  { id: 'agents', label: 'Агенты', icon: Bot },
+  { id: 'agent', label: 'Агент', icon: Bot },
   { id: 'tools', label: 'Инструменты', icon: Puzzle },
   { id: 'settings', label: 'Настройки', icon: Settings },
 ]

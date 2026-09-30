@@ -1,80 +1,53 @@
 /* ============================================================
    Демо-данные дизайн-превью MeTiger Ai.
-   Позже здесь будет подключение к API агентов и инструментов.
+   Один универсальный агент — без ролей и переключений.
+   Позже здесь будет подключение к API агента и инструментов.
    ============================================================ */
 
-export interface AgentCardData {
-  id: string
+export interface AgentProfile {
   name: string
   desc: string
-  icon: 'sparkles' | 'code' | 'search' | 'palette' | 'chart' | 'languages'
-  tone: 'accent' | 'blue' | 'green' | 'gray'
-  status: 'active' | 'draft' | 'soon'
   model: string
+  version: string
   runs: string
 }
 
-export const AGENTS: AgentCardData[] = [
-  {
-    id: 'universal',
-    name: 'Универсал',
-    desc: 'Любые задачи: тексты, идеи, анализ и ответы на вопросы.',
-    icon: 'sparkles',
-    tone: 'accent',
-    status: 'active',
-    model: 'MeTiger Pro',
-    runs: '12.4k',
-  },
-  {
-    id: 'coder',
-    name: 'Кодер',
-    desc: 'Пишет и ревьюит код, находит баги, объясняет архитектуру.',
-    icon: 'code',
-    tone: 'blue',
-    status: 'active',
-    model: 'MeTiger Pro',
-    runs: '8.1k',
-  },
-  {
-    id: 'researcher',
-    name: 'Исследователь',
-    desc: 'Глубокий поиск, сравнение источников и короткие выжимки.',
-    icon: 'search',
-    tone: 'green',
-    status: 'active',
-    model: 'MeTiger Flash',
-    runs: '5.6k',
-  },
-  {
-    id: 'designer',
-    name: 'Дизайнер',
-    desc: 'Интерфейсы, макеты, визуал и фирменный стиль.',
-    icon: 'palette',
-    tone: 'accent',
-    status: 'draft',
-    model: 'MeTiger Pro',
-    runs: '—',
-  },
-  {
-    id: 'analyst',
-    name: 'Аналитик',
-    desc: 'Данные, таблицы, отчёты и цифры без хаоса.',
-    icon: 'chart',
-    tone: 'gray',
-    status: 'soon',
-    model: 'MeTiger Pro',
-    runs: '—',
-  },
-  {
-    id: 'translator',
-    name: 'Переводчик',
-    desc: 'Переводы с сохранением смысла, стиля и тона.',
-    icon: 'languages',
-    tone: 'gray',
-    status: 'soon',
-    model: 'MeTiger Flash',
-    runs: '—',
-  },
+export const AGENT: AgentProfile = {
+  name: 'MeTiger Ai',
+  desc: 'Один универсальный агент для любых задач: тексты, код, идеи, анализ и многое другое. Без ролей и переключений — он растёт и скоро сможет всё.',
+  model: 'MeTiger Pro',
+  version: 'v0.1.0',
+  runs: '25.6k',
+}
+
+export interface Capability {
+  id: string
+  label: string
+  icon:
+    | 'pen'
+    | 'code'
+    | 'lightbulb'
+    | 'chart'
+    | 'languages'
+    | 'globe'
+    | 'image'
+    | 'file'
+    | 'mic'
+    | 'brain'
+  soon?: boolean
+}
+
+export const CAPABILITIES: Capability[] = [
+  { id: 'text', label: 'Тексты и идеи', icon: 'pen' },
+  { id: 'code', label: 'Код', icon: 'code' },
+  { id: 'answers', label: 'Ответы на вопросы', icon: 'lightbulb' },
+  { id: 'analysis', label: 'Анализ', icon: 'chart' },
+  { id: 'translate', label: 'Переводы', icon: 'languages' },
+  { id: 'web', label: 'Поиск в интернете', icon: 'globe', soon: true },
+  { id: 'image', label: 'Изображения', icon: 'image', soon: true },
+  { id: 'files', label: 'Файлы', icon: 'file', soon: true },
+  { id: 'voice', label: 'Голос', icon: 'mic', soon: true },
+  { id: 'memory', label: 'Память', icon: 'brain', soon: true },
 ]
 
 export interface ToolData {
@@ -161,11 +134,11 @@ export interface ChatMessage {
 const REPLIES: { match: RegExp; text: string }[] = [
   {
     match: /привет|здравств|хай|hello|hi/i,
-    text: 'Привет! Я MeTiger Ai — ваш универсальный агент.\n\nПомогу с текстами, кодом, идеями, анализом и многим другим. Спросите что угодно — или выберите подсказку ниже.',
+    text: 'Привет! Я MeTiger Ai — универсальный агент.\n\nПомогу с текстами, кодом, идеями, анализом и многим другим. Спросите что угодно — или выберите подсказку ниже.',
   },
   {
     match: /код|code|функци|python|javascript|typescript|react/i,
-    text: 'Конечно! Вот пример чистой функции с проверкой входных данных:\n\n```typescript\nexport function formatPrice(value: number, currency = \"RUB\"): string {\n  if (!Number.isFinite(value)) throw new Error(\"Invalid value\")\n  return new Intl.NumberFormat(\"ru-RU\", {\n    style: \"currency\",\n    currency,\n    maximumFractionDigits: 0,\n  }).format(value)\n}\n```\n\nЭто дизайн-превью: в следующих версиях агент сможет запускать и проверять код прямо в чате.',
+    text: 'Конечно! Вот пример чистой функции с проверкой входных данных:\n\n```typescript\nexport function formatPrice(value: number, currency = "RUB"): string {\n  if (!Number.isFinite(value)) throw new Error("Invalid value")\n  return new Intl.NumberFormat("ru-RU", {\n    style: "currency\",\n    currency,\n    maximumFractionDigits: 0,\n  }).format(value)\n}\n```\n\nЭто дизайн-превью: в следующих версиях я смогу запускать и проверять код прямо в чате.',
   },
   {
     match: /картин|изображ|логотип|дизайн|image|picture/i,
@@ -178,7 +151,7 @@ const REPLIES: { match: RegExp; text: string }[] = [
 ]
 
 const DEFAULT_REPLY =
-  'Отличный вопрос! Это дизайн-превью MeTiger Ai — здесь пока живёт интерфейс, а «мозги» агента мы подключим на следующем этапе.\n\nПопробуйте спросить про код, изображения или планирование — или загляните в разделы «Агенты» и «Инструменты».'
+  'Отличный вопрос! Это дизайн-превью MeTiger Ai — здесь пока живёт интерфейс, а «мозги» агента мы подключим на следующем этапе.\n\nПопробуйте спросить про код, изображения или планирование — или загляните в разделы «Агент» и «Инструменты».'
 
 export function generateReply(text: string): string {
   const hit = REPLIES.find((r) => r.match.test(text))

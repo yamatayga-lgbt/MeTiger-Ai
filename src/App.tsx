@@ -5,14 +5,14 @@ import { Topbar } from './components/Topbar'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
-import { AgentsView } from './views/AgentsView'
+import { AgentView } from './views/AgentView'
 import { ToolsView } from './views/ToolsView'
 import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { getUser, haptic, isTelegram, type TgUser } from './lib/telegram'
 
-export type ViewId = 'chat' | 'agents' | 'tools' | 'settings'
+export type ViewId = 'chat' | 'agent' | 'tools' | 'settings'
 
 let msgSeq = 0
 const nextId = () => `m${++msgSeq}-${Date.now()}`
@@ -115,9 +115,7 @@ export default function App() {
               />
             </div>
           ) : null}
-          {view === 'agents' ? (
-            <AgentsView onOpen={(name) => notify(`«${name}» — скоро в эфире`)} />
-          ) : null}
+          {view === 'agent' ? <AgentView /> : null}
           {view === 'tools' ? <ToolsView /> : null}
           {view === 'settings' ? (
             <SettingsView
