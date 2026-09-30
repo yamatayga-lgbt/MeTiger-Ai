@@ -45,12 +45,15 @@ src/
 - кнопка меню бота открывает мини-приложение
 - вне Telegram работает в демо-режиме
 
-## ☁️ Деплой (GitHub Pages)
+## ☁️ Деплой (Cloudflare Pages)
 
-Каждый push в `main` автоматически собирает и публикует приложение через
-GitHub Actions → GitHub Pages.
+Хостинг — **Cloudflare Pages** (бесплатно, edge-CDN, автоматический деплой).
 
-- Прод: `https://yamatayga-lgbt.github.io/MeTiger-Ai/`
+- Прод: `https://metiger-ai.pages.dev`
+- Каждый push в `main` собирает и публикует приложение
+- GitHub Actions (`ci.yml`) дополнительно проверяет сборку на каждый push
+
+В будущем бэкенд (агенты, API-ключи, админка) — на Cloudflare Workers, бесплатно до 100k запросов/день.
 
 ## 🧭 Роадмап
 
