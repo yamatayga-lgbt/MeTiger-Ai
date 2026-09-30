@@ -4,6 +4,8 @@
    Позже здесь будет подключение к API агента и инструментов.
    ============================================================ */
 
+import { APP_VERSION } from './version'
+
 export interface AgentProfile {
   name: string
   desc: string
@@ -13,7 +15,7 @@ export interface AgentProfile {
 export const AGENT: AgentProfile = {
   name: 'MeTiger Ai',
   desc: 'Один универсальный агент для любых задач: тексты, код, идеи, анализ и многое другое. Без ролей и переключений — он растёт и скоро сможет всё.',
-  version: 'v0.1.0',
+  version: `v${APP_VERSION}`,
 }
 
 export interface Capability {

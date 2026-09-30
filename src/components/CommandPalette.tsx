@@ -11,6 +11,7 @@ import {
   Sun,
 } from 'lucide-react'
 import type { IconType } from './ui'
+import { APP_VERSION } from '../lib/version'
 import type { ViewId } from '../App'
 
 export interface PaletteAction {
@@ -192,8 +193,8 @@ export function buildActions({
       id: 'about',
       label: 'О MeTiger Ai',
       icon: ArrowLeftRight,
-      hint: 'v0.1.0',
-      run: () => notify('MeTiger Ai · дизайн-превью v0.1.0'),
+      hint: `v${APP_VERSION}`,
+      run: () => notify(`MeTiger Ai · дизайн-превью v${APP_VERSION}`),
     },
   ]
 }

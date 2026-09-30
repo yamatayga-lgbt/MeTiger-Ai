@@ -103,6 +103,7 @@ export default function App() {
     setTyping(false)
     setView('chat')
     setMenuOpen(false)
+    setPaletteOpen(false)
     setChats((prev) => {
       const kept = prev.filter((c) => c.messages.length > 0 || c.id === activeChatId)
       const active = kept.find((c) => c.id === activeChatId)
@@ -261,6 +262,7 @@ export default function App() {
           {view === 'chat' ? (
             <div className="chat-shell">
               <ChatView
+                key={activeChatId}
                 user={user}
                 messages={activeChat?.messages ?? []}
                 typing={typing}

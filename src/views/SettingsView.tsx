@@ -10,6 +10,7 @@ import {
 import { Badge, Segmented, Switch } from '../components/ui'
 import { usePersistentState } from '../hooks/usePersistentState'
 import { displayName, initials, type TgUser } from '../lib/telegram'
+import { APP_VERSION } from '../lib/version'
 import type { ThemePref } from '../hooks/useTheme'
 
 interface SettingsViewProps {
@@ -94,7 +95,7 @@ export function SettingsView({
             </div>
             <Segmented
               value="ru"
-              onChange={() => notify('English — скоро')}
+              onChange={() => undefined}
               options={[
                 { value: 'ru', label: 'Русский' },
                 { value: 'en', label: 'English', disabled: true },
@@ -146,6 +147,12 @@ export function SettingsView({
             role="button"
             tabIndex={0}
             onClick={() => notify('Панель администратора — в следующих версиях')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                notify('Панель администратора — в следующих версиях')
+              }
+            }}
           >
             <div className="icon-wrap">
               <ShieldCheck size={16} />
@@ -164,7 +171,7 @@ export function SettingsView({
               <div className="n">Версия</div>
               <div className="d">MeTiger Ai · дизайн-превью</div>
             </div>
-            <Badge tone="gray">v0.1.0</Badge>
+            <Badge tone="gray">v{APP_VERSION}</Badge>
           </div>
         </div>
       </div>

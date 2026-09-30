@@ -62,7 +62,7 @@ export function Sidebar({
   onToggleTheme,
   onOpenPalette,
 }: SidebarProps) {
-  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -72,11 +72,12 @@ export function Sidebar({
   }, [editingId])
 
   const dayStart = startOfDay()
-  const today = chats.filter((c) => c.updatedAt >= dayStart)
-  const older = chats.filter((c) => c.updatedAt < dayStart)
+  const byRecent = (a: Chat, b: Chat) => b.updatedAt - a.updatedAt
+  const today = chats.filter((c) => c.updatedAt >= dayStart).sort(byRecent)
+  const older = chats.filter((c) => c.updatedAt < dayStart).sort(byRecent)
 
   const beginRename = (chat: Chat) => {
-    setMenuFor(null)
+    setMenu(null)
     setEditingId(chat.id)
     setDraft(chat.title)
   }
@@ -98,6 +99,7 @@ export function Sidebar({
               ref={inputRef}
               className="rename-input"
               value={draft}
+              maxLength={48}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={commitRename}
               onKeyDown={(e) => {
@@ -140,42 +142,65 @@ export function Sidebar({
               aria-label="Действия чата"
               onClick={(e) => {
                 e.stopPropagation()
-                setMenuFor((v) => (v === chat.id ? null : chat.id))
+                const rect = e.currentTarget.getBoundingClientRect()
+                setMenu((m) =>
+                  m && m.id === chat.id
+                    ? null
+                    : { id: chat.id, x: rect.right, y: rect.bottom },
+                )
               }}
             >
               <MoreDots />
             </button>
-            {menuFor === chat.id ? (
-              <>
-                <div className="menu-catcher" onClick={() => setMenuFor(null)} />
-                <div className="chat-menu" role="menu">
-                  <button type="button" onClick={() => beginRename(chat)}>
-                    <PenLine size={14} />
-                    Переименовать
-                  </button>
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => {
-                      setMenuFor(null)
-                      onDeleteChat(chat.id)
-                    }}
-                  >
-                    <Trash2 size={14} />
-                    Удалить
-                  </button>
-                </div>
-              </>
-            ) : null}
           </>
         )}
       </div>
     )
   }
 
+  // Меню действий чата: fixed-позиционирование вне трансформированного сайдбара,
+  // открывается вверх у нижнего края экрана — не обрезается скроллом.
+  const chatInMenu = menu ? chats.find((c) => c.id === menu.id) : null
+  const openUp = menu ? menu.y > window.innerHeight - 130 : false
+  const menuLeft = menu
+    ? Math.max(8, Math.min(menu.x - 176, window.innerWidth - 184))
+    : 0
+
   return (
     <>
       {open ? <div className="drawer-scrim" onClick={onClose} /> : null}
+
+      {menu && chatInMenu ? (
+        <>
+          <div className="menu-catcher" onClick={() => setMenu(null)} />
+          <div
+            className="chat-menu"
+            role="menu"
+            style={{
+              position: 'fixed',
+              top: openUp ? menu.y - 118 : menu.y + 6,
+              left: menuLeft,
+            }}
+          >
+            <button type="button" onClick={() => beginRename(chatInMenu)}>
+              <PenLine size={14} />
+              Переименовать
+            </button>
+            <button
+              type="button"
+              className="danger"
+              onClick={() => {
+                setMenu(null)
+                onDeleteChat(chatInMenu.id)
+              }}
+            >
+              <Trash2 size={14} />
+              Удалить
+            </button>
+          </div>
+        </>
+      ) : null}
+
       <aside className={`sidebar${open ? ' open' : ''}`}>
         <Logo />
 
