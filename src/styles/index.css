@@ -666,6 +666,42 @@ a {
   color: var(--text-3);
 }
 
+.ws-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 48px 22px;
+  animation: fadeUp var(--t-med) both;
+}
+
+.ws-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+.ws-empty-title {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ws-empty-text {
+  margin-top: 7px;
+  max-width: 250px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-3);
+}
+
 .ws-storage {
   padding: 13px 16px;
   border-top: 1px solid var(--border);

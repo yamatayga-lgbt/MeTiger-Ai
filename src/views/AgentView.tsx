@@ -39,7 +39,7 @@ function CapChip({ cap }: { cap: Capability }) {
 }
 
 /** Профиль единственного универсального агента. */
-export function AgentView() {
+export function AgentView({ runs }: { runs: number | null }) {
   const now = CAPABILITIES.filter((c) => !c.soon)
   const soon = CAPABILITIES.filter((c) => c.soon)
 
@@ -69,10 +69,6 @@ export function AgentView() {
           <p className="agent-tagline">{AGENT.desc}</p>
           <div className="agent-stats">
             <div className="stat">
-              <div className="l">Модель</div>
-              <div className="v">{AGENT.model}</div>
-            </div>
-            <div className="stat">
               <div className="l">Режим</div>
               <div className="v">Универсал</div>
             </div>
@@ -82,7 +78,7 @@ export function AgentView() {
             </div>
             <div className="stat">
               <div className="l">Запусков</div>
-              <div className="v">{AGENT.runs}</div>
+              <div className="v">{runs === null ? '—' : runs.toLocaleString('ru-RU')}</div>
             </div>
           </div>
         </div>

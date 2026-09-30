@@ -7,17 +7,13 @@
 export interface AgentProfile {
   name: string
   desc: string
-  model: string
   version: string
-  runs: string
 }
 
 export const AGENT: AgentProfile = {
   name: 'MeTiger Ai',
   desc: 'Один универсальный агент для любых задач: тексты, код, идеи, анализ и многое другое. Без ролей и переключений — он растёт и скоро сможет всё.',
-  model: 'MeTiger Pro',
   version: 'v0.1.0',
-  runs: '25.6k',
 }
 
 export interface Capability {
@@ -123,22 +119,6 @@ export const SUGGESTIONS = [
   { icon: 'code', text: 'Объясни, как работает этот код' },
   { icon: 'image', text: 'Сделай логотип для проекта' },
   { icon: 'calendar', text: 'Спланируй мне неделю' },
-]
-
-export interface WorkspaceFile {
-  id: string
-  name: string
-  kind: 'folder' | 'md' | 'image' | 'sheet' | 'pdf' | 'code'
-  meta: string
-}
-
-export const WORKSPACE_FILES: WorkspaceFile[] = [
-  { id: 'f1', name: 'Документы', kind: 'folder', meta: '3 файла' },
-  { id: 'f2', name: 'ТЗ_агент.md', kind: 'md', meta: '4 КБ' },
-  { id: 'f3', name: 'логотип.png', kind: 'image', meta: '111 КБ' },
-  { id: 'f4', name: 'данные.xlsx', kind: 'sheet', meta: '28 КБ' },
-  { id: 'f5', name: 'отчёт.pdf', kind: 'pdf', meta: '156 КБ' },
-  { id: 'f6', name: 'скрипт.ts', kind: 'code', meta: '2 КБ' },
 ]
 
 export interface ChatMessage {

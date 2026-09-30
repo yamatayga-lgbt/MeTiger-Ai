@@ -1,6 +1,5 @@
 import {
   Bell,
-  Cpu,
   Globe,
   Info,
   Palette,
@@ -17,8 +16,6 @@ interface SettingsViewProps {
   user: TgUser
   themePref: ThemePref
   onThemePref: (p: ThemePref) => void
-  model: string
-  onModel: (m: string) => void
   isTelegram: boolean
   notify: (msg: string) => void
 }
@@ -27,8 +24,6 @@ export function SettingsView({
   user,
   themePref,
   onThemePref,
-  model,
-  onModel,
   isTelegram,
   notify,
 }: SettingsViewProps) {
@@ -110,23 +105,6 @@ export function SettingsView({
       <div className="settings-group">
         <div className="settings-label">Ассистент</div>
         <div className="settings-card">
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Cpu size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Модель</div>
-              <div className="d">Скорость или глубина рассуждений</div>
-            </div>
-            <Segmented
-              value={model}
-              onChange={onModel}
-              options={[
-                { value: 'flash', label: 'Flash' },
-                { value: 'pro', label: 'Pro' },
-              ]}
-            />
-          </div>
           <div className="settings-row">
             <div className="icon-wrap">
               <Bell size={16} />

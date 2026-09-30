@@ -10,6 +10,7 @@ import { ToolsView } from './views/ToolsView'
 import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
+import { fetchRealRuns } from './lib/stats'
 import { getUser, haptic, isTelegram, type TgUser } from './lib/telegram'
 
 export type ViewId = 'chat' | 'agent' | 'tools' | 'settings'
@@ -72,13 +73,14 @@ export default function App() {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
-  const [model, setModel] = useState('pro')
   const [user, setUser] = useState<TgUser>(getUser())
+  const [realRuns, setRealRuns] = useState<number | null>(null)
 
   const { pref, resolved, setPref, toggle } = useTheme()
 
   useEffect(() => {
     setUser(getUser())
+    void fetchRealRuns().then(setRealRuns)
   }, [])
 
   const activeChat = chats.find((c) => c.id === activeChatId)
@@ -258,15 +260,13 @@ export default function App() {
               />
             </div>
           ) : null}
-          {view === 'agent' ? <AgentView /> : null}
+          {view === 'agent' ? <AgentView runs={realRuns} /> : null}
           {view === 'tools' ? <ToolsView /> : null}
           {view === 'settings' ? (
             <SettingsView
               user={user}
               themePref={pref}
               onThemePref={setPref}
-              model={model}
-              onModel={setModel}
               isTelegram={isTelegram()}
               notify={notify}
             />
@@ -277,7 +277,6 @@ export default function App() {
       <WorkspaceDrawer
         open={workspaceOpen}
         onClose={() => setWorkspaceOpen(false)}
-        notify={notify}
       />
 
       <CommandPalette
