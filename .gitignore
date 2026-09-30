@@ -9,3 +9,6 @@ dist
 !.vscode/extensions.json
 .idea
 npm-debug.log*
+.dev.vars
+.wrangler
+workers/stats/.wrangler

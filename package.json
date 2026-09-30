@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "api": "node scripts/api-dev.js",
+    "test": "node test/route.test.js && node test/chat.test.js",
+    "test:engine": "node test/route.test.js && node test/chat.test.js"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",

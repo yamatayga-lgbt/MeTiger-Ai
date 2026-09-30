@@ -10,6 +10,7 @@ import { ToolsView } from './views/ToolsView'
 import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
+import { sendChat } from './lib/api'
 import {
   loadActiveChatId,
   loadChats,
@@ -150,45 +151,43 @@ export default function App() {
     [activeChatId, notify],
   )
 
+  /* Ответ агента. Этап 1 переноса: имитация из mock.ts уступила место двигателю.
+     Мока осталось ровно столько, чтобы «npm run dev» жил без ключей и без сети.
+     В проде подмены нет: если движок не ответил, человек видит причину, а не
+     красивый текст из таблички. */
   const sendMessage = useCallback(
     (text: string) => {
       const chatId = activeChatId
+      const current = chats.find((c) => c.id === chatId)
+      const history = (current?.messages ?? []).slice(-8).map((m) => ({ role: m.role, text: m.text }))
       setChats((prev) =>
         prev.map((c) =>
           c.id === chatId
-            ? {
-                ...c,
-                messages: [...c.messages, { id: nextId(), role: 'user', text }],
-                updatedAt: Date.now(),
-              }
+            ? { ...c, messages: [...c.messages, { id: nextId(), role: 'user', text }], updatedAt: Date.now() }
             : c,
         ),
       )
       setTyping(true)
-      window.setTimeout(
-        () => {
-          setTyping(false)
-          setChats((prev) =>
-            prev.map((c) =>
-              c.id === chatId
-                ? {
-                    ...c,
-                    messages: [
-                      ...c.messages,
-                      { id: nextId(), role: 'assistant', text: generateReply(text) },
-                    ],
-                    updatedAt: Date.now(),
-                  }
-                : c,
-            ),
-          )
-        },
-        900 + Math.random() * 600,
-      )
+      void (async () => {
+        const r = await sendChat(text, history)
+        const reply =
+          r.ok && r.reply
+            ? r.reply
+            : import.meta.env.DEV
+              ? generateReply(text) + '\n\n_демо-ответ: /api/chat не ответил (' + (r.error || 'нет связи') + ')_'
+              : '⚠️ ' + (r.error || 'сервис не отвечает') + '. Это не ответ агента — движок сейчас недоступен.'
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === chatId
+              ? { ...c, messages: [...c.messages, { id: nextId(), role: 'assistant', text: reply }], updatedAt: Date.now() }
+              : c,
+          ),
+        )
+        setTyping(false)
+      })()
     },
-    [activeChatId],
+    [activeChatId, chats],
   )
-
   // ⌘K — палитра, ⌘N — новый чат, Esc — закрыть оверлеи
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

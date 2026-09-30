@@ -1,0 +1,18 @@
+# Локальные ключи движка (копировать в .dev.vars; сам файл в git не попадает).
+# Формат — как у Cloudflare: одна переменная на строку.
+#
+# Один провайдер уже делает MeTiger живым; несколько — потому что бесплатный
+# пул держится на обходе: где 429, где отказ, где обрыв на середине фразы.
+GROQ_KEYS=
+GEMINI_KEYS=
+CLOUDFLARE_KEYS=
+CLOUDFLARE_ACCOUNT_ID=
+OPENROUTER_KEYS=
+MISTRAL_KEYS=
+ZAI_KEYS=
+ODIROUTER_KEYS=
+# Своя железка (Ollama / llama.cpp / LM Studio) — факультативно, в конце очереди
+LOCAL_BASE_URL=
+LOCAL_MODELS=
+LOCAL_KEY=
+# На prod это ставится секретом Pages: wrangler pages secret put GROQ_KEYS
