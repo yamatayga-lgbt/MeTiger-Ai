@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   Brain,
   FileText,
@@ -10,6 +9,7 @@ import {
   Terminal,
 } from 'lucide-react'
 import { Badge, Switch, type IconType } from '../components/ui'
+import { usePersistentState } from '../hooks/usePersistentState'
 import { TOOLS, type ToolData } from '../lib/mock'
 
 const ICONS: Record<ToolData['icon'], IconType> = {
@@ -23,8 +23,9 @@ const ICONS: Record<ToolData['icon'], IconType> = {
 }
 
 export function ToolsView() {
-  const [tools, setTools] = useState(() =>
-    Object.fromEntries(TOOLS.map((t) => [t.id, t.enabled])),
+  const [tools, setTools] = usePersistentState<Record<string, boolean>>(
+    'mt-tools',
+    () => Object.fromEntries(TOOLS.map((t) => [t.id, t.enabled])),
   )
 
   const available = TOOLS.filter((t) => t.available)

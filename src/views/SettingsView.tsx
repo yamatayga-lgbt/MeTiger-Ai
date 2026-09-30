@@ -8,9 +8,9 @@ import {
   Volume2,
 } from 'lucide-react'
 import { Badge, Segmented, Switch } from '../components/ui'
+import { usePersistentState } from '../hooks/usePersistentState'
 import { displayName, initials, type TgUser } from '../lib/telegram'
 import type { ThemePref } from '../hooks/useTheme'
-import { useState } from 'react'
 
 interface SettingsViewProps {
   user: TgUser
@@ -27,8 +27,10 @@ export function SettingsView({
   isTelegram,
   notify,
 }: SettingsViewProps) {
-  const [notifications, setNotifications] = useState(true)
-  const [sounds, setSounds] = useState(false)
+  const [prefs, setPrefs] = usePersistentState('mt-settings', {
+    notifications: true,
+    sounds: false,
+  })
 
   return (
     <div className="container view">
@@ -114,9 +116,9 @@ export function SettingsView({
               <div className="d">Ответы агента и статусы задач</div>
             </div>
             <Switch
-              checked={notifications}
+              checked={prefs.notifications}
               label="Уведомления"
-              onChange={setNotifications}
+              onChange={(v) => setPrefs({ ...prefs, notifications: v })}
             />
           </div>
           <div className="settings-row">
@@ -127,7 +129,11 @@ export function SettingsView({
               <div className="n">Звуки</div>
               <div className="d">Звук при ответе агента</div>
             </div>
-            <Switch checked={sounds} label="Звуки" onChange={setSounds} />
+            <Switch
+              checked={prefs.sounds}
+              label="Звуки"
+              onChange={(v) => setPrefs({ ...prefs, sounds: v })}
+            />
           </div>
         </div>
       </div>

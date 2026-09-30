@@ -10,6 +10,12 @@ import { ToolsView } from './views/ToolsView'
 import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
+import {
+  loadActiveChatId,
+  loadChats,
+  loadView,
+  saveChats,
+} from './lib/persist'
 import { fetchRealRuns } from './lib/stats'
 import { getUser, haptic, isTelegram, type TgUser } from './lib/telegram'
 
@@ -35,18 +41,6 @@ const newChatId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7
 
 const NEW_CHAT_TITLE = 'Новый чат'
 
-// Чистый старт при каждой загрузке — без демо-данных и без сохранений.
-function initialChats(): Chat[] {
-  return [
-    {
-      id: 'c-start',
-      title: NEW_CHAT_TITLE,
-      messages: [],
-      updatedAt: Date.now(),
-    },
-  ]
-}
-
 const emptyChat = (): Chat => ({
   id: newChatId(),
   title: NEW_CHAT_TITLE,
@@ -55,9 +49,11 @@ const emptyChat = (): Chat => ({
 })
 
 export default function App() {
-  const [view, setView] = useState<ViewId>('chat')
-  const [chats, setChats] = useState<Chat[]>(initialChats)
-  const [activeChatId, setActiveChatId] = useState<string>('c-start')
+  const [view, setView] = useState<ViewId>(() => loadView('chat'))
+  const [chats, setChats] = useState<Chat[]>(() => loadChats(emptyChat))
+  const [activeChatId, setActiveChatId] = useState<string>(() =>
+    loadActiveChatId('c-start'),
+  )
   const [typing, setTyping] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
@@ -74,6 +70,24 @@ export default function App() {
   }, [])
 
   const activeChat = chats.find((c) => c.id === activeChatId)
+
+  // Сохраняем реальные чаты, активный чат и раздел (только живые данные)
+  useEffect(() => {
+    saveChats(chats, activeChatId, view)
+  }, [chats, activeChatId, view])
+
+  // Починка ссылок: активный чат должен существовать
+  useEffect(() => {
+    if (chats.some((c) => c.id === activeChatId)) return
+    const first = chats.find((c) => c.messages.length > 0)
+    if (first) {
+      setActiveChatId(first.id)
+    } else {
+      const chat = emptyChat()
+      setChats([chat])
+      setActiveChatId(chat.id)
+    }
+  }, [chats, activeChatId])
 
   const notify = useCallback((msg: string) => setToast(msg), [])
 
