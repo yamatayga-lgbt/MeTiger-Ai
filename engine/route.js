@@ -46,6 +46,16 @@ export function isReasoning(model) {
 }
 
 /** code | math | reasoning | vision | creative | fast — по тексту и наличию картинки. */
+/**
+ * Задача, у которой есть верный ответ, записанный числом: «съели / осталось /
+ * всего / проехал». Классификатор и совет голов смотрят на один и тот же
+ * признак — раньше они расходились, и арифметика в формулировке задачи
+ * уходила в дешёвый слой, а «исправлять» её должен был ансамбль.
+ */
+export const WORD_PROBLEM = /(остал[оа]сь|осталось|всего|съел|отдал|забрал|потрат|прибав|расход|прош[ёе]л|проехал|проплыл|купил|привез|развез|скорост|за \d+ (?:день|дн|час|минут)|по \d+ (?:за|в) )/i;
+export const COUNT_ASK = /(сколько|скольк|посчитай|вычисл|рассчитай|найти|остаток|процент|како[ей]|кака[я])\s*\S*?$/i;
+export const COUNT_ASK_ANY = /(сколько|скольк|посчитай|вычисл|рассчитай|како[ей] (?:число|итог|сумма|ответ)|найди (?:сколько|итог))/i;
+
 export function classifyTask(text, images) {
   const t = String(text || '').toLowerCase();
   if (images && images.length) return 'vision';
@@ -57,6 +67,10 @@ export function classifyTask(text, images) {
   const isDebug = CODE_ARTIFACT.test(t);
   if (isCompare) return 'reasoning';
   if (isCode && (writeCode || isDebug)) return 'code';
+  /* Арифметика в человеческой формулировке: два числа, слово расхода и вопрос
+     про итог. Это «math», а не «fast»: цена ошибки выше цены секунды. */
+  const nums = (t.match(/\d+/g) || []).length;
+  if (nums >= 2 && WORD_PROBLEM.test(t) && COUNT_ASK_ANY.test(t)) return 'math';
   if (isReason && !writeCode) return 'reasoning';
   if (isMath) return 'math';
   if (isCode) return 'code';

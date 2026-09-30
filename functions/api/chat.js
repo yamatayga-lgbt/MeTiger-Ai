@@ -10,7 +10,13 @@
  * Ошибку не прячем: если ни один провайдер не ответил, приходит 503 со списком
  * попыток — фронт по нему и решает, показывать моку или честное «сервис не отвечает».
  */
-import { createEngine, PERSONA_SYSTEM } from '../../engine/chat.js';
+import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/chat.js';
+
+/* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
+   запрос, а «токен не принят» и «нет баланса» за одну request'у не лечатся.
+   Без этой карты каждый запрос заново стучится в закрытую дверь и отдаёт под
+   это время совета — те самые секунды, которые человек ждёт ответа. */
+const QUARANTINE = new Map();
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -51,7 +57,7 @@ export async function onRequestPost(context) {
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
   if (env.RATE_LIMIT !== '0' && limited(ip)) return json({ ok: false, error: 'слишком часто — подожди минуту' }, 429);
 
-  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i) });
+  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE });
   const history = Array.isArray(body.history)
     ? body.history.slice(-8).filter((m) => m && m.text).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text).slice(0, 4000) }))
     : [];
@@ -71,10 +77,23 @@ export async function onRequestPost(context) {
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
     tried: r.tried.slice(0, 6),
+    /* Советы голов (Этап 2) — строками, чтобы их было видно из фронтенда и из curl:
+       «сошлись 2/3 (groq,cloudflare)» и «confirmed 3/3» означают, что факт проверен
+       большинством; «пропущено: …» — что проверка не настроена или не к месту.
+       Пустая строка — молчание контура, а оно в проде неотличимо от поломки (урок
+       Yama 1.0.227: ансамбль «не работал» ровно потому, что молчал). */
+    ensemble: r.ensemble ? ensemble.lineOf(r.ensemble) + (r.ensembleApplied ? ' → взято большинство' : '')
+      : (r.ensembleSkip ? 'пропущено: ' + r.ensembleSkip : ''),
+    vision: r.vision ? vcouncil.visionLine(r.vision) + (r.visionApplied ? ' → взято большинство' : '')
+      : (r.visionSkip ? 'пропущено: ' + r.visionSkip : ''),
   });
 }
 
 export async function onRequestGet(context) {
-  const engine = createEngine({ env: context.env, fetch: (u, i) => fetch(u, i) });
-  return json({ ok: true, alive: engine.alive(), providers: Object.keys(engine.providers).length });
+  const engine = createEngine({ env: context.env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE });
+  return json({
+    ok: true, alive: engine.alive(), providers: Object.keys(engine.providers).length,
+    /* чем именно движок считает мёртвым — чтобы не гадать по логам */
+    dead: engine.quarantine(),
+  });
 }

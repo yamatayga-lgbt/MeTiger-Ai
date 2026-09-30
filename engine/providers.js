@@ -27,6 +27,13 @@ export const MAX_IMAGES = 2;
 /* Потолок ожидания одного провайдера: быстрый не должен ждать медленного. */
 export const TIMEOUT = { fast: 25000, smart: 60000 };
 
+/* Пулы моделей сверяются с ЖИВЫМ api провайдера, а не с памятью: id уезжают в
+   400/404 молча, и тогда половина очереди — мёртвые строки, которые только
+   жгут квоту и время совета. Проверка (2026-09-30): у gemini нет gemini-2.5-pro
+   («no longer available to new projects»), у z.ai нет glm-5-flash и glm-5.2-flash.
+   Перепроверять так: GET /v1beta/models (gemini) и GET /api/paas/v4/models (z.ai),
+   плюс один пробный запрос на id — 404/«Unknown Model» значит «id больше нет». */
+
 export const TABLE = {
   gemini: {
     label: "Google Gemini",
@@ -36,7 +43,7 @@ export const TABLE = {
     limit: 250,
     models: {
       fast: ["gemini-2.5-flash","gemini-3.5-flash","gemini-3.6-flash","gemini-3.7-flash","gemini-3.8-flash","gemini-3.1-flash-lite","gemini-flash-lite-latest","gemma-4-26b-a4b-it"],
-      smart: ["gemini-2.5-pro","gemini-3.1-pro-preview","gemini-3.8-flash","gemini-3.5-flash","gemini-pro-latest","gemma-4-31b-it"],
+      smart: ["gemini-3.1-pro-preview","gemini-3.8-flash","gemini-3.5-flash","gemini-pro-latest","gemma-4-31b-it"],
     },
   },
   cerebras: {
@@ -112,8 +119,8 @@ export const TABLE = {
     envPrefix: 'ZAI',
     limit: 1000,
     models: {
-      fast: ["glm-4.7-flash","glm-4.5-flash","glm-4.6v-flash","glm-5.3-flash","glm-5-flash","glm-5.2-flash"],
-      smart: ["glm-5.3-flash","glm-5-flash","glm-5.2-flash","glm-4.7-flash","glm-4.5-flash","glm-4.6v-flash","glm-5.3","glm-5"],
+      fast: ["glm-4.7-flash","glm-4.5-flash","glm-4.6v-flash","glm-5.3-flash"],
+      smart: ["glm-4.7-flash","glm-5.3-flash","glm-4.5-flash","glm-4.6v-flash","glm-5.3","glm-5"],
     },
   },
   atria: {
