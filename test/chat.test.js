@@ -76,6 +76,23 @@ console.log('E — обход: годный ответ или честный с�
   ok('E12: в допилку отправляется просьба продолжить, а не новый вопрос',
     /Продолжи/.test(JSON.stringify((f5.calls[1] || {}).body || {})), JSON.stringify((f5.calls[1] || {}).body || {}).slice(0, 180));
 
+  /* картинки: путь отдельный, и он не должен ронять обход (моделей без зрения много) */
+  const fImg = fakeFetch(() => ({ body: chat('Тигр на аватарке, текста нет') }));
+  const eImg = createEngine({ env: { GEMINI_KEYS: 'gm1', ODIROUTER_KEYS: 'od1' }, fetch: fImg, sleep: async () => {} });
+  const rImg = await eImg.run({ text: 'что на картинке?', images: ['data:image/png;base64,iVBORw0KGgo='] });
+  const imgBody = JSON.stringify(fImg.calls[0].body);
+  ok('E14: запрос с картинкой проходит движок, картинка в теле, модель зрячая',
+    rImg.ok === true && rImg.intent === 'vision'
+    && (imgBody.indexOf('inline_data') >= 0 || imgBody.indexOf('image_url') >= 0)
+    && /(gemini|vl|vision|omni|flash-preview)/i.test(rImg.model),
+    JSON.stringify({ provider: rImg.provider, model: rImg.model, kind: (imgBody.indexOf('inline_data') >= 0 ? 'gemini' : 'openai') }));
+  ok('E15: битую data-url не крашит, а просто не отправляет как картинку',
+    (async () => {
+      const f = fakeFetch(() => ({ body: chat('текст без картинки') }));
+      const e = createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: f, sleep: async () => {} });
+      const r = await e.run({ text: 'что на фото?', images: ['not-a-data-url'] });
+      return r.ok === true && JSON.stringify(f.calls[0].body).indexOf('image') < 0;
+    })());
   const f6 = fakeFetch(() => ({ body: chat('x') }));
   const e6 = createEngine({ env: {}, fetch: f6, sleep: async () => {} });
   const r6 = await e6.run({ text: 'привет' });
