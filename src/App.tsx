@@ -251,7 +251,7 @@ export default function App() {
 
         <main className="content">
           {view === 'chat' ? (
-            <div style={{ minHeight: '100%', display: 'flex' }}>
+            <div className="chat-shell">
               <ChatView
                 user={user}
                 messages={activeChat?.messages ?? []}

@@ -191,7 +191,21 @@ export function Sidebar({
           <kbd style={{ marginLeft: 'auto' }}>⌘K</kbd>
         </button>
 
-        <div className="side-section">История</div>
+        <div className="side-section">Разделы</div>
+        <nav className="side-nav">
+          {SECTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`side-item${view === item.id ? ' active' : ''}`}
+              onClick={() => onNavigate(item.id)}
+            >
+              <item.icon size={16} />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
         <div className="side-history">
           {chats.length === 0 ? (
             <div className="history-empty">Пока пусто — начните новый чат</div>
@@ -211,21 +225,6 @@ export function Sidebar({
             </>
           ) : null}
         </div>
-
-        <div className="side-section">Разделы</div>
-        <nav className="side-nav">
-          {SECTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`side-item${view === item.id ? ' active' : ''}`}
-              onClick={() => onNavigate(item.id)}
-            >
-              <item.icon size={16} />
-              {item.label}
-            </button>
-          ))}
-        </nav>
 
         <div className="side-foot-row">
           <button type="button" className="user-row" onClick={() => onNavigate('settings')}>
