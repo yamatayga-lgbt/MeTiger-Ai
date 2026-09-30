@@ -35,39 +35,29 @@ const newChatId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7
 
 const NEW_CHAT_TITLE = 'Новый чат'
 
-function seedChats(): Chat[] {
-  const now = Date.now()
+// Чистый старт при каждой загрузке — без демо-данных и без сохранений.
+function initialChats(): Chat[] {
   return [
     {
-      id: 'c-demo-1',
-      title: 'Дизайн интерфейса MeTiger Ai',
-      updatedAt: now - 40 * 60 * 1000,
-      messages: [
-        {
-          id: 'seed-1',
-          role: 'user',
-          text: 'Сделай минималистичный дизайн в духе Claude и Linear',
-        },
-        {
-          id: 'seed-2',
-          role: 'assistant',
-          text: 'Принял! Основа дизайн-системы: тёплая светлая тема, тонкие границы, тигровый акцент и много воздуха. Всё уже собрано в этом превью — смотрите разделы «Агент» и «Инструменты».',
-        },
-      ],
-    },
-    {
-      id: 'c-demo-2',
-      title: 'Идеи для стартапа',
-      updatedAt: now - 3 * 24 * 60 * 60 * 1000,
+      id: 'c-start',
+      title: NEW_CHAT_TITLE,
       messages: [],
+      updatedAt: Date.now(),
     },
   ]
 }
 
+const emptyChat = (): Chat => ({
+  id: newChatId(),
+  title: NEW_CHAT_TITLE,
+  messages: [],
+  updatedAt: Date.now(),
+})
+
 export default function App() {
   const [view, setView] = useState<ViewId>('chat')
-  const [chats, setChats] = useState<Chat[]>(seedChats)
-  const [activeChatId, setActiveChatId] = useState<string>('c-demo-1')
+  const [chats, setChats] = useState<Chat[]>(initialChats)
+  const [activeChatId, setActiveChatId] = useState<string>('c-start')
   const [typing, setTyping] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
@@ -103,12 +93,7 @@ export default function App() {
       const active = kept.find((c) => c.id === activeChatId)
       // уже открыт пустой черновик — не создаём новый
       if (active && active.messages.length === 0) return kept
-      const chat: Chat = {
-        id: newChatId(),
-        title: NEW_CHAT_TITLE,
-        messages: [],
-        updatedAt: Date.now(),
-      }
+      const chat = emptyChat()
       setActiveChatId(chat.id)
       return [...kept.filter((c) => c.messages.length > 0), chat]
     })
@@ -134,15 +119,10 @@ export default function App() {
     (id: string) => {
       haptic('medium')
       setChats((prev) => {
-        // удаление окончательное: удаляем чат и выбрасываем пустые черновики
+        // удаление окончательное: сам чат и пустые черновики уходят
         const next = prev.filter((c) => c.id !== id && c.messages.length > 0)
         if (next.length === 0) {
-          const chat: Chat = {
-            id: newChatId(),
-            title: NEW_CHAT_TITLE,
-            messages: [],
-            updatedAt: Date.now(),
-          }
+          const chat = emptyChat()
           setActiveChatId(chat.id)
           return [chat]
         }
@@ -224,8 +204,7 @@ export default function App() {
     notify,
   })
 
-  const title =
-    view === 'chat' ? activeChat?.title || NEW_CHAT_TITLE : TITLES[view]
+  const title = view === 'chat' ? activeChat?.title || NEW_CHAT_TITLE : TITLES[view]
 
   return (
     <div className="app">
