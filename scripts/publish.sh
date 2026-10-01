@@ -78,6 +78,8 @@ if [ "$BUMP" = 1 ]; then
     fs.writeFileSync(p, s.replace(m[0], "APP_VERSION = \x27"+txt+"\x27"));
     console.log(txt);')
 say "  версия:      поднятa до $VER"
+  node -e 'const fs=require("fs");const p="package.json";const d=JSON.parse(fs.readFileSync(p,"utf8"));d.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")' "$VER"
+  say "  package.json:  version = $VER"
 fi
 
 # ── тесты и сборка ────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ else
   OUT=$($WRANGLER pages deploy dist --project-name "$PROJECT" $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' ) 2>&1)
   printf '%s\n' "$OUT" | tail -4
   URL=$(printf '%s\n' "$OUT" | grep -oE 'https://[a-z0-9-]+\.metiger-ai\.pages\.dev' | tail -1)
-  say "  выложено: ${URL:-не распознал адрес}"
+  say "  выложено: прод = $PROD (адрес сборки ${URL:-?} мог ещё не прогреться — судить по проду)"
 fi
 
 # ── проверка прода ────────────────────────────────────────────────────────────
