@@ -139,5 +139,23 @@ console.log('E — у задачи с верным числом должен б�
   ok('E7: «привет» остаётся быстрым', classifyTask('привет') === 'fast', classifyTask('привет'));
 }
 
+console.log('F — порядок в пулах groq: первая быстрая модель должна годиться для русского');
+{
+  const P = buildTable({ GROQ_KEYS: 'g' });
+  const g = P.groq.models;
+  ok('F1: allam-2-7b убрана из быстрого пула (арабский вставки + география наврёт)',
+    g.fast.indexOf('allam-2-7b') < 0, JSON.stringify(g.fast));
+  ok('F2: мёртвых на нашем ключе id в пулах нет',
+    [g.fast, g.smart].every((a) => a.indexOf('groq/compound') < 0 && a.indexOf('groq/compound-mini') < 0),
+    JSON.stringify({ fast: g.fast, smart: g.smart }));
+  ok('F3: быстрый пул начинается с модели, прошедшей замер формы',
+    g.fast[0] === 'qwen/qwen3.8-27b', g.fast[0]);
+  ok('F4: в smart первой идёт gpt-oss-120b (её живой ответ подтверждён и в проде)',
+    g.smart[0] === 'openai/gpt-oss-120b', g.smart[0]);
+  const take = modelsFor(P.groq, 'fast', 'chat', false).slice(0, 2);
+  ok('F5: modelsPerProvider=2 берёт две живые модели, а не «каша + 400»',
+    take.indexOf('allam-2-7b') < 0 && take.indexOf('groq/compound-mini') < 0, JSON.stringify(take));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

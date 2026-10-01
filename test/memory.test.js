@@ -306,5 +306,45 @@ console.log('H — порядок в транскрипте: сначала ре
     /зовут Тигр/.test(JSON.stringify(sent[1])), JSON.stringify(sent[1]).slice(0, 160));
 }
 
+console.log('I — дозапрос продолжения не является в памяти отдельным ходом');
+{
+  let truncated = false;
+  const sent = [];
+  const impl = async (url, init) => {
+    const b = JSON.parse(init.body);
+    sent.push(b.messages);
+    const cont = /Продолжи ровно с того места/.test(JSON.stringify(b.messages));
+    if (cont) {
+      return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'Следовательно, всего 51 яблоко — по семнадцать в каждом ящике.' }, finish_reason: 'stop' }] }) };
+    }
+    if (truncated) {
+      return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'Сейчас посчитаю.' }, finish_reason: 'length' }] }) };
+    }
+    return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'Запомнил.' }, finish_reason: 'stop' }] }) };
+  };
+  const { store } = fakeKV();
+  const mem = createMemory({ store, env: {} });
+  const e = createEngine({ env: { GROQ_KEYS: 'g' }, fetch: impl, sleep: async () => {}, memory: mem });
+  await e.run({ text: 'меня зовут Тигр, у меня три кота', chatId: 'trunc' });
+  const afterSeed = await mem.stats('trunc');
+  truncated = true;
+  sent.length = 0;
+  const r = await e.run({ text: 'сколько будет 3 × 17?', chatId: 'trunc' });
+  const st = await mem.stats('trunc');
+  const d = await mem.load('trunc');
+  ok('I1: после обычном хода — одна пара в транскрипте', afterSeed.messages === 2 && afterSeed.turns === 1, JSON.stringify(afterSeed));
+  ok('I2: обрезанный ответ с продолжением дал ровно одну пару, а не две',
+    st.messages === 4 && st.turns === 2, JSON.stringify(st));
+  ok('I3: «Продолжи…» не попало в память как реплика человека',
+    !JSON.stringify(d.messages).includes('Продолжи ровно'), JSON.stringify(d.messages).slice(0, 200));
+  ok('I4: ответ склеен из обрезка и продолжения',
+    /Сейчас посчитаю/.test(r.reply) && /51/.test(r.reply), JSON.stringify(r.reply));
+  const memReqs = sent.filter((m) => /Память чата/.test(String(m[0] && m[0].content || ''))).length;
+  ok('I5: память поехала в модель ровно один раз на ответ — дозапрос её не тащит',
+    memReqs === 1, 'всего запросов ' + sent.length + ', с памятью ' + memReqs);
+  ok('I6: всего два запроса на ответ: сам и продолжение (совет дозапрос не разводит)',
+    sent.length === 2, String(sent.length));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

@@ -266,6 +266,11 @@ export function createEngine(opts) {
               ...input, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-900),
               history: [], system: 'Ты продолжаешь оборванный ответ.', providerOrder: [id], continueOnTruncate: false,
               useTools: false, allowReframe: false,
+              /* Продолжение — НЕ новый ход разговора. Без этой строки внутренний run()
+                 наследует chatId: память писала транскрипт дважды за один вопрос
+                 («Продолжи ровно с того места…» уезжало в профиль как реплика человека,
+                 turns росло на 2), и на пустяковый дозапрос вставал отдельный совет. */
+              noCouncils: true, chatId: undefined,
               maxTokens: Math.max(Number(input.maxTokens) || 1200, 1800),
             });
             if (more && more.reply && more.reply.length > 20) {

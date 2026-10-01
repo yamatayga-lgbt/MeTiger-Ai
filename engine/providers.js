@@ -64,8 +64,19 @@ export const TABLE = {
     envPrefix: 'GROQ',
     limit: 1000,
     models: {
-      fast: ["allam-2-7b","groq/compound-mini","openai/gpt-oss-20b","qwen/qwen3.8-27b"],
-      smart: ["openai/gpt-oss-120b","groq/compound","qwen/qwen3.8-27b","openai/gpt-oss-20b"],
+      /* Порядок пулов groq подобран замером, а не каталогом (01.10.2026, три вопроса
+         каждому id: «привет», «как меня зовут» с фактом в system, «17×3»):
+           qwen/qwen3.8-27b   — чисто по-русски, «Тебя зовут Тигр, ты из Гомеля.», 51 ✓
+           openai/gpt-oss-20b — чисто, но при маленьком max_tokens отдаёт пустой контент
+                                (весь бюджет съедает рассуждение), поэтому вторым
+           allam-2-7b         — сыплет арабским («17 مضروبًا في 3»), Гомель записал в
+                                Московскую область. В быстром пуле её быть не должно:
+                                modelsPerProvider = 2, и две попытки из двух уходили на неё.
+           groq/compound, groq/compound-mini — на этом ключе model_not_found (400),
+                                мёртвый id в очереди только сжигает запрос.
+         Отсюда: первая модель в fast = та, что реально годится для русского ответа. */
+      fast: ["qwen/qwen3.8-27b","openai/gpt-oss-20b"],
+      smart: ["openai/gpt-oss-120b","qwen/qwen3.8-27b","openai/gpt-oss-20b"],
     },
   },
   mistral: {
