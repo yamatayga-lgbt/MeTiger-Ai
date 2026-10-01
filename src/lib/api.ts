@@ -32,6 +32,8 @@ export interface ChatResult {
   ensemble?: string
   /** Вердикт совета зрячих голов по картинке. */
   vision?: string
+  /** Какие инструменты агента накормили ответ (web-search, news, calc…). */
+  tools?: string[]
   /** Текст изменён большинством — это надо показать, а не спрятать. */
   ensembleApplied?: boolean
   visionApplied?: boolean
@@ -97,7 +99,23 @@ export function adviceLine(r: ChatResult): { text: string; tone: AdviceTone } | 
 }
 
 /** Короткая строка «кто ответил» — для отладочной подписи под сообщением. */
+const TOOL_RU: Record<string, string> = {
+  'web-search': 'веб-поиск',
+  news: 'новости',
+  wikipedia: 'вики',
+  url: 'страница',
+  calc: 'калькулятор',
+  currency: 'курсы',
+  weather: 'погода',
+  time: 'дата',
+  random: 'случайность',
+}
+
 export function sourceLine(r: ChatResult): string {
   if (!r.ok || !r.provider) return ''
-  return `${r.provider} · ${r.model || '?'} · ${r.intent || '?'}/${r.tier || '?'} · ${r.ms ?? 0} мс`
+  const tools = (r.tools || []).map((t) => TOOL_RU[t] || t)
+  return (
+    `${r.provider} · ${r.model || '?'} · ${r.intent || '?'}/${r.tier || '?'} · ${r.ms ?? 0} мс` +
+    (tools.length ? ` · данные: ${tools.join(', ')}` : '')
+  )
 }

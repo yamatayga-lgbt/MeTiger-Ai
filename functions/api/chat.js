@@ -11,6 +11,7 @@
  * попыток — фронт по нему и решает, показывать моку или честное «сервис не отвечает».
  */
 import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/chat.js';
+import { TOOL_IDS } from '../../engine/tools.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
    запрос, а «токен не принят» и «нет баланса» за одну request'у не лечатся.
@@ -97,6 +98,8 @@ export async function onRequestPost(context) {
   return json({
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
+    /* Какие инструменты реально накормили ответ — видно в подписи под пузырём. */
+    tools: r.tools || [],
     tried: r.tried.slice(0, 6),
     /* Советы голов (Этап 2) — строками, чтобы их было видно из фронтенда и из curl:
        «сошлись 2/3 (groq,cloudflare)» и «confirmed 3/3» означают, что факт проверен
@@ -114,6 +117,7 @@ export async function onRequestGet(context) {
   const engine = createEngine({ env: context.env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE });
   return json({
     ok: true, alive: engine.alive(), providers: Object.keys(engine.providers).length,
+    tools: TOOL_IDS(),
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */
     dead: engine.quarantine(),
   });

@@ -15,6 +15,7 @@ import {
 } from './providers.js';
 import { classifyTask, tierFor, modelsFor, isVision } from './route.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
+import { gatherTools } from './tools.js';
 import * as ensemble from './ensemble.js';
 import * as vcouncil from './vcouncil.js';
 
@@ -37,6 +38,15 @@ export function councilBudget(env, ec, vc) {
     textMs: clamp(e.COUNCIL_MS || 12000, (ec && ec.ms) || 1e9),
     visionMs: clamp(e.COUNCIL_MS_VISION || 20000, (vc && vc.ms) || 1e9),
   };
+}
+
+/** Мелкие модели иногда копируют заголовок блока данных в ответ — вычищаем. */
+function scrubToolMarkers(s) {
+  return String(s || '')
+    .replace(/\[Инструмент:[^\]]*\]/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function createEngine(opts) {
@@ -146,8 +156,18 @@ export function createEngine(opts) {
     const intent = input.intent || classifyTask(text, images);
     const tier = input.tier || tierFor(intent);
     const history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || 8));
-    const messages = history.concat([{ role: 'user', content: text }]);
-    const system = input.system || PERSONA_SYSTEM;
+    /* Инструменты агента: внешние данные (поиск, новости, курсы, погода…) ложатся
+       в сообщение человека отдельным блоком — модель отвечает по ним, а не по
+       памяти. Ошибка или тишина инструмента — блока просто нет. */
+    const toolsRes = input.useTools === false
+      ? { used: [], block: '' }
+      : await gatherTools(text, env, fetchImpl);
+    const userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
+    const messages = history.concat([{ role: 'user', content: userContent }]);
+    const toolsHint = toolsRes.block
+      ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных.'
+      : '';
+    const system = (input.system || PERSONA_SYSTEM) + toolsHint;
 
     let order = orderFor(tier, P, { images, only: input.only, forceModel: input.forceModel, health });
     if (input.providerOrder && input.providerOrder.length) {
@@ -201,11 +221,12 @@ export function createEngine(opts) {
             const more = await run({
               ...input, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-900),
               history: [], system: 'Ты продолжаешь оборванный ответ.', providerOrder: [id], continueOnTruncate: false,
+              useTools: false,
               maxTokens: Math.max(Number(input.maxTokens) || 1200, 1800),
             });
             if (more && more.reply && more.reply.length > 20) reply = reply + '\n' + more.reply;
           }
-          const hit = { reply, reasoning: r.reasoning, provider: id, model, intent, tier };
+          const hit = { reply, reasoning: r.reasoning, provider: id, model, intent, tier, tools: toolsRes.used };
           /* Советы голов (Этап 2): факт может поправить большинство, манеру не трогаем.
              Головы вызываются с других провайдеров и сами совет не собирают. */
           const final = input.noCouncils ? hit : await runCouncils(input, hit, tried);
@@ -357,8 +378,9 @@ export function createEngine(opts) {
 
   function finish(hit, tried, started, intent, tier, why) {
     return {
-      ok: !!hit, reply: hit ? hit.reply : '', reasoning: hit ? hit.reasoning : '',
+      ok: !!hit, reply: hit ? scrubToolMarkers(hit.reply) : '', reasoning: hit ? hit.reasoning : '',
       provider: hit ? hit.provider : '', model: hit ? hit.model : '',
+      tools: hit ? (hit.tools || []) : [],
       ensemble: hit ? hit.ensemble : null, ensembleSkip: hit ? (hit.ensembleSkip || '') : '',
       ensembleApplied: hit ? !!hit.ensembleApplied : false,
       vision: hit ? hit.vision : null, visionSkip: hit ? (hit.visionSkip || '') : '',
