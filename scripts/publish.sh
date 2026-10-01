@@ -127,7 +127,7 @@ say "── деплой на Pages"
 if [ "$DRY" = 1 ]; then
   say "  [dry] $WRANGLER pages deploy dist --project-name $PROJECT $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' )"
 else
-  OUT=$($WRANGLER pages deploy dist --project-name "$PROJECT" $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' ) 2>&1)
+  OUT=$($WRANGLER pages deploy dist --commit-dirty=true --project-name "$PROJECT" $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' ) 2>&1)
   printf '%s\n' "$OUT" | tail -4
   URL=$(printf '%s\n' "$OUT" | grep -oE 'https://[a-z0-9-]+\.metiger-ai\.pages\.dev' | tail -1)
   say "  выложено: прод = $PROD (адрес сборки ${URL:-?} мог ещё не прогреться — судить по проду)"

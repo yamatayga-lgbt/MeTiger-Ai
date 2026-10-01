@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# MeTiger Ai — сборка и деплой на Cloudflare Pages
+# Точка входа, которая была в проекте до появления publish.sh — оставлена, чтобы
+# привычка не подвела. Вся логика теперь там: тесты, сборка, деплой с --branch main
+# и проверка прода. Флаги проходят насквозь: ./scripts/deploy.sh --bump
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[ -f .env ] && export $(grep -v '^#' .env | xargs)
-npm run build
-npx -y wrangler@3 pages deploy dist --project-name metiger-ai --branch main --commit-dirty=true
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
+exec bash scripts/publish.sh "$@"
