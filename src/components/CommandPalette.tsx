@@ -6,7 +6,6 @@ import {
   Folder,
   MessageSquarePlus,
   Moon,
-  Puzzle,
   Settings,
   Sun,
 } from 'lucide-react'
@@ -170,12 +169,6 @@ export function buildActions({
       label: 'Профиль агента',
       icon: Bot,
       run: () => navigate('agent'),
-    },
-    {
-      id: 'go-tools',
-      label: 'Перейти к инструментам',
-      icon: Puzzle,
-      run: () => navigate('tools'),
     },
     {
       id: 'go-settings',

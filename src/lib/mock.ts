@@ -48,74 +48,6 @@ export const CAPABILITIES: Capability[] = [
   { id: 'memory', label: 'Память', icon: 'brain', soon: true },
 ]
 
-export interface ToolData {
-  id: string
-  name: string
-  desc: string
-  icon: 'globe' | 'image' | 'file' | 'terminal' | 'brain' | 'mic' | 'mail'
-  enabled: boolean
-  available: boolean
-}
-
-export const TOOLS: ToolData[] = [
-  {
-    id: 'web-search',
-    name: 'Поиск в интернете',
-    desc: 'Свежие данные и источники с ссылками.',
-    icon: 'globe',
-    enabled: true,
-    available: true,
-  },
-  {
-    id: 'image-gen',
-    name: 'Генерация изображений',
-    desc: 'Картинки, иллюстрации и визуал по описанию.',
-    icon: 'image',
-    enabled: true,
-    available: true,
-  },
-  {
-    id: 'files',
-    name: 'Работа с файлами',
-    desc: 'PDF, таблицы, документы и извлечение данных.',
-    icon: 'file',
-    enabled: true,
-    available: true,
-  },
-  {
-    id: 'code-runner',
-    name: 'Python-песочница',
-    desc: 'Выполнение кода и вычисления в изолированной среде.',
-    icon: 'terminal',
-    enabled: false,
-    available: false,
-  },
-  {
-    id: 'memory',
-    name: 'Память агента',
-    desc: 'Контекст прошлых диалогов и персональные настройки.',
-    icon: 'brain',
-    enabled: false,
-    available: false,
-  },
-  {
-    id: 'voice',
-    name: 'Голосовой ввод',
-    desc: 'Диктуйте сообщения прямо в поле ввода — кнопка микрофона.',
-    icon: 'mic',
-    enabled: true,
-    available: true,
-  },
-  {
-    id: 'mail',
-    name: 'Почта и уведомления',
-    desc: 'Отправка писем и уведомлений по расписанию.',
-    icon: 'mail',
-    enabled: false,
-    available: false,
-  },
-]
-
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -149,7 +81,7 @@ const REPLIES: { match: RegExp; text: string }[] = [
 ]
 
 const DEFAULT_REPLY =
-  'Отличный вопрос! Это дизайн-превью MeTiger Ai — здесь пока живёт интерфейс, а «мозги» агента мы подключим на следующем этапе.\n\nПопробуйте спросить про код, изображения или планирование — или загляните в разделы «Агент» и «Инструменты».'
+  'Отличный вопрос! Это дизайн-превью MeTiger Ai — здесь пока живёт интерфейс, а «мозги» агента мы подключим на следующем этапе.\n\nПопробуйте спросить про код, изображения или планирование — или загляните в раздел «Агент».'
 
 export function generateReply(text: string): string {
   const hit = REPLIES.find((r) => r.match.test(text))

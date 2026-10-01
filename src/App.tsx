@@ -6,7 +6,6 @@ import { CommandPalette, buildActions, type PaletteAction } from './components/C
 import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
 import { AgentView } from './views/AgentView'
-import { ToolsView } from './views/ToolsView'
 import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
@@ -22,7 +21,7 @@ import { getUser, haptic, isTelegram, type TgUser } from './lib/telegram'
 import { usePersistentState } from './hooks/usePersistentState'
 import { isModelId } from './lib/models'
 
-export type ViewId = 'chat' | 'agent' | 'tools' | 'settings'
+export type ViewId = 'chat' | 'agent' | 'settings'
 
 export interface Chat {
   id: string
@@ -34,7 +33,6 @@ export interface Chat {
 const TITLES: Record<ViewId, string> = {
   chat: 'Чат',
   agent: 'Агент',
-  tools: 'Инструменты',
   settings: 'Настройки',
 }
 
@@ -280,7 +278,6 @@ export default function App() {
             </div>
           ) : null}
           {view === 'agent' ? <AgentView runs={realRuns} /> : null}
-          {view === 'tools' ? <ToolsView /> : null}
           {view === 'settings' ? (
             <SettingsView
               user={user}

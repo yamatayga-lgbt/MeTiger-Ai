@@ -5,7 +5,6 @@ import {
   MessageSquarePlus,
   Moon,
   PenLine,
-  Puzzle,
   Search,
   Settings,
   Sun,
@@ -36,7 +35,6 @@ interface SidebarProps {
 
 const SECTIONS: { id: ViewId; label: string; icon: typeof Bot }[] = [
   { id: 'agent', label: 'Агент', icon: Bot },
-  { id: 'tools', label: 'Инструменты', icon: Puzzle },
   { id: 'settings', label: 'Настройки', icon: Settings },
 ]
 
