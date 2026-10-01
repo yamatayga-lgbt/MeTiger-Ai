@@ -1,10 +1,12 @@
 import {
   Bell,
-  Globe,
   Info,
+  Monitor,
+  Moon,
   Palette,
   ShieldCheck,
   SlidersHorizontal,
+  Sun,
   Volume2,
 } from 'lucide-react'
 import { Badge, Segmented, Switch } from '../components/ui'
@@ -73,32 +75,15 @@ export function SettingsView({
             </div>
             <div className="grow">
               <div className="n">Тема</div>
-              <div className="d">Следовать системе или выбрать свою</div>
             </div>
             <Segmented
+              variant="icon"
               value={themePref}
               onChange={onThemePref}
               options={[
-                { value: 'system', label: 'Авто' },
-                { value: 'light', label: 'Светлая' },
-                { value: 'dark', label: 'Тёмная' },
-              ]}
-            />
-          </div>
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Globe size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Язык</div>
-              <div className="d">Язык интерфейса</div>
-            </div>
-            <Segmented
-              value="ru"
-              onChange={() => undefined}
-              options={[
-                { value: 'ru', label: 'Русский' },
-                { value: 'en', label: 'English', disabled: true },
+                { value: 'system', label: <Monitor size={15} />, title: 'Системная' },
+                { value: 'light', label: <Sun size={15} />, title: 'Светлая' },
+                { value: 'dark', label: <Moon size={15} />, title: 'Тёмная' },
               ]}
             />
           </div>

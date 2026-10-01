@@ -941,6 +941,16 @@ kbd {
   background: var(--surface-2);
 }
 
+/* Иконочный сегмент (тема): квадратные кнопки, одна строка в любой ширине. */
+.segmented-icon .segmented-item {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .segmented-item {
   padding: 5px 12px;
   border-radius: 7px;
