@@ -19,6 +19,8 @@ import {
 } from './lib/persist'
 import { fetchRealRuns } from './lib/stats'
 import { getUser, haptic, isTelegram, type TgUser } from './lib/telegram'
+import { usePersistentState } from './hooks/usePersistentState'
+import { isModelId } from './lib/models'
 
 export type ViewId = 'chat' | 'agent' | 'tools' | 'settings'
 
@@ -56,6 +58,8 @@ export default function App() {
     loadActiveChatId('c-start'),
   )
   const [typing, setTyping] = useState(false)
+  /* Выбранная модель ответа — между сессиями (как и все настройки). '' = Авто. */
+  const [model, setModel] = usePersistentState<string>('mt-model', '', isModelId)
   const [menuOpen, setMenuOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -174,7 +178,10 @@ export default function App() {
       )
       setTyping(true)
       void (async () => {
-        const r = await sendChat(text, history, images && images.length ? { images } : {})
+        const r = await sendChat(text, history, {
+          ...(images && images.length ? { images } : {}),
+          ...(model ? { model } : {}),
+        })
         const reply =
           r.ok && r.reply
             ? r.reply
@@ -199,7 +206,7 @@ export default function App() {
         setTyping(false)
       })()
     },
-    [activeChatId, chats],
+    [activeChatId, chats, model],
   )
   // ⌘K — палитра, ⌘N — новый чат, Esc — закрыть оверлеи
   useEffect(() => {
@@ -267,6 +274,8 @@ export default function App() {
                 messages={activeChat?.messages ?? []}
                 typing={typing}
                 onSend={sendMessage}
+                model={model}
+                onModelChange={setModel}
               />
             </div>
           ) : null}

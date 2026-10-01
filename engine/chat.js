@@ -154,6 +154,21 @@ export function createEngine(opts) {
       order = input.providerOrder.filter((id) => P[id] && P[id].keys.length);
     }
 
+    /* Пин модели: человек выбрал конкретную модель в окне ввода — говорить должна
+       именно она. Ищем провайдера, у которого такая модель есть в пуле, и сужаем
+       очередь до него. Незнакомый id (опечатка, модель ушла из каталога) не роняет
+       запрос: пин молча снимается, работает обычный обход. */
+    let pin = null;
+    const pinName = String(input.model || '').trim();
+    if (pinName) {
+      const owner = input.only && P[input.only] ? input.only : Object.keys(P).find((id) => {
+        const m = P[id].models || {};
+        return [].concat(m.fast || [], m.smart || [], P[id].modelsLocal || []).indexOf(pinName) >= 0;
+      });
+      if (owner) pin = { id: owner, model: pinName };
+      if (pin) order = [pin.id];
+    }
+
     const tried = [];
     const allBad = order.length > 0 && order.every((id) => punished(id));
     for (const id of order) {
@@ -162,7 +177,7 @@ export function createEngine(opts) {
       if (!providerAlive(P, id, health)) { tried.push({ provider: id, why: 'нет живых ключей' }); continue; }
       const q = punished(id);
       if (q && !allBad) { tried.push({ provider: id, why: 'в карантине: ' + q.why }); continue; }
-      const models = modelsFor(cfg, tier, intent, images);
+      const models = pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images);
       if (!models.length) { tried.push({ provider: id, why: 'нет моделей в пуле' }); continue; }
       const n = Math.max(1, Number(input.modelsPerProvider) || 2);
       for (const model of models.slice(0, n)) {

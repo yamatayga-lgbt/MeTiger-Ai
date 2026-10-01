@@ -83,6 +83,11 @@ export async function onRequestPost(context) {
     images,
     tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
     only: body.provider || undefined,
+    /* Человек выбрал модель в окне ввода — она и отвечает. Советы голов в этом
+       режиме выключены: «взято большинство» переписало бы ответ той самой модели,
+       которую человек и просил. */
+    model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined,
+    noCouncils: !!(typeof body.model === 'string' && body.model.trim()),
     temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
     system: typeof body.system === 'string' && body.system ? body.system : PERSONA_SYSTEM,
     deadlineMs: Number(env.CHAT_DEADLINE_MS || 50000),

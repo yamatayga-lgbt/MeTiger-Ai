@@ -42,7 +42,7 @@ const ENDPOINT = (import.meta.env?.VITE_API_BASE || '') + '/api/chat'
 export async function sendChat(
   text: string,
   history: ChatTurn[] = [],
-  opts: { signal?: AbortSignal; images?: string[] } = {},
+  opts: { signal?: AbortSignal; images?: string[]; model?: string } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), 75_000)
@@ -52,7 +52,12 @@ export async function sendChat(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       signal: ac.signal,
-      body: JSON.stringify({ text, history: history.slice(-8), images: opts.images }),
+      body: JSON.stringify({
+        text,
+        history: history.slice(-8),
+        images: opts.images,
+        model: opts.model || undefined,
+      }),
     })
     const data = (await res.json().catch(() => null)) as Partial<ChatResult> | null
     if (!res.ok || !data) {

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Mic, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, Eye, Mic, Paperclip, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic, type TgUser } from '../lib/telegram'
 import { timeGreeting, type ChatMessage } from '../lib/mock'
 import { fileToDataUrl, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
+import { MODEL_AUTO, MODELS, modelOption } from '../lib/models'
 
 function joinText(base: string, extra: string): string {
   const b = base.trimEnd()
@@ -58,15 +59,20 @@ interface ChatViewProps {
   messages: ChatMessage[]
   typing: boolean
   onSend: (text: string, images?: string[]) => void
+  /** Выбранная модель ('' = Авто) и смена — живут в App и сохраняются. */
+  model?: string
+  onModelChange?: (id: string) => void
 }
 
-export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
+export function ChatView({ user, messages, typing, onSend, model = '', onModelChange }: ChatViewProps) {
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const empty = messages.length === 0
+  const modelOpt = modelOption(model)
 
   // --- голосовой ввод ---
   const voiceSupported = isVoiceSupported()
@@ -314,6 +320,26 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
             submit()
           }}
         >
+          <div className="model-bar">
+            <button
+              type="button"
+              className={`model-chip${pickerOpen ? ' is-open' : ''}`}
+              aria-haspopup="listbox"
+              aria-expanded={pickerOpen}
+              title="Выбрать модель"
+              onClick={() => {
+                haptic('light')
+                setPickerOpen((v) => !v)
+              }}
+            >
+              <span className="m-av" style={{ background: modelOpt.avatar.bg }}>
+                {modelOpt.avatar.mark}
+              </span>
+              <span className="model-chip-name">{modelOpt.name}</span>
+              <ChevronDown size={13} className="model-chip-caret" />
+            </button>
+          </div>
+          <div className="composer-main">
           <button
             type="button"
             className="icon-btn"
@@ -377,6 +403,44 @@ export function ChatView({ user, messages, typing, onSend }: ChatViewProps) {
           >
             <ArrowUp size={18} />
           </button>
+          </div>
+          {pickerOpen ? (
+            <>
+              <div className="model-backdrop" onClick={() => setPickerOpen(false)} />
+              <div className="model-panel" role="listbox" aria-label="Модель ответа">
+                <div className="model-panel-title">Модель ответа</div>
+                {[MODEL_AUTO, ...MODELS].map((m) => {
+                  const selected = m.id === model
+                  return (
+                    <button
+                      type="button"
+                      key={m.id || 'auto'}
+                      role="option"
+                      aria-selected={selected}
+                      className={`model-row${selected ? ' is-selected' : ''}`}
+                      onClick={() => {
+                        haptic('light')
+                        onModelChange?.(m.id)
+                        setPickerOpen(false)
+                      }}
+                    >
+                      <span className="m-av m-av-row" style={{ background: m.avatar.bg }}>
+                        {m.avatar.mark}
+                      </span>
+                      <span className="model-row-text">
+                        <span className="model-row-name">
+                          {m.name}
+                          {m.vision ? <Eye size={12} className="vision-ic" aria-label="видит картинки" /> : null}
+                        </span>
+                        <span className="model-row-desc">{m.desc}</span>
+                      </span>
+                      {selected ? <Check size={15} className="model-check" /> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          ) : null}
         </form>
         {voiceError ? <div className="voice-error">{voiceError}</div> : null}
         <p className="composer-hint">Может ошибаться — проверяйте важную информацию.</p>
