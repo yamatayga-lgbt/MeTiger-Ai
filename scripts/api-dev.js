@@ -16,6 +16,7 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync } from '
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { onRequestPost, onRequestGet, onRequestOptions } from '../functions/api/chat.js';
+import { onRequestPost as tgPost, onRequestGet as tgGet } from '../functions/telegram/webhook.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -64,6 +65,15 @@ function fileKV(dirName) {
 }
 
 if (!env.MEMORY) env.MEMORY = fileKV('.mt-memory');
+
+/* Telegram локально не ходим: токен и вебхук — действие владельца на живом аккаунте.
+   Здесь секрет и токен подставляются фиктивные, а отправка уходит в /echo ниже,
+   чтобы «бот ответил» можно было проверить, не дёргая Telegram и не светя сообщения. */
+const DEV_TG_SECRET = 'local-dev-secret';
+if (!env.TELEGRAM_WEBHOOK_SECRET) env.TELEGRAM_WEBHOOK_SECRET = DEV_TG_SECRET;
+if (!env.TELEGRAM_BOT_TOKEN) env.TELEGRAM_BOT_TOKEN = '000000:local-fake-token';
+if (!env.TELEGRAM_API_BASE) env.TELEGRAM_API_BASE = 'http://127.0.0.1:' + (process.env.PORT || 8788) + '/echo';
+const echoes = [];
 const port = Number(process.env.PORT || 8788);
 
 createServer((req, res) => {
@@ -86,8 +96,21 @@ createServer((req, res) => {
       if (path === '/api/chat') {
         return reply(req.method === 'GET' ? await onRequestGet(context) : await onRequestPost(context));
       }
+      if (path === '/telegram/webhook') {
+        return reply(req.method === 'GET' ? await tgGet(context) : await tgPost(context));
+      }
+      if (path.indexOf('/echo/') === 0) {
+        let body = {};
+        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch (e) {}
+        echoes.push({ method: path.split('/')[2], body });
+        if (echoes.length > 50) echoes.shift();
+        return reply(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      if (path === '/echo') {
+        return reply(new Response(JSON.stringify({ ok: true, sent: echoes }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
       return reply(new Response(JSON.stringify({
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'POST /telegram/webhook', 'GET /echo'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       }), { status: 200, headers: { 'content-type': 'application/json' } }));
     } catch (e) {
@@ -99,6 +122,7 @@ createServer((req, res) => {
 }).listen(port, '0.0.0.0', () => {
   const keys = Object.keys(env).filter((k) => /_KEYS?$/.test(k));
   console.log('MeTiger Ai · движок: http://0.0.0.0:' + port + '/api/chat');
+  console.log('телеграм: секрет вебхука для локальных тестов — ' + DEV_TG_SECRET + ', отправка → ' + env.TELEGRAM_API_BASE);
   console.log(keys.length ? 'провайдеры с ключами: ' + keys.map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()).join(', ') :
     'ключей нет — движок ответит 503 со списком попыток (это правильное поведение, а не поломка)');
 });
