@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "api": "node scripts/api-dev.js",
     "test": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/telegram.test.js && node test/front.test.js && node test/memory.test.js",
-    "test:engine": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/telegram.test.js && node test/memory.test.js"
+    "test:engine": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/telegram.test.js && node test/memory.test.js",
+    "publish": "bash scripts/publish.sh",
+    "publish:fast": "bash scripts/publish.sh --fast",
+    "publish:bump": "bash scripts/publish.sh --bump"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
@@ -22,6 +25,7 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "wrangler": "3.114.17"
   }
 }

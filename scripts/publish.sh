@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Публикация MeTiger Ai одной командой.
+#
+#   npm run publish                 тесты → сборка → прод → проверка прода
+#   npm run publish -- --bump       то же + поднять APP_VERSION на 0.001
+#   npm run publish -- --fast       пропустить тесты (только когда они только что шли)
+#   npm run publish -- --preview    залить не в прод, а на preview-адрес
+#   npm run publish -- --commit "текст"   сначала закоммитить всё и запушить в main
+#   npm run publish -- --dry        показать, что будет сделано, ничего не трогать
+#
+# Доступы берутся из окружения, а если их нет — из файла ../.secrets.env (он вне
+# репозитория и в git не попадает). Значения наружу не печатаются никогда: ни в
+# успехе, ни в ошибке.
+#
+# Почему скрипт, а не «просто wrangler»:
+#   1. деплой без --branch main уходит в preview, и прод остаётся на старом билде
+#      — по git push ничего не обновляется, потому что git-интеграции у проекта нет;
+#   2. wrangler@latest требует Node >= 22, а в песочнице и у половины CI Node 20 —
+#      рабочая ветка 3, она подхвачена отсюда локально или через npx;
+#   3. секреты Pages нельзя записать прямым запросом к API (405), только wranglerом.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+REPO=$PWD
+SECRETS=${METIGER_SECRETS:-$REPO/../.secrets.env}
+PROJECT=${PAGES_PROJECT:-metiger-ai}
+PROD=https://metiger-ai.pages.dev
+MODE=production
+BUMP=0; TESTS=1; DRY=0; COMMIT_MSG=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --bump)    BUMP=1 ;;
+    --fast)    TESTS=0 ;;
+    --preview) MODE=preview ;;
+    --dry)     DRY=1 ;;
+    --commit)  shift; COMMIT_MSG=${1:-} ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "неизвестный флаг: $1 (справка: --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+say() { printf '%s\n' "$*"; }
+run() { if [ "$DRY" = 1 ]; then say "  [dry] $*"; else "$@"; fi; }
+
+# ── доступы: из окружения или из файла, без вывода значений ───────────────────
+pull() { [ -n "${!1:-}" ] || [ ! -f "$SECRETS" ] || export "$1=$(grep -oP "^$1=\K.*" "$SECRETS" | head -1)"; }
+pull CLOUDFLARE_API_TOKEN || true
+if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ -f "$SECRETS" ]; then
+  export CLOUDFLARE_API_TOKEN=$(grep -oP '^CF_TOKEN=\K.*' "$SECRETS" | head -1)
+fi
+if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] && [ -f "$SECRETS" ]; then
+  export CLOUDFLARE_ACCOUNT_ID=$(grep -oP '^CF_ACCOUNT=\K.*' "$SECRETS" | head -1)
+fi
+if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+  say "нет CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID (ни в окружении, ни в $SECRETS)" >&2
+  exit 1
+fi
+
+WRANGLER="npx --yes wrangler@3"
+[ -x node_modules/.bin/wrangler ] && WRANGLER="node_modules/.bin/wrangler"
+
+say "MeTiger Ai · $PROJECT · режим $MODE"
+say "  репозиторий: $REPO"
+say "  HEAD:        $(git rev-parse --short HEAD 2>/dev/null || echo '—') · грязных файлов $(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+say "  wrangler:    $WRANGLER"
+
+# ── версия ───────────────────────────────────────────────────────────────────
+if [ "$BUMP" = 1 ]; then
+  VER=$(node -e '
+    const fs=require("fs"), p="src/lib/version.ts";
+    const s=fs.readFileSync(p,"utf8");
+    const m=s.match(/APP_VERSION = .(\d+)\.(\d{1,4})./);
+    if(!m){console.error("не понял формат APP_VERSION в "+p);process.exit(1)}
+    const pad=Math.max(3,m[2].length);
+    const txt=m[1]+"."+String(+m[2]+1).padStart(pad,"0");
+    fs.writeFileSync(p, s.replace(m[0], "APP_VERSION = \x27"+txt+"\x27"));
+    console.log(txt);')
+say "  версия:      поднятa до $VER"
+fi
+
+# ── тесты и сборка ────────────────────────────────────────────────────────────
+if [ "$TESTS" = 1 ]; then
+  say "── тесты"
+  run npm test --silent
+fi
+say "── сборка"
+run npm run build --silent
+
+# ── коммит и пуш (по флагу) ───────────────────────────────────────────────────
+if [ -n "$COMMIT_MSG" ]; then
+  say "── коммит и пуш в main"
+  run git add -A
+  run git commit -q -m "$COMMIT_MSG"
+  if [ "$DRY" = 0 ]; then
+    PAT=${GITHUB_PAT:-}
+    [ -z "$PAT" ] && [ -f "$SECRETS" ] && PAT=$(grep -oP '^GITHUB_PAT=\K.*' "$SECRETS" | head -1)
+    if [ -z "$PAT" ]; then
+      say "нет GITHUB_PAT: коммит готов локально, пуша не делаю — пуши сам или положи пат в $SECRETS" >&2
+      exit 1
+    fi
+    GIT_USER=${GITHUB_USER:-yamatayga-lgbt}
+    ASK=$(mktemp); chmod 700 "$ASK"
+    printf '#!/bin/sh\ncase "$1" in\n*Username*) printf "%s" "$GIT_USER";;\n*) printf "%s" "$GITHUB_PAT";;\nesac\n' > "$ASK"
+    trap 'rm -f "$ASK"' EXIT
+    GITHUB_PAT="$PAT" GIT_ASKPASS="$ASK" run git push origin HEAD:main
+    rm -f "$ASK"; trap - EXIT
+  fi
+fi
+
+# ── деплой ─────────────────────────────────────────────────────────────────────
+say "── деплой на Pages"
+if [ "$DRY" = 1 ]; then
+  say "  [dry] $WRANGLER pages deploy dist --project-name $PROJECT $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' )"
+else
+  OUT=$($WRANGLER pages deploy dist --project-name "$PROJECT" $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' ) 2>&1)
+  printf '%s\n' "$OUT" | tail -4
+  URL=$(printf '%s\n' "$OUT" | grep -oE 'https://[a-z0-9-]+\.metiger-ai\.pages\.dev' | tail -1)
+  say "  выложено: ${URL:-не распознал адрес}"
+fi
+
+# ── проверка прода ────────────────────────────────────────────────────────────
+if [ "$MODE" = production ] && [ "$DRY" = 0 ]; then
+  say "── проверка прода"
+  T=$(curl -s --max-time 40 "$PROD/telegram/webhook")
+  printf '  вебхук: %s\n' "$(printf '%s' "$T" | head -c 300)"
+  C=$(curl -s --max-time 90 -X POST "$PROD/api/chat" -H 'content-type: application/json' \
+        -d '{"text":"2+2","chatId":"publish_smoke","history":[]}')
+  printf '  ответ:   %s\n' "$(printf '%s' "$C" | head -c 220)"
+  printf '%s' "$C" | grep -q '"4"' && say "  дымовой тест: ок" || say "  дымовой тест: ОТВЕТ НЕ ПОХОЖ НА 4 — смотри выше"
+fi
+say "готово"

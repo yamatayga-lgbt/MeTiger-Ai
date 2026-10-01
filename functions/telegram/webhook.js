@@ -11,6 +11,7 @@
  */
 import { onRequestPost as chatPost, memoryStore } from '../api/chat.js';
 import { handleUpdate, secretOk, telegramPoster } from '../../engine/telegram.js';
+import { freedomInfo } from '../../engine/freedom.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
@@ -58,5 +59,12 @@ export async function onRequestGet(context) {
     username: env.TELEGRAM_BOT_USERNAME || 'Metigerai_bot',
     meta: String(env.TELEGRAM_META || '0') === '1',
     memory: memoryStore(env) ? 'подключена' : 'нет связки MEMORY — бот отвечает без памяти',
+    /* Свобода ответа — видно без чтения кода: какой режим и сколько везём. */
+    freedom: (() => {
+      const f = freedomInfo(env);
+      return f.on
+        ? f.mode + ' · блоков в данных ' + f.blocks.length + ' · полная пачка ' + f.full + ' симв.'
+        : 'off (FREEDOM=0)';
+    })(),
   }), { status: 200, headers: JSON_HEADERS });
 }

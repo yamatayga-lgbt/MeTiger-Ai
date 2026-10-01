@@ -181,6 +181,13 @@ export function createEngine(opts) {
     const isDefaultSys = !input.system || input.system === PERSONA_SYSTEM;
     const styleHint = isDefaultSys ? style.hintFor(intent, env) : '';
     let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint;
+    /* Свобода ответа: блоки правил из engine/freedom.data.js (данные перенесены из
+       Yama) доезжают только до нашего собственного режима — кто прислал свою
+       `system`, тот её и контролирует. Головы совета идут со своей подсказкой, так
+       что к ним блок не липнет и лишние 8 КБ в спор о числе никто не везёт. */
+    const adultAsk = freedom.isAdultAsk(text);
+    const free = isDefaultSys ? freedom.freedomBlock(env, { intent, adult: adultAsk }) : { text: '', ids: [], chars: 0, mode: 'off', blocks: 0 };
+    if (free.text) system = system + free.text;
 
     /* Память чата: прошлое доезжает до модели, а не живёт в браузере, и по реакции
        на прошлый ответ собирается настройка на человека. Головы совета память не
@@ -250,7 +257,7 @@ export function createEngine(opts) {
         const curMessages = useReframe
           ? history.concat([{ role: 'user', content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) }])
           : messages;
-        const curSystem = useReframe ? system + freedom.FREEDOM_SYSTEM_PATCH : system;
+        const curSystem = useReframe ? system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk }) : system;
         if (useReframe) reframedCalls++;
         const req = buildRequest({
           cfg, keyIdx, model, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
@@ -322,7 +329,7 @@ export function createEngine(opts) {
           content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text),
         }]);
         const req = buildRequest({
-          cfg, keyIdx, model, messages: curMessages, system: system + freedom.FREEDOM_SYSTEM_PATCH,
+          cfg, keyIdx, model, messages: curMessages, system: system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk }),
           tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;

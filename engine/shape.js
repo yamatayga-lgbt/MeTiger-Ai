@@ -51,7 +51,10 @@ const RU_HEAD = /^\s*(извини(те)?|прости(те)?|к\s+сожале�
 const REFUSAL_BODY = /(не могу|не буду|не в состояни|отказыва|не получится|не умею|не должен)/i;
 const EN_REFUSAL = /^(i('| a)m sorry|sorry,? but|i can'?t|i cannot|i'?m not able to|as an ai|as a language model)(?![a-z])/i;
 export function isRefusal(text) {
-  const t = String(text || '').trim();
+  /* Модели отдают отказ в «красивой» типографике — с ’ вместо ' (gpt-oss любит
+     «I’m sorry, but I can’t help with that.»). Без этой замены английский отказ
+     не узнавался, и голая фраза «не могу» уезжала человеку как ответ. */
+  const t = String(text || '').trim().replace(/[\u2019\u2018\u02bc\u02b9]/g, "'");
   if (t.length > 320) return false;
   return RU_HEAD.test(t) && REFUSAL_BODY.test(t) || EN_REFUSAL.test(t);
 }
