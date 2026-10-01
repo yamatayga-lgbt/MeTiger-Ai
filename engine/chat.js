@@ -17,6 +17,7 @@ import { classifyTask, tierFor, modelsFor, isVision } from './route.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { gatherTools } from './tools.js';
 import * as freedom from './freedom.js';
+import { block as jbBlock } from './jailbreak.js';
 import * as style from './style.js';
 import * as ensemble from './ensemble.js';
 import { createMemory } from './memory.js';
@@ -188,6 +189,14 @@ export function createEngine(opts) {
     const adultAsk = freedom.isAdultAsk(text);
     const free = isDefaultSys ? freedom.freedomBlock(env, { intent, adult: adultAsk }) : { text: '', ids: [], chars: 0, mode: 'off', blocks: 0 };
     if (free.text) system = system + free.text;
+    /* Обход ложных отказов по умолчанию молчит (его черёд — после первого отказа).
+       JAILBREAK=1 включает его в каждом запросе, чтобы можно было померить, помогает ли
+       он без повтора; JAILBREAK=0 выключает совсем. На опасные темы его нет ни в одном
+       режиме. */
+    if (isDefaultSys) {
+      const jb = jbBlock(env, { danger: freedom.isHardDanger(text) });
+      if (jb) system = system + jb;
+    }
 
     /* Память чата: прошлое доезжает до модели, а не живёт в браузере, и по реакции
        на прошлый ответ собирается настройка на человека. Головы совета память не
@@ -255,9 +264,11 @@ export function createEngine(opts) {
         lastCallAt[id] = Date.now();
         const useReframe = reframed && allowReframe;
         const curMessages = useReframe
-          ? history.concat([{ role: 'user', content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) }])
+          ? history.concat([{ role: 'user', content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }) }])
           : messages;
-        const curSystem = useReframe ? system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk }) : system;
+        const curSystem = useReframe
+          ? system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe })
+          : system;
         if (useReframe) reframedCalls++;
         const req = buildRequest({
           cfg, keyIdx, model, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
@@ -326,10 +337,11 @@ export function createEngine(opts) {
         lastCallAt[id] = Date.now();
         const curMessages = history.concat([{
           role: 'user',
-          content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text),
+          content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
         }]);
         const req = buildRequest({
-          cfg, keyIdx, model, messages: curMessages, system: system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk }),
+          cfg, keyIdx, model, messages: curMessages,
+          system: system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
           tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;

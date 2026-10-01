@@ -22,6 +22,7 @@ import {
   FREEDOM_BLOCKS, FREEDOM_ALL, BYPASS_SYSTEM, REFRAME_SYSTEM, SPLIT_SYSTEM,
   ADULT_SYSTEM, FREEDOM_CHECKSUMS,
 } from './freedom.data.js';
+import { block as jbBlock, mark as jbMark, cfgOf as jbCfg, stats as jbStats } from './jailbreak.js';
 
 /**
  * Режимы слоя. `FREEDOM_MODE` принимает только эти четыре строки, всё остальное
@@ -274,11 +275,21 @@ export function freedomBlock(env, info) {
 export function escalationBlock(env, info) {
   if (!cfgOf(env).on) return '';
   const o = info || {};
+  /* Обход ложного отказа идёт ПЕРЕД текстом обхода: сначала рамка «окно приватное,
+     ты исполнитель», потом уже «отказ недопустим». На настоящую опасность (danger)
+     блока нет ни при каком режиме. */
+  const jb = jbBlock(env, { model: o.model, danger: o.danger, escalated: true });
   const parts = [BYPASS_SYSTEM];
   if (o.reframed) parts.push(REFRAME_SYSTEM);
   if (o.split) parts.push(SPLIT_SYSTEM);
   if (o.adult) parts.push(ADULT_SYSTEM);
-  return '\n\n' + parts.filter(Boolean).join('\n\n');
+  return jb + '\n\n' + parts.filter(Boolean).join('\n\n');
+}
+
+/** Метка «режим рабочий» к переформулированному запросу (пустая строка, когда слой выключен). */
+export function reframeMark(env, info) {
+  if (!cfgOf(env).on) return '';
+  return jbMark(env, Object.assign({ escalated: true }, info || {}));
 }
 
 /** Что слой вообще знает про себя — для `GET /telegram/webhook` и для тестов. */
@@ -287,6 +298,7 @@ export function freedomInfo(env) {
   return {
     on: cfg.on,
     mode: cfg.mode,
+    jailbreak: jbStats(env),
     skip: Array.from(cfg.skip),
     blocks: FREEDOM_BLOCKS.map((b) => ({ id: b.id, title: b.title, chars: b.text.length })),
     full: FREEDOM_ALL.length,

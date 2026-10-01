@@ -66,5 +66,10 @@ export async function onRequestGet(context) {
         ? f.mode + ' · блоков в данных ' + f.blocks.length + ' · полная пачка ' + f.full + ' симв.'
         : 'off (FREEDOM=0)';
     })(),
+    jailbreak: (() => {
+      const j = freedomInfo(env).jailbreak || {};
+      return j.mode === 'off' ? 'off (JAILBREAK=0)'
+        : j.mode + ' · блок ' + j.chars + ' симв. · метка ' + (j.mark ? 'да' : 'нет');
+    })(),
   }), { status: 200, headers: JSON_HEADERS });
 }
