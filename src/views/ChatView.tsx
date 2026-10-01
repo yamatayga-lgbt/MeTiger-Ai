@@ -409,33 +409,43 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
               <div className="model-backdrop" onClick={() => setPickerOpen(false)} />
               <div className="model-panel" role="listbox" aria-label="Модель ответа">
                 <div className="model-panel-title">Модель ответа</div>
-                {[MODEL_AUTO, ...MODELS].map((m) => {
+                {[MODEL_AUTO, ...MODELS].map((m, i) => {
                   const selected = m.id === model
+                  const list = [MODEL_AUTO, ...MODELS]
+                  /* Заголовки секций: «Быстрые» — перед первой моделью списка,
+                     «Умные» — на переходе слоя fast → smart. */
+                  const prev = list[i - 1]
+                  const section: 'fast' | 'smart' | null =
+                    i === 1 ? 'fast' : prev && prev.tier !== m.tier ? m.tier : null
                   return (
-                    <button
-                      type="button"
-                      key={m.id || 'auto'}
-                      role="option"
-                      aria-selected={selected}
-                      className={`model-row${selected ? ' is-selected' : ''}`}
-                      onClick={() => {
-                        haptic('light')
-                        onModelChange?.(m.id)
-                        setPickerOpen(false)
-                      }}
-                    >
-                      <span className="m-av m-av-row" style={{ background: m.avatar.bg }}>
-                        {m.avatar.mark}
-                      </span>
-                      <span className="model-row-text">
-                        <span className="model-row-name">
-                          {m.name}
-                          {m.vision ? <Eye size={12} className="vision-ic" aria-label="видит картинки" /> : null}
+                    <div key={m.id || 'auto'}>
+                      {section ? (
+                        <div className="model-section-title">{section === 'fast' ? 'Быстрые' : 'Умные'}</div>
+                      ) : null}
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`model-row${selected ? ' is-selected' : ''}`}
+                        onClick={() => {
+                          haptic('light')
+                          onModelChange?.(m.id)
+                          setPickerOpen(false)
+                        }}
+                      >
+                        <span className="m-av m-av-row" style={{ background: m.avatar.bg }}>
+                          {m.avatar.mark}
                         </span>
-                        <span className="model-row-desc">{m.desc}</span>
-                      </span>
-                      {selected ? <Check size={15} className="model-check" /> : null}
-                    </button>
+                        <span className="model-row-text">
+                          <span className="model-row-name">
+                            {m.name}
+                            {m.vision ? <Eye size={12} className="vision-ic" aria-label="видит картинки" /> : null}
+                          </span>
+                          <span className="model-row-desc">{m.desc}</span>
+                        </span>
+                        {selected ? <Check size={15} className="model-check" /> : null}
+                      </button>
+                    </div>
                   )
                 })}
               </div>
