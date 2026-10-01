@@ -77,7 +77,7 @@ if [ "$BUMP" = 1 ]; then
     const txt=m[1]+"."+String(+m[2]+1).padStart(pad,"0");
     fs.writeFileSync(p, s.replace(m[0], "APP_VERSION = \x27"+txt+"\x27"));
     console.log(txt);')
-say "  версия:      поднятa до $VER"
+say "  версия:      поднята до $VER"
   node -e 'const fs=require("fs");const p="package.json";const d=JSON.parse(fs.readFileSync(p,"utf8"));d.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")' "$VER"
   say "  package.json:  version = $VER"
 fi
