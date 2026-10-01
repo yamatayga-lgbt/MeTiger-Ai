@@ -37,6 +37,10 @@ export interface ChatResult {
   /** Текст изменён большинством — это надо показать, а не спрятать. */
   ensembleApplied?: boolean
   visionApplied?: boolean
+  /** Род агента, которым отвечали: 'male' | 'female' | 'auto'. */
+  gender?: string
+  /** Что движок прочитал в форме последней реплики (только при EMOTION_LABEL=1). */
+  emotion?: { id: string; emoji: string; label: string; confidence: number }
 }
 
 const ENDPOINT = (import.meta.env?.VITE_API_BASE || '') + '/api/chat'
@@ -44,7 +48,7 @@ const ENDPOINT = (import.meta.env?.VITE_API_BASE || '') + '/api/chat'
 export async function sendChat(
   text: string,
   history: ChatTurn[] = [],
-  opts: { signal?: AbortSignal; images?: string[]; model?: string } = {},
+  opts: { signal?: AbortSignal; images?: string[]; model?: string; gender?: string } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), 75_000)
@@ -59,6 +63,7 @@ export async function sendChat(
         history: history.slice(-8),
         images: opts.images,
         model: opts.model || undefined,
+        gender: opts.gender || undefined,
       }),
     })
     const data = (await res.json().catch(() => null)) as Partial<ChatResult> | null
@@ -116,6 +121,12 @@ export function sourceLine(r: ChatResult): string {
   const tools = (r.tools || []).map((t) => TOOL_RU[t] || t)
   return (
     `${r.provider} · ${r.model || '?'} · ${r.intent || '?'}/${r.tier || '?'} · ${r.ms ?? 0} мс` +
-    (tools.length ? ` · данные: ${tools.join(', ')}` : '')
+    (tools.length ? ` · данные: ${tools.join(', ')}` : '') +
+    /* состояние собеседника — если его включили (EMOTION_LABEL=1); без него строка
+       выглядит ровно как раньше */
+    (r.emotion ? ` · ${r.emotion.emoji} ${r.emotion.label}` : '') +
+    /* эффективный род, которым агент реально ответил (auto не показываем — он ничего
+       не обещает) */
+    (r.gender && r.gender !== 'auto' ? ` · род: ${r.gender === 'female' ? 'женский' : 'мужской'}` : '')
   )
 }

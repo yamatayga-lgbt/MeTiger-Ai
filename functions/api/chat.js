@@ -11,6 +11,8 @@
  * попыток — фронт по нему и решает, показывать моку или честное «сервис не отвечает».
  */
 import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/chat.js';
+import * as genderLayer from '../../engine/gender.js';
+import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
 import { createMemory } from '../../engine/memory.js';
 
@@ -121,6 +123,12 @@ export async function onRequestPost(context) {
     noCouncils: !!(typeof body.model === 'string' && body.model.trim()),
     temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
     system: typeof body.system === 'string' && body.system ? body.system : PERSONA_SYSTEM,
+    /* Род агента — настройка человека из приложения (Авто/М/Ж). Сюда идёт pick(), а
+       не normalize(): распознанное значение едет в движок, пустое и мусорное — не
+       едет вовсе, и тогда работает AGENT_GENDER развертывания. С normalize() поле
+       «не прислано» превращалось в явное `auto` и затырало настройку сервера у
+       каждого, кто про поле не знает (Telegram, curl, старые клиенты). */
+    gender: genderLayer.pick(body.gender),
     deadlineMs: Number(env.CHAT_DEADLINE_MS || 50000),
   });
 
@@ -128,6 +136,9 @@ export async function onRequestPost(context) {
   return json({
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
+    /* Как ответили — родом и (по желанию) наблюдением о состоянии собеседника.
+       Фронт показывает род в подписи, emotion — только если включён EMOTION_LABEL. */
+    gender: r.gender, emotion: r.emotion || undefined,
     /* Какие инструменты реально накормили ответ — видно в подписи под пузырём. */
     tools: r.tools || [],
     reframed: !!r.reframed,
@@ -151,6 +162,11 @@ export async function onRequestGet(context) {
   const engine = createEngine({ env: context.env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE });
   return json({
     ok: true, alive: engine.alive(), providers: Object.keys(engine.providers).length,
+    /* как отвечаем по умолчанию — человек видит это одним curl, не читая код */
+    gender: genderLayer.label(context.env && context.env.AGENT_GENDER),
+    emotion: emotionLayer.stats(context.env).on
+      ? 'включён · ' + (emotionLayer.stats(context.env).label ? 'метка в ответе' : 'метка выключена')
+      : 'выключен (EMOTION=0)',
     tools: TOOL_IDS(),
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */
     dead: engine.quarantine(),

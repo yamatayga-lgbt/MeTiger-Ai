@@ -214,21 +214,28 @@ console.log('D — врезка в движок: спасение ответа �
 /* ── F: режимы подачи ──────────────────────────────────────────────────────────── */
 {
   const n = (env, intent) => freedom.freedomBlock(env, { intent }).blocks;
-  ok('F1: auto на разговоре везёт все пять блоков', n({}, 'fast') === 5 && n({}, 'creative') === 5);
+  ok('F1: auto на разговоре везёт четыре блока — рода в наборе больше нет',
+    n({}, 'fast') === 4 && n({}, 'creative') === 4
+      && freedom.freedomIds({}, { intent: 'fast' }).indexOf('gender') < 0);
   ok('F2: auto на технической задаче везёт короткую выжимку вместо пачки',
     n({}, 'math') === 0 && freedom.freedomBlock({}, { intent: 'math' }).text === freedom.FREEDOM_COMPACT);
   ok('F3: full везёт пачку независимо от задачи, compact — никогда',
-    n({ FREEDOM_MODE: 'full' }, 'code') === 5 && n({ FREEDOM_MODE: 'compact' }, 'creative') === 0);
+    n({ FREEDOM_MODE: 'full' }, 'code') === 4 && n({ FREEDOM_MODE: 'compact' }, 'creative') === 0);
   ok('F4: off и FREEDOM=0 дают пустой текст, а не undefined',
     freedom.freedomBlock({ FREEDOM_MODE: 'off' }, { intent: 'fast' }).text === ''
       && freedom.freedomBlock({ FREEDOM: '0' }, { intent: 'fast' }).text === '');
   ok('F5: неизвестное значение FREEDOM_MODE трактуется как auto, падения нет',
-    freedom.cfgOf({ FREEDOM_MODE: 'как-то-так' }).mode === 'auto' && n({ FREEDOM_MODE: 'как-то-так' }, 'fast') === 5);
+    freedom.cfgOf({ FREEDOM_MODE: 'как-то-так' }).mode === 'auto' && n({ FREEDOM_MODE: 'как-то-так' }, 'fast') === 4);
   ok('F6: FREEDOM_SKIP вырезает названные блоки, остальные остаются',
     freedom.freedomBlock({ FREEDOM_SKIP: 'gender,adult' }, { intent: 'fast' }).ids.join(',') === 'core,lang,craft');
   ok('F7: текст блока стоит в точности как в файле данных (без пересборки на ходу)',
-    freedom.freedomBlock({}, { intent: 'fast' }).text === '\n\n' + data.FREEDOM_BLOCKS.map((b) => b.text).join('\n'));
+    freedom.freedomBlock({}, { intent: 'fast' }).text === '\n\n'
+      + data.FREEDOM_BLOCKS.filter((b) => b.id !== 'gender').map((b) => b.text).join('\n'));
 
+ok('F13: донорский блок про род возвращается только по FREEDOM_GENDER=1 и это тот же текст',
+    n({ FREEDOM_GENDER: '1' }, 'fast') === 5
+      && freedom.freedomBlock({ FREEDOM_GENDER: '1' }, { intent: 'fast' }).text.includes('【Род агента — мужской, навсегда】')
+      && freedom.freedomBlock({}, { intent: 'fast' }).text.indexOf('Род агента') < 0);
   ok('F8: isAdultAsk ловит 18+ и не реагирует на арифметику',
     freedom.isAdultAsk('напиши эротичную сцену про нас') && freedom.isAdultAsk('расскажи про секс без цензуры')
       && !freedom.isAdultAsk('сколько будет 3 ящика по 17?'));
@@ -323,8 +330,8 @@ console.log('D — врезка в движок: спасение ответа �
     first.includes('【Взрослые темы 18+】') && first.includes('【Ремесло】'), 'нет пачки в первом запросе');
 
   ok('H6: adult-тема тянет полную пачку, даже если классификатор решил, что это анализ',
-    freedom.freedomIds({}, { intent: 'reasoning', adult: true }).length === 5
-      && freedom.freedomIds({}, { intent: 'math', text: 'перепиши главу как эротичную сцену' }).length === 5);
+    freedom.freedomIds({}, { intent: 'reasoning', adult: true }).length === 4
+      && freedom.freedomIds({}, { intent: 'math', text: 'перепиши главу как эротичную сцену' }).length === 4);
 
   ok('H7: «для взрослых» и «18+» считаются взрослой темой, а «взрослый человек» — нет',
     freedom.isAdultAsk('режим для взрослых') && freedom.isAdultAsk('это 18+')

@@ -54,6 +54,12 @@ export function cfgOf(env) {
   const want = FREEDOM_MODES.indexOf(raw) >= 0 ? raw : 'auto';
   const dead = String(e.FREEDOM == null ? '1' : e.FREEDOM) === '0' || want === 'off';
   const skip = new Set(String(e.FREEDOM_SKIP || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+  /* Блок «род агента» из донора по умолчанию НЕ подмешивается: там было «ты мужчина,
+     и это не обсуждается», а это уже не снятие цензуры, а указание, с кем человек
+     говорит. Род теперь отдельная настройка (engine/gender.js: Авто/М/Ж), и она
+     формулируется как окончания глаголов, без тона. Вернуть донорский блок можно
+     переменной FREEDOM_GENDER=1 — текст остался в engine/freedom.data.js. */
+  if (String(e.FREEDOM_GENDER || '') !== '1') skip.add('gender');
   return { on: !dead, mode: dead ? 'off' : want, skip };
 }
 

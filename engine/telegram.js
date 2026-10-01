@@ -12,6 +12,8 @@
 
 /* Предел Bot API — 4096 символов; 3900 — с запасом на то, что Telegram считает
    символы не так, как JS (суррогатные пары), и на служебную строку внизу. */
+import { normalize as normalizeGender, label as genderLabel } from './gender.js';
+
 export const TG_LIMIT = 3900;
 
 const GROUPS = ['group', 'supergroup'];
@@ -63,7 +65,7 @@ export function shouldRespond(parsed, username) {
 }
 
 /** Команды. Возвращает текст ответа или null — значит это не команда. */
-export function commandReply(parsed, env) {
+export function commandReply(parsed, env, prefs) {
   const t = String(parsed.text || '').trim();
   if (t[0] !== '/') return null;
   const head = t.slice(1).split(/[\s@]/)[0].toLowerCase();
@@ -71,10 +73,12 @@ export function commandReply(parsed, env) {
     return 'Привет. Я MeTiger — отвечаю по делу и помню, о чём мы говорили.\n\n'
       + '/id — с identifier этой беседы (память привязана к нему)\n'
       + '/forget — я забываю этот чат целиком\n'
+      + '/род — как мне о себе писать: авто · м · ж\n'
       + '/help — что я умею и чего не умею';
   }
   if (head === 'help') {
     return 'Пиши как в обычном чате: спрашиваю — отвечаю, считаю — считаю.\n\n'
+      + 'Настройки: /род — как мне о себе писать (авто · м · ж), /forget — забыть чат, /id — ключ памяти.\n'
       + 'Что умею: помнить разговор, уточнять цифры по внешним данным, сверять спорное несколькими моделями.\n'
       + 'Чего пока не умею: слушать голосовые и смотреть фотографии — для этого я ещё не подключён.\n'
       + 'В группах молчу, пока не позовёшь: @' + String((env && env.TELEGRAM_BOT_USERNAME) || 'Metigerai_bot').replace(/^@/, '') + ' или ответом на моё сообщение.';
@@ -82,6 +86,20 @@ export function commandReply(parsed, env) {
   if (head === 'id') {
     return 'chat id: ' + (parsed.chat && parsed.chat.id != null ? parsed.chat.id : '?')
       + '\nключ памяти: ' + memoryChatId(parsed.chat);
+  }
+  if (head === 'род' || head === 'gender') {
+    const arg = t.split(/\s+/).slice(1).join(' ').trim();
+    const key = memoryChatId(parsed.chat);
+    if (!arg) {
+      const cur = prefs && prefs.get ? prefs.get(key) : '';
+      return 'Род агента: ' + genderLabel(cur) + '.\n'
+        + '/род авто · /род м · /род ж\n'
+        + 'В боте выбор живёт, пока тёплый воркер; постоянно — Настройки → Ассистент в приложении.';
+    }
+    const val = normalizeGender(arg);
+    if (prefs && prefs.set) prefs.set(key, val);
+    return 'Ок. Род агента: ' + genderLabel(val)
+      + (val === 'auto' ? ' — сам определю по разговору.' : ' — так и буду писать о себе.');
   }
   if (head === 'forget') return '__forget__';
   return null;
@@ -142,6 +160,9 @@ export function metaLine(json) {
  * post(method, payload) → отправка в Telegram.
  */
 export async function handleUpdate(opts) {
+  /* prefs — хранилище настройки «род агента» для этого чата (get/set). В воркере это Map,
+     живущий, пока тёплый изолятор: постоянной настройку делает приложение. */
+  const prefs = (opts || {}).prefs || null;
   const update = (opts.update && typeof opts.update === 'object') ? opts.update : {};
   const env = opts.env || {};
   const ask = opts.ask;
@@ -158,7 +179,7 @@ export async function handleUpdate(opts) {
     return res;
   }
 
-  const cmd = commandReply(parsed, env);
+  const cmd = commandReply(parsed, env, prefs);
   const chatId = memoryChatId(parsed.chat);
   if (cmd && cmd !== '__forget__') {
     const parts = chunkText(cmd);
@@ -192,6 +213,10 @@ export async function handleUpdate(opts) {
     return res;
   } else {
     payload.text = parsed.text;
+    if (prefs && prefs.get) {
+      const g = normalizeGender(prefs.get(chatId));
+      if (g !== 'auto') payload.gender = g;
+    }
   }
 
   let json = null;

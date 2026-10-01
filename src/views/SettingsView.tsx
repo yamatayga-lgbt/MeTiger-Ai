@@ -7,9 +7,11 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sun,
+  UserRound,
   Volume2,
 } from 'lucide-react'
 import { Badge, Segmented, Switch } from '../components/ui'
+import { GENDER_CHOICES, isGender, type Gender } from '../lib/gender'
 import { usePersistentState } from '../hooks/usePersistentState'
 import { displayName, initials, type TgUser } from '../lib/telegram'
 import { APP_VERSION } from '../lib/version'
@@ -34,6 +36,10 @@ export function SettingsView({
     notifications: true,
     sounds: false,
   })
+
+  /* Род агента лежит отдельным ключом, а не внутри mt-settings: его читает отправка
+     сообщения в App.tsx, и эти два места не должны затырать друг друга. */
+  const [gender, setGender] = usePersistentState<Gender>('mt-gender', 'auto', isGender)
 
   return (
     <div className="container view">
@@ -119,6 +125,20 @@ export function SettingsView({
               checked={prefs.sounds}
               label="Звуки"
               onChange={(v) => setPrefs({ ...prefs, sounds: v })}
+            />
+          </div>
+          <div className="settings-row">
+            <div className="icon-wrap">
+              <UserRound size={16} />
+            </div>
+            <div className="grow">
+              <div className="n">Род агента</div>
+              <div className="d">Как он пишет о себе: «я рад» или «я рада». Обращение к тебе агент выбирает сам по разговору</div>
+            </div>
+            <Segmented
+              value={gender}
+              onChange={setGender}
+              options={GENDER_CHOICES.map((c) => ({ value: c.value, label: c.title, title: c.hint }))}
             />
           </div>
         </div>

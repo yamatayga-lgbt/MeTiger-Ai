@@ -18,6 +18,8 @@ import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } fro
 import { gatherTools } from './tools.js';
 import * as freedom from './freedom.js';
 import { block as jbBlock } from './jailbreak.js';
+import * as gender from './gender.js';
+import * as emotion from './emotion.js';
 import * as style from './style.js';
 import * as ensemble from './ensemble.js';
 import { createMemory } from './memory.js';
@@ -198,6 +200,23 @@ export function createEngine(opts) {
       if (jb) system = system + jb;
     }
 
+    /* Род агента — настройка человека (меню «Настройки → Ассистент»), не указание
+       из донора: сюда приходят только окончания глаголов о себе и одна строка про то,
+       что к собеседнику обращаются ровно, без превосходства. `auto` — только эта
+       строка, род модель берёт из персоны и разговора. */
+    if (isDefaultSys) system = system + gender.blockFor(input, env);
+
+    /* Состояние собеседника: слой смотрит на форму последней реплики и предыдущих
+       четырёх (оттуда же берётся тренд) и дописывает, КАК работать — коротко или по
+       шагам, чего не делать. Диагнозов и «успокойтесь» в нём нет намеренно. */
+    const emoCfg = emotion.cfgOf(env);
+    const emoHist = emoCfg.on
+      ? history.slice(-4).filter((m) => m.role === 'user').map((m) => emotion.detect(m.content))
+      : null;
+    const emo = emoCfg.on ? emotion.detect(text) : null;
+    if (isDefaultSys && emo) system = system + emotion.block(emo, emoHist, env);
+    const genderVal = gender.resolve(input, env);
+
     /* Память чата: прошлое доезжает до модели, а не живёт в браузере, и по реакции
        на прошлый ответ собирается настройка на человека. Головы совета память не
        читают — у них другая работа: проверить число, а не продолжать разговор
@@ -217,6 +236,15 @@ export function createEngine(opts) {
         /* память не имеет права сломать ответ — максимум, она молчит */
       }
     }
+    function withMeta(out) {
+      if (!out) return out;
+      out.gender = genderVal;
+      if (emoCfg.label && emo && emo.id !== 'neutral') {
+        out.emotion = { id: emo.id, emoji: emo.emoji, label: emo.label, confidence: Math.round(emo.confidence * 100) / 100 };
+      }
+      return out;
+    }
+
     const messages = history.concat([{ role: 'user', content: userContent }]);
     const allowReframe = input.allowReframe !== false && freedom.canReframe(text, env);
     let reframed = false;
@@ -256,7 +284,7 @@ export function createEngine(opts) {
       const n = Math.max(1, Number(input.modelsPerProvider) || 2);
       for (const model of models.slice(0, n)) {
         const left = deadline - Date.now();
-        if (left < 2500) { tried.push({ provider: id, model, why: 'вышел бюджет времени' }); return finish(null, tried, started, intent, tier, 'время вышло'); }
+        if (left < 2500) { tried.push({ provider: id, model, why: 'вышел бюджет времени' }); return withMeta(finish(null, tried, started, intent, tier, 'время вышло')); }
         const keyIdx = pickKey(P, id, health);
         if (keyIdx < 0) { tried.push({ provider: id, why: 'ключи исчерпаны' }); break; }
         const okPace = await pace(id, left);
@@ -317,7 +345,7 @@ export function createEngine(opts) {
               final.memory = await memory.stats(input.chatId);
             } catch (e) {}
           }
-          return finish(final, tried, started, intent, tier);
+          return withMeta(finish(final, tried, started, intent, tier));
         }
         if (r.soft && allowReframe) {
           reframed = true;
@@ -352,13 +380,13 @@ export function createEngine(opts) {
             tools: toolsRes.used, reframed: true, freedomCleaned: !!r.freedomCleaned,
           };
           const final = input.noCouncils ? hit : await runCouncils(input, hit, tried);
-          return finish(final, tried, started, intent, tier);
+          return withMeta(finish(final, tried, started, intent, tier));
         }
         tried.push({ provider: id, model, why: r.why, status: r.status, soft: r.soft, reframed: true });
       }
     }
 
-    return finish(null, tried, started, intent, tier, 'ни один провайдер не ответил');
+    return withMeta(finish(null, tried, started, intent, tier, 'ни один провайдер не ответил'));
   }
 
 

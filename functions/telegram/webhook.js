@@ -12,6 +12,8 @@
 import { onRequestPost as chatPost, memoryStore } from '../api/chat.js';
 import { handleUpdate, secretOk, telegramPoster } from '../../engine/telegram.js';
 import { freedomInfo } from '../../engine/freedom.js';
+import { label as genderLabel } from '../../engine/gender.js';
+import { stats as emotionStats } from '../../engine/emotion.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
@@ -19,6 +21,18 @@ const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
    ограничитель частоты считал каждый чат отдельно: иначе весь телеграм попадал
    в одну корзину на 12 запросов в минуту и первые же три собеседника
    закрывали бота остальным. */
+/* Настройка рода в боте: Map живёт, пока тёплый изолятор. Постоянной её делает
+   приложение (localStorage + поле gender в запросе) — здесь же человек может
+   проверить «м» или «ж» на ходу, не открывая меню. */
+const genderPrefs = new Map();
+const prefs = {
+  get: (key) => genderPrefs.get(key) || '',
+  set: (key, value) => {
+    if (genderPrefs.size > 500) genderPrefs.clear();
+    genderPrefs.set(key, value);
+  },
+};
+
 export function askEngine(context, payload) {
   const request = new Request('https://internal/api/chat', {
     method: 'POST',
@@ -44,7 +58,7 @@ export async function onRequestPost(context) {
   }
 
   const post = telegramPoster(env, (u, i) => fetch(u, i));
-  const out = await handleUpdate({ update, env, ask: (payload) => askEngine(context, payload), post });
+  const out = await handleUpdate({ update, env, prefs, ask: (payload) => askEngine(context, payload), post });
   return new Response(JSON.stringify({ ok: true, ...out }), { status: 200, headers: JSON_HEADERS });
 }
 
@@ -70,6 +84,16 @@ export async function onRequestGet(context) {
       const j = freedomInfo(env).jailbreak || {};
       return j.mode === 'off' ? 'off (JAILBREAK=0)'
         : j.mode + ' · блок ' + j.chars + ' симв. · метка ' + (j.mark ? 'да' : 'нет');
+    })(),
+    /* Род агента: что стоит по умолчанию для всех, у кого нет своего выбора в
+       приложении, и где этот выбор лежит. */
+    gender: genderLabel(env.AGENT_GENDER) + ' · у человека — Настройки → Ассистент · в боте /род',
+    emotion: (() => {
+      const e = emotionStats(env);
+      return e.on
+        ? 'включён · ' + e.emotions + ' состояний · блок ' + e.sample + ' симв.'
+          + (e.label ? ' · метка в ответе (EMOTION_LABEL=1)' : ' · метка выключена (EMOTION_LABEL=1 показывает)')
+        : 'выключен (EMOTION=0)';
     })(),
   }), { status: 200, headers: JSON_HEADERS });
 }

@@ -249,5 +249,67 @@ console.log('H — вебхук Pages: настоящая склейка (fetch 
   globalThis.fetch = real;
 }
 
+console.log('I — настройка рода в боте (/род)');
+{
+  const mk = () => { const asked = [], texts = []; return {
+    asked, texts,
+    post: async (m, p) => { if (m === 'sendMessage') texts.push(p.text || ''); return { status: 200 }; },
+    ask: async (payload) => { asked.push(payload); return json({ ok: true, reply: 'ок' }); },
+  }; };
+  const store = new Map();
+  const prefs = { get: (k) => store.get(k) || '', set: (k, v) => store.set(k, v) };
+
+  const a = mk();
+  await handleUpdate({ update: priv('/род'), env: {}, prefs, post: a.post, ask: a.ask });
+  ok('I1: /род без аргумента показывает текущее значение и не трогает движок',
+    a.texts.length === 1 && /Род агента: авто/.test(a.texts[0]) && a.asked.length === 0, JSON.stringify(a.texts));
+
+  const b = mk();
+  await handleUpdate({ update: priv('/род м'), env: {}, prefs, post: b.post, ask: b.ask });
+  ok('I2: /род м запоминается на этот чат и отвечает по-человечески',
+    store.get('tg_1') === 'male' && /мужской/.test(b.texts[0]) && b.asked.length === 0, JSON.stringify(b.texts) + ' ' + store.get('tg_1'));
+
+  const c = mk();
+  await handleUpdate({ update: priv('привет'), env: {}, prefs, post: c.post, ask: c.ask });
+  ok('I3: выбор доезжает до /api/chat полем gender (тот же путь, что у приложения)',
+    c.asked.length === 1 && c.asked[0].gender === 'male', JSON.stringify(c.asked[0]));
+
+  const e = mk();
+  await handleUpdate({ update: priv('/род чушь собачья'), env: {}, prefs, post: e.post, ask: e.ask });
+  ok('I4: нераспознанный аргумент = авто, а не текст, уехавший в модель',
+    store.get('tg_1') === 'auto' && /авто/.test(e.texts[0]), store.get('tg_1') + ' ' + JSON.stringify(e.texts));
+
+  const f = mk();
+  await handleUpdate({ update: priv('скажи пару слов'), env: {}, prefs, post: f.post, ask: f.ask });
+  ok('I5: на авто полем не машем — пусть работает AGENT_GENDER развертывания',
+    f.asked[0].gender === undefined, JSON.stringify(f.asked[0]));
+
+  const g = mk();
+  await handleUpdate({ update: { message: { message_id: 9, from: { id: 7, first_name: 'Кто-то' }, chat: { id: 2, type: 'private' }, text: '/род ж' } }, env: {}, prefs, post: g.post, ask: g.ask });
+  ok('I6: настройка привязана к беседе, а не к воркеру целиком',
+    store.get('tg_2') === 'female' && store.get('tg_1') === 'auto', JSON.stringify([...store.entries()]));
+
+  const h = mk();
+  await handleUpdate({ update: priv('ну как'), env: {}, prefs, post: h.post, ask: h.ask });
+  ok('I7: чужой чат не получает нашего выбора (первый всё ещё на авто)',
+    h.asked[0].gender === undefined, JSON.stringify(h.asked[0]));
+
+  const k = mk();
+  await handleUpdate({ update: priv('/род ж'), env: {}, post: k.post, ask: k.ask });
+  ok('I8: без хранилища команда не падает и честно говорит про ограничение',
+    k.texts.length === 1 && /Ок\. Род агента: женский/.test(k.texts[0]), JSON.stringify(k.texts));
+
+  const m = mk();
+  await handleUpdate({ update: priv('/help'), env: {}, prefs, post: m.post, ask: m.ask });
+  await handleUpdate({ update: priv('/start'), env: {}, prefs, post: m.post, ask: m.ask });
+  ok('I9: /help и /start про /род знают — про настройку не надо догадываться',
+    m.texts.every((t) => /\/род/.test(t)), JSON.stringify(m.texts.map((t) => t.slice(0, 40))));
+
+  const n = mk();
+  await handleUpdate({ update: priv('/forget'), env: {}, prefs, post: n.post, ask: n.ask });
+  ok('I10: /forget не затирает настройку рода — это про память разговора, а не про человека',
+    store.get('tg_1') === 'auto' && n.asked.length === 1 && n.asked[0].forget === true, JSON.stringify(store.get('tg_1')));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

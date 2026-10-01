@@ -9,6 +9,7 @@ import { AgentView } from './views/AgentView'
 import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
+import { readGender, genderForRequest } from './lib/gender'
 import { sendChat, sourceLine, adviceLine } from './lib/api'
 import {
   loadActiveChatId,
@@ -179,6 +180,7 @@ export default function App() {
         const r = await sendChat(text, history, {
           ...(images && images.length ? { images } : {}),
           ...(model ? { model } : {}),
+          gender: genderForRequest(readGender()),
         })
         const reply =
           r.ok && r.reply
