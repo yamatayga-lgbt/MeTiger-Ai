@@ -272,9 +272,27 @@ workers/stats/        # Durable Object: счётчики
 как было до общего слоя. Ни одной попытки в сеть слой не делает. **Кода для
 включения не нужно никакого** — только связка.
 
-### Как включить (4 шага, все в дашборде Cloudflare)
+### Как включить
 
-1. **Storage & Databases → KV → Create namespace** → имя `metiger-memory`.
+Одной командой, если у токена в `../.secrets.env` есть права `Workers KV Storage · Edit`
+и `Cloudflare Pages · Edit` (PATCH протестирован на одноразовом проекте: секретные
+env_vars его переживают):
+
+```
+npm run kv:onboard -- --apply
+```
+
+Он создаёт неймспейс `metiger-memory`, привязывает его к Pages (production + preview),
+кладёт `MEMORY_SUMMARIZE=1`, переливает прод и прогоняет сквозную проверку: два сообщения
+в один `chatId`, `memory` в ответе, `/forget`, строки `memory`/`limits` в диагностике.
+Без `--apply` — только план. Если Pages когда-нибудь изменит форму поля байндинга, скрипт
+увидит это по чтению обратно и остановится со словами «дожми в дашборде», а не будет
+чинить наугад.
+
+Вручную — те же четыре шага:
+
+1. **Storage & Databases → KV → Create namespace** → имя `metiger-memory`
+   (не путай с вкладкой «KV pairs» внутри него — это просмотр данных, туда не пишут).
 2. **Workers & Pages → Pages → `metiger-ai` → Settings → Functions → KV namespace bindings** →
    `Variable name` = `MEMORY`, `KV namespace` = `metiger-memory`, применить к **Production**
    и к **Preview**.

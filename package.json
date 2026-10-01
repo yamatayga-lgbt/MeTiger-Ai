@@ -13,7 +13,8 @@
     "test:engine": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/jailbreak.test.js && node test/telegram.test.js && node test/memory.test.js",
     "publish": "bash scripts/publish.sh",
     "publish:fast": "bash scripts/publish.sh --fast",
-    "publish:bump": "bash scripts/publish.sh --bump"
+    "publish:bump": "bash scripts/publish.sh --bump",
+    "kv:onboard": "bash scripts/kv-onboard.sh"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
