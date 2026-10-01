@@ -100,6 +100,8 @@ export async function onRequestPost(context) {
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
     /* Какие инструменты реально накормили ответ — видно в подписи под пузырём. */
     tools: r.tools || [],
+    reframed: !!r.reframed,
+    freedomCleaned: !!r.freedomCleaned,
     tried: r.tried.slice(0, 6),
     /* Советы голов (Этап 2) — строками, чтобы их было видно из фронтенда и из curl:
        «сошлись 2/3 (groq,cloudflare)» и «confirmed 3/3» означают, что факт проверен

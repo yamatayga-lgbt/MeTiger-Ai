@@ -16,6 +16,8 @@ import {
 import { classifyTask, tierFor, modelsFor, isVision } from './route.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { gatherTools } from './tools.js';
+import * as freedom from './freedom.js';
+import * as style from './style.js';
 import * as ensemble from './ensemble.js';
 import * as vcouncil from './vcouncil.js';
 
@@ -134,14 +136,20 @@ export function createEngine(opts) {
     const parsed = req.parse(res.data);
     if (parsed.error) return { ok: false, why: 'provider: ' + parsed.error, status: res.status };
     if (parsed.blocked) { note(id, 'refused'); return { ok: false, why: 'блок по фильтру (' + (parsed.blockReason || 'prompt') + ')', status: res.status }; }
-    const reply = String(parsed.reply || '').trim();
-    if (!reply) return { ok: false, why: 'пустой ответ', status: res.status };
-    if (isProviderError(reply) || isRefusal(reply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
+    const rawReply = String(parsed.reply || '').trim();
+    if (!rawReply) return { ok: false, why: 'пустой ответ', status: res.status };
+    if (isProviderError(rawReply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
+    const fr = freedom.salvageOrRefuse(rawReply, env);
+    if (fr.refused) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
+    const reply = style.polish(fr.text, { env, intent: req.intent });
     note(id, 'ok');
     quar.delete(id);   /* ожил — карантин снят сразу */
     const day = (health[id] && health[id][req.keyIdx] && health[id][req.keyIdx].used) || 0;
     markKey(id, req.keyIdx, { used: day + 1 });
-    return { ok: true, reply, reasoning: parsed.reasoning || '', finish: parsed.finish, provider: id, model: req.model };
+    return {
+      ok: true, reply, reasoning: parsed.reasoning || '', finish: parsed.finish,
+      provider: id, model: req.model, freedomCleaned: fr.cleaned,
+    };
   }
 
   /**
@@ -167,7 +175,13 @@ export function createEngine(opts) {
     const toolsHint = toolsRes.block
       ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных.'
       : '';
-    const system = (input.system || PERSONA_SYSTEM) + toolsHint;
+    const isDefaultSys = !input.system || input.system === PERSONA_SYSTEM;
+    const styleHint = isDefaultSys ? style.hintFor(intent, env) : '';
+    const system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint;
+    const allowReframe = input.allowReframe !== false && freedom.canReframe(text, env);
+    let reframed = false;
+    let reframedCalls = 0;
+    let firstSoft = null;
 
     let order = orderFor(tier, P, { images, only: input.only, forceModel: input.forceModel, health });
     if (input.providerOrder && input.providerOrder.length) {
@@ -208,11 +222,17 @@ export function createEngine(opts) {
         const okPace = await pace(id, left);
         if (!okPace) { tried.push({ provider: id, why: 'пауза тарифа длиннее бюджета' }); break; }
         lastCallAt[id] = Date.now();
+        const useReframe = reframed && allowReframe;
+        const curMessages = useReframe
+          ? history.concat([{ role: 'user', content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) }])
+          : messages;
+        const curSystem = useReframe ? system + freedom.FREEDOM_SYSTEM_PATCH : system;
+        if (useReframe) reframedCalls++;
         const req = buildRequest({
-          cfg, keyIdx, model, messages, system, tier, images, maxImages: MAX_IMAGES,
+          cfg, keyIdx, model, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
           maxTokens: input.maxTokens, temperature: input.temperature,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
         const r = await attemptOne(id, model, req, left);
         if (r.ok) {
           /* Обрыв на лимите токенов: одна допылка у того же провайдера, не молча обрывать. */
@@ -221,20 +241,60 @@ export function createEngine(opts) {
             const more = await run({
               ...input, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-900),
               history: [], system: 'Ты продолжаешь оборванный ответ.', providerOrder: [id], continueOnTruncate: false,
-              useTools: false,
+              useTools: false, allowReframe: false,
               maxTokens: Math.max(Number(input.maxTokens) || 1200, 1800),
             });
-            if (more && more.reply && more.reply.length > 20) reply = reply + '\n' + more.reply;
+            if (more && more.reply && more.reply.length > 20) {
+              reply = style.polish(reply + '\n' + more.reply, { env, intent });
+            }
           }
-          const hit = { reply, reasoning: r.reasoning, provider: id, model, intent, tier, tools: toolsRes.used };
+          const hit = {
+            reply, reasoning: r.reasoning, provider: id, model, intent, tier,
+            tools: toolsRes.used, reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
+          };
           /* Советы голов (Этап 2): факт может поправить большинство, манеру не трогаем.
              Головы вызываются с других провайдеров и сами совет не собирают. */
           const final = input.noCouncils ? hit : await runCouncils(input, hit, tried);
           return finish(final, tried, started, intent, tier);
         }
-        tried.push({ provider: id, model, why: r.why, status: r.status, soft: r.soft });
+        if (r.soft && allowReframe) {
+          reframed = true;
+          if (!firstSoft) firstSoft = { id, model, cfg };
+        }
+        tried.push({ provider: id, model, why: r.why, status: r.status, soft: r.soft, reframed: useReframe || undefined });
       }
     }
+
+    /* Если в очереди была всего одна модель (например, при пине модели или modelsPerProvider=1)
+       и она дала мягкий отказ на исходный текст — делаем одну попытку в нейтральной рамке. */
+    if (reframed && reframedCalls === 0 && firstSoft && (deadline - Date.now()) >= 2500) {
+      const { id, model, cfg } = firstSoft;
+      const keyIdx = pickKey(P, id, health);
+      const left = deadline - Date.now();
+      if (keyIdx >= 0 && await pace(id, left)) {
+        lastCallAt[id] = Date.now();
+        const curMessages = history.concat([{
+          role: 'user',
+          content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text),
+        }]);
+        const req = buildRequest({
+          cfg, keyIdx, model, messages: curMessages, system: system + freedom.FREEDOM_SYSTEM_PATCH,
+          tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
+        });
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
+        const r = await attemptOne(id, model, req, left);
+        if (r.ok) {
+          const hit = {
+            reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
+            tools: toolsRes.used, reframed: true, freedomCleaned: !!r.freedomCleaned,
+          };
+          const final = input.noCouncils ? hit : await runCouncils(input, hit, tried);
+          return finish(final, tried, started, intent, tier);
+        }
+        tried.push({ provider: id, model, why: r.why, status: r.status, soft: r.soft, reframed: true });
+      }
+    }
+
     return finish(null, tried, started, intent, tier, 'ни один провайдер не ответил');
   }
 
@@ -302,6 +362,7 @@ export function createEngine(opts) {
       text: textOverride != null ? textOverride : inp.text,
       providerOrder: [provider],
       noCouncils: true,
+      allowReframe: false,
       deadlineMs: Math.max(3500, wall - Date.now()),
       modelsPerProvider: 1,
     });
@@ -381,6 +442,8 @@ export function createEngine(opts) {
       ok: !!hit, reply: hit ? scrubToolMarkers(hit.reply) : '', reasoning: hit ? hit.reasoning : '',
       provider: hit ? hit.provider : '', model: hit ? hit.model : '',
       tools: hit ? (hit.tools || []) : [],
+      reframed: hit ? !!hit.reframed : false,
+      freedomCleaned: hit ? !!hit.freedomCleaned : false,
       ensemble: hit ? hit.ensemble : null, ensembleSkip: hit ? (hit.ensembleSkip || '') : '',
       ensembleApplied: hit ? !!hit.ensembleApplied : false,
       vision: hit ? hit.vision : null, visionSkip: hit ? (hit.visionSkip || '') : '',
@@ -403,4 +466,4 @@ export function createEngine(opts) {
 }
 
 export { classifyTask, tierFor, stripThinkTags, isProviderError };
-export { ensemble, vcouncil };
+export { ensemble, vcouncil, freedom, style };
