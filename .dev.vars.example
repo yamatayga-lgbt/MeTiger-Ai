@@ -16,3 +16,14 @@ LOCAL_BASE_URL=
 LOCAL_MODELS=
 LOCAL_KEY=
 # На prod это ставится секретом Pages: wrangler pages secret put GROQ_KEYS
+
+# Память чата и общий слой лимитов. В проде это KV-байндинг MEMORY (Pages →
+# Settings → Functions → KV namespace bindings); локально его подставляет
+# scripts/api-dev.js файловым хранилищем .mt-memory, поэтому ничего включать не надо.
+# SHARED_LIMITS=0 — вернуть лимиты «только в изоляторе» (было так до общего слоя).
+#SHARED_LIMITS=1
+#RATE_MAX=12
+#RATE_WINDOW_MS=60000
+#RATE_PROBE_AT=3
+#SHARED_WRITE_MS=60000
+#QUAR_TTL_MAX=3600

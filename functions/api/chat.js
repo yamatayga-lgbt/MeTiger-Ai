@@ -12,6 +12,7 @@
  */
 import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/chat.js';
 import * as genderLayer from '../../engine/gender.js';
+import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
 import { createMemory } from '../../engine/memory.js';
@@ -52,17 +53,34 @@ const CORS = {
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...CORS } });
 
-/* Простейший ограничитель на изолят: 12 запросов в минуту на ip.
-   Полноценный лимит будет на KV (Этап 3) — здесь цель одна: не давить квоты
-   бесплатных провайдеров с одного клиента. */
-const buckets = new Map();
-function limited(ip) {
-  const now = Date.now();
-  const b = buckets.get(ip) || { n: 0, t: now };
-  if (now - b.t > 60000) { b.n = 0; b.t = now; }
-  b.n += 1;
-  buckets.set(ip, b);
-  return b.n > 12;
+/* Лимит частоты и карантин провайдеров.
+   Карты живут в модуле — воркер создаётся на каждый запрос, и без общей карты
+   счётчик обнулился бы в каждой request'е. Поверх них `engine/limits.js` надстраивает
+   общий слой в KV: тогда «12 запросов в минуту» держится на все изоляторы, а
+   наказание провайдера переживает холодный старт. Без связки MEMORY карты остаются
+   единственными — ровно то поведение, что было до слоя.
+   Про задержку распространения: KV консервативно-согласован (запись доходит до
+   других краёв до ~60 секунд), поэтому счётчик общий, но приближённый; на окне в
+   минуту и карантине в 4 минуты это не враньё, а достаточная грубость. */
+const RATE_LOCAL = new Map();   /* сама карта карантина объявлена выше — она и есть общий слой между запросами */
+
+/** KV-байндинг в форме, нужной общему слою: JSON + TTL на запись. */
+export function limitsStore(env) {
+  const kv = env && env.MEMORY;
+  if (!kv || typeof kv.get !== 'function' || typeof kv.put !== 'function') return null;
+  return {
+    /* Форму значения отдаёт разную: настоящий KV-байндинг возвращает строку (мы
+       пишем строку), а локальная заглушка из scripts/api-dev.js — уже разобранный
+       объект. Разбор tolerant, иначе на локальном запуске слой читал бы null и
+       поведение расходилось бы с продом. */
+    get: (key) => Promise.resolve(kv.get(key)).then((raw) => {
+      if (raw == null) return null;
+      if (typeof raw === 'object') return raw;
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    }, () => null),
+    put: (key, value, ttlSec) => Promise.resolve(kv.put(key, JSON.stringify(value), { expirationTtl: ttlSec })),
+    delete: (key) => Promise.resolve(typeof kv.delete === 'function' ? kv.delete(key) : null),
+  };
 }
 
 export async function onRequestOptions() {
@@ -93,7 +111,20 @@ export async function onRequestPost(context) {
   }
 
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
-  if (env.RATE_LIMIT !== '0' && limited(ip)) return json({ ok: false, error: 'слишком часто — подожди минуту' }, 429);
+  const limits = limitsStore(env);
+  const rate = createRateLimiter({ store: limits, cfg: limitsCfg(env), base: RATE_LOCAL });
+  if (env.RATE_LIMIT !== '0') {
+    const r = await rate.check(ip);
+    if (r.limited) {
+      return json({
+        ok: false,
+        error: 'слишком часто — подожди минуту',
+        /* видно, по общему счётчику отказ или по локальному: без этого «почему меня
+           пустили в другом изоляторе» невыяснимо */
+        rate: { n: r.n, max: rate.cfg.rateMax, shared: r.shared },
+      }, 429);
+    }
+  }
 
   /* Чат, к которому приклеена память: свой chatId у клиента (телеграм- id
      пользователя или id беседы), иначе — общий «web». Без него память
@@ -105,7 +136,9 @@ export async function onRequestPost(context) {
     await memory.forget(chatId);
     return json({ ok: true, forgotten: true, chatId, memory: await memory.stats(chatId) });
   }
-  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE, memory });
+  const quarantine = createQuarantine({ store: limits, cfg: limitsCfg(env), base: QUARANTINE });
+  await quarantine.pull();
+  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine, memory });
   const history = Array.isArray(body.history)
     ? body.history.slice(-8).filter((m) => m && m.text).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text).slice(0, 4000) }))
     : [];
@@ -131,6 +164,11 @@ export async function onRequestPost(context) {
     gender: genderLayer.pick(body.gender),
     deadlineMs: Number(env.CHAT_DEADLINE_MS || 50000),
   });
+
+  /* Наказания, набранные в этом ответе, уходят в общее хранилище уже после того,
+     как человек получил свой текст: одна запись не должна добавлять ему секунд. */
+  const after = () => quarantine.flush().catch(() => null);
+  if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 
   if (!r.ok) return json({ ok: false, error: r.error, intent: r.intent, tier: r.tier, ms: r.ms, tried: r.tried.slice(0, 10) }, 503);
   return json({
@@ -163,6 +201,8 @@ export async function onRequestGet(context) {
   return json({
     ok: true, alive: engine.alive(), providers: Object.keys(engine.providers).length,
     /* как отвечаем по умолчанию — человек видит это одним curl, не читая код */
+    /* чем именно движок считает мёртвым — чтобы не гадать по логам */
+    limits: limitsInfo(context.env, limitsStore(context.env)),
     gender: genderLayer.label(context.env && context.env.AGENT_GENDER),
     emotion: emotionLayer.stats(context.env).on
       ? 'включён · ' + (emotionLayer.stats(context.env).label ? 'метка в ответе' : 'метка выключена')

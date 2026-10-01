@@ -22,6 +22,7 @@
  */
 
 import { readIntent, readReaction, directivesFrom, buildAttunePrompt, resolveIntent } from './attune.js';
+import { kvKey } from './kvkey.js';
 
 export const LIMITS = {
   hot: 40,          // сколько последних реплик отдаются целиком
@@ -53,10 +54,14 @@ export function cfgOf(env) {
   };
 }
 
-/** Ключ в хранилище: одна схема для KV и D1, чтобы не размывать пространство имён. */
+/**
+ * Ключ в хранилище: одна схема для KV и D1, чтобы не размывать пространство имён.
+ * Строит `engine/kvkey.js`: KV не принимает кириллицу и точки в начале, а старое
+ * правило «вырезали лишнее — и пишем» склеивало два разных русских имени чата в
+ * один ключ, то есть в одну память на двоих. Здесь вырезанное дописывается хэшем.
+ */
 export function keyFor(chatId) {
-  const safe = String(chatId || 'guest').replace(/[^a-zA-Zа-яА-Я0-9_.-]/g, '').slice(0, 80) || 'guest';
-  return 'chat:' + safe;
+  return kvKey('chat', chatId || 'guest');
 }
 
 /**

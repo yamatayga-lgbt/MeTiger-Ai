@@ -56,7 +56,13 @@ console.log('A — полная форма записи: что сохранил
     base.attune.turns === 7 && base.attune.hits === 2 && base.attune.misses === 4, JSON.stringify(base.attune).slice(0, 120));
   ok('A4: профиль поправки живёт полной записью', base.attune.prefs.length === 1 && base.attune.prefs[0].count === 3);
   ok('A5: мусорных полей в записи не остаётся — иначе их нечем читать', !('weird' in base) && Array.isArray(base.images));
-  ok('A6: ключ хранилища не содержит мусора и не пустой', keyFor('tg:42/../x') === 'chattg42x' || /^chat:[a-zA-Z0-9_.-]+$/.test(keyFor('tg:42/../x')), keyFor('tg:42/../x'));
+  ok('A6: ключ хранилища — chat: + безопасный слаг и хэш, без пробелов и ведущей точки',
+    /^chat:[A-Za-z0-9_-]{1,48}(-[a-z0-9]{1,8})?$/.test(keyFor('tg:42/../x')), keyFor('tg:42/../x'));
+  ok('A6b: разные имена не склеиваются в один чат (старое вырезание склеивала)',
+    keyFor('кот и пёс') !== keyFor('кот или пёс') && keyFor('a b') === keyFor('a b'),
+    keyFor('кот и пёс') + ' vs ' + keyFor('кот или пёс'));
+  ok('A6c: длинный ключ не уезжает за разумные рамки (KV режет 512 байт, мы режем раньше)',
+    keyFor('x'.repeat(500)).length <= 64, String(keyFor('x'.repeat(500)).length));
 }
 
 console.log('B — хранилище: одно чтение на чат, запись не молчит об ошибке');

@@ -9,7 +9,8 @@
  * Внутри вызывается ТОТ ЖЕ onRequestPost, что у /api/chat: движок, память, советы
  * голов, карантин провайдеров и лимиты достаются боту без дублирования кода.
  */
-import { onRequestPost as chatPost, memoryStore } from '../api/chat.js';
+import { onRequestPost as chatPost, memoryStore, limitsStore } from '../api/chat.js';
+import { limitsInfo } from '../../engine/limits.js';
 import { handleUpdate, secretOk, telegramPoster } from '../../engine/telegram.js';
 import { freedomInfo } from '../../engine/freedom.js';
 import { label as genderLabel } from '../../engine/gender.js';
@@ -73,6 +74,12 @@ export async function onRequestGet(context) {
     username: env.TELEGRAM_BOT_USERNAME || 'Metigerai_bot',
     meta: String(env.TELEGRAM_META || '0') === '1',
     memory: memoryStore(env) ? 'подключена' : 'нет связки MEMORY — бот отвечает без памяти',
+    /* лимиты и карантин: тот же байндинг; без него счётчик живёт в изоляторе */
+    limits: (() => {
+      const li = limitsInfo(env, limitsStore(env));
+      return li.on ? 'общие (KV) · ' + li.rateMax + ' запросов/' + Math.round(li.windowMs / 1000) + ' с на клиента'
+        : 'в изоляторе · ' + li.why;
+    })(),
     /* Свобода ответа — видно без чтения кода: какой режим и сколько везём. */
     freedom: (() => {
       const f = freedomInfo(env);
