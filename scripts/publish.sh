@@ -7,6 +7,7 @@
 #   npm run publish -- --preview    залить не в прод, а на preview-адрес
 #   npm run publish -- --commit "текст"   сначала закоммитить всё и запушить в main
 #   npm run publish -- --dry        показать, что будет сделано, ничего не трогать
+#   npm run publish -- --git-only     только коммит и пуш (правишь документы — прод не трогаем)
 #
 # Доступы берутся из окружения, а если их нет — из файла ../.secrets.env (он вне
 # репозитория и в git не попадает). Значения наружу не печатаются никогда: ни в
@@ -26,6 +27,7 @@ SECRETS=${METIGER_SECRETS:-$REPO/../.secrets.env}
 PROJECT=${PAGES_PROJECT:-metiger-ai}
 PROD=https://metiger-ai.pages.dev
 MODE=production
+GIT_ONLY=0
 BUMP=0; TESTS=1; DRY=0; COMMIT_MSG=""
 
 while [ $# -gt 0 ]; do
@@ -33,7 +35,8 @@ while [ $# -gt 0 ]; do
     --bump)    BUMP=1 ;;
     --fast)    TESTS=0 ;;
     --preview) MODE=preview ;;
-    --dry)     DRY=1 ;;
+    --dry)      DRY=1 ;;
+    --git-only) GIT_ONLY=1 ;;
     --commit)  shift; COMMIT_MSG=${1:-} ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "неизвестный флаг: $1 (справка: --help)" >&2; exit 2 ;;
@@ -87,8 +90,12 @@ if [ "$TESTS" = 1 ]; then
   say "── тесты"
   run npm test --silent
 fi
-say "── сборка"
-run npm run build --silent
+if [ "$GIT_ONLY" = 1 ]; then
+  say "── только git: без сборки и деплоя (правка документов)
+"; else
+  say "── сборка"
+  run npm run build --silent
+fi
 
 # ── коммит и пуш (по флагу) ───────────────────────────────────────────────────
 if [ -n "$COMMIT_MSG" ]; then
@@ -112,6 +119,10 @@ if [ -n "$COMMIT_MSG" ]; then
 fi
 
 # ── деплой ─────────────────────────────────────────────────────────────────────
+if [ "$GIT_ONLY" = 1 ]; then
+  say "готово: закоммичено и запушено, прод не трогали"
+  exit 0
+fi
 say "── деплой на Pages"
 if [ "$DRY" = 1 ]; then
   say "  [dry] $WRANGLER pages deploy dist --project-name $PROJECT $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' )"
