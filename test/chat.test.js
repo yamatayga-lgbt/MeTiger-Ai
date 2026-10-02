@@ -170,5 +170,57 @@ console.log('G — вход /api/chat (Pages Function): то, что видит 
   globalThis.fetch = saved;
 }
 
+console.log('K — математика едет к тому DeepSeek, который реально отвечает');
+{
+  const ENVDS = { GROQ_KEYS: 'g1', ODIROUTER_KEYS: 'od1' };
+  const seen = [];
+  const e1b = createEngine({
+    env: ENVDS, sleep: async () => {},
+    fetch: async (url, init) => {
+      const b = JSON.parse(init.body);
+      seen.push((String(url).includes('odirouter') ? 'odirouter/' : 'groq/') + b.model);
+      return { status: 200, text: async () => JSON.stringify(chat(b.model.includes('deepseek') ? '391' : 'не считаю')) };
+    },
+  });
+  const r1 = await e1b.run({ text: 'сколько будет 17*23', noCouncils: true });
+  ok('K1: на math первым спрашивают OdiRouter с deepseek-v4-flash',
+    r1.ok === true && seen[0] === 'odirouter/deepseek-v4-flash' && r1.provider === 'odirouter', JSON.stringify(seen.slice(0, 3)));
+  const seen2 = [];
+  const e2 = createEngine({
+    env: ENVDS, sleep: async () => {},
+    fetch: async (url, init) => {
+      const b = JSON.parse(init.body);
+      seen2.push((String(url).includes('odirouter') ? 'odirouter/' : 'groq/') + b.model);
+      return { status: 200, text: async () => JSON.stringify(chat('Привет.')) };
+    },
+  });
+  const r2 = await e2.run({ text: 'привет, как дела', noCouncils: true });
+  ok('K2: на болтовне очередь остаётся конфигом (groq первым), DeepSeek не при чём',
+    r2.ok === true && seen2[0].indexOf('groq/') === 0, JSON.stringify(seen2.slice(0, 2)));
+  const seen3 = [];
+  const e3 = createEngine({
+    env: ENVDS, sleep: async () => {},
+    fetch: async (url, init) => {
+      const b = JSON.parse(init.body);
+      seen3.push((String(url).includes('odirouter') ? 'odirouter/' : 'groq/') + b.model);
+      return { status: 200, text: async () => JSON.stringify(chat('ок')) };
+    },
+  });
+  const r3 = await e3.run({ text: 'сколько будет 17*23', noCouncils: true, model: 'openai/gpt-oss-120b' });
+  ok('K3: выбранная человеком модель сильнее головы интента',
+    r3.ok === true && seen3[0] === 'groq/openai/gpt-oss-120b' && seen3.length === 1, JSON.stringify(seen3));
+  const seen4 = [];
+  const e4 = createEngine({
+    env: Object.assign({}, ENVDS, { INTENT_HEADS: 'off' }), sleep: async () => {},
+    fetch: async (url, init) => {
+      const b = JSON.parse(init.body);
+      seen4.push((String(url).includes('odirouter') ? 'odirouter/' : 'groq/') + b.model);
+      return { status: 200, text: async () => JSON.stringify(chat('ок')) };
+    },
+  });
+  await e4.run({ text: 'сколько будет 17*23', noCouncils: true });
+  ok('K4: INTENT_HEADS=off — движок снова слушает конфиг', seen4[0].indexOf('groq/') === 0, JSON.stringify(seen4.slice(0, 2)));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

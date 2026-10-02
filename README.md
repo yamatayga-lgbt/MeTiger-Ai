@@ -97,7 +97,7 @@ scripts/publish.sh    # публикация одной командой: npm ru
 src/lib/api.ts        # клиент фронта: sendChat + подпись «кто отвечал и что сказал совет»
 src/lib/gender.ts     #   └ ключ mt-gender: что меню настроек и отправка читают одним и тем же
 src/lib/images.ts     # вложения: ≤2 картинки, сжатие до 1024 px перед отправкой
-test/                 # офлайн-проверки движка (сети нет): 16 файлов, 842 проверки
+test/                 # офлайн-проверки движка (сети нет): 16 файлов, 854 проверки
                       #   route · chat · council · tools · freedom · emotion · gender
                       #   jailbreak · telegram · front · memory · limits · modelreg
                       #   · brave · skills · filegen

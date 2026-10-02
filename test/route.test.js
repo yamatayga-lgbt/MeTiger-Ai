@@ -4,7 +4,7 @@
  * Запуск: node test/route.test.js
  */
 import assert from 'node:assert';
-import { classifyTask, tierFor, isVision, modelsFor } from '../engine/route.js';
+import { classifyTask, tierFor, isVision, modelsFor, headsFor, preferHeads, INTENT_HEADS } from '../engine/route.js';
 import { buildRequest, isProviderError, isRefusal, stripThinkTags } from '../engine/shape.js';
 import { buildTable } from '../engine/providers.js';
 
@@ -155,6 +155,28 @@ console.log('F — порядок в пулах groq: первая быстра�
   const take = modelsFor(P.groq, 'fast', 'chat', false).slice(0, 2);
   ok('F5: modelsPerProvider=2 берёт две живые модели, а не «каша + 400»',
     take.indexOf('allam-2-7b') < 0 && take.indexOf('groq/compound-mini') < 0, JSON.stringify(take));
+}
+
+console.log('R — головы интента: кому считать математику и писать код (INTENT_HEADS)');
+{
+  ok('R1: дефолт короток и честен — только то, что реально отвечает бесплатно',
+    INTENT_HEADS.math.join() === 'deepseek-v4-flash,deepseek-v4-pro' && INTENT_HEADS.code.join() === INTENT_HEADS.math.join(), INTENT_HEADS.math.join());
+  ok('R2: головы есть только у math и code — на болтовне порядок не трогаем',
+    headsFor('chat', {}).length === 0 && headsFor('reasoning', {}).length === 0 && headsFor('math', {}).length === 2, JSON.stringify(headsFor('vision', {})));
+  ok('R3: MATH_HEADS человека важнее дефолта, пустые имена отбрасываются',
+    headsFor('math', { MATH_HEADS: 'одна, ,две' }).join() === 'одна,две', JSON.stringify(headsFor('math', { MATH_HEADS: 'одна, ,две' })));
+  ok('R4: потолок шесть голов — очередь и промпт не распухают', headsFor('math', { MATH_HEADS: 'a,b,c,d,e,f,g,h' }).length === 6);
+  const pools = { groq: ['openai/gpt-oss-120b'], odirouter: ['free-gemini-3-flash-preview', 'deepseek-v4-flash'], zai: ['glm-4.5-flash'] };
+  ok('R5: первым идёт провайдер, у которого голова в пуле',
+    preferHeads(['groq', 'odirouter', 'zai'], pools, 'math', {}).join() === 'odirouter,groq,zai',
+    preferHeads(['groq', 'odirouter', 'zai'], pools, 'math', {}).join());
+  ok('R6: нет головы ни у кого — порядок остаётся как был', preferHeads(['groq', 'zai'], { groq: ['a'], zai: ['b'] }, 'math', {}).join() === 'groq,zai');
+  ok('R7: INTENT_HEADS=off снимает и головы пула, и очередь провайдеров',
+    preferHeads(['groq', 'odirouter'], pools, 'math', { INTENT_HEADS: 'off' }).join() === 'groq,odirouter'
+    && headsFor('code', { INTENT_HEADS: 'off' }).length === 0, '');
+  ok('R8: головы пула применяются только без картинок — зрение важнее марки модели',
+    modelsFor({ models: { smart: ['claude-x', 'deepseek-v4-flash'] } }, 'smart', 'math', []).join() === 'deepseek-v4-flash,claude-x'
+    && modelsFor({ models: { smart: ['claude-x', 'deepseek-v4-flash'] } }, 'smart', 'math', [{}]).join() !== 'deepseek-v4-flash,claude-x', '');
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

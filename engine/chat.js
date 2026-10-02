@@ -13,7 +13,7 @@
 import {
   buildTable, providerAlive, pickKey, orderFor, ORDER, MIN_INTERVAL, TIMEOUT, MAX_IMAGES,
 } from './providers.js';
-import { classifyTask, tierFor, modelsFor, isVision } from './route.js';
+import { classifyTask, tierFor, modelsFor, isVision, preferHeads } from './route.js';
 import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
@@ -292,6 +292,12 @@ export function createEngine(opts) {
     let firstSoft = null;
 
     let order = orderFor(tier, P, { images, only: input.only, forceModel: input.forceModel, health });
+    /* Математика и код: вперёд тот провайдер, у которого в пуле стоит голова-счётчик
+       (ныне — бесплатный DeepSeek на OdiRouter, см. INTENT_HEADS). Пин человека и
+       явный providerOrder перебивают это как есть: порядок ниже применяется к нему. */
+    if ((intent === 'math' || intent === 'code') && !pin0(input)) {
+      order = preferHeads(order, poolOf(P), intent, env);
+    }
     /* На острой теме порядок провайдеров решает не конфиг, а их же поведение:
        доказанно смелые — первыми. Доказательств нет — порядок как всегда. */
     if (brave && sensitive && !pin0(input)) {

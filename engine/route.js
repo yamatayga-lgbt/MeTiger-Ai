@@ -123,7 +123,21 @@ export const INTENT_HEADS = {
   code: ['deepseek-v4-flash', 'deepseek-v4-pro'],
 };
 
-/** Головы для интента: конфиг человека важнее дефолта, пустой список — неour дело. */
+/**
+ * Провайдеры, у которых в пуле стоит голова интента, — на передовую очереди.
+ * Без этого headsFor менял бы порядок внутри пула провайдера, до которого очередь
+ * на математике просто не доходит: groq отвечает первым, и DeepSeek никто не спрашивает.
+ */
+export function preferHeads(order, pools, intent, env) {
+  const heads = headsFor(intent, env);
+  if (!heads.length || !Array.isArray(order) || order.length < 2) return order;
+  const owns = (pid) => (pools[pid] || []).some((m) => heads.indexOf(m) >= 0);
+  const front = order.filter(owns);
+  if (!front.length) return order;
+  return front.concat(order.filter((p) => !owns(p)));
+}
+
+/** Головы для интента: конфиг человека важнее дефолта, пустой список — не наше дело. */
 export function headsFor(intent, env) {
   const key = intent === 'math' || intent === 'code' ? intent : '';
   if (!key) return [];
