@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { onRequestPost, onRequestGet, onRequestOptions } from '../functions/api/chat.js';
 import { onRequestPost as tgPost, onRequestGet as tgGet } from '../functions/telegram/webhook.js';
+import { onRequestGet as modelsGet } from '../functions/api/models.js';
+import * as modelreg from '../engine/modelreg.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -97,6 +99,7 @@ createServer((req, res) => {
       if (path === '/api/chat') {
         return reply(req.method === 'GET' ? await onRequestGet(context) : await onRequestPost(context));
       }
+      if (path === '/api/models') return reply(await modelsGet(context));
       if (path === '/telegram/webhook') {
         return reply(req.method === 'GET' ? await tgGet(context) : await tgPost(context));
       }
@@ -111,7 +114,7 @@ createServer((req, res) => {
         return reply(new Response(JSON.stringify({ ok: true, sent: echoes }), { status: 200, headers: { 'content-type': 'application/json' } }));
       }
       return reply(new Response(JSON.stringify({
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'POST /telegram/webhook', 'GET /echo'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'POST /telegram/webhook', 'GET /echo'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       }), { status: 200, headers: { 'content-type': 'application/json' } }));
     } catch (e) {
@@ -123,6 +126,12 @@ createServer((req, res) => {
 }).listen(port, '0.0.0.0', () => {
   const keys = Object.keys(env).filter((k) => /_KEYS?$/.test(k));
   console.log('MeTiger Ai · движок: http://0.0.0.0:' + port + '/api/chat');
+/* Каталог моделей греем сразу: иначе локальный прогон никогда не проверяет
+   потолки max_tokens и обрезку контекста — те грабли, из-за которых он и нужен. */
+modelreg.refresh(env, env.MEMORY, {}).then((c) => {
+  console.log('каталог моделей: ' + ((c && c.models) || []).length + ' бесплатных' +
+    (c && c.errors && c.errors.length ? ' (не полностью: ' + c.errors[0] + ')' : ''));
+}, () => console.log('каталог моделей: недоступен, движок работает по пулам'));
   console.log('телеграм: секрет вебхука для локальных тестов — ' + DEV_TG_SECRET + ', отправка → ' + env.TELEGRAM_API_BASE);
   console.log(keys.length ? 'провайдеры с ключами: ' + keys.map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()).join(', ') :
     'ключей нет — движок ответит 503 со списком попыток (это правильное поведение, а не поломка)');

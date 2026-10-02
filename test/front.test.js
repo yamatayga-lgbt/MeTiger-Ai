@@ -8,7 +8,7 @@
  *   node test/front.test.js
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 let pass = 0, fail = 0;
@@ -115,6 +115,79 @@ console.log('H — вложения: что уходит в движок и чт
   const nocanvas = await img.fileToDataUrl({ type: 'image/png', size: 2048, name: 'y.png' });
   ok('H5: где нет canvas — тоже честная ошибка, а не пустой пузырь', nocanvas.ok === false && !!nocanvas.error, JSON.stringify(nocanvas));
   ok('H6: сторона ограничена 1024 px — модель не читает пиксели, которые не различает', img.MAX_SIDE === 1024);
+}
+
+console.log('I — окно выбора модели: витрина, пулы и живой каталог');
+if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(join(process.cwd(), 'node_modules', 'react-dom'))) {
+  ok('I0: react недоступен — проверка окна пропущена', false, 'npm i');
+} else {
+  /* Три входа одним бандлом: эсбабилд выносит общий src/lib/models в шаренный
+     чанк, поэтому кэш каталога у пикера и у ChatView один и тот же — как в
+     настоящем приложении. Отдельные бандлы имели бы два разных кэша и проверка
+     ничего не проверяла бы. */
+  /* Один вход, три экспорта. Раздельные бандлы дали бы каждый СВОЮ копию
+     src/lib/models (проверено: esbuild не шарит состояние между точками входа),
+     и тест грел бы кэш, которого компонент не видит. */
+  const entry = join(dir, 'picker-entry.tsx');
+  writeFileSync(entry, [
+    "export { ChatView } from '../../../src/views/ChatView'",
+    "export { ModelPicker } from '../../../src/components/ModelPicker'",
+    "export * as models from '../../../src/lib/models'",
+    '',
+  ].join('\n'), 'utf8');
+  const outPicker = join(dir, 'picker.mjs');
+  execFileSync(bin, [
+    entry, '--bundle', '--platform=node', '--format=esm', '--packages=external',
+    '--loader:.png=dataurl', '--outfile=' + outPicker, '--log-level=error',
+  ], { stdio: 'inherit' });
+  const bundle = await import(outPicker);
+  const models = bundle.models;
+  const { ModelPicker, ChatView } = bundle;
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+
+  const CATALOG = {
+    ok: true, cached: true, stale: false, updatedAt: Date.now(), count: 4, catalogCount: 4,
+    pools: [{ provider: 'openrouter', label: 'OpenRouter', count: 21 }],
+    models: [
+      { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', vendor: 'GOOGLE', tier: 'fast', curated: true, src: 'pool', ctx: 1048576, maxOut: 65536 },
+      { id: 'cohere/north-mini-code:free', name: 'North Mini Code', vendor: 'COHERE', tier: 'fast', curated: true, src: 'openrouter', ctx: 131072, maxOut: 8192, vision: false },
+      { id: 'tiny/model-a', name: 'Tiny Model', vendor: 'TINY', tier: 'fast', curated: false, src: 'xkiro', ctx: 4096, maxOut: 512, vision: false },
+      { id: 'wide/model-b', name: 'Wide Model', vendor: 'WIDE', tier: 'smart', curated: false, src: 'xkiro', ctx: 200000, maxOut: 32000, vision: true },
+    ],
+  };
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(CATALOG), { status: 200, headers: { 'content-type': 'application/json' } });
+  await models.loadCatalog();
+  ok('I1: каталог принят и лежит в общем кэше', (models.catalogCache() || {}).models.length === 4, JSON.stringify((models.catalogCache() || {}).count));
+  ok('I2: чип показывает имя каталожной модели, а не «Авто»', (() => { const o = models.modelOption('wide/model-b'); return o.id === 'wide/model-b' && o.name === 'Wide Model' && o.tier === 'smart' && o.vision === true; })(), JSON.stringify(models.modelOption('wide/model-b')));
+  ok('I3: выбор из каталога переживает перезагрузку (иначе форма сбрасывала бы модель)',
+    models.isModelId('tiny/model-a') === true && models.isModelId('совсем-не-модель!!!') === false);
+
+  const html = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'wide/model-b', onPick() {} }));
+  ok('I4: группы видны — витрина, пулы движка, каталог провайдеров',
+    /Витрина/.test(html) && /Пулы движка · 1/.test(html) && /Каталог провайдеров · 2/.test(html), (html.match(/model-section-title">[^<]*/g) || []).join('|'));
+  ok('I5: каталожная модель в разметке, с потолками вместо выдуманного описания',
+    /Wide Model/.test(html) && /контекст 195К · ответ до 31К/.test(html), (html.match(/контекст [^<]*/) || ['нет'])[0]);
+  ok('I6: выбрана ровно одна строка — та, что человек уже выбрал',
+    (html.match(/aria-selected="true"/g) || []).length === 1 && /model-row is-selected/.test(html));
+  ok('I7: поиск и кнопка обновления на месте, счётчик честный',
+    /model-search/.test(html) && /поиск по \d+ моделям/.test(html) && /обновить/.test(html), (html.match(/placeholder="[^"]*"/) || [''])[0]);
+  ok('I8: подвал говорит, откуда данные', /обновлено \d\d:\d\d/.test(html) && /живых у провайдеров: 4/.test(html), (html.match(/<div class="model-panel-foot">[^<]*/) || [''])[0]);
+  const chip = renderToStaticMarkup(React.createElement(ChatView, {
+    user: { first_name: 'Тигр' }, messages: [{ id: 'x', role: 'assistant', text: 'привет' }], typing: false, onSend() {}, model: 'wide/model-b',
+  }));
+  ok('I9: чип в окне ввода показывает выбранную модель (в бандле — тот же кэш)', /Wide Model/.test(chip), (chip.match(/model-chip-name[^<]*<\/span>/) || [''])[0]);
+
+  /* нет сети — список не обязан исчезать: остаются витрина и обычный выбор */
+  globalThis.fetch = async () => { throw new Error('сети нет'); };
+  await models.refreshCatalog();
+  const offline = renderToStaticMarkup(React.createElement(ModelPicker, { model: '', onPick() {} }));
+  ok('I10: без каталога панель остаётся рабочей (витрина 19), а не пустой дырой',
+    /Витрина/.test(offline) && /каталог недоступен/.test(offline) && /Gemini 3\.8 Flash/.test(offline), (offline.match(/каталог недоступен[^<]*/) || [''])[0]);
+  ok('I11: неизвестный id по-прежнему значит Авто — молчаливый обход сохранён',
+    models.modelOption('voobshe-ne-model').id === '', JSON.stringify(models.modelOption('voobshe-ne-model')).slice(0, 60));
+  globalThis.fetch = real;
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

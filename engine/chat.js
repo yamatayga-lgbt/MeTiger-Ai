@@ -23,6 +23,7 @@ import * as emotion from './emotion.js';
 import * as style from './style.js';
 import * as ensemble from './ensemble.js';
 import { createMemory } from './memory.js';
+import * as modelreg from './modelreg.js';
 import * as vcouncil from './vcouncil.js';
 
 export const PERSONA_SYSTEM =
@@ -267,7 +268,10 @@ export function createEngine(opts) {
         const m = P[id].models || {};
         return [].concat(m.fast || [], m.smart || [], P[id].modelsLocal || []).indexOf(pinName) >= 0;
       });
-      if (owner) pin = { id: owner, model: pinName };
+      /* Модели из живого каталога нет в наших пулах — это не повод снимать выбор:
+         по данным каталога знаем, чей это id (OpenRouter или Xkiро). */
+      const owner2 = owner || modelreg.ownerOf(modelreg.cached(), pinName);
+      if (owner2) pin = { id: owner2, model: pinName };
       if (pin) order = [pin.id];
     }
 
@@ -279,7 +283,9 @@ export function createEngine(opts) {
       if (!providerAlive(P, id, health)) { tried.push({ provider: id, why: 'нет живых ключей' }); continue; }
       const q = punished(id);
       if (q && !allBad) { tried.push({ provider: id, why: 'в карантине: ' + q.why }); continue; }
-      const models = pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images);
+      const models = modelreg.prune(
+        modelreg.cached(), id,
+        pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images));
       if (!models.length) { tried.push({ provider: id, why: 'нет моделей в пуле' }); continue; }
       const n = Math.max(1, Number(input.modelsPerProvider) || 2);
       for (const model of models.slice(0, n)) {

@@ -207,12 +207,158 @@ export const MODELS: ModelOption[] = [
 
 const ALL: ModelOption[] = [MODEL_AUTO, ...MODELS]
 
-/** Найти опцию по id; незнакомый id → Авто (как и поведение движка). */
-export function modelOption(id: string | undefined | null): ModelOption {
-  return ALL.find((m) => m.id === (id || '')) || MODEL_AUTO
+
+/* ==================== живой каталог (GET /api/models) ==================== */
+
+/** Строка каталога — то же, что отдаёт functions/api/models.js. */
+export interface CatalogEntry {
+  id: string
+  name: string
+  vendor: string
+  tier?: 'fast' | 'smart'
+  /** true — видит картинки, false — не видит, null/undefined — не знаем. */
+  vision?: boolean | null
+  ctx?: number
+  maxOut?: number
+  /** id есть в пулах движка: её он сам подставит в ротацию. */
+  curated?: boolean
+  /** откуда взята: openrouter | xkiro | pool. */
+  src?: string
+  desc?: string
+  uncensored?: boolean
 }
 
-/** Валидация для usePersistentState: сохраняем только известные id. */
+export interface ModelCatalog {
+  models: CatalogEntry[]
+  updatedAt: number | null
+  /** каталог протух и обновится при следующем удобном случае */
+  stale: boolean
+  count: number
+  /** сколько строк дал живой каталог (0 — сеть молчала, видны только пулы) */
+  catalogCount: number
+}
+
+let LAST: ModelCatalog | null = null
+let INFLIGHT: Promise<ModelCatalog | null> | null = null
+
+export function catalogCache(): ModelCatalog | null {
+  return LAST
+}
+
+/**
+ * Список моделей для окна выбора. Ошибка сети не показывается человеку:
+ * тогда остаются вручную проверенные 19 строк, и выбор работает как раньше.
+ */
+export async function loadCatalog(opts: { force?: boolean } = {}): Promise<ModelCatalog | null> {
+  if (LAST && !opts.force) return LAST
+  if (INFLIGHT && !opts.force) return INFLIGHT
+  INFLIGHT = (async () => {
+    try {
+      const init: RequestInit = {}
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        init.signal = AbortSignal.timeout(4000)
+      }
+      const r = await fetch('/api/models' + (opts.force ? '?refresh=1' : ''), init)
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      const d = (await r.json()) as Partial<ModelCatalog> & { models?: CatalogEntry[] }
+      const models = Array.isArray(d.models) ? d.models : []
+      if (!models.length) throw new Error('пустой список')
+      LAST = {
+        models,
+        updatedAt: typeof d.updatedAt === 'number' ? d.updatedAt : null,
+        stale: !!d.stale,
+        count: typeof d.count === 'number' ? d.count : models.length,
+        catalogCount: typeof d.catalogCount === 'number' ? d.catalogCount : 0,
+      }
+      return LAST
+    } catch {
+      return LAST
+    } finally {
+      INFLIGHT = null
+    }
+  })()
+  return INFLIGHT
+}
+
+/** Принудительно перечитать каталог у провайдеров (кнопка «обновить»). */
+export async function refreshCatalog(): Promise<ModelCatalog | null> {
+  LAST = null
+  return loadCatalog({ force: true })
+}
+
+export function catalogEntry(id: string): CatalogEntry | undefined {
+  if (!LAST) return undefined
+  return LAST.models.find((m) => m.id === id)
+}
+
+/** Похоже на id модели? Нужно, чтобы выбор из каталога переживал перезагрузку. */
+const ID_SHAPE = /^[A-Za-z0-9][\w./:@-]{2,63}$/
+export function looksLikeModelId(value: unknown): value is string {
+  return typeof value === 'string' && ID_SHAPE.test(value)
+}
+
+const PALETTE = [
+  ['#4285F4', '#9B72CB'], ['#F59E0B', '#EA580C'], ['#10B981', '#047857'],
+  ['#8B5CF6', '#4C1D95'], ['#EC4899', '#9D174D'], ['#06B6D4', '#0E7490'],
+  ['#84CC16', '#3F6212'], ['#F97316', '#B91C1C'],
+]
+
+/**
+ * Аватарка каталожной модели: цвет по вендору (у одного вендора всегда один
+ * градиент), монограмма из имени. Картинок не заводим — список из 180 строк
+ * должен открываться мгновенно.
+ */
+export function avatarFor(m: CatalogEntry): ModelAvatar {
+  const v = String(m.vendor || m.id)
+  let h = 0
+  for (let i = 0; i < v.length; i++) h = (h * 31 + v.charCodeAt(i)) >>> 0
+  const [a, b] = PALETTE[h % PALETTE.length]
+  const letters = String(m.name || m.id).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/)
+  const mark = (letters[0] || '?').slice(0, 1).toUpperCase() + (letters[1] ? letters[1].slice(0, 1).toUpperCase() : '')
+  return { bg: `linear-gradient(135deg, ${a} 0%, ${b} 100%)`, mark: mark || '?' }
+}
+
+/** Потолки одной строкой: человек выбирает модель и видит, на что способен потолок. */
+export function ceilingsLine(m: CatalogEntry): string {
+  const kb = (n?: number) => (n ? (n >= 1024 ? Math.round(n / 1024) + 'К' : String(n)) : '')
+  const ctx = kb(m.ctx)
+  const out = kb(m.maxOut)
+  if (!ctx && !out) return ''
+  if (ctx && out) return `контекст ${ctx} · ответ до ${out}`
+  return ctx ? `контекст ${ctx}` : `ответ до ${out}`
+}
+
+/**
+ * Найти опцию по id. Неизвестный витрине id больше не «Авто»: если он есть в
+ * живом каталоге, показываем его имя — иначе человек выбрал модель, а чип
+ * врал бы, что выбор не сработал. Совсем незнакомого id не бывает: движок
+ * сам снимает пин, и чип честно остаётся «Авто».
+ */
+export function modelOption(id: string | undefined | null): ModelOption {
+  const key = id || ''
+  const mine = ALL.find((m) => m.id === key)
+  if (mine) return mine
+  const c = catalogEntry(key)
+  if (!c) return MODEL_AUTO
+  const av = avatarFor(c)
+  const ceil = ceilingsLine(c)
+  return {
+    id: c.id,
+    name: c.name || c.id,
+    vendor: c.vendor || '',
+    desc: ceil || 'из каталога',
+    avatar: av,
+    tier: c.tier === 'smart' ? 'smart' : 'fast',
+    vision: c.vision === true,
+  }
+}
+
+/** Валидация для usePersistentState: известные витрине + живой каталог + формат id. */
 export function isModelId(value: unknown): value is string {
-  return typeof value === 'string' && ALL.some((m) => m.id === value)
+  if (typeof value !== 'string') return false
+  if (ALL.some((m) => m.id === value)) return true
+  if (catalogEntry(value)) return true
+  /* id мог прийти из каталога в прошлый раз, а кэш ещё пуст — терять выбор из-за
+     этого нельзя: движок сам решит, снимать пин или нет. */
+  return looksLikeModelId(value)
 }

@@ -10,6 +10,8 @@
  *  • cloudflare: тот же openai-эндпоинт, но под путём аккаунта ({acc}).
  */
 
+import { cached as catalogCached, ceilings as catalogCeilings } from './modelreg.js';
+
 export const THINK_TAG = /<\s*(think(?:ing)?|reasoning)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi;
 
 /** data:image/png;base64,... → { mime, data }. Чужой формат — null, не исключение. */
@@ -64,14 +66,36 @@ export function buildRequest(o) {
   const model = String(o.model || '');
   const key = cfg.keys[o.keyIdx] || '';
   const url = (u) => u.replace('{acc}', cfg.account || '');
-  const maxTokens = o.maxTokens || (o.tier === 'smart' ? 2000 : 900);
+  let maxTokens = o.maxTokens || (o.tier === 'smart' ? 2000 : 900);
+  /* Потолок модели важнее нашей щедрости: бесплатные модели отдают 400 на
+     max_tokens выше своего, а часть шлюзов — и на равном. Каталог знает настоящий
+     потолок, поэтому режем здесь. Нет каталога — живём по-старому. */
+  const ceil = catalogCeilings(catalogCached(), model);
+  if (ceil) maxTokens = Math.max(64, Math.min(maxTokens, ceil.maxOut));
   const temp = typeof o.temperature === 'number' ? o.temperature : 0.8;
   const pics = (Array.isArray(o.images) ? o.images : [])
     .map(parseDataUrl).filter(Boolean).slice(0, o.maxImages || 2);
 
+  /* Контекст у бесплатных моделей маленький (половина — 8–32К). Один лишний ход
+     истории превращает запрос в 400 «context length exceeded», и очередь уходит
+     дальше, сжигая квоту. Отбрасываем самые старые ходы, системный и последний
+     не трогаем никогда. */
+  let msgs = Array.isArray(o.messages) ? o.messages : [];
+  if (ceil && msgs.length > 1) {
+    const over = (o.system ? String(o.system).length : 0) + 2000;
+    const budget = Math.max(600, Math.floor(ceil.ctx * 3) - maxTokens * 3 - over);
+    let used = msgs.reduce((a, m) => a + String((m && m.content) || '').length, 0);
+    /* Убираем с самого старого хода: последние важнее. Последний не отдаём ни
+       при каком бюджете — без него запрос превращается в «ответь на пустоту». */
+    while (used > budget && msgs.length > 1) {
+      used -= String((msgs[0] && msgs[0].content) || '').length;
+      msgs = msgs.slice(1);
+    }
+  }
+
   if (cfg.kind === 'gemini') {
     const sys = [{ role: 'user', parts: [{ text: o.system }] }, { role: 'model', parts: [{ text: 'Понял. Действую так.' }] }];
-    const contents = o.messages.map((m) => ({
+    const contents = msgs.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: String(m.content == null ? '' : m.content) }],
     }));
@@ -102,7 +126,7 @@ export function buildRequest(o) {
   /* openai-совместимый: сообщения один в один, картинки — в content массивом */
   const messages = [];
   if (o.system) messages.push({ role: 'system', content: o.system });
-  for (const m of o.messages) {
+  for (const m of msgs) {
     const content = String(m.content == null ? '' : m.content);
     messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content });
   }
