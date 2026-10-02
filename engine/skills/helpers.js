@@ -34,6 +34,7 @@ const CATS = [
   { id: 'dbase', title: '🗄 Базы данных' },
   { id: 'tooling', title: '🧰 Инструменты разработчика' },
   { id: 'writing', title: '✍️ Создание текстов' },
+  { id: 'media', title: '🎬 Мультимодальный контент' },
   { id: 'life', title: 'Быт и развлечения' },
   { id: 'data', title: 'Data & Analytics' },
   { id: 'automation', title: 'Automation' },

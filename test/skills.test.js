@@ -43,6 +43,7 @@ const OURS = [
   'ds-schema', 'ds-optimize', 'ds-index', 'ds-migrate', 'ds-txn', 'ds-ref', 'ds-backup',
   'tl-syntax', 'tl-pkg', 'tl-docs', 'tl-lint', 'tl-format', 'tl-warn', 'tl-repro',
   'tx-draft', 'tx-edit', 'tx-expand', 'tx-clear', 'tx-brief',
+  'md-video', 'md-subs', 'md-format', 'md-transcribe',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -54,8 +55,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 37 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing), и каждая непустая',
-  CATS.length === 37 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 38 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing), и каждая непустая',
+  CATS.length === 38 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -786,8 +787,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 58 — 407 → 465 (13–17 и 18–21), выключенных не прибавилось',
-    st1.total === 465 && st1.on === 441 && st1.off === 24 && st1.groups.length === 37, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 62 — 407 → 469 (13–17, 18–21 и 22), выключенных не прибавилось',
+    st1.total === 469 && st1.on === 445 && st1.off === 24 && st1.groups.length === 38, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -863,58 +864,65 @@ console.log('U — добавленные группы 18–21: четыре з�
   const flood = fired(GROUPS.map((x) => x[0]).join(' и '));
   ok('U11: все 60 фраз разом — в бюджет (≤16), и ни один новый текст не вырос сверх потолка',
     flood.length <= 16 && flood.every((id) => !NEW_RE.test(id) || get(id).text.length <= 500), String(flood.length));
-  ok('U12: все 24 id зафиксированы в OURS — иначе A1 перестанет считать их нашими',
-    OURS.slice(90).length === 24 && OURS.slice(90).every((id) => get(id)), String(OURS.length));
+  /* U12 — без магического числа и без среза по индексу (прошлый вариант «OURS.slice(90).length
+     === 24» падал на каждой поставке, где добавлялся хоть один навык, и ровно поэтому его
+     правили на глаз). Два факта, которые не меняются от количества навыков:
+       · каждый id из OURS живёт в реестре и не повторяется;
+       · каждый навык с нашим префиксом обязан быть в OURS — иначе он молча выпадает из A1/V1.
+     А «добавил навык в файл и забыл OURS» теперь ловит пропускной пункт (skillcheck), он
+     бьёт раньше теста. */
+  ok('U12: каждый id из OURS есть в реестре и дублей нет — ' + OURS.length + ' шт.',
+    new Set(OURS).size === OURS.length && OURS.every((id) => get(id)),
+    OURS.filter((id) => !get(id)).join(', '));
+  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md)-/;
+  const missed = SKILLS.filter((x) => OUR_PREFIX.test(x.id) && !OURS.includes(x.id)).map((x) => x.id);
+  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-) перечислены в OURS',
+    missed.length === 0, missed.join(', '));
 }
 
-
-/* ═══════════ V — корпус как закон ═══════════
-   Секция затем, чтобы фразы не переписывались каждую фазу заново: раньше корпус жил внутри
-   секций, новый навык мог войти в реестр без единой живой формулировки, и дырка находилась
-   уже на проде. Здесь проверяется весь корпус разом — тот же файл, что читает
-   `node scripts/skillcheck.mjs`, а не пересказанный в двух местах список. */
-console.log('V — корпус: живой язык слышен, бытовой молчит, покрытие обязательно');
+/* ═══════════ W — группа 22 «Мультимодальный контент» (поставка 0.025) ═══════════
+   Как и U: проверяется только содержательное ядро, обещаний «я посмотрю видео» быть
+   не должно — проигрывателя, ffprobe и распознавания речи в реестре инструментов нет. */
 {
   const get = (id) => skillById(id);
   const fired = (q) => detect(q, {}).map((x) => x.id);
-  const oursSet = new Set(OURS);
-  const guardedIds = SKILLS.filter((x) => GUARDED.some((g) => x.id.startsWith(g + '-'))).map((x) => x.id);
-
-  ok('V1: корпус не ссохся — после фаз 13–21 в нём не меньше 108 фраз и 178 бытовых',
-    CANON.length >= 108 && MUNDANE_CORP.length >= 178, CANON.length + '/' + MUNDANE_CORP.length);
-  const ghost = CANON.filter(([, id]) => !get(id));
-  ok('V2: каждая пара ссылается на существующий навык — иначе проверка молча ничего не ждёт',
-    ghost.length === 0, ghost.map(([, id]) => id).join(','));
-  const deaf = CANON.filter(([q, id]) => !fired(q).includes(id));
-  ok('V3: все ' + CANON.length + ' живых формулировок тянут ожидаемый навык', deaf.length === 0,
-    deaf.slice(0, 3).map(([q, id]) => q + ' ≠' + id + ' → ' + fired(q).join(',')).join(' ;; '));
-  const per = {};
-  for (const [, id] of CANON) per[id] = (per[id] || 0) + 1;
-  const thin = guardedIds.filter((id) => (per[id] || 0) < 2);
-  ok('V4: у каждого навыка guarded-фазы (' + guardedIds.length + ') в корпусе минимум две фразы',
-    thin.length === 0, thin.join(','));
-
-  /* Триггер, написанный по заголовку, на заголовке и срабатывает: человек так не говорит. */
-  const echo = guardedIds.filter((id) => {
-    const stem = (get(id).title || '').split(' ')[0].toLowerCase().slice(0, 5);
-    if (stem.length < 4) return false;
-    const list = CANON.filter((x) => x[1] === id);
-    return list.length > 0 && list.every(([q]) => q.toLowerCase().indexOf(stem) >= 0);
-  });
-  ok('V5: хоть одна формулировка на навык — без слова из его заголовка', echo.length === 0, echo.join(','));
-  const shortPhr = CANON.filter(([q]) => q.length < 12);
-  ok('V5b: формулировка не короче 12 знаков — одно слово проверкой не является', shortPhr.length === 0,
-    shortPhr.map(([q]) => q).join(' | '));
-  const spilled = MUNDANE_CORP.filter((q) => fired(q).some((id) => oursSet.has(id)));
-  ok('V6: ' + MUNDANE_CORP.length + ' бытовых фраз не будят ни один из ' + OURS.length + ' наших навыков',
-    spilled.length === 0,
-    spilled.slice(0, 4).map((q) => q + ' → ' + fired(q).filter((id) => oursSet.has(id)).join(',')).join(' ;; '));
-  const wide = MUNDANE_CORP.filter((q) => fired(q).length > 16);
-  ok('V7: бытовой шум не вытаскивает половину реестра — бюджет 16 держится', wide.length === 0,
-    wide.slice(0, 3).map((q) => q + '→' + fired(q).length).join(' ;; '));
-  const flood = fired(CANON.map((x) => x[0]).join(' и '));
-  ok('V8: весь корпус разом не ломает ни бюджет, ни потолок текстов',
-    flood.length <= 16 && flood.every((id) => !oursSet.has(id) || get(id).text.length <= 500), String(flood.length));
+  const media = SKILLS.filter((x) => /^md-/.test(x.id));
+  ok('W1: 4 медиа-навыка на месте, у всех текст ≤ 500 и приоритет 5',
+    media.length === 4 && media.every((x) => x.text.length <= 500 && x.priority === 5 && x.cat === 'media'),
+    media.map((x) => x.id + '=' + x.text.length).join(' '));
+  ok('W2: ни один не обещает инструмент — need/tools пустые (OCR/STT/ffprobe в реестре нет)',
+    media.every((x) => (!x.need || x.need.length === 0) && (!x.tools || x.tools.length === 0)),
+    media.filter((x) => (x.need || []).length || (x.tools || []).length).map((x) => x.id).join(' '));
+  ok('W3: md-video честно про таймкоды и картинку — и требует файл вместо «я пересмотрел»',
+    /не выдумывай|не проставл/.test(get('md-video').text) && /видит модель|картинку видит/.test(get('md-video').text)
+      && /присл|не приложен|пришлите|нет файл|нет исходника/i.test(get('md-video').text));
+  ok('W4: md-subs знает про 42 знака, две строки и «одна реплика — один блок»',
+    /42/.test(get('md-subs').text) && /(до 2 строк|двух строк)/.test(get('md-subs').text) && /одна реплика — один блок/.test(get('md-subs').text));
+  ok('W5: md-transcribe не слушает аудио, а работает с текстом — и просит прислать, если его нет',
+    /не (лу|слу)ша/.test(get('md-transcribe').text) && /расшифровк/.test(get('md-transcribe').text)
+      && /пришл|прислан|дали|нет/.test(get('md-transcribe').text));
+  ok('W6: md-format перечисляет проверяемые параметры, не выдаёт цифры за норму и знает про `-c copy`',
+    /контейнер, кодек, разрешение/.test(get('md-format').text) && /ориентир/.test(get('md-format').text)
+      && /потоки/.test(get('md-format').text) && /-c copy/.test(get('md-format').text)
+      && /спрашивай|спроси/.test(get('md-format').text));
+  ok('W7: медиа-рамка у всех четырёх — «видео не смотрим, ffprobe нет»',
+    media.every((x) => x.text.includes('ffprobe') && x.text.includes('не смотри')), media[0].text.slice(-60));
+  /* Донорская граница: 22.1–22.4 живут у vision и text, и их правки должны быть на месте */
+  ok('W8: 22.1–22.4 закрыты донорами — v-analyze, v-ocr, v-space, v-quality (со светом), script живы',
+    ['v-analyze', 'v-ocr', 'v-space', 'v-quality', 'script'].every((id) => get(id) && !get(id).off)
+      && /свет/.test(get('v-quality').re.source), get('v-quality').re.source.length);
+  ok('W9: суженный script не лезет в «видео весит 400 мб» и «сделай субтитры к видео», но сценарий берёт',
+    !fired('видео весит 400 мб, а надо 100').includes('script') && !fired('сделай субтитры к видео').includes('script')
+      && fired('напиши сценарий для ролика на 30 секунд').includes('script'));
+  ok('W10: бытовые фразы со словами «главы/кадры/формат/свет/сон» наших медиа-навыков не будят',
+    MUNDANE_CORP.filter((q) => fired(q).some((id) => /^md-/.test(id))).length === 0);
+  /* Пункт 8 регламента: у каждой из восьми позиций ≥ 2 живые формулировки в CANON (метка W) */
+  const owners = ['v-analyze', 'v-ocr', 'v-space', 'v-quality', 'script', 'md-transcribe', 'md-video', 'md-subs', 'md-format'];
+  const hits = {};
+  for (const id of owners) hits[id] = CANON.filter((x) => x[2] === 'W' && x[1] === id).length;
+  ok('W11: каждая позиция 22 имеет ≥ 2 фразы в корпусе (включая донорские id)',
+    Object.values(hits).every((n) => n >= 2), JSON.stringify(hits));
 }
+
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

@@ -116,17 +116,44 @@ for (const p of files) {
       for (const rg of body.match(/[^\\\]]-[^\\\]]/g) || []) {
         if (rg[1] !== '-') continue;
         if (rg[0].codePointAt(0) > rg[2].codePointAt(0)) { err(p, i, 'перевёрнутый диапазон «' + rg + '» в классе — JS падает с «Range out of order»'); return; }
+        /* [а-ею] читают как «а-я без ё», а это а…е: падежные хвосты за пределами молчат */
+        if (rg[0] === 'а' && rg[2] !== 'я' && rg[2] !== 'яё') { hint(p, i, 'короткий диапазон «' + rg + '» — скорее всего задумано [а-яё]'); }
       }
     }
 
     try { new RegExp(src, m[2] || 'i'); } catch (e) { err(p, i, 'не компилируется: ' + e.message.slice(0, 90)); return; }
+
+    /* «||» и «(|» значат пустую ветку: она матчит пустую строку, то есть любую фразу.
+       Так и рождается — отрезали ветку посередине, два символа остались подряд. Навык
+       тогда всплывает на «сколько сохнет пластырь», и выглядит как порча реестра, а не
+       как ошибка одной строки. «x|)» при этом законно: `(сам |)` — у донора так записан
+       факультативный префикс, поэтому хвостовую пустую ветку не трогаем. */
+    {
+      let d2 = 0; let cls2 = false; let hit = -1; let afterOpen = false;
+      for (let k = 0; k < src.length; k++) {
+        const ch = src[k];
+        /* Экранированный символ — не структурный: «\\s|» — это «пробел ИЛИ», а не пустая
+           ветка, и «\\(|» — литеральная скобка ИЛИ. Значит на них флаг не ставим. */
+        if (ch === '\\') { k++; afterOpen = false; continue; }
+        if (cls2) { if (ch === ']') cls2 = false; afterOpen = false; continue; }
+        if (ch === '[') { cls2 = true; afterOpen = false; continue; }
+        if (ch === '(') { d2++; afterOpen = true; continue; }
+        if (ch === ')') { d2--; afterOpen = false; continue; }
+        if (ch === '|') {
+          if (src[k + 1] === '|' || afterOpen) { hit = k; break; }
+          afterOpen = false; continue;
+        }
+        afterOpen = false;
+      }
+      if (hit >= 0) { err(p, i, 'пустая альтернатива около позиции ' + hit + ' — триггер матчит любую фразу'); return; }
+    }
 
     const top = branches(src);
     const bare = top.filter((b) => BARE.test(b));
     for (const b of bare) hint(p, i, 'голый корень «' + b + '» — если он нужен не только в этом домене, добавьте окружение (корпус бытовых фраз это и проверит)');
     for (const b of top) {
       if (b.length < 4 || /^[([]/.test(b)) continue;
-      const swallow = bare.find((o) => o !== b && b.includes(o));
+      const swallow = bare.find((o) => o !== b && b.startsWith(o));
       if (swallow) { hint(p, i, 'ветка «' + b.slice(0, 30) + (b.length > 30 ? '…' : '') + '» недостижима: её накрывает короткая ветка «' + swallow + '»'); break; }
     }
   });
