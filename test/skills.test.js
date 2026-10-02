@@ -46,6 +46,7 @@ const OURS = [
   'md-video', 'md-subs', 'md-format', 'md-transcribe',
   'ux-scenario', 'ux-ia', 'ux-flow', 'ux-feedback', 'ux-problems', 'ux-proto', 'ux-a11y',
   'vd-direction', 'vd-system', 'vd-type', 'vd-color', 'vd-layout', 'vd-states', 'vd-spec', 'vd-consistency',
+  'td-guide', 'td-runbook', 'td-changelog', 'td-spec', 'td-fresh',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -57,8 +58,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 40 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing), и каждая непустая',
-  CATS.length === 40 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 41 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc), и каждая непустая',
+  CATS.length === 41 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -789,8 +790,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 77 — 407 → 484 (13–17, 18–21, 22–24), выключенных не прибавилось',
-    st1.total === 484 && st1.on === 460 && st1.off === 24 && st1.groups.length === 40, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 82 — 407 → 489 (13–17, 18–21, 22–25), выключенных не прибавилось',
+    st1.total === 489 && st1.on === 465 && st1.off === 24 && st1.groups.length === 41, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -876,9 +877,9 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('U12: каждый id из OURS есть в реестре, дублей и дырок нет — ' + OURS.length + ' шт.',
     new Set(OURS).size === OURS.length && OURS.every((id) => typeof id === 'string' && get(id)),
     OURS.filter((id) => !get(id)).map((x) => JSON.stringify(x)).join(', '));
-  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md)-/;
+  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md|ux|vd|td)-/;
   const missed = SKILLS.filter((x) => OUR_PREFIX.test(x.id) && !OURS.includes(x.id)).map((x) => x.id);
-  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-) перечислены в OURS',
+  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-, ux-, vd-, td-) перечислены в OURS',
     missed.length === 0, missed.join(', '));
 }
 
@@ -1037,6 +1038,70 @@ console.log('U — добавленные группы 18–21: четыре з�
   for (const id of ids) hits[id] = CANON.filter((x) => x[2] === 'Y' && x[1] === id).length;
   ok('Y14: у каждого из восьми пунктов группы 24 — по две живые фразы в корпусе',
     Object.values(hits).every((n) => n >= 2), JSON.stringify(hits));
+}
+
+/* ═══════════ Z — группа 25 «Техническая документация» (поставка 0.028) ═══════════
+   Правило переноса то же: переезжает только содержательный навык. Три пункта группы остались
+   за донорами (README и API — у dev-docs, архитектурные решения — у ar-docs + dc-record),
+   поэтому здесь они проверяются как чужие границы, а не как наши навыки. */
+{
+  const get = (id) => skillById(id);
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  const td = SKILLS.filter((x) => /^td-/.test(x.id));
+  ok('Z1: 5 навыков техдокументации на месте, тексты ≤ 500, приоритет 5, своя категория',
+    td.length === 5 && td.every((x) => x.cat === 'techdoc' && x.priority === 5 && x.text.length <= 500 && x.text.length > 200),
+    td.map((x) => x.id + ':' + x.text.length).join(' '));
+  ok('Z2: ни один не зовёт инструмент — репозитория, git и файлового поиска у навыка нет',
+    td.every((x) => !(x.tools || []).length && !(x.need || []).length),
+    td.filter((x) => (x.tools || []).length || (x.need || []).length).map((x) => x.id).join(','));
+  ok('Z3: рамка «док репозитория не читаем» приклеена ко всем пятерым',
+    td.every((x) => x.text.includes('Док репозитория не читаем')),
+    td.filter((x) => !x.text.includes('Док репозитория не читаем')).map((x) => x.id).join(','));
+  ok('Z4: td-guide требует точку проверки и честно отказывается описывать интерфейс по памяти',
+    /точка проверки/.test(get('td-guide').text) && /по памяти не описываем/.test(get('td-guide').text)
+      && /Далее по инструкции/.test(get('td-guide').text));
+  ok('Z5: td-runbook — для ночного дежурного: эскалация, порядок по риску, запрет «обычно помогает»',
+    /три часа ночи/.test(get('td-runbook').text) && /эскалаци/.test(get('td-runbook').text)
+      && /Обычно помогает/.test(get('td-runbook').text) && /безопасного к опасному/.test(get('td-runbook').text));
+  ok('Z6: td-changelog пишет по последствию, держит фиксированные разделы и дату с версией',
+    /по последствию/.test(get('td-changelog').text) && /Добавлено/.test(get('td-changelog').text)
+      && /версия и дата обязательны/.test(get('td-changelog').text));
+  ok('Z7: td-spec требует сценарии, границы и критерии готовности, а не обзор',
+    /дано → действие → результат/.test(get('td-spec').text) && /критерии готовности/.test(get('td-spec').text)
+      && /Допущения помечай/.test(get('td-spec').text) && /не выдумываем/.test(get('td-spec').text));
+  ok('Z8: td-fresh сверяет утверждения с чем-то, классифицирует находки и даёт «было → стало»',
+    /чем подтверждено/.test(get('td-fresh').text) && /было → стало/.test(get('td-fresh').text)
+      && /неверно, разошлось, неполно, лишнее, спорно/.test(get('td-fresh').text));
+  ok('Z9: донорские границы переехали — tl-docs больше не снимает «оформи changelog за релиз», а README и API остались у dev-docs',
+    !fired('оформи changelog за релиз').includes('tl-docs')
+      && fired('оформи changelog за релиз').includes('td-changelog')
+      && fired('напиши readme для проекта').includes('dev-docs')
+      && fired('напиши документацию api').includes('dev-docs')
+      && fired('документирование архитектуры сервиса').includes('ar-docs')
+      && fired('оформи adr для выбора очереди').includes('dc-record'));
+  ok('Z10: «ответь по документации» — по-прежнему цитата (донор docs), а не наша правка доков',
+    fired('ответь по документации: что делает флаг --dry-run').includes('docs')
+      && !fired('ответь по документации: что делает флаг --dry-run').includes('td-fresh'));
+  ok('Z11: бытовые омонимы (палитра, шрифт, состояние, инструкция по сборке шкафа) не будят td-*',
+    MUNDANE_CORP.filter((q) => fired(q).some((id) => /^td-/.test(id))).length === 0);
+  ok('Z12: тексты не обещают залезть в репозиторий, git или файл',
+    !td.some((x) => /(?:посмотрю|открою|схожу|проверю прогоном|запушу|прочитаю) [а-яё, ]{0,10}(?:репозитори|git|файл|код|readme)/i.test(x.text)
+      || /сохраню (?:файл|в репозитори)|напишу в файл/i.test(x.text)),
+    td.filter((x) => /репозитори|git|файл/i.test(x.text)).map((x) => x.id).join(','));
+  const hits = {};
+  for (const id of ['td-guide', 'td-runbook', 'td-changelog', 'td-spec', 'td-fresh']) {
+    hits[id] = CANON.filter((x) => x[2] === 'Z' && x[1] === id).length;
+  }
+  const donors = {};
+  for (const id of ['dev-docs', 'ar-docs', 'dc-record']) {
+    donors[id] = CANON.filter((x) => x[2] === 'Z' && x[1] === id).length;
+  }
+  ok('Z13: у каждого из пяти наших пунктов — по две живые фразы, у трёх донорских — не меньше двух',
+    Object.values(hits).every((n) => n >= 2) && Object.values(donors).every((n) => n >= 2),
+    JSON.stringify(Object.assign(hits, donors)));
+  ok('Z14: рамка techdoc называет единственный источник — присланный текст, и приклеена она ровно к нашим пятерым',
+    td.every((x) => /только присланный текст/.test(x.text)) && td.every((x) => x.text.length <= 500),
+    td.map((x) => x.text.length).join(' '));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);

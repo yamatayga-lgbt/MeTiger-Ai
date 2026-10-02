@@ -86,6 +86,44 @@ if (spilled.length) note('CORPUS: бытовой корпус будит нов�
 const budget = fired(CANON.map((x) => x[0]).join(' и '));
 if (budget.length > 16) note('весь корпус разом не влезает в бюджет: ' + budget.length + ' > 16');
 
+/* 6.5 омонимы: спорный корень без технической опоры — тот же дефект, что ловили трижды
+   (палитра для гостиной, инструкция по сборке шкафа, состояние дороги). Проверка генеративная:
+   она не зависит от того, вспомнил ли кто-то конкретную фразу, — список корней растёт, а
+   фразы собираются сами. Бытовыми считаются рамки без единого технического слова. */
+const AMBIG = ['палитру', 'палитра', 'шрифт', 'шрифты', 'типографику', 'состояния', 'состояние',
+  'макет', 'прототип', 'сетку', 'направление', 'согласованность', 'доступность', 'обратную связь',
+  'инструкцию', 'руководство', 'гайд', 'мануал', 'спецификацию',
+  'документацию', 'историю изменений', /* changelog, readme и runbook в быт не переходят: опора ради них только мешает */ 'чек-лист', 'поток',
+  'сценарий', 'композицию', 'плотность', 'отступы', 'роли цветов', 'вёрстку', 'навигацию',
+  'состояние дороги', 'размеры', 'цвета', 'палитру для стен'];
+const BYT = ['для гостиной', 'для кухни', 'в саду', 'на даче', 'для ремонта', 'для свадьбы',
+  'в машине', 'для собаки', 'у духовки', 'для отпуска', 'в коридоре', 'для дачного домика'];
+const OMO_FRAMES = ['%s %s', 'подбери %s %s', 'напиши %s %s', 'проверь %s %s'];
+const guardedSkills = SKILLS.filter((x) => !x.off && GUARDED.some((g) => x.id.startsWith(g + '-')) && x.re);
+const omono = [];
+for (const r of AMBIG) for (const c of BYT) for (const f of OMO_FRAMES) omono.push(f.replace('%s', r).replace('%s', c));
+const omonoHit = [];
+for (const q of omono) {
+  const who = guardedSkills.filter((x) => x.re.test(q)).map((x) => x.id);
+  if (who.length) omonoHit.push(q + ' → ' + [...new Set(who)].join(','));
+}
+const omonoBy = new Map();
+for (const q of omono) {
+  for (const x of guardedSkills.filter((y) => y.re.test(q))) {
+    const root = AMBIG.find((r) => q.includes(r)) || '?';
+    const k = root + ' → ' + x.id;
+    omonoBy.set(k, (omonoBy.get(k) || 0) + 1);
+  }
+}
+if (process.argv.includes('--omono')) {
+  console.log('OMONIM: сводка (корень → навык, сколько бытовых фраз):');
+  for (const [k, n] of [...omonoBy].sort((x, y) => y[1] - x[1])) console.log('  ', k.padEnd(34), n);
+}
+if (omonoHit.length) {
+  note('OMONIM: ' + omonoHit.length + ' бытовых фраз будят наши навыки — у ветки нет доменной опоры: '
+    + omonoHit.slice(0, 6).join(' ;; ') + (omonoHit.length > 6 ? ' …' : ''));
+}
+
 /* 7. итог */
 const st = stats();
 console.log('  · реестр: ' + st.total + ' | на ходу ' + st.on + ' | off ' + st.off + ' | категорий ' + CATS.length +
