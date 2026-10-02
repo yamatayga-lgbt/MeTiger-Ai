@@ -1,0 +1,132 @@
+@ 22.1 описание изображения → 4
+    on  files · image-file · Изображения и сканы
+    on  vision · v-analyze · Анализ изображения
+    off editing · img-create · Нарисовать изображение
+    off editing · img-remove · Убрать с фото
+@ 22.2 OCR текста → 6
+    on  vision · v-analyze · Анализ изображения
+    on  vision · v-ocr · Распознавание текста
+    on  vision · v-screenshot · Анализ скриншота
+    on  vision · v-quality · Качество изображения
+    on  control · a-tool · Самостоятельный выбор инструмента
+    on  emotion · emo-detect · Распознавание эмоций
+@ 22.3 визуальная композиция → 11
+    on  reasoning · r-decompose · Декомпозиция задачи
+    on  vision · v-compare · Сравнение изображений
+    on  vision · v-design · Анализ дизайна
+    on  vision · v-structure · Определение структуры изображения
+    on  vision · v-space · Пространство и пропорции
+    off editing · img-create · Нарисовать изображение
+    off editing · img-outpaint · Расширить кадр
+@ 22.4 сценарий видео → 1
+    on  text · script · Сценарии
+@ 22.5 транскрибирование → 1
+    off emotion · emo-voice · Эмоции в голосе
+@ 22.6 структура видео → 1
+    on  research · fc-links · Ссылки, по которым проверяют
+@ 22.7 субтитры → 0
+@ 22.8 соответствие медиаформату → 3
+    on  comm · c-tone · Адаптация тона
+    on  vision · v-quality · Качество изображения
+    on  safety · safety-permissions · Проверка разрешений
+@ 23.1 пользовательский сценарий → 0
+@ 23.2 информационная архитектура → 2
+    off web · w-nav · Навигация по сайтам
+    on  vision · v-ui · Анализ интерфейса
+@ 23.3 пользовательские потоки → 0
+@ 23.4 удобство интерфейса → 0
+@ 23.5 обратная связь интерфейса → 0
+@ 23.6 UX-проблемы → 2
+    on  diagnostics · d-tool-health · Проверка состояния инструментов
+    on  emotion · emo-situation · Понимание ситуации
+@ 23.7 прототип → 0
+@ 23.8 доступность → 1
+    on  coding · dev-markup · HTML/CSS
+@ 24.1 визуальное направление → 0
+@ 24.2 дизайн-система → 0
+@ 24.3 типографика → 3
+    on  research · fc-scope · Край источника
+    on  vision · v-errors · Поиск визуальных ошибок
+    on  vision · v-design · Анализ дизайна
+@ 24.4 цветовая система → 1
+    on  vision · v-design · Анализ дизайна
+@ 24.5 композиция интерфейса → 5
+    on  files · f-txt · Работа с TXT
+    on  vision · v-errors · Поиск визуальных ошибок
+    on  vision · v-design · Анализ дизайна
+    on  data · data-tables · Создание таблиц
+    on  tooling · tl-format · Работа с форматтерами
+@ 24.6 состояния компонентов → 0
+@ 24.7 визуальные спецификации → 0
+@ 24.8 визуальная согласованность → 0
+@ 25.1 README → 1
+    on  coding · dev-docs · Документация к коду
+@ 25.2 документирование API → 0
+@ 25.3 инструкции → 11
+    on  memory · mem-rules · Запоминание инструкций
+    on  coding · dev-script · Создание скриптов
+    on  control · a-skill · Самостоятельный выбор навыков
+    on  search · dreams · Сонник
+    on  automation · auto-check · Автоматическая проверка
+    on  automation · auto-schedule · Запуск задач по расписанию
+    on  automation · auto-monitor · Мониторинг условий
+@ 25.4 архитектурные решения → 0
+@ 25.5 устранение ошибок → 0
+@ 25.6 изменения → 2
+    on  coding · dev-refactor · Рефакторинг
+    on  tooling · tl-docs · Чтение документации библиотек
+@ 25.7 спецификации → 1
+    on  diagnostics · d-requirements · Сравнение результата с требованиями
+@ 25.8 актуальность документации → 0
+@ 26.1 перевод → 11
+    on  coding · dev-debug · Поиск ошибок
+    on  search · currency · Курсы валют
+    on  search · units · Конвертер величин
+    on  search · sr-query · Постановка запроса
+    on  text · translate · Переводчик
+    on  code · bases · Системы счисления
+    on  context · ctx-mixed · Смешанные языки
+@ 26.2 терминология → 1
+    on  search · sr-expand · Расширение запроса
+@ 26.3 локализация интерфейса → 1
+    on  debug · db-locate · Локализация причины
+@ 26.4 форматы дат и чисел → 2
+    on  files · f-csv-analyze · Анализ CSV
+    on  arch · ar-iface · Интерфейсы модулей
+@ 26.5 согласованность терминов → 0
+@ 26.6 неоднозначности перевода → 2
+    on  search · sr-expand · Расширение запроса
+    on  search · sr-refine · Уточнение запроса
+@ 26.7 редактирование машинного перевода → 0
+@ 26.8 языковые ограничения → 2
+    on  files · f-extract-text · Извлечение текста
+    on  vision · v-errors · Поиск визуальных ошибок
+@ 27.1 сложные понятия → 0
+@ 27.2 учебный план → 1
+    on  plan · study · План обучения
+@ 27.3 подбор примеров → 1
+    on  coding · dev-sql · SQL
+@ 27.4 упражнения → 1
+    on  plan · workout · Тренировки
+@ 27.5 контрольные вопросы → 5
+    on  intel · selfcheck · Самопроверка ответа
+    on  web · w-site · Исследование веб-сайта
+    on  files · f-structure · Проверка структуры документа
+    on  vision · v-doc · Анализ документа
+    on  diagnostics · d-selfcheck · Самопроверка результата
+@ 27.6 глубина объяснения → 2
+    on  style · style-simple · Простой язык
+    on  style · style-complex · Сложный язык
+@ 27.7 пробелы в понимании → 0
+@ 27.8 учебная обратная связь → 0
+
+# рамки: coding, auto_schedule, memory, data_visual, devops, webdev, dbase, tooling
+    coding 102
+    auto_schedule 97
+    memory 135
+    data_visual 72
+    devops 119
+    webdev 131
+    dbase 119
+    tooling 117
+# реестр: 465 | на ходу 441 | off 24 | категорий 37

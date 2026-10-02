@@ -1,0 +1,393 @@
+{
+"pairs": [
+[
+"где именно ломается",
+"db-locate"
+],
+[
+"готов ли релиз к выпуску",
+"dv-release"
+],
+[
+"задокументируй архитектурные решения",
+"ar-docs"
+],
+[
+"исправь опечатку в функции",
+"dev-fix"
+],
+[
+"как организовать события между сервисами",
+"ar-events"
+],
+[
+"как разбить систему на модули",
+"ar-split"
+],
+[
+"как этот код вообще работает",
+"pc-readcode"
+],
+[
+"какие модули не покрыты вовсе",
+"ts-coverage"
+],
+[
+"код тяжело читать, дай имена",
+"pc-readable"
+],
+[
+"напиши интеграционный тест",
+"ts-integration"
+],
+[
+"напиши код, который читает csv и считает суммы",
+"dev-write"
+],
+[
+"напиши функцию, которая парсит csv",
+"dev-write"
+],
+[
+"нарисуй схему архитектуры",
+"dev-architecture"
+],
+[
+"настрой ci на каждый пул-реквест",
+"dv-cicd"
+],
+[
+"настрой окружение под проект",
+"dv-env"
+],
+[
+"не лови все исключения подряд",
+"pc-exceptions"
+],
+[
+"не могу воспроизвести баг",
+"db-repro"
+],
+[
+"не могу понять чужой код",
+"pc-readcode"
+],
+[
+"не сломало ли правка соседей",
+"db-noregress"
+],
+[
+"оформи баг-репорт",
+"ts-bugreport"
+],
+[
+"ошибки глотаются молча",
+"pc-exceptions"
+],
+[
+"план отката если релиз поедет",
+"dv-rollback"
+],
+[
+"подготовь технические комментарии",
+"pc-comments"
+],
+[
+"покрытие падает",
+"ts-coverage"
+],
+[
+"после выкладки всё упало",
+"dv-deployfail"
+],
+[
+"почини этот код",
+"dev-fix"
+],
+[
+"приведи типы к общему виду",
+"pc-types"
+],
+[
+"проверь гипотезу про кэш",
+"db-hypothesis"
+],
+[
+"проверь регрессию после фикса",
+"ts-regression"
+],
+[
+"проверь сценарием как у пользователя",
+"ts-scenario"
+],
+[
+"прокомментируй этот блок",
+"pc-comments"
+],
+[
+"протестируй границы значений",
+"ts-boundary"
+],
+[
+"разбери стек вызовов",
+"db-stack"
+],
+[
+"разбери эти логи",
+"dv-logs"
+],
+[
+"разберись с типами данных",
+"pc-types"
+],
+[
+"разорви цикл зависимостей",
+"ar-deps"
+],
+[
+"расшифруй трейс",
+"db-message"
+],
+[
+"сборка падает на ci",
+"dv-build"
+],
+[
+"сборка стала слишком долгой",
+"dv-build"
+],
+[
+"сгенерируй тестовые данные",
+"ts-fixtures"
+],
+[
+"сделай читаемо, без магии",
+"pc-readable"
+],
+[
+"сколько реплик и где источник истины",
+"ar-distributed"
+],
+[
+"сократи пример до минимума",
+"db-minimize"
+],
+[
+"спроектируй интерфейс этого модуля",
+"ar-iface"
+],
+[
+"сравни монолит и микросервисы, чем заплатим",
+"ar-tradeoff"
+],
+[
+"управляй зависимостями между пакетами",
+"ar-deps"
+],
+[
+"фича-флаг пора убирать",
+"dv-config"
+],
+[
+"что значит это сообщение об ошибке",
+"db-message"
+]
+],
+"banal": [
+"выкладка плитки в ванной",
+"границы широты",
+"доклад в школу про вулкан",
+"заболело горло, что делать",
+"заказ билдов на сборку мебели",
+"закрой вкладку браузера",
+"запланируй поездку",
+"как поднять пульс",
+"как построить карьеру",
+"как почистить кроссовки",
+"как часто менять полотенце",
+"конфигурация компьютера для игр",
+"логарифм числа 100",
+"напиши письмо клиенту",
+"не открывается приложение на телефоне",
+"обзор сборки пк",
+"объясни, что такое инфляция",
+"откат стиральной машины к заводским настройкам",
+"отчёт по практике",
+"ошибки в тексте, поправь",
+"переведи на английский: good morning",
+"перескажи сериал",
+"план питания на неделю",
+"погода в Гомеле завтра",
+"пограничник на заставе",
+"поделка из теста",
+"поздравь коллегу с днём рождения",
+"разбери сонник про воду",
+"сделай читаемо это стихотворение",
+"скажи прогноз по курсу",
+"сколько будет 15% от 240",
+"сколько варить яйца всмятку",
+"сколько калорий в рисе",
+"соли и перца по вкусу",
+"сочини тост",
+"тест на беременность",
+"тест на беременность показал две полоски",
+"тест на прочность стекла",
+"что посмотреть в выходные",
+"что посмотреть на море"
+],
+"ours": [
+"ar-deps",
+"ar-distributed",
+"ar-docs",
+"ar-events",
+"ar-iface",
+"ar-split",
+"ar-tradeoff",
+"d-gapchain",
+"d-needsearch",
+"d-strategy",
+"da-integrity",
+"da-join",
+"da-schema",
+"db-hypothesis",
+"db-locate",
+"db-message",
+"db-minimize",
+"db-noregress",
+"db-repro",
+"db-stack",
+"dc-criteria",
+"dc-exit",
+"dc-incomplete",
+"dc-record",
+"dc-sensitivity",
+"dc-tradeoff",
+"ds-backup",
+"ds-index",
+"ds-migrate",
+"ds-optimize",
+"ds-ref",
+"ds-schema",
+"ds-txn",
+"dv-build",
+"dv-cicd",
+"dv-config",
+"dv-deployfail",
+"dv-env",
+"dv-logs",
+"dv-release",
+"dv-rollback",
+"fc-date",
+"fc-links",
+"fc-opinion",
+"fc-primary",
+"fc-scope",
+"kn-coverage",
+"kn-dupes",
+"kn-index",
+"mc-compress",
+"mc-scope",
+"p-alternatives",
+"p-blockers",
+"p-constraints",
+"p-done",
+"p-replan",
+"pc-comments",
+"pc-exceptions",
+"pc-readable",
+"pc-readcode",
+"pc-types",
+"pr-bottleneck",
+"pr-define",
+"pr-generate",
+"pr-prevent",
+"pr-root",
+"pr-sideeffects",
+"r-ambiguity",
+"r-deduction",
+"r-induction",
+"rd-diff",
+"rd-fragment",
+"rd-gaps",
+"rd-reqs",
+"rd-structure",
+"rd-terms",
+"rd-thesis",
+"sr-expand",
+"sr-internal",
+"sr-merge",
+"sr-period",
+"sr-query",
+"sr-refine",
+"sr-source",
+"st-audit",
+"st-corr",
+"st-groups",
+"st-hypothesis",
+"st-series",
+"st-uncert",
+"tl-docs",
+"tl-format",
+"tl-lint",
+"tl-pkg",
+"tl-repro",
+"tl-syntax",
+"tl-warn",
+"ts-boundary",
+"ts-bugreport",
+"ts-coverage",
+"ts-fixtures",
+"ts-integration",
+"ts-regression",
+"ts-scenario",
+"tx-brief",
+"tx-clear",
+"tx-draft",
+"tx-edit",
+"tx-expand",
+"wd-contract",
+"wd-http",
+"wd-neterr",
+"wd-pagination",
+"wd-routes"
+],
+"cov": {
+"ar-iface": 1,
+"dv-cicd": 1,
+"pc-exceptions": 2,
+"db-stack": 1,
+"pc-readable": 2,
+"ts-fixtures": 1,
+"dv-deployfail": 1,
+"ar-deps": 2,
+"ts-coverage": 2,
+"dv-release": 1,
+"db-minimize": 1,
+"pc-comments": 2,
+"ar-distributed": 1,
+"dev-write": 2,
+"dv-build": 2,
+"pc-readcode": 2,
+"ts-regression": 1,
+"ar-tradeoff": 1,
+"ts-bugreport": 1,
+"db-hypothesis": 1,
+"db-noregress": 1,
+"ts-boundary": 1,
+"ar-split": 1,
+"dv-rollback": 1,
+"dev-fix": 2,
+"pc-types": 2,
+"dv-config": 1,
+"dv-logs": 1,
+"ts-integration": 1,
+"ar-events": 1,
+"dev-architecture": 1,
+"db-locate": 1,
+"ts-scenario": 1,
+"ar-docs": 1,
+"dv-env": 1,
+"db-repro": 1,
+"db-message": 2
+}
+}
