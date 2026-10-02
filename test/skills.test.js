@@ -55,13 +55,13 @@ ok('A5: имена инструментов переведены на наши i
 
 console.log('B — гейт: чего в этом клиенте нет, то не обещается');
 const reasons = OFF_SKILLS.map((s) => s.off);
-ok('B1: выключено ровно то, что нечем выполнять (43), остальное на ходу — и наши 14 среди активных',
-  OFF_SKILLS.length === 43 && ON_SKILLS.length === SKILLS.length - 43 && OURS.every((id) => !OFF_SKILLS.some((x) => x.id === id)),
+ok('B1: выключено ровно то, что нечем выполнять (24), остальное на ходу — и наши 14 среди активных',
+  OFF_SKILLS.length === 24 && ON_SKILLS.length === SKILLS.length - 24 && OURS.every((id) => !OFF_SKILLS.some((x) => x.id === id)),
   [OFF_SKILLS.length, ON_SKILLS.length, SKILLS.length].join('/'));
 ok('B2: ни один выключенный навык не попал в подбор',
-  ['f-pdf-read', 'img-create', 'auto-n8n', 'bypass-generic', 'neural-typing', 'w-form'].every((id) => !detect(id + ' ' + 'нужен').some((s) => s.id === id)));
-ok('B3: files и editing выключены целыми категориями с объяснением',
-  SKILLS.filter((s) => s.cat === 'files').every((s) => /загрузки файлов/.test(String(s.off)))
+  ['emo-voice', 'img-create', 'auto-n8n', 'bypass-generic', 'neural-typing', 'w-form'].every((id) => !detect(id + ' ' + 'нужен').some((s) => s.id === id)));
+ok('B3: files на ходу целиком (документы читает docparse), editing по-прежнему ждёт инструмент',
+  SKILLS.filter((s) => s.cat === 'files').every((s) => !s.off)
   && SKILLS.filter((s) => s.cat === 'editing').every((s) => /картинок/.test(String(s.off))),
   JSON.stringify(stats().reasons).slice(0, 140));
 ok('B4: ни у одного активного навыка нет ссылки на несуществующий инструмент',
@@ -256,7 +256,7 @@ console.log('Q — добавленные группы 04–07: решения �
     && ['dc-criteria', 'dc-tradeoff', 'dc-incomplete', 'dc-sensitivity', 'dc-exit', 'dc-record', 'd-gapchain', 'd-needsearch', 'd-strategy', 'sr-query', 'sr-expand', 'sr-refine', 'sr-internal', 'sr-merge'].every((id) => !get(id).need.length),
     JSON.stringify(GROUP2.filter((id) => get(id).need.length).map((id) => id + ':' + get(id).need.join('+'))));
   ok('Q5: ни один новый навык не выключен (всё это правила, а не недоступные инструменты)',
-    GROUP2.every((id) => !get(id).off) && stats().off === 43, String(stats().off));
+    GROUP2.every((id) => !get(id).off) && stats().off === 24, String(stats().off));
   ok('Q6: supersedes новых навыков ссылается только на существующие id',
     GROUP2.every((id) => (get(id).supersedes || []).every((x) => !!skillById(x))),
     JSON.stringify(GROUP2.map((id) => get(id).supersedes).filter((x) => x && x.length)));
@@ -522,10 +522,24 @@ console.log('R — добавленные группы 08–12: документ
     'сделай кофе-машину короче', 'удали мои данные', 'это секрет, никому не говори', 'сколько дней до Нового года',
     'напиши мне стишок про Гомель', 'не могу уснуть', 'купить билеты на поезд', 'объясни как ребёнку',
     'этот файл не открывается', 'напиши в чат позже', 'что ты вообще умеешь', 'давай поговорим', 'сравни цены на бензин',
-    'поругайся', 'доброе утро', 'я устал', 'расскажи анекдот', 'что надеть', 'перескажи коротко', 'помоги с резюме'];
-  const p10 = /^rd-|^kn-(index|dupes|coverage)$|^mc-(compress|scope)$|^da-(schema|join|integrity)$|^st-/;
-  const noise = BANAL.filter((q) => fired(q).some((x) => p10.test(x)));
-  ok('R8: и молчат на бытовом корпусе (30 фраз, включая «этот файл не открывается»)',
+    'поругайся', 'доброе утро', 'я устал', 'расскажи анекдот', 'что надеть', 'перескажи коротко', 'помоги с резюме',
+    'расскажи, что тут по делу происходит', 'это шум или нет, мне всё равно', 'насколько верить этому человеку',
+    'разбери, чем всё сшит', 'у нас три причины для радости', 'что значит пустое место в этой анкете',
+    'как разложить книги на полке, чтобы искалось', 'у нас с тобой всё хорошо', 'полнота моих чувств',
+    'сократи её', 'история болезни', 'разговор в баре',
+    'контекст встречи', 'сегодня плохая погода', 'позвони маме вечером',
+    'запиши меня к врачу', 'сколько стоит билет до Минска', 'объясни ребёнку, что такое инфляция',
+    'перечисли продукты для ужина', 'что ответить начальнику', 'напиши письмо-извинение',
+    'разберись в моих мыслях', 'это важно или нет', 'давай просто поговорим',
+    'что посмотреть вечером', 'как дела с ремонтом', 'сделай покороче и повеселее',
+    'не нравится мне этот тон', 'объясни проще', 'что почитать на выходные',
+    'посчитай чаевые с 2400', 'утомили отчёты', 'сегодня суббота, идём гулять',
+    'мне грустно', 'измени пароль от почты', 'поздравь Петрова с днём рождения',
+    'я вернулся к задаче потом'];
+  /* Рамка — все наши 56 навыков, не только группа 08–12: бытовой вопрос не имеет права
+     притянуть «проверку целостности» или «сжатие контекста». */
+  const noise = BANAL.filter((q) => fired(q).some((x) => OURS_SET.has(x)));
+  ok('R8: и молчат на бытовом корпусе (' + BANAL.length + ' фраз, включая «этот файл не открывается»)',
     noise.length === 0, noise.join(' ; ').slice(0, 170));
   const many = detect(POINTS.map(([, q]) => q).join(', '), {});
   const len = (x) => x.title.length + x.text.length;
@@ -564,9 +578,11 @@ console.log('R — добавленные группы 08–12: документ
     && fired('выбираю между двумя поставщиками').includes('r-compare')
     && fired('посчитай среднее, медиану и разброс').includes('data-stats'),
     POINTS.length + ' формулировок сверено');
-  ok('R32: и не раскрыли то, что должно оставаться выключенным (файловые навыки донора)',
-    skillById('f-find').off && skillById('f-compare').off && skillById('doc-analysis').off,
-    SKILLS.filter((x) => x.cat === 'files').every((x) => x.off) ? 'вся категория files выключена' : 'ЧАСТЬ ВКЛЮЧЕНА');
+  /* Развязка `files` — не «включить всё подряд»: у каждого включённого навыка есть механизм
+     (docparse на вход, filegen на исход). Проверка держит границу: чего нет, то и дальше off. */
+  ok('R32: и развязка files не открыла то, чем нечем выполнять (11 editing, клики, n8n, голос — всё ещё off)',
+    ['img-create', 'w-form', 'auto-n8n', 'emo-voice'].every((id) => skillById(id).off) && stats().off === 24,
+    'off ' + stats().off);
   ok('R33: новые навыки не ссылаются на чужие механизмы и не обещают хранлище',
     GROUP3.every((id) => !/localStorage|IndexedDB|Mini App|webhook|сохраню в базу|занесу в каталог/i.test(get(id).text)),
     GROUP3.filter((id) => /localStorage|сохраню в базу/i.test(get(id).text)).join(',') || '-');
@@ -574,7 +590,7 @@ console.log('R — добавленные группы 08–12: документ
     /не считаются|не считываются|не моя арифметика|локально не/.test(get('st-hypothesis').text)
     && /calc/.test(get('st-hypothesis').text), get('st-hypothesis').text.slice(0, 200));
   ok('R35: ни один новый навык не выключен и бюджет выключенных не вырос (43)',
-    GROUP3.every((id) => !get(id).off) && stats().off === 43, String(stats().off));
+    GROUP3.every((id) => !get(id).off) && stats().off === 24, String(stats().off));
 
   /* Косвенные формулировки — то, на чём триггеры обычно и ломаются: падежи, порядок
      слов, глагол не тот. Каноническая фраза ничего не доказывает. */
@@ -613,6 +629,41 @@ console.log('R — добавленные группы 08–12: документ
     && !fired('у нас с тобой всё хорошо').includes('kn-dupes'),
     ['это шум или нет, мне всё равно', 'насколько верить этому человеку', 'как разложить книги на полке, чтобы искалось',
      'история болезни', 'у нас с тобой всё хорошо'].map((q) => q + '→' + (fired(q).join('+') || '—')).join(' ; ').slice(0, 170));
+
+  /* Текст навыка тоже договор: если в нём не сказано «числа в сообщении — уже данные»,
+     модель переспрашивает про файл, даже когда всё посчитать можно на месте. */
+  ok('R38: da-integrity не отправляет человека за файлом, когда числа уже в сообщении',
+    /Числа в сообщении — уже данные/.test(get('da-integrity').text), String(get('da-integrity').text.length));
+  ok('R39: и укладывается в потолок 500 знаков после сборки фрейма',
+    GROUP3.every((id) => get(id).text.length <= 500),
+    GROUP3.map((id) => id + ':' + get(id).text.length).filter((x) => +x.split(':')[1] > 500).join(' ') || 'макс ' + Math.max(...GROUP3.map((id) => get(id).text.length)));
+
+  /* Категория `files` развязана только потому, что читатель документов свой. Проверки ниже
+     держат обе стороны: навыки на ходу, и тексты переписаны под то, что разборщик реально отдаёт. */
+  const FILES_REWRITTEN = {
+    'f-pdf-read': /стр. 12|номера страниц|выдумывай/,
+    'f-txt': /около чего она/,
+    'f-find': /страницу он не размечает/,
+    'f-structure': /прочитался ли он вообще/,
+    'f-edit': /на месте не перезаписывается/,
+  };
+  const fl = SKILLS.filter((s) => s.cat === 'files');
+  ok('R40: все 19 навыков files на ходу — не благодаря заглушке, а потому что есть docparse и filegen',
+    fl.length === 19 && fl.every((s) => !s.off), String(fl.filter((s) => s.off).length));
+  ok('R41: и их формулировки обещают только то, что наш разбор видит (страниц, нумерации строк и правки исходника нет)',
+    Object.entries(FILES_REWRITTEN).every(([id, re]) => re.test(get(id).text)),
+    JSON.stringify(Object.keys(FILES_REWRITTEN).filter((id) => !FILES_REWRITTEN[id].test(get(id).text))));
+  ok('R42: на бытовом корпусе skills-навыки молчат так же, как наши',
+    BANAL.filter((q) => fired(q).some((x) => /^f-|^image-file$|^doc-analysis$/.test(x))).length === 0,
+    BANAL.filter((q) => fired(q).some((x) => /^f-|^image-file$|^doc-analysis$/.test(x))).join(' ; ').slice(0, 170));
+
+  /* Развязанная категория бесполезна, если её не слышно: у донора «проанализируй
+     приложенный файл» разбивался о требуемую смежность слов. */
+  ok('R43: «проанализируй приложенный файл» тянет doc-analysis, а «проанализируй мой отзыв о фильме» — нет',
+    fired('проанализируй приложенный файл').includes('doc-analysis')
+    && !fired('проанализируй мой отзыв о фильме').includes('doc-analysis')
+    && !fired('скажи, это хороший файл или нет').includes('doc-analysis'),
+    fired('проанализируй приложенный файл').join('+'));
 }
 
 /* ═══════════ живые категории (LIVE_CATS): картинки ═══════════ */
@@ -642,8 +693,8 @@ console.log('S7 — категория оживает сама, когда ин�
     st0.live.length === 1 && st0.live[0].tool === 'imggen' && st0.live[0].ready === false, JSON.stringify(st0.live));
   ok('S78: когда инструмент жив, причины «нечем выполнять» в сводке не остаётся',
     st.reasons.join(' ').indexOf('источник картинок') < 0, st.reasons.join(' '));
-  ok('S79: OFF_CATS больше не держит editing вечно — только files',
-    !('editing' in OFF_CATS) && 'files' in OFF_CATS, JSON.stringify(Object.keys(OFF_CATS)));
+  ok('S79: OFF_CATS пуста — ни editing, ни files не глушатся навсегда (files развязана в 0.021)',
+    !('editing' in OFF_CATS) && !('files' in OFF_CATS), JSON.stringify(Object.keys(OFF_CATS)));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);

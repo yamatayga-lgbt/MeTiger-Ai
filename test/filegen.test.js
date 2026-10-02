@@ -287,7 +287,7 @@ console.log('E — эндпоинты: человек видит файлы и �
   ok('E5: и что включится на живой вопрос — той же функцией, что в бою',
     d.onAsk.some((s) => s.id === 'translate') && !d.onAsk.some((s) => s.id === 'ad-lang'), JSON.stringify(d.onAsk.map((s) => s.id)));
   ok('E6: выключенные навыки видны с причиной, а не молча',
-    d.items.filter((s) => s.off).length === reg.OFF_SKILLS.length && d.reasons.some((x) => /загрузки файлов/.test(x)), String(d.off));
+    d.items.filter((s) => s.off).length === reg.OFF_SKILLS.length && d.reasons.some((x) => /n8n/.test(x)), String(d.off));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
