@@ -294,8 +294,11 @@ export function createEngine(opts) {
     let order = orderFor(tier, P, { images, only: input.only, forceModel: input.forceModel, health });
     /* Математика и код: вперёд тот провайдер, у которого в пуле стоит голова-счётчик
        (ныне — бесплатный DeepSeek на OdiRouter, см. INTENT_HEADS). Пин человека и
-       явный providerOrder перебивают это как есть: порядок ниже применяется к нему. */
-    if ((intent === 'math' || intent === 'code') && !pin0(input)) {
+       явный providerOrder перебивают это как есть: порядок ниже применяется к нему.
+       Исключение — «17*23», где калькулятор уже дал точный ответ: тащить ради этого
+       модель с другим провайдером значит добавить человеку четыре секунды (замер
+       на проде: odirouter 6,7 с против groq 2,6 с). Считает код, модель только говорит. */
+    if ((intent === 'math' || intent === 'code') && !pin0(input) && toolsRes.used.indexOf('calc') < 0) {
       order = preferHeads(order, poolOf(P), intent, env);
     }
     /* На острой теме порядок провайдеров решает не конфиг, а их же поведение:

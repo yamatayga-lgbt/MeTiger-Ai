@@ -182,8 +182,8 @@ console.log('K — математика едет к тому DeepSeek, кото�
       return { status: 200, text: async () => JSON.stringify(chat(b.model.includes('deepseek') ? '391' : 'не считаю')) };
     },
   });
-  const r1 = await e1b.run({ text: 'сколько будет 17*23', noCouncils: true });
-  ok('K1: на math первым спрашивают OdiRouter с deepseek-v4-flash',
+  const r1 = await e1b.run({ text: 'реши уравнение 3x+7=2x+11 и проверь корень', noCouncils: true });
+  ok('K1: на настоящей математике первым спрашивают OdiRouter с deepseek-v4-flash',
     r1.ok === true && seen[0] === 'odirouter/deepseek-v4-flash' && r1.provider === 'odirouter', JSON.stringify(seen.slice(0, 3)));
   const seen2 = [];
   const e2 = createEngine({
@@ -195,6 +195,20 @@ console.log('K — математика едет к тому DeepSeek, кото�
     },
   });
   const r2 = await e2.run({ text: 'привет, как дела', noCouncils: true });
+  ok('K1a: «17*23» — калькулятор посчитал, везти запрос к другому провайдеру незачем',
+    (await (async () => {
+      const seen = [];
+      const e = createEngine({
+        env: ENVDS, sleep: async () => {},
+        fetch: async (url, init) => {
+          const b = JSON.parse(init.body);
+          seen.push((String(url).includes('odirouter') ? 'odirouter/' : 'groq/') + b.model);
+          return { status: 200, text: async () => JSON.stringify(chat('391')) };
+        },
+      });
+      const r = await e.run({ text: 'сколько будет 17*23? только число', noCouncils: true });
+      return r.ok === true && seen[0].indexOf('groq/') === 0;
+    })()), '');
   ok('K2: на болтовне очередь остаётся конфигом (groq первым), DeepSeek не при чём',
     r2.ok === true && seen2[0].indexOf('groq/') === 0, JSON.stringify(seen2.slice(0, 2)));
   const seen3 = [];
