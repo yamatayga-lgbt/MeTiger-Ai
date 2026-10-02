@@ -1,0 +1,13 @@
+name = "metiger-ai"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-09-30"
+
+# Связка хранилища с Function-рантаймом. Источник правды — этот файл, id берётся
+# из «curl /accounts/{аккаунт}/storage/kv/namespaces» (не из памяти!). Wrangler
+# проверяет существование неймспейса и падает, если id не тот.
+# Пустая секция «[env] production = {}» из `wrangler pages download config`
+# перекрывает верхний уровень — байндинг с продом тогда не применяется.
+# После любой правки файла обязателен новый деплой.
+[[kv_namespaces]]
+binding = "MEMORY"
+id = "9b4e1328fbce439db03a57fdb7971145"

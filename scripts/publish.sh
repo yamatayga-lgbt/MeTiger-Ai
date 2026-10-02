@@ -113,7 +113,10 @@ if [ -n "$COMMIT_MSG" ]; then
     ASK=$(mktemp); chmod 700 "$ASK"
     printf '#!/bin/sh\ncase "$1" in\n*Username*) printf "%s" "$GIT_USER";;\n*) printf "%s" "$GITHUB_PAT";;\nesac\n' > "$ASK"
     trap 'rm -f "$ASK"' EXIT
-    GITHUB_PAT="$PAT" GIT_ASKPASS="$ASK" run git push origin HEAD:main
+    # ASK читает $GITHUB_PAT и $GIT_USER в момент вызова — значит обе переменные
+    # надо передать в окружение git, иначе askpass вернёт пустую строку и GitHub
+    # ответит «No anonymous write access».
+    GITHUB_PAT="$PAT" GIT_USER="$GIT_USER" GIT_ASKPASS="$ASK" run git push origin HEAD:main
     rm -f "$ASK"; trap - EXIT
   fi
 fi
@@ -127,7 +130,13 @@ say "── деплой на Pages"
 if [ "$DRY" = 1 ]; then
   say "  [dry] $WRANGLER pages deploy dist --project-name $PROJECT $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' )"
 else
-  OUT=$($WRANGLER pages deploy dist --commit-dirty=true --project-name "$PROJECT" $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' ) 2>&1)
+  if ! OUT=$($WRANGLER pages deploy dist --commit-dirty=true --project-name "$PROJECT" $( [ "$MODE" = preview ] && echo '--branch preview' || echo '--branch main' ) 2>&1); then
+    # Раньше провал молча съедался: set -e выходил без объяснений, а следом
+    # печаталось «выложено». Теперь — причина и честный выход.
+    printf '%s\n' "$OUT" | tail -20 | sed 's/^/    /' >&2
+    say "  ✗ деплой не состоялся — прод остался на прошлой сборке" >&2
+    exit 1
+  fi
   printf '%s\n' "$OUT" | tail -4
   URL=$(printf '%s\n' "$OUT" | grep -oE 'https://[a-z0-9-]+\.metiger-ai\.pages\.dev' | tail -1)
   say "  выложено: прод = $PROD (адрес сборки ${URL:-?} мог ещё не прогреться — судить по проду)"
