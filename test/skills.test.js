@@ -47,6 +47,7 @@ const OURS = [
   'ux-scenario', 'ux-ia', 'ux-flow', 'ux-feedback', 'ux-problems', 'ux-proto', 'ux-a11y',
   'vd-direction', 'vd-system', 'vd-type', 'vd-color', 'vd-layout', 'vd-states', 'vd-spec', 'vd-consistency',
   'td-guide', 'td-runbook', 'td-changelog', 'td-spec', 'td-fresh',
+  'l10-ui', 'l10-units', 'l10-term', 'l10-audit', 'l10-source', 'l10-mt', 'l10-fit',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -58,8 +59,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 41 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc), и каждая непустая',
-  CATS.length === 41 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 42 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc/i18n), и каждая непустая',
+  CATS.length === 42 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc', 'i18n'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -790,8 +791,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 82 — 407 → 489 (13–17, 18–21, 22–25), выключенных не прибавилось',
-    st1.total === 489 && st1.on === 465 && st1.off === 24 && st1.groups.length === 41, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 89 — 407 → 496 (13–17, 18–21, 22–26), выключенных не прибавилось',
+    st1.total === 496 && st1.on === 472 && st1.off === 24 && st1.groups.length === 42, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -877,9 +878,9 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('U12: каждый id из OURS есть в реестре, дублей и дырок нет — ' + OURS.length + ' шт.',
     new Set(OURS).size === OURS.length && OURS.every((id) => typeof id === 'string' && get(id)),
     OURS.filter((id) => !get(id)).map((x) => JSON.stringify(x)).join(', '));
-  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md|ux|vd|td)-/;
+  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md|ux|vd|td|l10)-/;
   const missed = SKILLS.filter((x) => OUR_PREFIX.test(x.id) && !OURS.includes(x.id)).map((x) => x.id);
-  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-, ux-, vd-, td-) перечислены в OURS',
+  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-, ux-, vd-, td-, l10-) перечислены в OURS',
     missed.length === 0, missed.join(', '));
 }
 
@@ -1102,6 +1103,65 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('Z14: рамка techdoc называет единственный источник — присланный текст, и приклеена она ровно к нашим пятерым',
     td.every((x) => /только присланный текст/.test(x.text)) && td.every((x) => x.text.length <= 500),
     td.map((x) => x.text.length).join(' '));
+}
+
+/* ═══════════ AA — группа 26 «Перевод и локализация» (поставка 0.029) ═══════════
+   26.1 «перевести текст» остаётся у донора `translate`: отдельной проверкой закреплено, что
+   ни один из семи навыков его не подзатыляет. И наоборот — бытовые омонимы группы (перевод на
+   карту, термин платежа, локализация боли, дата выдачи) не должны будить нас: это тот дефект,
+   который три поставки подряд ловился руками, а теперь стоит в skillcheck. */
+{
+  const get = (id) => skillById(id);
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  const l10 = SKILLS.filter((x) => /^l10-/.test(x.id));
+  ok('AA1: 7 навыков локализации на месте, своя категория, приоритет 5, тексты ≤ 500',
+    l10.length === 7 && l10.every((x) => x.cat === 'i18n' && x.priority === 5 && x.text.length <= 500 && x.text.length > 200),
+    l10.map((x) => x.id + ':' + x.text.length).join(' '));
+  ok('AA2: ни один не зовёт инструмент — словаря, носителя языка и браузерного рендера у навыка нет',
+    l10.every((x) => !(x.tools || []).length && !(x.need || []).length),
+    l10.filter((x) => (x.tools || []).length || (x.need || []).length).map((x) => x.id).join(','));
+  ok('AA3: рамка «языка не знаем» приклеена ко всем семерым',
+    l10.every((x) => /Языка не знаем: только присланный текст/.test(x.text)),
+    l10.filter((x) => !/Языка не знаем/.test(x.text)).map((x) => x.id).join(','));
+  ok('AA4: l10-ui отвечает за поведение, а не за строки: единый ты/вы, RTL, отметка риска',
+    /поведение, а не перевод строк/.test(get('l10-ui').text) && /режим «ты\/вы»/.test(get('l10-ui').text)
+      && /RTL зеркалит отступы/.test(get('l10-ui').text) && /помечай риском/.test(get('l10-ui').text));
+  ok('AA5: l10-units называет локаль, различает машинный и глазной формат и не трогает курс',
+    /сначала назови локаль/.test(get('l10-units').text) && /ISO 8601/.test(get('l10-units').text)
+      && /сумму без курса не пересчитывай/.test(get('l10-units').text) && /Рендер не открывал/.test(get('l10-units').text));
+  ok('AA6: l10-term держит приоритет присланного глоссария и не выдаёт вариант за подтверждённый',
+    /присланный глоссарий важнее/.test(get('l10-term').text) && /носителем не подтверждён/.test(get('l10-term').text)
+      && /было → стало → почему/.test(get('l10-term').text));
+  ok('AA7: l10-audit считает варианты, а не правит по вкусу, и различает три случая',
+    /считаю варианты/.test(get('l10-audit').text) && /внутренне согласовано/.test(get('l10-audit').text)
+      && /намеренный синоним — не правим/.test(get('l10-audit').text));
+  ok('AA8: l10-source даёт прочтения и вопрос автору, а не «так говорят носители»',
+    /прочтения/.test(get('l10-source').text) && /вопрос автору/.test(get('l10-source').text)
+      && /ложные друзья/.test(get('l10-source').text));
+  ok('AA9: l10-mt держит порядок «смысл → термины → язык» и не правит ради красоты',
+    /по трём уровням и в этом порядке/.test(get('l10-mt').text)
+      && /«Звучит красивее» — не правка/.test(get('l10-mt').text)
+      && /счётчик нетронутых строк/.test(get('l10-mt').text));
+  ok('AA10: l10-fit считает лимит в символах, помнит про экспансию и режет уточнения, не суть',
+    /в символах \(не в словах\)/.test(get('l10-fit').text) && /15–35%/.test(get('l10-fit').text)
+      && /не существу и не цифрам/.test(get('l10-fit').text));
+  const tr = fired('переведи этот абзац на английский');
+  ok('AA11: 26.1 остался у донора — «переведи абзац» будит translate и ни один l10-*',
+    tr.includes('translate') && !tr.some((id) => /^l10-/.test(id)), tr.join(','));
+  const leak = MUNDANE_CORP.filter((q) => fired(q).some((id) => /^l10-/.test(id)));
+  ok('AA12: бытовые омонимы (перевод на карту, термин платежа, локализация боли, дата выдачи) нас не будят',
+    leak.length === 0, leak.slice(0, 4).map((q) => q + ' → ' + fired(q).filter((id) => /^l10-/.test(id)).join(',')).join(' ;; '));
+  ok('AA13: тексты не обещают словарь, браузер и «проверил у носителя»',
+    !l10.some((x) => /открою (?:браузер|словарь)|проверю (?:у носителя|прогоном)|напишу в файл|кликну|загугл/i.test(x.text)),
+    l10.filter((x) => /браузер|носитель|словар[ью]/i.test(x.text)).map((x) => x.id).join(','));
+  const hits = {};
+  for (const id of ['l10-ui', 'l10-units', 'l10-term', 'l10-audit', 'l10-source', 'l10-mt', 'l10-fit']) {
+    hits[id] = CANON.filter((x) => x[2] === 'AA' && x[1] === id).length;
+  }
+  const donorTranslate = CANON.filter((x) => x[2] === 'AA' && x[1] === 'translate').length;
+  ok('AA14: у каждого из семи пунктов — по две живые фразы, у донора translate — не меньше двух',
+    Object.values(hits).every((n) => n >= 2) && donorTranslate >= 2,
+    JSON.stringify(Object.assign(hits, { translate: donorTranslate })));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);

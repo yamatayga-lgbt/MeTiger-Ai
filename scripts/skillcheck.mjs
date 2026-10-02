@@ -99,9 +99,22 @@ const AMBIG = ['палитру', 'палитра', 'шрифт', 'шрифты',
 const BYT = ['для гостиной', 'для кухни', 'в саду', 'на даче', 'для ремонта', 'для свадьбы',
   'в машине', 'для собаки', 'у духовки', 'для отпуска', 'в коридоре', 'для дачного домика'];
 const OMO_FRAMES = ['%s %s', 'подбери %s %s', 'напиши %s %s', 'проверь %s %s'];
+/* Второй контекст — деньги, сроки и медицина: группа 26 спотыкается именно о них, потому что
+   «перевод», «термин», «дата», «число» и «строка» в быту значат совсем другое (перевод на карту,
+   термин оплаты, дата выдачи, строка расхода, локализация боли). Корни и рамки тут свои:
+   смешивать их с «палитрой для гостиной» бессмысленно — это разные омонимии. */
+const AMBIG2 = ['перевод', 'перевода', 'переводи', 'термин', 'термина', 'локализацию', 'формат',
+  'дату', 'дата', 'число', 'строку', 'регистр', 'абзац', 'ударение', 'склонение', 'единицы',
+  'валюту', 'курсор', 'множественное число'];
+/* «машинный перевод» в список не вошёл намеренно: корень однозначный, бытовая рамка вокруг него
+   даёт только искусственные фразы («машинный перевод на карту») и толкает калечить триггер. */
+const BYT2 = ['на карту', 'по оплате', 'в квитанции', 'по кредиту', 'за месяц', 'у пациента',
+  'в медкарте', 'на выдачу', 'в накладной', 'в договоре', 'со склада', 'для бухгалтерии'];
+const OMO_FRAMES2 = ['%s %s', 'проверь %s %s', 'нужен %s %s', 'уточни %s %s', 'поправь %s %s'];
 const guardedSkills = SKILLS.filter((x) => !x.off && GUARDED.some((g) => x.id.startsWith(g + '-')) && x.re);
 const omono = [];
 for (const r of AMBIG) for (const c of BYT) for (const f of OMO_FRAMES) omono.push(f.replace('%s', r).replace('%s', c));
+for (const r of AMBIG2) for (const c of BYT2) for (const f of OMO_FRAMES2) omono.push(f.replace('%s', r).replace('%s', c));
 const omonoHit = [];
 for (const q of omono) {
   const who = guardedSkills.filter((x) => x.re.test(q)).map((x) => x.id);
@@ -110,7 +123,7 @@ for (const q of omono) {
 const omonoBy = new Map();
 for (const q of omono) {
   for (const x of guardedSkills.filter((y) => y.re.test(q))) {
-    const root = AMBIG.find((r) => q.includes(r)) || '?';
+    const root = AMBIG.concat(AMBIG2).find((r) => q.includes(r)) || '?';
     const k = root + ' → ' + x.id;
     omonoBy.set(k, (omonoBy.get(k) || 0) + 1);
   }
