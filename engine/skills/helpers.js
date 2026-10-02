@@ -24,6 +24,8 @@ const CATS = [
   { id: 'plan', title: 'Планы и задачи' },
   { id: 'problem', title: '🧩 Решение проблем' },
   { id: 'decision', title: '⚖️ Принятие решений' },
+  { id: 'reading', title: '📖 Чтение документов' },
+  { id: 'stats', title: '📊 Статистика и аналитика' },
   { id: 'life', title: 'Быт и развлечения' },
   { id: 'data', title: 'Data & Analytics' },
   { id: 'automation', title: 'Automation' },

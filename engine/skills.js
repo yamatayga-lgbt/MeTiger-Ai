@@ -42,6 +42,8 @@ import s_plan from './skills/plan.js';
 import s_life from './skills/life.js';
 import s_problem from './skills/problem.js';
 import s_decision from './skills/decision.js';
+import s_reading from './skills/reading.js';
+import s_stats from './skills/stats.js';
 import s_data from './skills/data.js';
 import s_automation from './skills/automation.js';
 import s_safety from './skills/safety.js';
@@ -60,6 +62,7 @@ const RAW = [
   ...s_bypass, ...s_adult,
   /* наше дополнение (не донорское): цикл решения проблем — см. engine/skills/problem.js */
   ...s_problem, ...s_decision,
+  ...s_reading, ...s_stats,
 ];
 
 /* ============================== соответствие имён ============================== */
