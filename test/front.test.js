@@ -194,7 +194,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
     count: 124, catalogCount: 124, read: { groq: true, gemini: true },
     pools: [{ provider: 'groq', label: 'Groq', count: 3 }],
     models: [
-      { id: 'openai/gpt-oss-120b', name: 'Gpt Oss 120b', vendor: 'OPENAI', tier: 'smart', curated: false, src: 'groq', ctx: 131072, maxOut: 65536, vision: false, priceKnown: false, tools: true, reasoning: true },
+      { id: 'openai/gpt-oss-120b', name: 'Gpt Oss 120b', vendor: 'OPENAI', tier: 'smart', curated: false, src: 'groq', ctx: 131072, maxOut: 65536, vision: false, priceKnown: false, tools: true, reasoning: true, brave: { ok: 4, refused: 1, total: 5, score: 0.8, provider: 'groq' } },
       ...Array.from({ length: 123 }, (_, i) => ({ id: 'big/model-' + i + ':free', name: 'Big Model ' + i, vendor: 'BIG', tier: 'fast', curated: false, src: 'xkiro', ctx: 8192, maxOut: 1024, vision: false, priceKnown: true })),
     ],
   };
@@ -212,6 +212,9 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   /* Выбранная строка обязана переживать срез: иначе «моя модель не видна» —
      ровно та жалоба, из-за которой всё это и делалось. */
   const deepHtml = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'big/model-122:free', onPick: () => {} }));
+  ok('I14a: рейтинг смелых показан человеку словами, а не цифрой',
+    /везёт без отказа 4\/5/.test(bigHtml.replace(/<[^>]+>/g, ' ')) || /цена не проверена · везёт без отказа/.test(bigHtml),
+    (bigHtml.match(/Gpt Oss 120b[\s\S]{0,320}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
   ok('I15: выбранная модель не теряется за срезом',
     /Big Model 122/.test(deepHtml) && (deepHtml.match(/aria-selected="true"/g) || []).length === 1,
     (deepHtml.match(/aria-selected="true"/g) || []).length + ' выбранных');
