@@ -176,5 +176,25 @@ console.log('W — файл из браузера доезжает до моде
   });
 }
 
+console.log('\nW22 — советы голов не слепые: блок файла виден и им');
+{
+  await withFetch(async () => {
+    /* без второго провайдера голова неLive, и совет честно промолчит — поэтому тут
+       два ключа: именно так heads и вызываются на проде */
+    const env2 = Object.assign({}, ENV, { OPENROUTER_KEYS: 'o1' });
+    const c = stub('');
+    const res = await onRequestPost({
+      request: req({ text: 'посчитай 1200 + 800 по этому файлу и скажи, что там ещё', attachments: [{ name: 'бюджет.csv', mime: 'text/csv', size: 30, b64: b64of('а,1200\nб,800\n') }] }),
+      env: env2,
+    });
+    const j = await res.json();
+    const chats = c.filter((x) => x.kind === 'chat');
+    const withFile = chats.filter((x) => JSON.stringify(x.body).indexOf('бюджет.csv') >= 0);
+    ok('W22: голова совета получает тот же запрос с блоком файла, а не голый пересказ',
+      res.status === 200 && j.ok === true && chats.length >= 2 && withFile.length === chats.length,
+      JSON.stringify({ calls: chats.length, withFile: withFile.length, ens: String(j.ensemble || j.ensembleSkip || 'нет').slice(0, 80) }).slice(0, 240));
+  });
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exitCode = 1;
