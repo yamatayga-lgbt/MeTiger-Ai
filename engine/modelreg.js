@@ -41,7 +41,12 @@ const MAX_ENTRIES = 400;
 
 /* Модель не для чата: классификаторы, модерация, эмбеддинги. Такие в ротации
    только жуют квоту и никогда не дают ответа (выведено на доноре). */
-const NON_CHAT_HINT = /(embedding|classifier|moderation|guard|whisper|tts|dall-e|imagegen|dall3|clip|rerank|realtime|transcribe|audio-|livetranslate)/i;
+/* Модель не для чата: классификаторы, модерация, эмбеддинги, генерация
+   картинок и музыки. Такие в ротации только жуют квоту и никогда не дают ответа
+   (выведено на доноре). В каталоге OpenRouter они тоже есть с ценой 0 —
+   например nvidia/nemotron-3.5-content-safety и google/lyria — и без этого
+   фильтра полезли бы и в список выбора, и в обход. */
+const NON_CHAT_HINT = /(embedding|classifier|moderation|-safety|safety-|content-safety|guard|whisper|tts|dall|lyria|music|suno|imagen|flux|stable-diffusion|midjourney|clip|rerank|realtime|transcribe|livetranslate|audio-|-audio|ocr)/i;
 
 /* «Без купюр» — мягкая подсказка маршрутизации, не гарантия. Совпадает со
    списком донора; отказоустойчивость у нас делает engine/freedom.js. */
@@ -375,5 +380,37 @@ export function showcase(cat, opts = {}) {
   }
   return out;
 }
+
+/** Последняя попытка обновить каталог: чтобы не долбить провайдера на каждый запрос. */
+let lastTry = 0;
+const TRY_FLOOR_MS = 60 * 1000;
+
+/** Обновление с тормозом: не чаще, чем раз в минуту, независимо от числа запросов. */
+export async function maybeRefresh(env, store, opts = {}) {
+  const now = Date.now();
+  if (now - lastTry < TRY_FLOOR_MS) return null;
+  lastTry = now;
+  return refresh(env, store, opts);
+}
+
+/**
+ * Прогрев перед запросом. Именно здесь прячется грабля, которую показал прод:
+ * memo изолята пуст, движок читает каталог синхронно — и пин модели из каталога
+ * молча снимался, отвечала другая. Поэтому каталог достаётся из KV ДО вызова
+ * движка, а обновление уезжает в waitUntil и не задерживает ответ.
+ */
+export async function warm(env, store, waitUntil) {
+  let cat = null;
+  try { cat = await loadCatalog(store, { env }); } catch (e) { cat = null; }
+  if (!cat || cat.stale) {
+    const job = () => maybeRefresh(env, store, {}).catch(() => {});
+    if (typeof waitUntil === 'function') waitUntil(Promise.resolve().then(job));
+    else Promise.resolve().then(job);
+  }
+  return cat;
+}
+
+/** Только для тестов: затормозить/разтормозить фоновое обновление. */
+export function resetThrottle() { lastTry = 0; }
 
 export const TEST = { fromOpenRouter, fromXkiro, isFree, prettyName, decode, ttlMs, NON_CHAT_HINT, index };

@@ -16,6 +16,7 @@ import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } f
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
 import { createMemory } from '../../engine/memory.js';
+import * as modelreg from '../../engine/modelreg.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
    запрос, а «токен не принят» и «нет баланса» за одну request'у не лечатся.
@@ -131,6 +132,9 @@ export async function onRequestPost(context) {
      превратилась бы в один большой общий котёл. */
   const chatId = String(body.chatId || request.headers.get('x-mt-chat') || 'web').slice(0, 80);
   const store = memoryStore(env);
+  /* Каталог моделей — до движка: без этого на холодном изоляте выбор модели из
+     каталога снимается молча, и человек получает ответ не той модели. */
+  await modelreg.warm(env, store, context.waitUntil);
   const memory = store ? createMemory({ store, env }) : null;
   if (memory && body.forget === true) {
     await memory.forget(chatId);

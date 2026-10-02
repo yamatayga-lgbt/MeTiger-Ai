@@ -313,5 +313,49 @@ console.log('── I · потолок модели доходит до тел�
   }
 }
 
+console.log('── L · сервисные модели и прогрев перед запросом ───');
+{
+  const svc = (id, out) => M.TEST.fromOpenRouter({ id, context_length: 8192, architecture: { input_modalities: ['text'], output_modalities: out || ['text'] }, pricing: { prompt: '0', completion: '0' } });
+  ok('L1 модель модерации не попадает ни в список, ни в ротацию', svc('nvidia/nemotron-3.5-content-safety:free').chat === false);
+  ok('L2 музыка (lyria) отсеяна, хотя текст она тоже отдаёт', svc('google/lyria-3-pro-preview', ['text', 'audio']).chat === false);
+  ok('L3 omni с текстовым выводом остаётся — картинки она действительно видит', svc('qwen/qwen3-omni-flash:free', ['text']).chat === true);
+  ok('L4 tts и audio-модели отсеяны', svc('openai/tts-1').chat === false && svc('some/audio-model').chat === false);
+
+  /* Случай, который поймал прод: memo изолята пусто, каталог лежит только в KV. */
+  M.forgetMemo(); M.resetThrottle();
+  const kv2 = fakeKv(Date.now());
+  await kv2.put(M.CATALOG_KEY, JSON.stringify({
+    updatedAt: Date.now(), count: 1,
+    models: [{ id: 'apodex/apodex-1.1-mini:free', name: 'Apodex', vendor: 'APODEX', src: 'openrouter', free: true, chat: true, ctx: 262144, maxOut: 235929, vision: false, visionKnown: true, tools: true }],
+  }));
+  const warmed = await M.warm({}, kv2, null);
+  ok('L5 warm достаёт каталог из KV в memo движка', !!M.cached() && M.cached().models.length === 1, JSON.stringify(M.cached() && M.cached().count));
+  ok('L6 после warm пин каталожной модели ведёт к её провайдеру', M.ownerOf(M.cached(), 'apodex/apodex-1.1-mini:free') === 'openrouter');
+  ok('L7 warm отдаёт каталог тому, кто грел', warmed && warmed.models.length === 1);
+
+  const g = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('сети нет'); };
+  M.forgetMemo(); M.resetThrottle();
+  const kv3 = fakeKv(Date.now());
+  await kv3.put(M.CATALOG_KEY, JSON.stringify({ updatedAt: Date.now() - 7200000, count: 1, models: [{ id: 'x/y:free', name: 'Y', vendor: 'X', src: 'openrouter', free: true, chat: true, ctx: 1000, maxOut: 100 }] }));
+  let jobs = 0;
+  const cat3 = await M.warm({}, kv3, (pr) => { jobs++; Promise.resolve(pr).then(() => {}, () => {}); });
+  ok('L8 протухший каталог отдаётся сразу и честно помечен', cat3 && cat3.stale === true && cat3.models.length === 1);
+  ok('L9 обновление уехало в waitUntil, а не в ответ человеку', jobs === 1);
+  await new Promise((r) => setTimeout(r, 60));
+  const after = await M.loadCatalog(kv3, { now: Date.now() });
+  ok('L10 фоновое обновление не съедало старый каталог, когда сети нет', after && after.models.length === 1, JSON.stringify(after && after.count));
+  globalThis.fetch = g;
+
+  let hits = 0;
+  M.resetThrottle();
+  const spy = async () => { hits++; return { ok: true, status: 200, json: async () => ({ data: [] }) }; };
+  await M.maybeRefresh({}, null, { fetchImpl: spy, sleep: async () => {} });
+  const second = await M.maybeRefresh({}, null, { fetchImpl: spy, sleep: async () => {} });
+  ok('L11 тормоз фонового обновления: сколько бы запросов ни прошло — одна попытка в минуту',
+    second === null && hits === 4, hits + ' запросов (2 источника × 2 попытки), второй вызов — ' + (second === null ? 'null' : 'объект'));
+  M.resetThrottle(); M.forgetMemo();
+}
+
 console.log('\n' + (fail ? 'ПРОВАЛЫ: ' + fail : 'готово') + ` · пройдено ${pass}, провалено ${fail}`);
 process.exit(fail ? 1 : 0);
