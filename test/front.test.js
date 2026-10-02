@@ -8,7 +8,7 @@
  *   node test/front.test.js
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 let pass = 0, fail = 0;
@@ -31,7 +31,7 @@ rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 const out = join(dir, 'api.mjs');
 execFileSync(bin, ['src/lib/api.ts', '--format=esm', '--outfile=' + out, '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
-const { adviceLine, sourceLine } = await import(out);
+const { adviceLine, sourceLine, attachmentKind, pickAttachments, fileToAttachment, bufToB64, attachLine, notesLine, fileSize, ATTACH_ACCEPT, ATTACH_MAX, ATTACH_FILE_BYTES } = await import(out);
 execFileSync(bin, ['src/lib/images.ts', '--format=esm', '--outfile=' + join(dir, 'images.mjs'), '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
 
 console.log('F — подпись под ответом: что видел совет, то видит и человек');
@@ -228,6 +228,95 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
     /Big Model 122/.test(deepHtml) && (deepHtml.match(/aria-selected="true"/g) || []).length === 1,
     (deepHtml.match(/aria-selected="true"/g) || []).length + ' выбранных');
   globalThis.fetch = real;
+}
+
+console.log('J — вложения из браузера: сортировка, base64 и подписи под ответом');
+{
+  ok('J1: тип вложения угадан по mime и по расширению (картинка, голос, файл)',
+    attachmentKind({ name: 'а.png', type: 'image/png' }) === 'image'
+    && attachmentKind({ name: 'запись.ogg', type: '' }) === 'voice'
+    && attachmentKind({ name: 'отчёт.pdf', type: 'application/pdf' }) === 'file'
+    && attachmentKind({ name: 'song.mp3', type: 'audio/mpeg' }) === 'voice', JSON.stringify([attachmentKind({ name: 'запись.ogg', type: '' })]));
+  const files = [
+    { name: 'a.txt', type: 'text/plain', size: 100 },
+    { name: 'b.txt', type: 'text/plain', size: 200 },
+    { name: 'c.txt', type: 'text/plain', size: 300 },
+    { name: 'd.txt', type: 'text/plain', size: 400 },
+    { name: 'монстр.pdf', type: 'application/pdf', size: ATTACH_FILE_BYTES + 1 },
+    { name: '', type: 'text/plain', size: 10 },
+  ];
+  const p = pickAttachments(files);
+  ok('J2: берём не больше трёх, и это те, что полегче первых', p.taken.length === ATTACH_MAX && p.taken.map((x) => x.name).join(',') === 'a.txt,b.txt,c.txt', JSON.stringify(p.taken.map((x) => x.name)));
+  ok('J3: тяжёлый файл отклонён ИМЕНЕМ и весом, а не молчанием', p.tooBig.length === 1 && /монстр\.pdf/.test(p.tooBig[0]) && /МБ/.test(p.tooBig[0]), JSON.stringify(p.tooBig));
+  ok('J4: лишние по количеству учтены, безымянное не проходит', p.extra === 2, String(p.extra));
+  const txt = 'данные,1200\nрасход,800\n';
+  const att = await fileToAttachment(new File([txt], 'прайс.csv', { type: 'text/csv' }));
+  ok('J5: файл → приложение с полным содержимым (base64 читается обратно байт в байт)',
+    att.ok === true && att.att.name === 'прайс.csv' && att.att.kind === 'file' && att.att.size === new TextEncoder().encode(txt).length
+    && new TextDecoder().decode(Uint8Array.from(atob(att.att.b64), (c) => c.charCodeAt(0))) === txt, JSON.stringify(att).slice(0, 160));
+  const empty = await fileToAttachment(new File([], 'пусто.txt', { type: 'text/plain' }));
+  ok('J6: пустой файл — честное «пустой файл», а не пустой ответ модели', empty.ok === false && /пустой/.test(empty.error || ''), JSON.stringify(empty));
+  const big = await fileToAttachment(new File([new Uint8Array(ATTACH_FILE_BYTES + 10)], 'толстый.bin', { type: 'application/octet-stream' }));
+  ok('J7: через потолок фронт не тащит вообще (один отказ на фронте дешевле, чем 422 с сервера)',
+    big.ok === false && /МБ/.test(big.error || ''), JSON.stringify(big));
+  const buf = new Uint8Array(200000).map((_, i) => i % 256);
+  const rt = Uint8Array.from(atob(bufToB64(buf.buffer)), (c) => c.charCodeAt(0));
+  ok('J8: чанковый base64 на 200 КБ совпадает с байтами (Stack-safe кодирование)',
+    rt.length === buf.length && rt.every((v, i) => v === buf[i]), String(rt.length) + '/' + String(buf.length));
+  ok('J9: fileSize не округляет до «0 КБ» и умеет МБ', fileSize(0) === '0 б' && fileSize(1500) === '1,5 КБ' && /МБ$/.test(fileSize(5 * 1048576)), [fileSize(0), fileSize(1500), fileSize(5 * 1048576)].join(' '));
+}
+{
+  const r = {
+    ok: true, reply: 'ok',
+    attachments: [{ name: 'отчёт.pdf', ok: true, line: 'pdf · 1200 симв.' }, { name: 'Scan.pdf', ok: false, line: 'скан: распознавать нечем' }],
+    attachNotes: ['видео не смотрю'],
+  };
+  const line = attachLine(r);
+  ok('J10: подпись по файлам показывает и прочитанное, и отказ — списком',
+    /отчёт\.pdf · pdf · 1200 симв\./.test(line) && /Scan\.pdf — скан: распознавать нечем/.test(line) && /· видео не смотрю/.test(line), JSON.stringify(line));
+  ok('J11: пустые вложения — пустая строка, пустой плашки в UI нет', attachLine({ ok: true, reply: 'x' }) === '');
+  const n = notesLine({ ok: true, reply: 'x', inputNotes: ['температуру 12 вернул в диапазон 0…2'], ctxFit: 'историю урезал на 8 реплик — окно модели 8192 токенов' });
+  ok('J12: чем оплатили вход и окно — одна строка под ответом',
+    /температуру 12/.test(n) && /историю урезал на 8/.test(n) && n.indexOf(' · ') > 0, JSON.stringify(n));
+  ok('J13: правок не было — строки нет (не «движок ничего не делал» отдельной плашкой)', notesLine({ ok: true, reply: 'x' }) === '');
+}
+{
+  /* границы фронте и на входе обязаны совпадать: иначе браузер принимает то, что
+     сервер потом молча отбрасывает, и человек не понимает, где потеря */
+  const src = readFileSync('functions/api/chat.js', 'utf8');
+  const maxSrv = Number((src.match(/const ATT_MAX = (\d+)/) || [])[1]);
+  /* «4 * 1024 * 1024» из исходника считаем перемножением, без eval: тест не должен
+     исполнять произвольный текст файла */
+  const bytesSrv = ((src.match(/const ATT_FILE_BYTES = ([\d* ]+);/) || [])[1] || '').split('*').reduce((a, x) => a * Number(x.trim() || 1), 1);
+  ok('J14: потолок количества и веса на фронте и на входе — одно число',
+    ATTACH_MAX === maxSrv && ATTACH_FILE_BYTES === bytesSrv, JSON.stringify({ f: [ATTACH_MAX, ATTACH_FILE_BYTES], s: [maxSrv, bytesSrv] }));
+  ok('J15: диалог выбора файлов пускает читаемое, а не только картинки',
+    /\.pdf/.test(ATTACH_ACCEPT) && /\.docx/.test(ATTACH_ACCEPT) && /\.xlsx/.test(ATTACH_ACCEPT) && /audio\//.test(ATTACH_ACCEPT) && /image\//.test(ATTACH_ACCEPT), ATTACH_ACCEPT);
+}
+{
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const out3 = join(dir, 'chatview-j.mjs');
+  execFileSync(bin, [
+    'src/views/ChatView.tsx', '--bundle', '--platform=node', '--format=esm',
+    '--packages=external', '--loader:.png=dataurl', '--outfile=' + out3, '--log-level=error',
+  ], { stdio: 'inherit' });
+  const { ChatView } = await import(out3);
+  const html = renderToStaticMarkup(
+    React.createElement(ChatView, {
+      user: { first_name: 'Тигр' },
+      messages: [
+        { id: 'u1', role: 'user', text: 'сводка по файлу', docs: [{ name: 'отчёт.pdf', size: 24576 }] },
+        { id: 'a1', role: 'assistant', text: 'Готово.', attach: 'отчёт.pdf · pdf · 1200 симв.', notes: 'историю урезал на 8 реплик — окно модели 8192 токенов' },
+      ],
+      typing: false, onSend() {},
+    }),
+  );
+  ok('J16: под ответом видно, ЧТО прочитали из вложения', /msg-read/.test(html) && /отчёт\.pdf · pdf/.test(html), html.slice(html.indexOf('msg-read') - 30, html.indexOf('msg-read') + 160));
+  ok('J17: и чем за это заплатили (окно модели) — тоже в разметке', /msg-note/.test(html) && /историю урезал на 8/.test(html), html.slice(html.indexOf('msg-note') - 30, html.indexOf('msg-note') + 160));
+  ok('J18: в пузыре человека лежит чип файла с весом — без содержимого', /sent-file/.test(html) && /отчёт\.pdf/.test(html) && /24,0 КБ|24 КБ|24,00 КБ/.test(html), html.slice(html.indexOf('sent-files') - 20, html.indexOf('sent-files') + 200));
+  ok('J19: содержимое файлов в разметку не попадает — только имя и вес (base64 в истории чата кончает localStorage)',
+    /data:(application|text)[^"]{40,}/.test(html) === false && html.indexOf('\"b64\"') < 0 && /отчёт\.pdf/.test(html), JSON.stringify(html.match(/data:(application|text)[^"]{0,40}/) || 'чисто').slice(0, 120));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

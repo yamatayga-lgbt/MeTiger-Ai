@@ -18,6 +18,18 @@ import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
 import { stats as skillStats } from '../../engine/skills.js';
 
+/** Чем читаем вложения веб-чата — одной строкой для curl-диагностики. */
+function attachLine(env) {
+  const e = env || {};
+  const on = String(e.ATTACH || '') !== 'off';
+  const stt = createStt({ env: e, fetch: () => Promise.reject(new Error('диагностика сеть не трогает')), log: () => {} }).stats();
+  const chars = Math.max(2000, Number(e.ATTACH_DOC_CHARS) || DOC_CHARS);
+  return (on ? 'вложения включены' : 'выключены (ATTACH=off)')
+    + ' · до ' + ATT_MAX + ' файлов по ' + mb(ATT_FILE_BYTES) + ' МБ · потолок запроса ' + mb(ATT_TOTAL_BYTES) + ' МБ'
+    + ' · файла показываем ' + chars + ' знаков'
+    + ' · голос: ' + (!stt.on ? 'выключен (STT=off)' : (stt.keys.groq || stt.keys.openrouter ? (stt.models.groq || stt.models.omni) : 'нет ключей'));
+}
+
 /** одной строкой — сколько навыков на ходу и чем выключены (для curl-диагностики) */
 function skillLine(env, imgReady) {
   const s = skillStats({ imgToolReady: { imggen: !!imgReady } });
@@ -29,6 +41,8 @@ import { createMemory } from '../../engine/memory.js';
 import * as modelreg from '../../engine/modelreg.js';
 import { lineOf as imgLineOf } from '../../engine/imggen.js';
 import { normalizeFields, stats as ctxStats } from '../../engine/ctxfit.js';
+import { compose as composeAttach, readDocBytes, readVoiceBytes, DOC_CHARS } from '../../engine/attach.js';
+import { createStt } from '../../engine/voicein.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
    запрос, а «токен не принят» и «нет баланса» за одну request'у не лечатся.
@@ -37,6 +51,77 @@ import { normalizeFields, stats as ctxStats } from '../../engine/ctxfit.js';
 const QUARANTINE = new Map();
 
 const MAX_IMG_BYTES = 4 * 1024 * 1024;
+
+/* Вложения из браузера. Своего хранилища нет — файл приходит base64-ом в теле
+   запроса и живёт ровно столько, пока движок его читает. Поэтому потолки жёсткие:
+   3 файла, 4 МБ на файл, 8 МБ на весь запрос. Base64 раздувает тело на ~33%, а
+   Pages Function обрезает запрос раньше, чем мы успеем что-нибудь прочитать, —
+   отказ словами здесь дешевле, чем молчаливый огрызок. */
+const ATT_MAX = 3;
+const ATT_FILE_BYTES = 4 * 1024 * 1024;
+const ATT_TOTAL_BYTES = 8 * 1024 * 1024;
+
+/** base64 (голый или data:URL) → Uint8Array. Мусор — null, а не исключение. */
+function fromB64(s) {
+  const raw = String(s || '').replace(/^data:[^,]*;base64,/, '').replace(/\s+/g, '');
+  if (!raw || raw.length % 4 > 2) return null;
+  let bin = '';
+  try { bin = atob(raw); } catch (e) { return null; }
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+const mb = (n) => Math.round((n / 1048576) * 10) / 10;
+
+/**
+ * Что человек приложил в веб-чате → тот же вид, что отдаёт Telegram-слой
+ * (engine/attach.js): картинки отдельным полем, файлы — текстовыми блоками,
+ * голос — расшифровкой. Читалка и распознавание общие, разной может быть только
+ * сеть, а её здесь нет: байты уже в теле запроса.
+ */
+async function readAttachments(list, env, fetchImpl, log) {
+  const got = { images: [], docs: [], voiceText: '', notes: [], tried: 0 };
+  const all = Array.isArray(list) ? list : [];
+  if (!all.length) return got;
+  const chars = Math.max(2000, Number(env.ATTACH_DOC_CHARS) || DOC_CHARS);
+  let total = 0;
+  let skipped = 0;
+  const stt = String(env.STT || '') === 'off' ? null : createStt({ env, fetch: fetchImpl, log });
+  for (const a of all.slice(0, ATT_MAX)) {
+    const name = String((a && a.name) || 'файл').slice(0, 120);
+    const mime = String((a && a.mime) || '').toLowerCase();
+    const bytes = fromB64(a && (a.b64 || a.data));
+    if (!bytes || !bytes.length) { got.notes.push(name + ': приложение не распознано (не base64)'); continue; }
+    if (bytes.length > ATT_FILE_BYTES) { got.notes.push(name + ': ' + mb(bytes.length) + ' МБ — больше ' + mb(ATT_FILE_BYTES) + ' МБ не читаем'); continue; }
+    if (total + bytes.length > ATT_TOTAL_BYTES) { got.notes.push(name + ': вложений на ' + mb(total + bytes.length) + ' МБ — потолок запроса ' + mb(ATT_TOTAL_BYTES) + ' МБ'); continue; }
+    total += bytes.length;
+    got.tried++;
+    if (/^image\//.test(mime)) {
+      got.images.push('data:' + mime + ';base64,' + b64of(bytes));
+      continue;
+    }
+    const isVoice = a.kind === 'voice' || a.kind === 'audio' || /^audio\//.test(mime);
+    if (isVoice) {
+      const v = await readVoiceBytes(bytes, mime || 'audio/ogg', { stt, log });
+      if (v.ok) got.voiceText = v.text;
+      else got.notes.push('запись не расшифрована: ' + v.why + (v.via ? ' [' + v.via + ']' : ''));
+      continue;
+    }
+    got.docs.push(readDocBytes(bytes, name, { chars }));
+  }
+  if (all.length > ATT_MAX) got.notes.push('файлов ' + all.length + ' — читаю первые ' + ATT_MAX);
+  void skipped;
+  return got;
+}
+
+/** Uint8Array → base64 чанками: one-shot fromCharCode на 4 МБ кладёт стек. */
+function b64of(bytes) {
+  let s = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) s += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(s);
+}
 
 /**
  * KV-адаптер памяти: Pages Function отдаёт связку MEMORY объектом с get/put/delete.
@@ -105,9 +190,8 @@ export async function onRequestPost(context) {
   let body = null;
   try { body = await request.json(); } catch (e) { return json({ ok: false, error: 'нужен JSON' }, 400); }
 
-  const text = String((body && body.text) || '').trim();
-  if (!text) return json({ ok: false, error: 'пустой запрос' }, 400);
-  if (text.length > 24000) return json({ ok: false, error: 'слишком длинный запрос' }, 413);
+  const words = String((body && body.text) || '').trim();
+  if (words.length > 24000) return json({ ok: false, error: 'слишком длинный запрос' }, 413);
 
   /* Картинки: ровно столько, сколько принимает движок (две), и с потолком веса.
      Бесплатный провайдер обрезает тело запроса раньше, чем мы успеем спросить,
@@ -122,6 +206,23 @@ export async function onRequestPost(context) {
   for (const im of images) {
     if (im.length * 0.74 > MAX_IMG_BYTES) return json({ ok: false, error: 'картинка тяжелее ' + Math.round(MAX_IMG_BYTES / 1024 / 1024) + ' МБ — сожми её' }, 413);
   }
+
+  /* Документы, голос и картинки, приложенные в браузере (engine/attach.js). Их
+     читаем ДО нормализации полей: текст файла становится частью запроса, и потолок
+     на длину запроса обязан считаться уже по собранному тексту, а не по словам
+     человека. Ничего не прочитано и слов нет — отказ 422 со списком причин: слать
+     движку «посмотри, что я прислал», когда смотреть нечего, значит тратить квоту
+     бесплатной модели на извинение. */
+  const hasAtt = Array.isArray(body.attachments) && body.attachments.length > 0;
+  const att = hasAtt ? await readAttachments(body.attachments, env, (u, i) => fetch(u, i), () => {}) : null;
+  const attNothing = !!att && !att.images.length && !att.voiceText && !att.docs.some((d) => d.ok);
+  if (!words && att && attNothing) {
+    return json({ ok: false, error: 'не прочитал ни одного вложения', attachNotes: att.notes }, 422);
+  }
+  const text = att ? composeAttach({ has: true }, att, words).text : words;
+  if (!text) return json({ ok: false, error: 'пустой запрос' }, 400);
+  const allImages = images.concat((att && att.images) || []);
+  if (allImages.length > 2) allImages.length = 2;
 
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
   const limits = limitsStore(env);
@@ -146,7 +247,7 @@ export async function onRequestPost(context) {
      должен иметь возможности прислать мегабайт текста, temperature — улететь за
      разумный диапазон, а история — притащить пустые реплики. Что пришлось
      поправить — возвращается словами, а не молча. */
-  const norm = normalizeFields(body, context.env);
+  const norm = normalizeFields(Object.assign({}, body, { text }), context.env);
   const chatId = norm.chatId || String(request.headers.get('x-mt-chat') || 'web').slice(0, 80);
   const store = memoryStore(env);
   /* Каталог моделей — до движка: без этого на холодном изоляте выбор модели из
@@ -171,7 +272,7 @@ export async function onRequestPost(context) {
        и «text» был бы просто украшением, а provider с путью дошёл бы до выбора */
     text: norm.text || text, history,
     chatId: memory ? chatId : undefined,
-    images,
+    images: allImages,
     tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
     only: norm.provider,
     /* Человек выбрал модель в окне ввода — она и отвечает. Советы голов в этом
@@ -204,6 +305,12 @@ export async function onRequestPost(context) {
        «я тебе ответил иначе, потому что ты прислал» должно быть видно, а не молчать */
     inputNotes: norm.notes.length ? norm.notes : undefined,
     ctxFit: r.cxFit || undefined,
+    /* чем обернулись приложенные файлы: что прочитано (имя · формат · знаков) и почему
+       остальное не дошло — человек должен видеть это под ответом, а не в логах */
+    attachments: att && att.docs.length
+      ? att.docs.map((d) => ({ name: d.name, ok: !!d.ok, line: d.ok ? d.line : (d.why || 'не прочитан') }))
+      : undefined,
+    attachNotes: att && att.notes.length ? att.notes : undefined,
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
     /* выбранная модель не смогла ответить — фронт подписывает это словами,
@@ -262,6 +369,8 @@ export async function onRequestGet(context) {
     imggen: imgLineOf(engine.img()),
     /* подгонка под окно модели: видно, какое окно считаем и включена ли резка */
     ctx: ctxStats(context.env).line,
+    /* чем читаем приложенное из браузера: лимиты и есть ли чем распознавать голос */
+    attach: attachLine(context.env),
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */
     dead: engine.quarantine(),
   });

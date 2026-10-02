@@ -10,7 +10,7 @@ import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
-import { sendChat, sourceLine, adviceLine } from './lib/api'
+import { sendChat, sourceLine, adviceLine, attachLine, notesLine, type Attachment } from './lib/api'
 import {
   loadActiveChatId,
   loadChats,
@@ -160,7 +160,7 @@ export default function App() {
      В проде подмены нет: если движок не ответил, человек видит причину, а не
      красивый текст из таблички. */
   const sendMessage = useCallback(
-    (text: string, images?: string[]) => {
+    (text: string, images?: string[], attachments?: Attachment[]) => {
       const chatId = activeChatId
       const current = chats.find((c) => c.id === chatId)
       const history = (current?.messages ?? []).slice(-8).map((m) => ({ role: m.role, text: m.text }))
@@ -169,7 +169,15 @@ export default function App() {
           c.id === chatId
             ? {
                 ...c,
-                messages: [...c.messages, { id: nextId(), role: 'user', text, ...(images && images.length ? { images } : {}) }],
+                messages: [...c.messages, {
+                  id: nextId(),
+                  role: 'user',
+                  text,
+                  ...(images && images.length ? { images } : {}),
+                  /* имена и вес — чтобы чат после перезагрузки показывал, что файл
+                     отправляли; содержимое нужно только на сам запрос */
+                  ...(attachments && attachments.length ? { docs: attachments.map((f) => ({ name: f.name, size: f.size })) } : {}),
+                }],
                 updatedAt: Date.now(),
               }
             : c,
@@ -179,6 +187,7 @@ export default function App() {
       void (async () => {
         const r = await sendChat(text, history, {
           ...(images && images.length ? { images } : {}),
+          ...(attachments && attachments.length ? { attachments } : {}),
           ...(model ? { model } : {}),
           gender: genderForRequest(readGender()),
         })
@@ -199,6 +208,9 @@ export default function App() {
               files: r.files && r.files.length ? r.files : undefined,
               fileError: r.fileError || undefined,
               skills: r.skills && r.skills.length ? r.skills : undefined,
+              /* что прочитали из вложений и чем оплатили окно — две строки под ответом */
+              attach: r.ok ? attachLine(r) || undefined : undefined,
+              notes: r.ok ? notesLine(r) || undefined : undefined,
             }
           : ({} as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet' })
         setChats((prev) =>

@@ -5,7 +5,7 @@
  * что токен бота не утекает в причины ошибок.
  * Запуск: node test/attach.test.js
  */
-import { parseMedia, createAttach, compose, DOC_CHARS, MAX_IMAGES } from '../engine/attach.js';
+import { parseMedia, createAttach, compose, readDocBytes, readVoiceBytes, DOC_CHARS, MAX_IMAGES } from '../engine/attach.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -170,6 +170,32 @@ console.log('\nC — сборка текста для движка');
   const a5 = createAttach({ env: { TELEGRAM_BOT_TOKEN: 'SEKRETNYTOKEN' }, fetch: tg().fetch, log: () => {} });
   const got3 = await a5.take({ has: true, photos: [], document: { id: 'doc-4', name: 'long.txt' }, other: [] });
   ok('C11: без env потолок по умолчанию — 24000 знаков файла', got3.docs[0].text.length <= DOC_CHARS + 40 && got3.docs[0].chars > DOC_CHARS, JSON.stringify({ shown: got3.docs[0].text.length, all: got3.docs[0].chars }));
+}
+
+console.log('\nD — общий разбор байтов: он же для Telegram, он же для браузера');
+{
+  const d = readDocBytes(TXT, 'отчёт.txt', {});
+  ok('D1: байты → блок с описанием и размером, как его видит модель',
+    d.ok === true && d.name === 'отчёт.txt' && /txt · \d+ симв\./.test(d.line) && d.bytes === TXT.length && /выручка/.test(d.text), JSON.stringify({ line: d.line, bytes: d.bytes }));
+  const long = new TextEncoder().encode('строка '.repeat(2000));
+  const cut = readDocBytes(long, 'длинно.txt', { chars: 3000 });
+  ok('D2: потолок знаков и пометка об обрыве — на месте',
+    cut.ok === true && cut.chars > 3000 && cut.text.length <= 3100 && /дальше файл не показываем/.test(cut.text), JSON.stringify({ all: cut.chars, shown: cut.text.length }));
+  const floor = readDocBytes(long, 'длинно.txt', { chars: '1' });
+  ok('D2a: потолок не опускается ниже 2000 знаков, что бы ни написали в env',
+    floor.text.length > 1900 && floor.text.length <= 2100, String(floor.text.length));
+  const junk = readDocBytes(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), 'битый.docx', {});
+  ok('D3: мусор под видом docx — ок=false и причина словами', junk.ok === false && String(junk.why).length > 8, JSON.stringify(junk).slice(0, 160));
+  ok('D4: числовой потолок принимает и строку из env, и мусор (падает на дефолт)',
+    readDocBytes(TXT, 'x.txt', { chars: 'abc' }).ok === true && readDocBytes(TXT, 'x.txt', {}).text.length > 0);
+  const v0 = await readVoiceBytes(new Uint8Array([1, 2, 3]), 'audio/ogg', {});
+  ok('D5: слоя STT нет — причина названа, исключения нет', v0.ok === false && /слоя STT нет/.test(v0.why), JSON.stringify(v0));
+  const v1 = await readVoiceBytes(new Uint8Array([1, 2, 3]), 'audio/ogg', { stt: { transcribe: async () => ({ ok: true, text: 'текст', via: 'groq/m' }) } });
+  ok('D6: расшифровка прошла — текст и источник идут как есть', v1.ok === true && v1.text === 'текст' && v1.via === 'groq/m', JSON.stringify(v1));
+  const v2 = await readVoiceBytes(new Uint8Array([1, 2, 3]), 'audio/ogg', { stt: { transcribe: async () => { throw new Error('взрыв'); } } });
+  ok('D7: взрыв внутри STT → причина словом (браузер не должен получить 500)', v2.ok === false && /взрыв/.test(v2.why), JSON.stringify(v2));
+  const v3 = await readVoiceBytes(new Uint8Array(0), 'audio/ogg', { stt: { transcribe: async () => ({ ok: true, text: 'x' }) } });
+  ok('D8: пустые байты не идут в сеть вообще', v3.ok === false && /пустая/.test(v3.why), JSON.stringify(v3));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

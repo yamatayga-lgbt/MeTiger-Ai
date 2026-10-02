@@ -2257,6 +2257,39 @@ kbd {
   cursor: pointer;
 }
 .attach-error { color: var(--danger); font-weight: 600; }
+/* Документы и записи над полем ввода: превью у них нет, поэтому чип — имя + вес.
+   Имя длинное: режаем многоточием, а не переносом, чтобы полоса не разъезжалась. */
+.doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 210px;
+  padding: 4px 6px 4px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  background: var(--surface-2);
+  color: var(--text-2, #5a6270);
+}
+.doc-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.doc-chip-size { opacity: 0.7; flex: none; }
+.doc-chip button {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.22);
+  color: inherit;
+  cursor: pointer;
+}
 .shot-row {
   display: flex;
   flex-wrap: wrap;
@@ -2343,4 +2376,40 @@ kbd {
   margin-top: 4px;
   font-size: 11.5px;
   opacity: 0.6;
+}
+/* Что агент прочитал из приложенного файла — списком, моноширинно-типографикой,
+   чтобы «pdf · 1200 симв.» не выглядело частью ответа. */
+.msg-read {
+  margin-top: 6px;
+  padding: 5px 9px;
+  border: 1px dashed var(--border, rgba(127, 127, 127, 0.3));
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-line;
+  color: var(--text-3, #7b8494);
+}
+/* Условия ответа: чем движок оплатил окно модели и чужой «system». Не ошибка —
+   сноска, но заметная: без неё человек решает, что у него амнезия. */
+.msg-note {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.72;
+  font-style: italic;
+}
+/* Что приложил человек: имена и вес под его пузырём (содержимое в чате не живёт —
+   base64 в localStorage кончает квоту молча). */
+.sent-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.sent-file {
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 11px;
+  opacity: 0.9;
 }

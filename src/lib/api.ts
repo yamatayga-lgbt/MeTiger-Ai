@@ -49,16 +49,107 @@ export interface ChatResult {
   visionApplied?: boolean
   /** Род агента, которым отвечали: 'male' | 'female' | 'auto'. */
   gender?: string
+  /** Чем движок оплатил нормальный вход: обрезанный «system», лишние реплики… */
+  inputNotes?: string[]
+  /** Чем оплатил окно модели: сколько реплик истории ушло и что подрезали. */
+  ctxFit?: string
+  /** Что прочитал из приложенных файлов (имя · формат · знаков) и почему остальное не дошло. */
+  attachments?: { name: string; ok: boolean; line: string }[]
+  attachNotes?: string[]
   /** Что движок прочитал в форме последней реплики (только при EMOTION_LABEL=1). */
   emotion?: { id: string; emoji: string; label: string; confidence: number }
 }
 
 const ENDPOINT = (import.meta.env?.VITE_API_BASE || '') + '/api/chat'
 
+/**
+ * Что человек приложил к сообщению в браузере. Файл едет base64-ом в теле запроса:
+ * своего хранилища под выдачу и приём нет, а 4 МБ на файл и 8 МБ на запрос — потолок,
+ * выше которого Pages Function обрезает запрос раньше, чем мы успеем что-то прочитать.
+ */
+export interface Attachment {
+  name: string
+  mime: string
+  size: number
+  b64: string
+  kind: 'file' | 'voice' | 'image'
+}
+
+export const ATTACH_MAX = 3
+export const ATTACH_FILE_BYTES = 4 * 1024 * 1024
+/** Что пускаем в диалог выбора: картинки + читаемые форматы + любой аудиофайл. */
+export const ATTACH_ACCEPT =
+  'image/*,.pdf,.docx,.xlsx,.pptx,.csv,.tsv,.md,.txt,.json,.xml,.html,audio/*,.ogg,.opus,.webm,.mp3,.m4a,.wav'
+
+export function attachmentKind(f: { name?: string; type?: string }): 'image' | 'voice' | 'file' {
+  const mime = (f.type || '').toLowerCase()
+  const name = (f.name || '').toLowerCase()
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('audio/') || /\.(ogg|opus|webm|mp3|m4a|aac|wav|amr)$/.test(name)) return 'voice'
+  return 'file'
+}
+
+/**
+ * Отсортировать выбранное: что возьмём, что слишком тяжёлое, что лишнее по количеству.
+ * Чистой функцией — чтобы отказ «почему мой файл не прочитали» можно было проверить
+ * без браузера и без сети.
+ */
+export function pickAttachments(
+  list: { name: string; type?: string; size: number }[],
+  max = ATTACH_MAX,
+  maxBytes = ATTACH_FILE_BYTES,
+): { taken: { name: string; type: string; size: number }[]; tooBig: string[]; extra: number } {
+  const taken: { name: string; type: string; size: number }[] = []
+  const tooBig: string[] = []
+  let skipped = 0
+  for (const f of list || []) {
+    if (!f || !f.name) { skipped++; continue }
+    if (f.size > maxBytes) { tooBig.push(`${f.name}: ${fileSize(f.size)} — больше ${fileSize(maxBytes)}, не читаем`); continue }
+    if (taken.length >= max) { skipped++; continue }
+    taken.push({ name: f.name, type: f.type || '', size: f.size })
+  }
+  return { taken, tooBig, extra: skipped }
+}
+
+/** ArrayBuffer → base64 чанками: один fromCharCode на 4 МБ кладёт стек вызовов. */
+export function bufToB64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let s = ''
+  const CH = 0x8000
+  for (let i = 0; i < bytes.length; i += CH) s += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CH)) as number[])
+  return btoa(s)
+}
+
+/** Файл → приложение для запроса. Ошибку возвращаем словом, а не исключением. */
+export async function fileToAttachment(file: File): Promise<{ ok: true; att: Attachment } | { ok: false; error: string }> {
+  const kind = attachmentKind(file)
+  if (file.size > ATTACH_FILE_BYTES) return { ok: false, error: `${file.name}: ${fileSize(file.size)} — больше ${fileSize(ATTACH_FILE_BYTES)}` }
+  if (!file.size) return { ok: false, error: `${file.name}: пустой файл` }
+  try {
+    const buf = await file.arrayBuffer()
+    return { ok: true, att: { name: file.name, mime: file.type || '', size: file.size, b64: bufToB64(buf), kind } }
+  } catch (e) {
+    return { ok: false, error: `${file.name}: не удалось прочитать (${(e as Error)?.message || 'ошибка чтения'})` }
+  }
+}
+
+/** Чем подписать ответ по приложенным файлам: что прочитано и что не дошло. */
+export function attachLine(r: ChatResult): string {
+  const read = (r.attachments || []).map((a) => (a.ok ? `${a.name} · ${a.line}` : `${a.name} — ${a.line}`))
+  const notes = (r.attachNotes || []).map((n) => `· ${n}`)
+  return read.concat(notes).join('\n')
+}
+
+/** Что движок подправил на входе и в окне — одной строкой, чтобы это было видно под ответом. */
+export function notesLine(r: ChatResult): string {
+  const parts = [...(r.inputNotes || []), r.ctxFit].map((x) => (x || '').trim()).filter(Boolean)
+  return parts.join(' · ')
+}
+
 export async function sendChat(
   text: string,
   history: ChatTurn[] = [],
-  opts: { signal?: AbortSignal; images?: string[]; model?: string; gender?: string } = {},
+  opts: { signal?: AbortSignal; images?: string[]; attachments?: Attachment[]; model?: string; gender?: string } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), 75_000)
@@ -72,6 +163,7 @@ export async function sendChat(
         text,
         history: history.slice(-8),
         images: opts.images,
+        attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
         model: opts.model || undefined,
         gender: opts.gender || undefined,
       }),

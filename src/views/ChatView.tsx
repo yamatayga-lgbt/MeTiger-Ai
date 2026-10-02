@@ -7,7 +7,7 @@ import { fileToDataUrl, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
 import { modelOption } from '../lib/models'
 import { ModelPicker } from '../components/ModelPicker'
-import { fileHref, fileSize } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment } from '../lib/api'
 
 /** Картинки из ответа: превью прямо в пузыре, файл — рядом чипом, чтобы его
     можно было забрать. Ссылка (data-URI) считается один раз на файл: генерация
@@ -94,7 +94,7 @@ interface ChatViewProps {
   user: TgUser
   messages: ChatMessage[]
   typing: boolean
-  onSend: (text: string, images?: string[]) => void
+  onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Выбранная модель ('' = Авто) и смена — живут в App и сохраняются. */
   model?: string
   onModelChange?: (id: string) => void
@@ -104,6 +104,10 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
+  /* Документы и голос, приложенные в браузере: картинки показываются превью, а они
+     — чипом с именем и весом, потому что превью у pdf нет и быть не может. */
+  const [docs, setDocs] = useState<Attachment[]>([])
+  const [docError, setDocError] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -213,21 +217,25 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
 
   const submit = () => {
     const text = (listening ? stopVoiceInput() : value).trim()
-    /* Картинка без вопроса — это не запрос: движок не знает, что с ней делать. */
-    if (!text && !shots.length) return
+    /* Картинка или файл без вопроса — это запрос «посмотри, что я прислал»: движок
+       сам решит, что с этим делать. Совсем пустой ход не отправляем. */
+    if (!text && !shots.length && !docs.length) return
     haptic('medium')
-    onSend(text || 'Что на картинке?', shots.length ? shots : undefined)
+    onSend(text || (docs.length ? 'Посмотри, что я приложил' : 'Что на картинке?'), shots.length ? shots : undefined, docs.length ? docs : undefined)
     setValue('')
     baseRef.current = ''
     setShots([])
+    setDocs([])
+    setDocError('')
     setShotError('')
     setVoiceError('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
   const addFiles = async (list: FileList | null) => {
-    const picked = pickImages(list ? Array.from(list) : [])
-    if (!picked.length) return
+    const all = list ? Array.from(list) : []
+    if (!all.length) return
+    const picked = pickImages(all)
     const next: string[] = []
     for (const f of picked) {
       const r = await fileToDataUrl(f)
@@ -235,6 +243,24 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
       else setShotError(r.error)
     }
     if (next.length) setShots((prev) => prev.concat(next).slice(0, 2))
+    /* остальное — документы и аудио: их не превьюим, а читаем на сервере */
+    const rest = all.filter((f) => attachmentKind(f) !== 'image')
+    if (rest.length) {
+      const { taken, tooBig, extra } = pickAttachments(rest)
+      const byName = new Map(rest.map((f) => [f.name, f]))
+      const made: Attachment[] = []
+      const errs: string[] = tooBig.slice()
+      for (const f of taken) {
+        const file = byName.get(f.name)
+        if (!file) continue
+        const r = await fileToAttachment(file)
+        if (r.ok) made.push(r.att)
+        else errs.push(r.error)
+      }
+      if (extra > 0) errs.push(`лишних файлов ${extra} — читаю не больше ${ATTACH_MAX}`)
+      setDocs((prev) => prev.concat(made).slice(0, ATTACH_MAX))
+      setDocError(errs.join(' · '))
+    }
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -266,6 +292,13 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
                       ))}
                     </div>
                   ) : null}
+                  {m.docs && m.docs.length ? (
+                    <div className="sent-files">
+                      {m.docs.map((d, i) => (
+                        <span className="sent-file" key={i}>{d.name} · {fileSize(d.size)}</span>
+                      ))}
+                    </div>
+                  ) : null}
                   {m.text ? <div className="msg-text">{m.text}</div> : null}
                 </div>
               </div>
@@ -289,6 +322,12 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
                       конец текста: человек должен увидеть отказ до того, как
                       станет искать картинку. */}
                   {m.fileError ? <div className="msg-warn">{m.fileError}</div> : null}
+                  {/* Что агент прочитал из приложенного — чтобы «он же не видел мой
+                      файл» не превращалось в спор: список прочитанного под ответом. */}
+                  {m.attach ? <div className="msg-read">{m.attach}</div> : null}
+                  {/* Чем оплатили окно и чужой «system»: история урезана, подсказки
+                      обрезаны. Это не предупреждение, это условия ответа. */}
+                  {m.notes ? <div className="msg-note">{m.notes}</div> : null}
                   {Array.isArray(m.skills) && m.skills.length ? (
                     <div className="msg-skills">по навыкам: {m.skills.join(' · ')}</div>
                   ) : null}
@@ -342,7 +381,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
           </div>
         ) : null}
 
-        {shots.length || shotError ? (
+        {shots.length || docs.length || shotError || docError ? (
           <div className="attach-strip">
             {shots.map((src, i) => (
               <div className="attach-chip" key={i}>
@@ -356,8 +395,24 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
                 </button>
               </div>
             ))}
+            {docs.map((d, i) => (
+              <div className="doc-chip" key={`d${i}`} title={`${d.name} · ${d.kind === 'voice' ? 'голос' : 'файл'}`}>
+                <span className="doc-chip-name">{d.name}</span>
+                <span className="doc-chip-size">{fileSize(d.size)}</span>
+                <button
+                  type="button"
+                  aria-label={`убрать ${d.name}`}
+                  onClick={() => setDocs((prev) => prev.filter((_, j) => j !== i))}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
             {shotError ? <span className="attach-error">{shotError}</span> : null}
-            <span className="attach-hint">картинок: {shots.length}/2</span>
+            {docError ? <span className="attach-error">{docError}</span> : null}
+            <span className="attach-hint">
+              картинок: {shots.length}/2{docs.length ? ` · файлов: ${docs.length}/${ATTACH_MAX}` : ''}
+            </span>
           </div>
         ) : null}
         <form
@@ -390,7 +445,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
           <button
             type="button"
             className="icon-btn"
-            aria-label="Прикрепить картинку"
+            aria-label="Прикрепить файл, документ или запись"
             onClick={() => {
               haptic('light')
               /* Спрятанный input сам диалог не открывает — только по клику. */
@@ -402,7 +457,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept={ATTACH_ACCEPT}
             multiple
             hidden
             data-role="attach"
@@ -445,7 +500,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
           <button
             type="submit"
             className="send-btn"
-            disabled={!value.trim() && shots.length === 0}
+            disabled={!value.trim() && shots.length === 0 && docs.length === 0}
             aria-label="Отправить"
           >
             <ArrowUp size={18} />

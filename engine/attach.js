@@ -66,6 +66,42 @@ export function parseMedia(update) {
 const capBytes = (n, max) => (n > max ? Math.round(max / 1024 / 1024 * 10) / 10 + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ');
 
 /**
+ * Байты документа → блок для движка. Одна функция на оба канала (Telegram и веб):
+ * лимит, пометка об обрезке и описание строкой обязаны совпадать, иначе человек
+ * получает разный текст за один и тот же файл в зависимости от того, откуда он
+ * его прислал. o: { chars } — потолок знаков (env ATTACH_DOC_CHARS).
+ */
+export function readDocBytes(bytes, name, o) {
+  const opts = o || {};
+  const chars = Math.max(2000, Number(opts.chars) || DOC_CHARS);
+  const res = parseDoc(bytes, { name: String(name || 'файл'), kind: undefined });
+  if (!res.ok) return { name: String(name || 'файл'), ok: false, kind: res.kind, why: res.why };
+  const text = res.text.length > chars ? res.text.slice(0, chars) + '\n…(дальше файл не показываем)' : res.text;
+  return { name: String(name || 'файл'), ok: true, kind: res.kind, chars: res.chars, bytes: bytes ? bytes.length : 0, text, line: describeLine(res), meta: res.meta };
+}
+
+/**
+ * Байты записи → текст. `stt` отсутствует или отказал — причина строкой: и в боте,
+ * и в вебе человек должен читать одно и то же.
+ */
+export async function readVoiceBytes(bytes, mime, o) {
+  const opts = o || {};
+  const stt = opts.stt || null;
+  const log = opts.log || (() => {});
+  if (!bytes || !bytes.length) return { ok: false, why: 'запись пустая' };
+  if (!stt) return { ok: false, why: 'распознавание голоса не подключено (слоя STT нет)' };
+  try {
+    const r = await stt.transcribe({ bytes, mime });
+    if (r && r.ok) return { ok: true, text: r.text, via: r.via };
+    return { ok: false, why: (r && r.why) || 'пусто', via: r && r.via };
+  } catch (e) {
+    const why = String((e && e.message) || e).slice(0, 120);
+    log('stt', 'boom', why);
+    return { ok: false, why };
+  }
+}
+
+/**
  * Резолвер вложений. o: { env, fetch, log, stt, max } — `stt` создаётся снаружи
  * (engine/voicein.js), чтобы тесты могли подставить поддельную расшифровку.
  */
@@ -145,14 +181,7 @@ export function createAttach(o) {
       const got = await pull(d.id, limits.doc, 'файл');
       out.tried++;
       if (!got.ok) { out.docs.push({ name: d.name, ok: false, why: got.why }); }
-      else {
-        const res = parseDoc(got.bytes, { name: d.name, kind: undefined });
-        if (!res.ok) out.docs.push({ name: d.name, ok: false, kind: res.kind, why: res.why });
-        else {
-          const text = res.text.length > limits.chars ? res.text.slice(0, limits.chars) + '\n…(дальше файл не показываем)' : res.text;
-          out.docs.push({ name: d.name, ok: true, kind: res.kind, chars: res.chars, text, line: describeLine(res), meta: res.meta });
-        }
-      }
+      else out.docs.push(readDocBytes(got.bytes, d.name, { chars: limits.chars }));
     }
 
     const audio = media.voice || media.audio;
@@ -160,15 +189,11 @@ export function createAttach(o) {
       const got = await pull(audio.id, limits.audio, 'запись');
       out.tried++;
       if (!got.ok) out.notes.push(got.why);
-      else if (!stt) out.notes.push('распознавание голоса не подключено (слоя STT нет)');
       else {
-        try {
-          const r = await stt.transcribe({ bytes: got.bytes, mime: audio.mime });
-          if (r.ok) out.voiceText = r.text;
-          else out.notes.push('запись не расшифрована: ' + (r.why || 'пусто') + (r.via ? ' [' + r.via + ']' : ''));
-        } catch (e) {
-          out.notes.push('запись не расшифрована: ' + String((e && e.message) || e).slice(0, 120));
-        }
+        const v = await readVoiceBytes(got.bytes, audio.mime, { stt, log });
+        if (v.ok) out.voiceText = v.text;
+        else if (/слоя STT нет/.test(v.why)) out.notes.push(v.why);
+        else out.notes.push('запись не расшифрована: ' + v.why + (v.via ? ' [' + v.via + ']' : ''));
       }
     }
     if (media.video) out.notes.push('видео ' + capBytes(media.video.size || 0, limits.doc) + ' я не смотрю — только кадр нельзя вынуть без серверной обработки');
