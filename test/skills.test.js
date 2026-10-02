@@ -33,8 +33,14 @@ const OURS = [
   'kn-index', 'kn-dupes', 'kn-coverage', 'mc-compress', 'mc-scope',
   'da-schema', 'da-join', 'da-integrity',
   'st-groups', 'st-series', 'st-hypothesis', 'st-corr', 'st-uncert', 'st-audit',
+  'pc-readcode', 'pc-types', 'pc-exceptions', 'pc-readable', 'pc-comments',
+  'ar-split', 'ar-iface', 'ar-deps', 'ar-events', 'ar-distributed', 'ar-tradeoff', 'ar-docs',
+  'db-message', 'db-stack', 'db-repro', 'db-minimize', 'db-locate', 'db-hypothesis', 'db-noregress',
+  'ts-integration', 'ts-scenario', 'ts-boundary', 'ts-fixtures', 'ts-regression', 'ts-coverage', 'ts-bugreport',
+  'dv-build', 'dv-env', 'dv-cicd', 'dv-logs', 'dv-deployfail', 'dv-config', 'dv-rollback', 'dv-release',
 ];
-/* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R) */
+/* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
+   13–17 — четвёртая (id 57–90, секция T) */
 const GROUP2 = OURS.slice(14, 35);
 const GROUP3 = OURS.slice(35);
 const OURS_SET = new Set(OURS);
@@ -43,8 +49,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 29 (25 донорских + problem/decision/reading/stats), и каждая непустая',
-  CATS.length === 29 && ['problem', 'decision', 'reading', 'stats'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 33 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops), и каждая непустая',
+  CATS.length === 33 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -695,6 +701,146 @@ console.log('S7 — категория оживает сама, когда ин�
     st.reasons.join(' ').indexOf('источник картинок') < 0, st.reasons.join(' '));
   ok('S79: OFF_CATS пуста — ни editing, ни files не глушатся навсегда (files развязана в 0.021)',
     !('editing' in OFF_CATS) && !('files' in OFF_CATS), JSON.stringify(Object.keys(OFF_CATS)));
+}
+
+
+/* ═══════════ группы 13–17: программирование · архитектура · отладка · тесты · инфраструктура ═══════════ */
+console.log('T — добавленные группы 13–17: пять заказов по восемь пунктов');
+{
+  const get = (id) => skillById(id);
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  const NEW_RE = /^(pc|ar|db|ts|dv)-/;
+  const ours = SKILLS.filter((x) => NEW_RE.test(x.id));
+  ok('T1: 34 навыка на месте, четыре новые категории завелись (arch, debug, testing, devops)',
+    ours.length === 34 && ['coding', 'arch', 'debug', 'testing', 'devops'].every((c) => SKILLS.some((x) => x.cat === c)),
+    String(ours.length));
+  /* Ловушка, в которую легко влететь: ключ называется prompt. Написать text — и навык
+     «работает», неся вместо методики desc в 25 знаков. */
+  ok('T2: у каждого текст длиннее 120 знаков — то есть это prompt, а не подмена desc',
+    ours.every((x) => x.text.length > 120),
+    ours.map((x) => [x.id, x.text.length]).filter(([, n]) => n <= 120).join(' '));
+  ok('T3: потолок 500 знаков соблюдён у всех 34 (с рамкой категории)', ours.every((x) => x.text.length <= 500),
+    String(Math.max(...ours.map((x) => x.text.length))));
+  ok('T4: отладка и тесты несут рамку «код не запускаешь» — иначе обещают прогон, которого нет',
+    ['db-repro', 'db-locate', 'ts-integration', 'ts-boundary', 'ts-regression'].every((id) => /не запускаешь/.test(get(id).text)),
+    ['db-repro', 'ts-integration'].filter((id) => !/не запускаешь/.test(get(id).text)).join(','));
+  ok('T5: DevOps несёт рамку «инфраструктурой не управляешь» — иначе обещает задеплоить и откатить',
+    ['dv-cicd', 'dv-deployfail', 'dv-release'].every((id) => /не управляешь/.test(get(id).text)),
+    ['dv-cicd', 'dv-release'].filter((id) => !/не управляешь/.test(get(id).text)).join(','));
+
+  /* По фразе на каждый из 40 пунктов заказа (где пункт закрыт донором — ожидается донор),
+     плюс вторые формулировки там, где пункт звучит по-разному. Провал здесь означает
+     «пункт заказа не слышно». */
+  const GROUPS = [
+    ['напиши функцию, которая парсит csv', 'dev-write'],
+    ['напиши код, который читает csv и считает суммы', 'dev-write'],
+    ['как этот код вообще работает', 'pc-readcode'],
+    ['не могу понять чужой код', 'pc-readcode'],
+    ['разберись с типами данных', 'pc-types'],
+    ['приведи типы к общему виду', 'pc-types'],
+    ['не лови все исключения подряд', 'pc-exceptions'],
+    ['ошибки глотаются молча', 'pc-exceptions'],
+    ['код тяжело читать, дай имена', 'pc-readable'],
+    ['сделай читаемо, без магии', 'pc-readable'],
+    ['прокомментируй этот блок', 'pc-comments'],
+    ['подготовь технические комментарии', 'pc-comments'],
+    ['как разбить систему на модули', 'ar-split'],
+    ['спроектируй интерфейс этого модуля', 'ar-iface'],
+    ['разорви цикл зависимостей', 'ar-deps'],
+    ['управляй зависимостями между пакетами', 'ar-deps'],
+    ['как организовать события между сервисами', 'ar-events'],
+    ['сколько реплик и где источник истины', 'ar-distributed'],
+    ['сравни монолит и микросервисы, чем заплатим', 'ar-tradeoff'],
+    ['нарисуй схему архитектуры', 'dev-architecture'],
+    ['задокументируй архитектурные решения', 'ar-docs'],
+    ['что значит это сообщение об ошибке', 'db-message'],
+    ['расшифруй трейс', 'db-message'],
+    ['разбери стек вызовов', 'db-stack'],
+    ['не могу воспроизвести баг', 'db-repro'],
+    ['сократи пример до минимума', 'db-minimize'],
+    ['где именно ломается', 'db-locate'],
+    ['проверь гипотезу про кэш', 'db-hypothesis'],
+    ['исправь опечатку в функции', 'dev-fix'],
+    ['почини этот код', 'dev-fix'],
+    ['не сломало ли правка соседей', 'db-noregress'],
+    ['напиши интеграционный тест', 'ts-integration'],
+    ['проверь сценарием как у пользователя', 'ts-scenario'],
+    ['протестируй границы значений', 'ts-boundary'],
+    ['сгенерируй тестовые данные', 'ts-fixtures'],
+    ['проверь регрессию после фикса', 'ts-regression'],
+    ['покрытие падает', 'ts-coverage'],
+    ['какие модули не покрыты вовсе', 'ts-coverage'],
+    ['оформи баг-репорт', 'ts-bugreport'],
+    ['сборка падает на ci', 'dv-build'],
+    ['сборка стала слишком долгой', 'dv-build'],
+    ['настрой ci на каждый пул-реквест', 'dv-cicd'],
+    ['разбери эти логи', 'dv-logs'],
+    ['после выкладки всё упало', 'dv-deployfail'],
+    ['фича-флаг пора убирать', 'dv-config'],
+    ['план отката если релиз поедет', 'dv-rollback'],
+    ['готов ли релиз к выпуску', 'dv-release'],
+    ['настрой окружение под проект', 'dv-env'],
+  ];
+  const deaf = GROUPS.filter(([q, id]) => !fired(q).includes(id));
+  ok('T6: все ' + GROUPS.length + ' эталонных фраз тянут ожидаемый навык', deaf.length === 0,
+    deaf.map(([q, id]) => q + ' ≠' + id + ' → ' + fired(q).join(',')).slice(0, 3).join(' ;; '));
+  ok('T6b: в корпусе 48 фраз — по числу пунктов плюс двойники', GROUPS.length === 48, String(GROUPS.length));
+
+  ok('T7: донор тестов расширен — «напиши тесты на эту функцию» и «добавь юнит-тесты» его',
+    fired('напиши тесты на эту функцию').includes('dev-tests') && fired('добавь юнит-тесты').includes('dev-tests'),
+    fired('добавь юнит-тесты').join(','));
+  ok('T8: донор архитектуры расширен — выбор стиля живёт у него, а не только у ar-tradeoff',
+    fired('монолит или микросервисы').includes('dev-architecture')
+    && fired('выбери архитектуру для нового сервиса').includes('dev-architecture'), fired('монолит или микросервисы').join(','));
+  ok('T9: владения разведены — покрытие и моки больше не у dev-tests, комментарии не у dev-docs',
+    !fired('покрытие падает').includes('dev-tests') && !fired('сделай мок платёжного шлюза').includes('dev-tests')
+    && fired('прокомментируй этот блок').includes('pc-comments') && !fired('прокомментируй этот блок').includes('dev-docs'),
+    [fired('покрытие падает').join(','), fired('прокомментируй этот блок').join(',')].join(' // '));
+  ok('T10: dev-write больше не обещает прогон run_js — такого инструмента в реестре нет',
+    !SKILLS.some((x) => /run_js/.test(x.text)) && /прогони глазами/.test(get('dev-write').text), get('dev-write').text.slice(0, 70));
+
+  const MUNDANE = ['погода в Гомеле завтра', 'переведи на английский: good morning', 'сколько будет 15% от 240',
+    'поздравь коллегу с днём рождения', 'что посмотреть в выходные', 'соли и перца по вкусу', 'запланируй поездку',
+    'напиши письмо клиенту', 'объясни, что такое инфляция', 'как почистить кроссовки', 'сколько варить яйца всмятку',
+    'доклад в школу про вулкан', 'как поднять пульс', 'скажи прогноз по курсу', 'что посмотреть на море',
+    'сколько калорий в рисе', 'перескажи сериал', 'как часто менять полотенце', 'сочини тост',
+    'заболело горло, что делать', 'тест на прочность стекла', 'границы широты', 'пограничник на заставе',
+    'поделка из теста', 'выкладка плитки в ванной', 'конфигурация компьютера для игр', 'обзор сборки пк',
+    'логарифм числа 100', 'закрой вкладку браузера', 'не открывается приложение на телефоне', 'тест на беременность',
+    'отчёт по практике', 'план питания на неделю', 'откат стиральной машины к заводским настройкам',
+    'заказ билдов на сборку мебели', 'сделай читаемо это стихотворение', 'ошибки в тексте, поправь',
+    'тест на беременность показал две полоски', 'как построить карьеру', 'разбери сонник про воду'];
+  const spilled = MUNDANE.filter((q) => fired(q).some((x) => NEW_RE.test(x)));
+  ok('T11: ' + MUNDANE.length + ' бытовых фраз, похожих по корням, не тянут новые технические навыки',
+    spilled.length === 0,
+    spilled.slice(0, 4).map((q) => q + ' → ' + fired(q).filter((x) => NEW_RE.test(x)).join(',')).join(' ;; '));
+  const flood = fired(GROUPS.map((x) => x[0]).join(' и '));
+  ok('T12: все 48 фраз разом — в бюджет (≤16) и без текста сверх потолка',
+    flood.length <= 16 && flood.every((id) => !NEW_RE.test(id) || get(id).text.length <= 500), String(flood.length));
+
+  /* Категория 18+ жила короткими корнями и открывалась в спокойном разговоре: «дебаг» (еба),
+     «соскочить» (соск), «Иванович» (вич), «ты теперь». Проверка на месте, чтобы это
+     не вернулось при следующем переносе донора. */
+  const ADULT = SKILLS.filter((x) => x.cat === 'adult').map((x) => x.id);
+  const CLEAN = ['дебаг этого модуля', 'хлеба и воды', 'взгляни в небо', 'как соскочить с поезда',
+    'Иванович, помоги с отчётом', 'спидометр врёт', 'у меня фантазии нет на это', 'ты теперь мой основной собеседник',
+    'мне нужна ласка кота', 'бляха на куртке', 'сделай диалог между двумя сервисами', 'от его лица в логах',
+    'напиши код для парсера', 'границы широты', 'исправь ошибку в коде', 'небо над головой'];
+  const dirty = CLEAN.filter((q) => detect(q, {}).some((x) => ADULT.includes(x.id)));
+  ok('T13: бытовые фразы не открывают категорию 18+ (навыков в ней ' + ADULT.length + ')',
+    dirty.length === 0 && ADULT.length >= 12,
+    dirty.slice(0, 4).map((q) => q + ' → ' + detect(q, {}).filter((x) => ADULT.includes(x)).join(',')).join(' ;; '));
+  const REAL = ['напиши матом', 'перескажи нецензурно', 'эротический рассказ', 'флирт с девушкой',
+    'смени пол персонажа', 'интимные фантазии про нас', 'секс-советы для взрослых', 'оцени моё фото'];
+  ok('T14: а настоящие обращения в 18+ по-прежнему слышны',
+    REAL.every((q) => detect(q, {}).some((x) => ADULT.includes(x.id))),
+    REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
+
+  const st1 = stats();
+  ok('T15: сводка выросла ровно на наши 34 — 407 → 441, выключенных не прибавилось',
+    st1.total === 441 && st1.off === 24 && st1.groups.length === 33, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
+    ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
