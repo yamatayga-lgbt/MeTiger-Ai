@@ -214,6 +214,9 @@ export async function onRequestPost(context) {
     /* каким каналом сделана картинка этого ответа — по нему видно, живой ли источник
        сегодня отвечает, а не числится ли по наличию ключа */
     imgSource: r.imgSource || undefined,
+    /* почему файл или картинка не вышли — строкой, чтобы фронт и curl
+       видели причину, а не пустой список файлов */
+    fileError: r.fileError || undefined,
     reframed: !!r.reframed,
     freedomCleaned: !!r.freedomCleaned,
     tried: r.tried.slice(0, 6),

@@ -197,6 +197,7 @@ export default function App() {
               /* файлы и навыки живут только в этой сессии — см. persist: base64 в
                  localStorage кончает квоту молча и ломает сохранение всего чата */
               files: r.files && r.files.length ? r.files : undefined,
+              fileError: r.fileError || undefined,
               skills: r.skills && r.skills.length ? r.skills : undefined,
             }
           : ({} as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet' })

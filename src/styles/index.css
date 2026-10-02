@@ -2280,6 +2280,16 @@ kbd {
   gap: 6px;
   margin-top: 6px;
 }
+.msg-warn {
+  margin-top: 6px;
+  padding: 5px 9px;
+  border-left: 2px solid #d98b2b;
+  background: rgba(217, 139, 43, 0.08);
+  border-radius: 0 8px 8px 0;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-2, #5a6270);
+}
 .msg-files-row {
   display: flex;
   flex-wrap: wrap;

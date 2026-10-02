@@ -337,6 +337,23 @@ console.log('K2 — картинки сквозь движок (engine/imggen.js
     JSON.stringify({ err: r3.fileError, reply: r3.reply.slice(0, 90) }));
   ok('K2i: ответ модели при этом остаётся целиком', /^Кот на подоконнике, как договорились\./.test(r3.reply.replace(/\n+· [\s\S]*$/, '')), JSON.stringify(r3.reply.slice(0, 60)));
   const r4 = await e3.run({ text: 'нарисуй ещё кота', chatId: 'k2c', providerOrder: ['groq'] });
+  /* HTTP-вход: причину отказа от картинки человек должен видеть ПОЛЕМ, а не только
+     строкой в тексте — иначе фронт рисует пустое место без объяснений. Слой
+     картинок в движке общий на изолят, поэтому здесь он честно падает на
+     заглушку fetch («ответ без картинки») — ровно то поведение, которое проверяем. */
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = fakeFetch(() => ({ body: chat('Кот на подоконнике.') }));
+  const api3 = await onRequestPost({
+    request: new Request('http://x/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'нарисуй кота', chatId: 'k2api', history: [] }) }),
+    env: { ...ENV, RATE_LIMIT: '0' },
+  });
+  const j3 = await api3.json();
+  globalThis.fetch = savedFetch;
+  ok('K2m1: HTTP-ответ отдаёт причину отказа полем, а не только текстом в баббле',
+    j3.ok === true && /не вышла/.test(String(j3.fileError)) && !(j3.files || []).length,
+    JSON.stringify({ err: String(j3.fileError).slice(0, 90), files: (j3.files || []).length }));
+  ok('K2m2: и в ответе картинка не обещана — блока нет, ссылка не выдумана',
+    j3.reply.indexOf('```img') < 0 && !/http[s]?:\/\/[^ ]*\.(png|jpg)/.test(j3.reply), JSON.stringify(j3.reply).slice(0, 160));
   ok('K2j: и не долбится в тот же API каждый запрос — источник припаркован',
     !/ждём 0 с/.test(String(r4.fileError)) && /ждём \d+ с/.test(String(r4.fileError)), String(r4.fileError).slice(0, 90));
 

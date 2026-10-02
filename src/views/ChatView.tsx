@@ -285,6 +285,10 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
                       своего хранилища под раздачу нет, файл живёт, пока открыта
                       вкладка. После перезагрузки его нужно попросить заново. */}
                   {Array.isArray(m.files) && m.files.length ? <FileChips files={m.files} /> : null}
+                  {/* Причина, по которой вложения нет. Прячем её под ответ, а не в
+                      конец текста: человек должен увидеть отказ до того, как
+                      станет искать картинку. */}
+                  {m.fileError ? <div className="msg-warn">{m.fileError}</div> : null}
                   {Array.isArray(m.skills) && m.skills.length ? (
                     <div className="msg-skills">по навыкам: {m.skills.join(' · ')}</div>
                   ) : null}
