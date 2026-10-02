@@ -35,6 +35,7 @@ const CATS = [
   { id: 'tooling', title: '🧰 Инструменты разработчика' },
   { id: 'writing', title: '✍️ Создание текстов' },
   { id: 'media', title: '🎬 Мультимодальный контент' },
+  { id: 'ux', title: '🧭 Дизайн и UX' },
   { id: 'life', title: 'Быт и развлечения' },
   { id: 'data', title: 'Data & Analytics' },
   { id: 'automation', title: 'Automation' },

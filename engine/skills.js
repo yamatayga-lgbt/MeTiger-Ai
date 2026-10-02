@@ -54,6 +54,7 @@ import s_database from './skills/database.js';
 import s_tooling from './skills/tooling.js';
 import s_writing from './skills/writing.js';
 import s_media from './skills/media.js';
+import s_ux from './skills/ux.js';
 import s_data from './skills/data.js';
 import s_automation from './skills/automation.js';
 import s_safety from './skills/safety.js';
@@ -75,7 +76,7 @@ const RAW = [
   ...s_reading, ...s_stats,
   /* наше дополнение: группы 13–17 — программирование, архитектура, отладка, тесты, DevOps */
   ...s_programming, ...s_architecture, ...s_debugging, ...s_testing, ...s_devops,
-  ...s_webapi, ...s_database, ...s_tooling, ...s_writing, ...s_media,
+  ...s_webapi, ...s_database, ...s_tooling, ...s_writing, ...s_media, ...s_ux,
 ];
 
 /* ============================== соответствие имён ============================== */
@@ -157,6 +158,7 @@ export const FRAMES = {
   dbase: ' Доступа к базе у тебя нет: SQL, план миграции и разбор — напиши; «выполнил запрос» и «данные на проде проверил» — нет.',
   tooling: ' Команды ты не выполняешь: точные строки, флаги и порядок действий — напиши; «прогнал линтер» и «установилось» — нет.',
   media: ' Видео и аудио ты не смотришь: ни ffprobe, ни плеера нет; таймкоды и «проверил на 3:12» не выдумывай, приложенную картинку видит модель, и только её.',
+  ux: ' Интерфейс мы не видим: ни Figma, ни браузера, ни кликов. Основание — описание, код или присланный скриншот.',
 };
 
 /** У навыков со слишком широких триггеров — второе условие: без него навык лезет в спокойный разговор.
@@ -182,6 +184,7 @@ for (const s of RAW) {
   else if (s.cat === 'dbase') FRAME_BY_ID[s.id] = FRAMES.dbase;
   else if (s.cat === 'tooling') FRAME_BY_ID[s.id] = FRAMES.tooling;
   else if (s.cat === 'media') FRAME_BY_ID[s.id] = FRAMES.media;
+  else if (s.cat === 'ux') FRAME_BY_ID[s.id] = FRAMES.ux;
   else if (s.cat === 'memory') FRAME_BY_ID[s.id] = FRAMES.memory;
   else if (s.cat === 'data' && /chart|report/.test(s.id)) FRAME_BY_ID[s.id] = FRAMES.data_visual;
 }

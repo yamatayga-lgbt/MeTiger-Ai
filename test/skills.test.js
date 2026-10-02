@@ -44,6 +44,7 @@ const OURS = [
   'tl-syntax', 'tl-pkg', 'tl-docs', 'tl-lint', 'tl-format', 'tl-warn', 'tl-repro',
   'tx-draft', 'tx-edit', 'tx-expand', 'tx-clear', 'tx-brief',
   'md-video', 'md-subs', 'md-format', 'md-transcribe',
+  'ux-scenario', 'ux-ia', 'ux-flow', 'ux-feedback', 'ux-problems', 'ux-proto', 'ux-a11y',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -55,8 +56,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 38 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing), и каждая непустая',
-  CATS.length === 38 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 39 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing), и каждая непустая',
+  CATS.length === 39 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -787,8 +788,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 62 — 407 → 469 (13–17, 18–21 и 22), выключенных не прибавилось',
-    st1.total === 469 && st1.on === 445 && st1.off === 24 && st1.groups.length === 38, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 69 — 407 → 476 (13–17, 18–21, 22 и 23), выключенных не прибавилось',
+    st1.total === 476 && st1.on === 452 && st1.off === 24 && st1.groups.length === 39, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -922,6 +923,66 @@ console.log('U — добавленные группы 18–21: четыре з�
   for (const id of owners) hits[id] = CANON.filter((x) => x[2] === 'W' && x[1] === id).length;
   ok('W11: каждая позиция 22 имеет ≥ 2 фразы в корпусе (включая донорские id)',
     Object.values(hits).every((n) => n >= 2), JSON.stringify(hits));
+}
+
+
+/* ═══════════ X — группа 23 «Дизайн и UX» (поставка 0.026) ═══════════
+   Здесь проверяется и то, чего в навыках быть не должно: мы интерфейс не видим, поэтому
+  любой вывод — только по описанию, коду или присланному скриншоту. */
+{
+  const get = (id) => skillById(id);
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  const ux = SKILLS.filter((x) => /^ux-/.test(x.id));
+  ok('X1: 7 ux-навыков на месте, тексты ≤ 500, приоритет 5, своя категория',
+    ux.length === 7 && ux.every((x) => x.text.length <= 500 && x.priority === 5 && x.cat === 'ux'),
+    ux.map((x) => x.id + '=' + x.text.length).join(' '));
+  ok('X2: ни один не зовёт инструмент — need/tools пустые (Figma и браузера у нас нет)',
+    ux.every((x) => (!x.need || x.need.length === 0) && (!x.tools || x.tools.length === 0)),
+    ux.filter((x) => (x.need || []).length || (x.tools || []).length).map((x) => x.id).join(' '));
+  ok('X3: рамка «интерфейс не видим» приклеена ко всем семи',
+    ux.every((x) => x.text.includes('ни Figma') && x.text.includes('присланный скриншот')),
+    ux[0].text.slice(-46));
+  ok('X4: ux-a11y держит нормы контраста и честно отказывается от скринридера',
+    /4\.5:1/.test(get('ux-a11y').text) && /Скринридером не проверял/.test(get('ux-a11y').text)
+      && /клавиатура/.test(get('ux-a11y').text) && /подпис/.test(get('ux-a11y').text));
+  ok('X5: ux-proto не обещает картинку, требует состояния экранов и знает про filegen',
+    /картинку не рисуем/.test(get('ux-proto').text) && /пусто, грузится, ошибка/.test(get('ux-proto').text)
+      && /filegen/.test(get('ux-proto').text));
+  ok('X6: ux-ia судит по меткам и глубине, а не по вкусам',
+    /обещать содержимое/.test(get('ux-ia').text) && /до 7 пунктов/.test(get('ux-ia').text)
+      && /одной оси/.test(get('ux-ia').text));
+  ok('X7: ux-feedback перечисляет четыре ответа и запрещает голый код ошибки',
+    /четыре ответа/.test(get('ux-feedback').text) && /код 500/.test(get('ux-feedback').text)
+      && /подтверждай/.test(get('ux-feedback').text));
+  ok('X8: ux-flow держит возвраты с сохранёнными данными и не выдумывает воронку',
+    /сохранёнными данными/.test(get('ux-flow').text) && /только присланные/.test(get('ux-flow').text)
+      && /лишн/.test(get('ux-flow').text));
+  ok('X9: донорские границы переехали — v-ui без «навигаци», ux-проблем, wireframe и макета',
+    !/навигаци/.test(get('v-ui').re.source) && !/ux\[- \]?\(/.test(get('v-ui').re.source)
+      && !/wireframe/.test(get('v-ui').re.source) && !/макет \(/.test(get('v-ui').re.source)
+      && fired('оцени удобство этого экрана').includes('v-ui')
+      && !fired('найди ux-проблемы в этом описании').includes('v-ui')
+      && !fired('предложи структуру навигации приложения').includes('v-ui')
+      && !fired('сделай макет экрана').includes('v-ui'));
+  ok('X10: script отдал пользовательские сценарии, dev-architecture отдал информационную архитектуру — своё осталось',
+    !fired('собери пользовательский сценарий оформления заказа').includes('script')
+      && fired('собери пользовательский сценарий оформления заказа').includes('ux-scenario')
+      && fired('напиши сценарий для ролика на 30 секунд').includes('script')
+      && !fired('информационная архитектура каталога').includes('dev-architecture')
+      && fired('информационная архитектура каталога').includes('ux-ia')
+      && fired('спроектируй архитектуру микросервисов').includes('dev-architecture')
+      && fired('нарисуй схему архитектуры').includes('dev-architecture'));
+  ok('X11: бытовой корпус со словами «тост/поток/онбординг/прототип/папки/клавиатура» не будит ux-*',
+    MUNDANE_CORP.filter((q) => fired(q).some((id) => /^ux-/.test(id))).length === 0);
+  const owners = ['ux-scenario', 'ux-ia', 'ux-flow', 'v-ui', 'ux-feedback', 'ux-problems', 'ux-proto', 'ux-a11y'];
+  const hits = {};
+  for (const id of owners) hits[id] = CANON.filter((x) => x[2] === 'X' && x[1] === id).length;
+  ok('X12: каждая позиция 23 имеет ≥ 2 фразы в корпусе (включая донорский v-ui)',
+    Object.values(hits).every((n) => n >= 2), JSON.stringify(hits));
+  /* глобальная защита: мёртвая граница слова на кириллице — общий дефект переноса */
+  const deadb = SKILLS.filter((x) => x.re && /[\\]b(?=[а-яё])|[а-яё][\\]b/.test(x.re.source)).map((x) => x.id);
+  ok('X13: ни в одном триггере нет «\\b» рядом с кириллицей (в JS это всегда мёртвая ветка)',
+    deadb.length === 0, deadb.slice(0, 6).join(', '));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
