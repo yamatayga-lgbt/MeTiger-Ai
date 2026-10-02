@@ -309,7 +309,24 @@ console.log('── I · потолок модели доходит до тел�
     globalThis.fetch = g;
     ok('K9: без каталога и без сети человек видит пулы, а не пустоту', d2.ok === true && d2.count > 100 && d2.catalogCount === 0 && d2.stale === false, d2.count);
     ok('K10: cached=false честно говорит, что кэша нет', d2.cached === false);
-    M.forgetMemo();
+
+      /* ?refresh=1 обязан перечитать провайдеров, а не вернуть свежий по таймеру кэш.
+         На проде без force «обновить» было декорацией: каталог не менялся. */
+      M.forgetMemo();
+      let net2 = 0;
+      globalThis.fetch = async () => {
+        net2++;
+        return { ok: true, status: 200, json: async () => ({ data: [{ id: 'new/model:free', name: 'New', context_length: 4096, architecture: { input_modalities: ['text'], output_modalities: ['text'] }, top_provider: { max_completion_tokens: 1024 }, pricing: { prompt: '0', completion: '0' } }] }) };
+      };
+      const resR = await onRequestGet({ request: new Request('https://metiger.example/api/models?refresh=1'), env: env2 });
+      const dR = await resR.json();
+      globalThis.fetch = g;
+      ok('K11: ?refresh=1 перечитывает провайдеров и отдаёт новое',
+         net2 === 2 && dR.models.some((m) => m.id === 'new/model:free') && !dR.models.some((m) => m.id === 'wide/model-b'),
+         net2 + ' сетевых запросов, каталог ' + dR.catalogCount);
+      M.forgetMemo();
+
+        M.forgetMemo();
   }
 }
 

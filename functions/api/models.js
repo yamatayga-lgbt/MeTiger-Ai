@@ -60,7 +60,13 @@ export async function onRequestGet(context) {
   let cat = await modelreg.loadCatalog(store, { env, force });
   if (!cat || cat.stale || force) {
     try {
-      cat = await modelreg.refresh(env, store, { curated: ids.map((id) => ({ id, tier: tierOf[id] })) });
+      /* force — чтобы ?refresh=1 действительно перечитывал провайдеров, а не
+         возвращал свежий по таймеру кэш: иначе «обновить» в панели было бы
+         декорацией (на проде проверено — список не менялся). */
+      cat = await modelreg.refresh(env, store, {
+        force: true,
+        curated: ids.map((id) => ({ id, tier: tierOf[id] })),
+      });
     } catch (e) {
       /* каталог — дополнение; без него список пулов всё равно usable */
       cat = cat || { updatedAt: 0, models: [], byId: null, errors: [String((e && e.message) || e)] };
