@@ -4,7 +4,8 @@
  * Запуск: node test/tools.test.js
  */
 import assert from 'node:assert';
-import { gatherTools, evalExpr, TOOL_IDS } from '../engine/tools.js';
+import { gatherTools, evalExpr, TOOL_IDS, JOKES, isoWeek } from '../engine/tools.js';
+import { formatFromText, nameFromText } from '../engine/filegen.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -40,7 +41,9 @@ const calcRes = await gatherTools('посчитай 17*(3+2)', {}, fakeFetch({})
 ok('T5: «посчитай 17*(3+2)» → калькулятор, 85', calcRes.used.join() === 'calc' && calcRes.block.includes('85'), calcRes.block);
 
 const dice = await gatherTools('брось кубик d20', {}, fakeFetch({}));
-ok('T6: кубик d20 сработал и в диапазоне', dice.used.join() === 'random' && /выпало \d+/.test(dice.block) && /d20/.test(dice.block), dice.block);
+const d20 = Number(/= (\d+)/.exec(dice.block.trim())[1]);
+ok('T6: кубик d20 — у отдельного инструмента, значение в диапазоне 1..20',
+  dice.used.join() === 'dice' && /d20: /.test(dice.block) && d20 >= 1 && d20 <= 20, dice.block);
 
 console.log('T — дата, курсы, погода');
 const timeRes = await gatherTools('который час?', { TZ_NAME: 'Europe/Minsk' }, fakeFetch({}));
@@ -105,8 +108,51 @@ ok('T18: поиск Wikimedia REST — главный источник', wikiSea
 const noKey = await gatherTools('новости про науку', {}, fakeFetch({}));
 ok('T15: новости без ключей → тишина, а не выдумка', noKey.used.length === 0 && noKey.block === '');
 
-console.log('T — состав слоя');
-ok('T16: в слое 9 инструментов', TOOL_IDS().length === 9, TOOL_IDS().join());
+console.log('T — состав слоя и бытовые инструменты (перенос из донора)');
+ok('T16: в слое 15 инструментов — состав ровно тот, что ожидаем',
+  TOOL_IDS().join() === 'time,calc,currency,random,weather,wikipedia,url,news,web-search,date,coin,dice,joke,image-search,filegen',
+  TOOL_IDS().join());
+
+const dateRes = await gatherTools('какая сегодня дата', { TZ_NAME: 'Europe/Minsk' }, fakeFetch({}));
+ok('T17: дата — свой инструмент, с ISO и номером недели',
+  dateRes.used.join() === 'date' && /номер недели \d+/.test(dateRes.block) && /\d{4}-\d{2}-\d{2}/.test(dateRes.block), dateRes.block);
+ok('T18: «который час» больше не тянет дату (инструменты не дублируют друг друга)',
+  (await gatherTools('который час', {}, fakeFetch({}))).used.join() === 'time', 'time');
+ok('T19: номер недели по ISO: 2021-01-01 = 53-я неделя 2020 года',
+  isoWeek(new Date(Date.UTC(2021, 0, 1))) === 53 && isoWeek(new Date(Date.UTC(2026, 0, 1))) === 1,
+  [isoWeek(new Date(Date.UTC(2021, 0, 1))), isoWeek(new Date(Date.UTC(2026, 0, 1)))].join('/'));
+
+const coin = await gatherTools('подбрось монетку', {}, fakeFetch({}));
+ok('T20: монетка — орёл или решка, честным генератором', /Монетка: (орёл|решка)/.test(coin.block) && /crypto/.test(coin.block), coin.block);
+const d3 = await gatherTools('брось 3d6+2', {}, fakeFetch({}));
+const v3 = Number(/= (\d+)/.exec(d3.block)[1]);
+ok('T21: 3d6+2 = 3..20 и формула показана', v3 >= 3 && v3 <= 20 && /3d6\+2: \d \+ \d \+ \d \+ 2/.test(d3.block), d3.block);
+
+const jk = await gatherTools('анекдот про котов', {}, fakeFetch({}));
+const jText = jk.block.trim().split('\n').pop().trim();
+ok('T22: шутка берётся из перенесённого набора, а не выдумывается',
+  jk.used.join() === 'joke' && JOKES.some((j) => j.t === jText) && jText.length > 20, jText.slice(0, 50));
+ok('T23: шуток перенесено 36, и они с тегами', JOKES.length === 36 && JOKES.every((j) => j.t && Array.isArray(j.tags)), String(JOKES.length));
+
+const img = await gatherTools('найди картинку с котом', {}, fakeFetch({
+  'commons.wikimedia.org/w/api.php': { query: { pages: { 7: { index: 1, title: 'File:Кот.jpg', imageinfo: [{ url: 'https://upload/1.jpg', thumburl: 'https://upload/1-t.jpg', extmetadata: { Artist: { value: '<span>Иван</span>' }, LicenseShortURL: { value: 'https://creativecommons.org/licenses/by/4.0/' } } }] } } } },
+}));
+ok('T24: поиск картинок даёт адрес, автора и лицензию — без выдумки',
+  img.used.join() === 'image-search' && img.block.includes('https://upload/1-t.jpg') && img.block.includes('Иван') && img.block.includes('creativecommons'), img.block.replace(/\n/g, ' | ').slice(0, 130));
+ok('T25: картинки не нашлись → блока нет, а не «вот что-то похожее»',
+  (await gatherTools('найди картинку с котом', {}, fakeFetch({ 'commons.wikimedia.org': { error: 1 } }))).block === '');
+
+const fg = await gatherTools('оформи это в файл docx', {}, fakeFetch({}));
+ok('T26: filegen — указание модели, а не данные: в [Инструмент: …] его нет',
+  fg.used.join() === 'filegen' && fg.block === '' && fg.directive.includes('```file:docx|') && fg.directive.includes('форматы') === false && fg.directive.includes('docx, xlsx'), (fg.directive || '').replace(/\n/g, ' | ').slice(0, 120));
+ok('T27: формат просьбы узнаётся: xlsx для таблицы, txt для голого текста',
+  formatFromText('сделай таблицу xlsx') === 'xlsx' && formatFromText('голым текстом') === 'txt' && formatFromText('просто ответь') === 'docx', '');
+ok('T28: имя файла режется по-человечески, без предлога в начале', nameFromText('оформи в файл смету на ремонт, пожалуйста') === 'смету на ремонт', nameFromText('оформи в файл смету на ремонт, пожалуйста'));
+
+ok('T29: TOOLS_OFF выключает инструмент целиком — и навык это видит',
+  (await gatherTools('анекдот про котов', { TOOLS_OFF: 'joke' }, fakeFetch({ 'x': {} }))).block === '');
+ok('T30: force зовёт инструмент без триггера (так навык получает свои данные)',
+  (await gatherTools('привет', {}, fakeFetch({}), { force: ['coin'] })).used.join() === 'coin', '');
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

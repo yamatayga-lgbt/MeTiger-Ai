@@ -100,7 +100,41 @@ export function tierFor(intent) {
  *    не один вечер);
  *  • для кода и математики думающих не прячем — там они и нужны.
  */
-export function modelsFor(cfg, tier, intent, images) {
+/* ====================== голова пула на математике и коде ====================== */
+
+/**
+ * Кому первому отвечать на math и code.
+ *
+ * Это не «модель номер один в рейтинге», а след замера: бесплатный DeepSeek сегодня
+ * живёт ровно на одном провайдере. Данные за 2 октября 2026, «сколько будет 17*23»:
+ *   • OdiRouter — `deepseek-v4-flash` 3,4 с и `deepseek-v4-pro` 2,9 с, оба 391, ход
+ *     мысли отдельным полем reasoning_content;
+ *   • Xkiro — пять DeepSeek- id в списке есть, помечены бесплатными, все пять отвечают
+ *     503 («A server error occurred» за 0,2 с) — в список их не берём;
+ *   • OpenRouter — 402 «Insufficient credits»: из 21 модели DeepSeek ни одной бесплатной;
+ *   • Cloudflare — `@cf/deepseek-ai/deepseek-v4-*` видны в каталоге аккаунта, но на
+ *     бесплатном плане отвечают 403, а наш токен REST не берёт и 401.
+ * Поэтому список короткий, он один на оба интента и его можно переназначить
+ * переменной без выката: MATH_HEADS / CODE_HEADS (через запятую), INTENT_HEADS=off —
+ * совсем выключить и жить порядком из конфига.
+ */
+export const INTENT_HEADS = {
+  math: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  code: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+};
+
+/** Головы для интента: конфиг человека важнее дефолта, пустой список — неour дело. */
+export function headsFor(intent, env) {
+  const key = intent === 'math' || intent === 'code' ? intent : '';
+  if (!key) return [];
+  const e = env || {};
+  if (String(e.INTENT_HEADS || '') === 'off') return [];
+  const own = e[key === 'math' ? 'MATH_HEADS' : 'CODE_HEADS'];
+  const list = own ? String(own).split(',') : INTENT_HEADS[key];
+  return list.map((s) => String(s).trim()).filter(Boolean).slice(0, 6);
+}
+
+export function modelsFor(cfg, tier, intent, images, env) {
   let list = (cfg.modelsLocal || (cfg.models && cfg.models[tier]) || (cfg.models && cfg.models.fast) || []).slice();
   if (!list.length) return list;
   /* Порядок важнее состава: сначала зрение, потом «не сжигай бюджет на размышления».
@@ -113,6 +147,15 @@ export function modelsFor(cfg, tier, intent, images) {
   if (!keepThinkers) {
     const calm = list.filter((m) => !isReasoning(m));
     if (calm.length) list = calm.concat(list.filter((m) => calm.indexOf(m) < 0));
+  }
+  /* Головы — последним шагом и только когда картинок нет: зрение важнее марки модели,
+     а переставлять список, в котором нужной модели нет, значит просто шуметь. */
+  if (!(images && images.length)) {
+    const heads = headsFor(intent, env);
+    if (heads.length) {
+      const top = heads.filter((h) => list.indexOf(h) >= 0);
+      if (top.length) list = top.concat(list.filter((m) => top.indexOf(m) < 0));
+    }
   }
   return list;
 }

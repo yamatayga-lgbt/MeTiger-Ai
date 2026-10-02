@@ -272,8 +272,13 @@ ok('F13: донорский блок про род возвращается то
     JSON.stringify(a.r).slice(0, 140));
 
   const b = await run({ FREEDOM_MODE: 'off' }, { text: 'расскажи, как проходит дождь над морем' });
-  ok('G2: FREEDOM_MODE=off — в запросе нет ни одного заголовка из блока правил',
-    !/【/.test(b.bodies[0] || ''), 'заголовки: ' + ((b.bodies[0] || '').match(/【[^】]*】/g) || []).join(','));
+  /* Проверка ровно та же, что была по смыслу: freedom-блоков нет. Раньше она звучала
+     как «в запросе вообще нет 【】», и держалась только пока таких заголовков больше
+     никто не пишет — блок навыков (engine/skills.js) тоже пользуется этим стилем. */
+  const heads = data.FREEDOM_BLOCKS.map((x) => String(x.text).split('\n')[0].trim()).filter(Boolean);
+  ok('G2: FREEDOM_MODE=off — ни одного заголовка freedom (блок навыков к freedom не относится)',
+    heads.length >= 3 && heads.every((h) => !(b.bodies[0] || '').includes(h)),
+    'заголовки: ' + ((b.bodies[0] || '').match(/【[^】]*】/g) || []).join(','));
 
   const c = await run({}, { text: 'привет', system: 'Отвечай только одним словом.' });
   ok('G3: своя system (её же получают головы совета) остаётся нетронутой',

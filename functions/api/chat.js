@@ -16,6 +16,15 @@ import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } f
 import { createBrave } from '../../engine/brave.js';
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
+import { stats as skillStats } from '../../engine/skills.js';
+
+/** одной строкой — сколько навыков на ходу и чем выключены (для curl-диагностики) */
+function skillLine(env) {
+  const s = skillStats();
+  return env && env.SKILLS === 'off'
+    ? 'выключены (SKILLS=off)'
+    : `на ходу ${s.on} из ${s.total}` + (s.off ? ` · выключено ${s.off}: ${s.reasons.slice(0, 2).join('; ')}` : '');
+}
 import { createMemory } from '../../engine/memory.js';
 import * as modelreg from '../../engine/modelreg.js';
 
@@ -194,6 +203,13 @@ export async function onRequestPost(context) {
     gender: r.gender, emotion: r.emotion || undefined,
     /* Какие инструменты реально накормили ответ — видно в подписи под пузырём. */
     tools: r.tools || [],
+    /* навыки (engine/skills.js): чем именно модель себя правила на этом вопросе, и
+       что человек может проверить сам — тот же curl покажет список, а не догадку */
+    skills: (r.skills || []).map((s) => s.title),
+    skillsOn: (r.skills || []).map((s) => s.id),
+    /* файлы, которые модель оформила блоком ```file:…``` — б64 кладём прямо в ответ:
+       своего хранилища под выдачу нет, а 512 КБ — потолок одного файла */
+    files: r.files || [],
     reframed: !!r.reframed,
     freedomCleaned: !!r.freedomCleaned,
     tried: r.tried.slice(0, 6),
@@ -223,6 +239,7 @@ export async function onRequestGet(context) {
       ? 'включён · ' + (emotionLayer.stats(context.env).label ? 'метка в ответе' : 'метка выключена')
       : 'выключен (EMOTION=0)',
     tools: TOOL_IDS(),
+    skills: skillLine(context.env),
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */
     dead: engine.quarantine(),
   });

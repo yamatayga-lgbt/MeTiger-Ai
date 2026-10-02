@@ -169,7 +169,7 @@ export async function handleUpdate(opts) {
   const post = opts.post || (async () => ({ ok: true }));
   const username = env.TELEGRAM_BOT_USERNAME || 'Metigerai_bot';
   const parsed = parseUpdate(update);
-  const res = { status: 200, answered: false, chunks: 0, ignored: '', sent: [] };
+  const res = { status: 200, answered: false, chunks: 0, ignored: '', sent: [], files: [] };
   if (parsed.kind !== 'message') {
     res.ignored = parsed.kind === 'edited' ? 'правку сообщения не переигрываем' : 'не сообщение';
     return res;
@@ -237,16 +237,60 @@ export async function handleUpdate(opts) {
   res.answered = true;
   res.meta = meta;
   res.forget = cmd === '__forget__';
+
+  /* Файлы, которые модель оформила блоком (engine/filegen.js), уезжают следом за
+     текстом: человек в Telegram не увидит data-ссылку, им нужен настоящий документ.
+     Не больше трёх — столько же отдаёт и веб-чат, чтобы каналы не расходились. */
+  const files = Array.isArray(json && json.files) ? json.files.slice(0, 3) : [];
+  for (const f of files) {
+    const name = String((f && f.name) || 'файл').slice(0, 100);
+    try {
+      const bytes = fromB64(String((f && f.b64) || ''));
+      if (!bytes.length) throw new Error('пустой файл');
+      await post('sendDocument', {
+        chat_id: parsed.chat.id,
+        caption: name + ' · ' + sizeLine(Number(f.size) || bytes.length) + '\n' + (meta ? meta.replace(/^· /, '') : ''),
+      }, { filename: name, type: String(f.mime || 'application/octet-stream'), bytes });
+      res.files.push(name);
+    } catch (e) {
+      const text = 'Файл «' + name + '» отправить не вышло: ' + String((e && e.message) || e) + '. Текст ответа выше — он полный.';
+      await post('sendMessage', { chat_id: parsed.chat.id, text });
+      res.sent.push(text); res.chunks++;
+      res.fileError = String((e && e.message) || e);
+    }
+  }
   return res;
+}
+
+/** base64 → байты (atob есть и в workerd, и в node 18+). */
+export function fromB64(s) {
+  const bin = atob(String(s || '').replace(/\s+/g, ''));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function sizeLine(n) {
+  return n < 1024 ? n + ' б' : String((n / 1024).toFixed(1)).replace('.', ',') + ' КБ';
 }
 
 /** Реальная отправка в Bot API. Отдельно и тупо — чтобы подмена в тестах была тривиальной. */
 export function telegramPoster(env, fetchImpl) {
   const token = String(env.TELEGRAM_BOT_TOKEN || '');
   const base = String(env.TELEGRAM_API_BASE || 'https://api.telegram.org');
-  return async function post(method, payload) {
+  return async function post(method, payload, file) {
     if (!token) throw new Error('TELEGRAM_BOT_TOKEN не задан');
     const doFetch = fetchImpl || ((u, i) => fetch(u, i));
+    /* Документ уходит multipart-ом: Bot API принимает файл только так, JSON-ом
+       можно передать лишь ссылку, а ссылаться не на что — хранилища под выдачу нет. */
+    if (file && file.bytes && file.bytes.length) {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(payload || {})) if (v != null && v !== '') fd.append(k, String(v));
+      fd.append('disable_notification', 'true');
+      fd.append('document', new Blob([file.bytes], { type: file.type || 'application/octet-stream' }), file.filename || 'файл');
+      const r = await doFetch(base + '/bot' + token + '/' + method, { method: 'POST', body: fd });
+      return { status: r.status, body: await r.text().catch(() => '') };
+    }
     const r = await doFetch(base + '/bot' + token + '/' + method, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

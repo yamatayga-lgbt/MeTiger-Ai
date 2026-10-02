@@ -16,7 +16,10 @@ import {
 import { classifyTask, tierFor, modelsFor, isVision } from './route.js';
 import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
+import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
 import { gatherTools } from './tools.js';
+import { packFiles, formatFromText, nameFromText } from './filegen.js';
+import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
 import { block as jbBlock } from './jailbreak.js';
 import * as gender from './gender.js';
@@ -179,16 +182,30 @@ export function createEngine(opts) {
     /* Инструменты агента: внешние данные (поиск, новости, курсы, погода…) ложатся
        в сообщение человека отдельным блоком — модель отвечает по ним, а не по
        памяти. Ошибка или тишина инструмента — блока просто нет. */
+    const isDefaultSys = !input.system || input.system === PERSONA_SYSTEM;
+    /* Навыки (перенесённый механизм Yama): включаются по смыслу сообщения, приносят
+       в промпт инструкции и — отдельно от своих триггеров — зовут те инструменты,
+       без которых навык был бы просто красивым текстом. Свой `system` от caller'а —
+       своя ответственность: навыки к нему не липнут, как и блоки freedom. */
+    const useSkills = isDefaultSys && input.skills !== false && input.useTools !== false;
+    const skills = useSkills ? detectSkills(text, { images, env }) : [];
     const toolsRes = input.useTools === false
-      ? { used: [], block: '' }
-      : await gatherTools(text, env, fetchImpl);
+      ? { used: [], block: '', directive: '' }
+      : await gatherTools(text, env, fetchImpl, { force: skillTools(skills) });
     const userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
     const toolsHint = toolsRes.block
       ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных.'
       : '';
-    const isDefaultSys = !input.system || input.system === PERSONA_SYSTEM;
     const styleHint = isDefaultSys ? style.hintFor(intent, env) : '';
-    let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint;
+    /* Блок навыков идёт после подсказки про инструменты, указание про файл — самым
+       последним: что ниже, то модель слушает сильнее, а оформление блока не должно
+       перегореть под общими правилами. */
+    const skBlock = skills.length
+      ? skillsBlockOf(skills, { toolTitles: toolsRes.used.map((id) => TOOL_TITLES[id] || id) })
+      : '';
+    let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint
+      + (skBlock ? '\n\n' + skBlock : '')
+      + (toolsRes.directive ? '\n\n' + toolsRes.directive : '');
     /* Свобода ответа: блоки правил из engine/freedom.data.js (данные перенесены из
        Yama) доезжают только до нашего собственного режима — кто прислал свою
        `system`, тот её и контролирует. Головы совета идут со своей подсказкой, так
@@ -249,6 +266,19 @@ export function createEngine(opts) {
     function withMeta(out) {
       if (!out) return out;
       out.gender = genderVal;
+      if (skills.length) out.skills = skills.map((s) => ({ id: s.id, cat: s.cat, title: s.title }));
+      /* Файлы: модель отдала блок ```file:docx|имя``` — упаковываем и вынимаем из
+         текста. Отдельного вызова модели нет: это стоит нуль запросов и нуль секунд. */
+      if (out.ok && out.reply) {
+        const packed = packFiles(out.reply, {
+          wanted: toolsRes.used.indexOf('filegen') >= 0,
+          format: formatFromText(text),
+          name: nameFromText(text),
+          text,
+        });
+        if (packed.files.length) out.files = packed.files;
+        if (packed.reply) out.reply = packed.reply;
+      }
       if (emoCfg.label && emo && emo.id !== 'neutral') {
         out.emotion = { id: emo.id, emoji: emo.emoji, label: emo.label, confidence: Math.round(emo.confidence * 100) / 100 };
       }
@@ -305,7 +335,7 @@ export function createEngine(opts) {
       if (q && !allBad) { tried.push({ provider: id, why: 'в карантине: ' + q.why }); continue; }
       let models = modelreg.prune(
         modelreg.cached(), id,
-        pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images));
+        pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images, env));
       /* Выбор модели из пула: на острой теме вперёд те, про кого каталог знает
          «без купюр», а внутри — по рейтингу смелых. Порядок, не состав: резать
          пул нельзя, иначе на пустом каталоге запрос умрёт вместо того, чтобы

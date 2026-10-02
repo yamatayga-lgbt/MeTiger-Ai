@@ -38,6 +38,10 @@ export interface ChatResult {
   vision?: string
   /** Какие инструменты агента накормили ответ (web-search, news, calc…). */
   tools?: string[]
+  /** Навыки, которые включились по смыслу вопроса (engine/skills.js). */
+  skills?: string[]
+  /** Документы, которые модель оформила файлом: имя, mime, вес и base64 целиком. */
+  files?: { name: string; mime: string; size: number; b64: string }[]
   /** Текст изменён большинством — это надо показать, а не спрятать. */
   ensembleApplied?: boolean
   visionApplied?: boolean
@@ -116,8 +120,27 @@ const TOOL_RU: Record<string, string> = {
   calc: 'калькулятор',
   currency: 'курсы',
   weather: 'погода',
-  time: 'дата',
+  time: 'время',
+  date: 'дата',
   random: 'случайность',
+  coin: 'монетка',
+  dice: 'кубики',
+  joke: 'шутка',
+  'image-search': 'поиск картинок',
+  filegen: 'файл',
+}
+
+/** Сколько весят файлы по-человечески: байты не округляем до «0 КБ». */
+export function fileSize(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return '—'
+  if (n < 1024) return `${n} б`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1).replace('.', ',')} КБ`
+  return `${(n / 1048576).toFixed(2).replace('.', ',')} МБ`
+}
+
+/** data-URI для скачивания: своего хранилища под выдачу нет, файл живёт в ответе. */
+export function fileHref(f: { mime: string; b64: string }): string {
+  return `data:${f.mime || 'application/octet-stream'};base64,${f.b64}`
 }
 
 export function sourceLine(r: ChatResult): string {
@@ -127,6 +150,9 @@ export function sourceLine(r: ChatResult): string {
     `${r.provider} · ${r.model || '?'} · ${r.intent || '?'}/${r.tier || '?'} · ${r.ms ?? 0} мс` +
     (r.pinMiss && r.pinned ? ` · ${r.pinned} не ответил` : '') +
     (tools.length ? ` · данные: ${tools.join(', ')}` : '') +
+    /* навыки — чем модель себя правила; коротко, чтобы строка не расползалась */
+    ((r.skills || []).length ? ` · навыки: ${(r.skills || []).slice(0, 3).join(', ')}${(r.skills || []).length > 3 ? ' +' + ((r.skills || []).length - 3) : ''}` : '') +
+    ((r.files || []).length ? ` · файлы: ${(r.files || []).length}` : '') +
     /* состояние собеседника — если его включили (EMOTION_LABEL=1); без него строка
        выглядит ровно как раньше */
     (r.emotion ? ` · ${r.emotion.emoji} ${r.emotion.label}` : '') +

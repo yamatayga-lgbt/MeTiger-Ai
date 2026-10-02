@@ -7,6 +7,7 @@ import { fileToDataUrl, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
 import { modelOption } from '../lib/models'
 import { ModelPicker } from '../components/ModelPicker'
+import { fileHref, fileSize } from '../lib/api'
 
 function joinText(base: string, extra: string): string {
   const b = base.trimEnd()
@@ -246,6 +247,22 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
                   </div>
                   {/* Кто ответил и что сказал совет. Это не украшение: по ней видно,
                       что ответ проверяли, а не угадали, и где его исправили. */}
+                  {/* Файлы, которые модель оформила блоком. Ссылка — data-URI:
+                      своего хранилища под раздачу нет, файл живёт, пока открыта
+                      вкладка. После перезагрузки его нужно попросить заново. */}
+                  {Array.isArray(m.files) && m.files.length ? (
+                    <div className="msg-files">
+                      {m.files.map((f, i) => (
+                        <a key={i} className="file-chip" href={fileHref(f)} download={f.name} title={f.mime}>
+                          <span className="file-name">{f.name}</span>
+                          <span className="file-size">{fileSize(f.size)}</span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                  {Array.isArray(m.skills) && m.skills.length ? (
+                    <div className="msg-skills">по навыкам: {m.skills.join(' · ')}</div>
+                  ) : null}
                   {m.advice || m.src ? (
                     <div className={`msg-meta${m.adviceTone ? ' is-' + m.adviceTone : ''}`}>
                       {m.advice ? <span className="msg-advice">{m.advice}</span> : null}

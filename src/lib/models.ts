@@ -164,6 +164,19 @@ export const MODELS: ModelOption[] = [
     tier: 'smart',
   },
   {
+    /* Рядом — тот же DeepSeek, но measured: из четырёх провайдеров, где он есть в
+       списках, бесплатно отвечает только OdiRouter (xkiro — 503 на всех пяти id,
+       OpenRouter — только платно, Cloudflare — 403 на бесплатном плане).
+       2 октября 2026: «сколько будет 17*23» → 391 за 3,4 с, ход мысли отдельным
+       полем reasoning_content. Поэтому он и в голове пулов math/code (engine/route.js). */
+    id: 'deepseek-v4-flash',
+    name: 'DeepSeek V4 Flash',
+    vendor: 'DeepSeek',
+    desc: 'Единственный бесплатный DeepSeek, который отвечает: 3 с, math и code',
+    avatar: AV('#0EA5E9', '#075985', 'Ds'),
+    tier: 'smart',
+  },
+  {
     id: 'qwen3.8-max',
     name: 'Qwen 3.8 Max',
     vendor: 'Alibaba',

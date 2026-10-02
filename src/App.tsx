@@ -190,7 +190,15 @@ export default function App() {
               : '⚠️ ' + (r.error || 'сервис не отвечает') + '. Это не ответ агента — движок сейчас недоступен.'
         const advice = r.ok ? adviceLine(r) : null
         const meta = r.ok
-          ? { src: sourceLine(r), advice: advice?.text || '', adviceTone: advice?.tone }
+          ? {
+              src: sourceLine(r),
+              advice: advice?.text || '',
+              adviceTone: advice?.tone,
+              /* файлы и навыки живут только в этой сессии — см. persist: base64 в
+                 localStorage кончает квоту молча и ломает сохранение всего чата */
+              files: r.files && r.files.length ? r.files : undefined,
+              skills: r.skills && r.skills.length ? r.skills : undefined,
+            }
           : ({} as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet' })
         setChats((prev) =>
           prev.map((c) =>

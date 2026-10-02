@@ -183,7 +183,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   globalThis.fetch = async () => { throw new Error('сети нет'); };
   await models.refreshCatalog();
   const offline = renderToStaticMarkup(React.createElement(ModelPicker, { model: '', onPick() {} }));
-  ok('I10: без каталога панель остаётся рабочей (витрина 19), а не пустой дырой',
+  ok('I10: без каталога панель остаётся рабочей (витрина целая), а не пустой дырой',
     /Витрина/.test(offline) && /каталог недоступен/.test(offline) && /Gemini 3\.8 Flash/.test(offline), (offline.match(/каталог недоступен[^<]*/) || [''])[0]);
   ok('I11: неизвестный id по-прежнему значит Авто — молчаливый обход сохранён',
     models.modelOption('voobshe-ne-model').id === '', JSON.stringify(models.modelOption('voobshe-ne-model')).slice(0, 60));
@@ -206,9 +206,18 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
     (bigHtml.match(/Gpt Oss 120b[\s\S]{0,220}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
   ok('I13: инструменты и рассуждение видны значками в описании',
     /инструменты · рассуждает/.test(bigHtml.replace(/<\/span>/g, '')) || (/инструменты/.test(bigHtml) && /рассуждает/.test(bigHtml)), 'чипы');
+  /* Числа не хардкодим: витрина (SHOWCASE в src/lib/models.ts) доливается в список
+     живьём, и жёсткая проверка «140 и ещё 4» ломалась бы каждый раз, когда кто-то
+     добавил одну модель в список — без всякой поломки в пикере. */
+  const shownN = (bigHtml.match(/role="option"/g) || []).length;
+  const moreN = Number((bigHtml.match(/показаны не все \(ещё (\d+)\)/) || [])[1]);
+  const outM = join(dir, 'models.mjs');
+  execFileSync(bin, ['src/lib/models.ts', '--format=esm', '--bundle', '--outfile=' + outM, '--loader:.png=dataurl', '--log-level=error'], { stdio: 'inherit' });
+  const { MODELS: VITRINA } = await import(outM);
+  const catalogN = BIG.models.length + VITRINA.filter((s) => !BIG.models.some((m) => m.id === s.id)).length;
   ok('I14: длинный список обрезан по группам, и человек об этом предупреждён',
-    (bigHtml.match(/role="option"/g) || []).length === 140 && /показаны не все \(ещё 4\)/.test(bigHtml),
-    (bigHtml.match(/role="option"/g) || []).length + ' строк из 144 · ' + (bigHtml.match(/показаны не все[^<]*/) || [''])[0]);
+    shownN > 100 && moreN >= 1 && shownN + moreN === catalogN + 1,
+    shownN + ' строк показано, ещё ' + moreN + ' · моделей ' + catalogN + ' (+1 опция «Авто»)');
   /* Выбранная строка обязана переживать срез: иначе «моя модель не видна» —
      ровно та жалоба, из-за которой всё это и делалось. */
   const deepHtml = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'big/model-122:free', onPick: () => {} }));
