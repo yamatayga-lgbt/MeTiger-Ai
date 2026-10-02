@@ -89,6 +89,9 @@ export async function onRequestGet(context) {
     catalogTotal: Number(cat.total || 0) || null,
     errors: cat.errors || null,
     pools: pools.map((p) => ({ provider: p.provider, label: p.label, count: p.fast.length + p.smart.length })),
+    /* чьи собственные списки реально прочитаны в этом обновлении — чтобы «в
+       каталоге нет» не выглядело приговором там, где список неполный (z.ai) */
+    read: cat.read || null,
     models: list,
   });
 }

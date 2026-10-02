@@ -187,6 +187,34 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
     /Витрина/.test(offline) && /каталог недоступен/.test(offline) && /Gemini 3\.8 Flash/.test(offline), (offline.match(/каталог недоступен[^<]*/) || [''])[0]);
   ok('I11: неизвестный id по-прежнему значит Авто — молчаливый обход сохранён',
     models.modelOption('voobshe-ne-model').id === '', JSON.stringify(models.modelOption('voobshe-ne-model')).slice(0, 60));
+  /* Собственные списки провайдеров: строка обязана говорить, ЧЬЯ она модель,
+     и не должна врать про цену (у groq/mistral в списке цены нет). */
+  const BIG = {
+    ok: true, cached: true, stale: false, updatedAt: Date.now(),
+    count: 124, catalogCount: 124, read: { groq: true, gemini: true },
+    pools: [{ provider: 'groq', label: 'Groq', count: 3 }],
+    models: [
+      { id: 'openai/gpt-oss-120b', name: 'Gpt Oss 120b', vendor: 'OPENAI', tier: 'smart', curated: false, src: 'groq', ctx: 131072, maxOut: 65536, vision: false, priceKnown: false, tools: true, reasoning: true },
+      ...Array.from({ length: 123 }, (_, i) => ({ id: 'big/model-' + i + ':free', name: 'Big Model ' + i, vendor: 'BIG', tier: 'fast', curated: false, src: 'xkiro', ctx: 8192, maxOut: 1024, vision: false, priceKnown: true })),
+    ],
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify(BIG), { status: 200, headers: { 'content-type': 'application/json' } });
+  await models.refreshCatalog();
+  const bigHtml = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'openai/gpt-oss-120b', onPick: () => {} }));
+  ok('I12: строка подписана провайдером и потолками, а цена помечена непроверенной',
+    /Groq/.test(bigHtml) && /контекст 128К · ответ до 64К/.test(bigHtml) && /цена не проверена/.test(bigHtml),
+    (bigHtml.match(/Gpt Oss 120b[\s\S]{0,220}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
+  ok('I13: инструменты и рассуждение видны значками в описании',
+    /инструменты · рассуждает/.test(bigHtml.replace(/<\/span>/g, '')) || (/инструменты/.test(bigHtml) && /рассуждает/.test(bigHtml)), 'чипы');
+  ok('I14: длинный список обрезан по группам, и человек об этом предупреждён',
+    (bigHtml.match(/role="option"/g) || []).length === 140 && /показаны не все \(ещё 4\)/.test(bigHtml),
+    (bigHtml.match(/role="option"/g) || []).length + ' строк из 144 · ' + (bigHtml.match(/показаны не все[^<]*/) || [''])[0]);
+  /* Выбранная строка обязана переживать срез: иначе «моя модель не видна» —
+     ровно та жалоба, из-за которой всё это и делалось. */
+  const deepHtml = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'big/model-122:free', onPick: () => {} }));
+  ok('I15: выбранная модель не теряется за срезом',
+    /Big Model 122/.test(deepHtml) && (deepHtml.match(/aria-selected="true"/g) || []).length === 1,
+    (deepHtml.match(/aria-selected="true"/g) || []).length + ' выбранных');
   globalThis.fetch = real;
 }
 

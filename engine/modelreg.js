@@ -37,7 +37,16 @@ export const DEFAULT_TTL_MS = 30 * 60 * 1000;
 const MEMO_MS = 60 * 1000;
 
 /** Разумный потолок на число моделей в байте KV: значение должно оставаться маленьким. */
-const MAX_ENTRIES = 400;
+import { envKeys } from './providers.js';
+const MAX_ENTRIES = 900;
+/* Сколько строк берём у одного провайдера: odirouter выдаёт 232 id разом, и
+   если их не порезать, один говорливый агрегатор вытеснит всех остальных. */
+let PER_SOURCE = 200;
+/* Переменная приходит из env Pages (process.env тут трогать нельзя: в воркере его
+   по-настоящему нет), а дефолт живёт здесь. */
+function perSource(env) {
+  return clamp(num(env && env.MODELS_PER_SOURCE, PER_SOURCE), 20, 600);
+}
 
 /* Модель не для чата: классификаторы, модерация, эмбеддинги. Такие в ротации
    только жуют квоту и никогда не дают ответа (выведено на доноре). */
@@ -46,7 +55,7 @@ const MAX_ENTRIES = 400;
    (выведено на доноре). В каталоге OpenRouter они тоже есть с ценой 0 —
    например nvidia/nemotron-3.5-content-safety и google/lyria — и без этого
    фильтра полезли бы и в список выбора, и в обход. */
-const NON_CHAT_HINT = /(embedding|classifier|moderation|-safety|safety-|content-safety|guard|whisper|tts|dall|lyria|music|suno|imagen|flux|stable-diffusion|midjourney|clip|rerank|realtime|transcribe|livetranslate|audio-|-audio|ocr)/i;
+const NON_CHAT_HINT = /(embedding|classifier|moderation|-safety|safety-|content-safety|prompt-guard|safeguard|guard|whisper|tts|-tts|dall|lyria|music|suno|sora|speech|voice|orpheus|voxtral|imagen|flux|kontext|stable-diffusion|midjourney|seedream|seedance|nano-banana|kling|wan2|vidu|hunyuan|-3d|i2v|t2v|img2|image|-image|-img|inpaint|variation|-vid|video|clip|rerank|realtime|transcribe|transcription|livetranslate|audio-|-audio|-ocr|ocr-|computer-use|robotics|deep-research|antigravity|fim-|-fim)/i;
 
 /* «Без купюр» — мягкая подсказка маршрутизации, не гарантия. Совпадает со
    списком донора; отказоустойчивость у нас делает engine/freedom.js. */
@@ -98,6 +107,7 @@ function fromOpenRouter(m) {
     vendor: (m.id.split('/')[0] || '').toUpperCase(),
     src: 'openrouter',
     free: isFree(m) || /:free$/i.test(m.id),
+    priceKnown: true,
     ctx: num(m.context_length ?? top.context_length, 32768),
     maxOut: num(top.max_completion_tokens, 4096),
     vision: knownMod ? inMod.indexOf('image') >= 0 : /vision|multimodal|-vl\b/i.test(lower),
@@ -106,7 +116,7 @@ function fromOpenRouter(m) {
     canExcludeReasoning: params.indexOf('reasoning') >= 0 || params.indexOf('include_reasoning') >= 0,
     chat: !(NON_CHAT_HINT.test(lower) || (outMod.length && outMod.indexOf('text') < 0)),
     uncensored: UNCENSORED_HINTS.some((h) => lower.indexOf(h) >= 0),
-    desc: String(m.description || '').replace(/\s+/g, ' ').slice(0, 160),
+    desc: String(m.description || '').replace(/\s+/g, ' ').trim().slice(0, 160),
   };
 }
 
@@ -121,6 +131,7 @@ function fromXkiro(m) {
     vendor: 'Xkiro',
     src: 'xkiro',
     free: isFree(m) || m.access_tier === 'free',
+    priceKnown: true,
     ctx: num(m.context_length, 32768),
     maxOut: num(m.max_output_tokens, 4096),
     vision: !!cap.vision,
@@ -129,7 +140,128 @@ function fromXkiro(m) {
     canExcludeReasoning: !!cap.reasoning,
     chat: m.modality !== 'embedding' && !NON_CHAT_HINT.test(lower),
     uncensored: UNCENSORED_HINTS.some((h) => lower.indexOf(h) >= 0),
-    desc: String(m.description || '').replace(/\s+/g, ' ').slice(0, 160),
+    desc: String(m.description || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+  };
+}
+
+/** Output-модальности: если провайдер их назвал, верить надо им, а не имени. */
+function textOut(m) {
+  const out = Array.isArray(m && m.output_modalities) ? m.output_modalities : [];
+  if (!out.length) return true;
+  return out.indexOf('text') >= 0;
+}
+
+/**
+ * Запись OpenAI-совместимого `/v1/models` у самого провайдера (groq, mistral,
+ * cerebras, z.ai, odirouter, sharellm, atria). Имена у всех скачут, поэтому
+ * читаем известные варианты, а выдумываем только то, чего провайдер не сказал.
+ * Смысл не в длине списка, а в потолках: у groq есть context_window и
+ * max_completion_tokens, у mistral — max_context_length и capabilities, и без
+ * них движок сидел на выдуманных 32768/4096 для 101 модели из пулов.
+ */
+function fromProviderList(m, src, opts = {}) {
+  if (!m || typeof m.id !== 'string' || !m.id) return null;
+  const cap = m.capabilities || {};
+  const lower = m.id.toLowerCase();
+  const inMod = Array.isArray(m.input_modalities) ? m.input_modalities : [];
+  const knownMod = inMod.length > 0 || Array.isArray(m.output_modalities) || typeof m.modality === 'string';
+  const vision = knownMod
+    ? (inMod.length ? inMod.indexOf('image') >= 0 : /vision|multimodal|image/i.test(String(m.modality || '')))
+    : /vision|multimodal|-vl\b/i.test(lower);
+  const priced = isFree(m) || m.access_tier === 'free' || m.access_tier === 'free_tier';
+  const ssp = Array.isArray(m.supported_sampling_parameters) ? m.supported_sampling_parameters : [];
+  return {
+    id: m.id,
+    name: prettyName(m),
+    vendor: (m.owned_by ? String(m.owned_by) : src).slice(0, 18).toUpperCase(),
+    src,
+    /* Провайдер не пишет в списке, бесплатна ли модель (groq и mistral тарифицируют
+       токенами, бесплатность — в суточной квоте). Честнее пометить «цена не
+       проверена», чем наврать, что бесплатно: движок от этого ничего не решает
+       (сам он ходит только по своим пулам), а человек видит оговорку. */
+    free: priced || opts.priceUnknown === true,
+    priceKnown: priced,
+    ctx: num(m.context_window ?? m.context_length ?? m.max_context_length ?? m.max_context_tokens, 32768),
+    maxOut: num(m.max_completion_tokens ?? m.max_output_tokens ?? m.max_output_length ?? m.completion_tokens_allowed, 4096),
+    vision,
+    visionKnown: knownMod,
+    tools: typeof cap.function_calling === 'boolean' ? cap.function_calling : (typeof cap.tools === 'boolean' ? cap.tools : undefined),
+    reasoning: typeof cap.reasoning === 'boolean' ? cap.reasoning : (ssp.length ? ssp.some((x) => /reasoning/i.test(String(x))) : undefined),
+    canExcludeReasoning: ssp.some((x) => /reasoning|thinking/i.test(String(x))) || undefined,
+    chat: m.active !== false && !m.deprecation && cap.completion_chat !== false &&
+      !(NON_CHAT_HINT.test(lower) || !textOut(m)),
+    deprecated: !!m.deprecation,
+    replaces: m.deprecation_replacement_model || undefined,
+    uncensored: UNCENSORED_HINTS.some((h) => lower.indexOf(h) >= 0),
+    desc: String(m.description || m.name || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+  };
+}
+
+/**
+ * Список Gemini (`/v1beta/models`) устроен иначе: id в `name` с префиксом
+ * `models/`, модальностей нет, зато есть supportedGenerationMethods — по нему
+ * и режем всё, что не умеет обычный generateContent (tts, live, embeddings).
+ */
+function fromGemini(m) {
+  const id = String((m && m.name) || '').replace(/^models\//, '');
+  if (!id) return null;
+  const methods = Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : [];
+  const lower = id.toLowerCase();
+  return {
+    id,
+    name: String(m.displayName || prettyName({ id })).slice(0, 48),
+    vendor: 'GOOGLE',
+    src: 'gemini',
+    free: true,
+    priceKnown: false,
+    ctx: num(m.inputTokenLimit, 32768),
+    maxOut: num(m.outputTokenLimit, 8192),
+    /* модальностей список не сообщает — значит решаем по имени и честно
+       говорим, что это догадка: visionKnown=false, и движок не запретит картинку,
+       но и не потащит её вслепую */
+    vision: /flash|pro|gemma|omni|note|vision|multimodal/i.test(lower) && !/transcribe|lite-tts|-tts/i.test(lower),
+    visionKnown: false,
+    tools: undefined,
+    reasoning: !!m.thinking || undefined,
+    chat: (methods.length === 0 || methods.indexOf('generateContent') >= 0) && !NON_CHAT_HINT.test(lower),
+    uncensored: UNCENSORED_HINTS.some((h) => lower.indexOf(h) >= 0),
+    desc: String(m.description || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+  };
+}
+
+/* Провайдеры, у которых свой список открыт и читается тем же ключом, что и чат.
+   Ключа нет — источника просто нет: не дергаем сеть на каждом обновлении. */
+export const LIST_SOURCES = {
+  groq: { url: 'https://api.groq.com/openai/v1/models', prefix: 'GROQ', priceUnknown: true },
+  mistral: { url: 'https://api.mistral.ai/v1/models', prefix: 'MISTRAL', priceUnknown: true },
+  cerebras: { url: 'https://api.cerebras.ai/v1/models', prefix: 'CEREBRAS', priceUnknown: true },
+  zai: { url: 'https://api.z.ai/api/paas/v4/models', prefix: 'ZAI', priceUnknown: true },
+  odirouter: { url: 'https://api.odirouter.ai/v1/models', prefix: 'ODIROUTER', priceUnknown: true },
+  sharellm: { url: 'https://sharellm.net/v1/models', prefix: 'SHARELLM', priceUnknown: true },
+  atria: { url: 'https://api.atria-asi.ai/v1/models', prefix: 'ATRIA', priceUnknown: true },
+  gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', prefix: 'GEMINI', kind: 'gemini', priceUnknown: true },
+};
+
+/** Какие нативные списки вообще можно спросить в этом окружении. */
+export function listSources(env, opts = {}) {
+  const keys = opts.keys || envKeys;
+  return Object.keys(LIST_SOURCES).filter((id) => keys(env, LIST_SOURCES[id].prefix).length > 0);
+}
+
+/** Один источник → его строки. Возвращаем и заголовок авторизации, и парсер. */
+function nativeCfg(src, env) {
+  const c = LIST_SOURCES[src];
+  if (!c) return null;
+  const keys = envKeys(env, c.prefix);
+  if (!keys.length) return null;
+  const head = c.kind === 'gemini'
+    ? { 'x-goog-api-key': keys[0] }
+    : { authorization: 'Bearer ' + keys[0] };
+  return {
+    url: c.url,
+    headers: Object.assign({ accept: 'application/json' }, head),
+    pick: (d) => (Array.isArray(d && d.data) ? d.data : (Array.isArray(d && d.models) ? d.models : (Array.isArray(d && d.result) ? d.result : []))),
+    map: c.kind === 'gemini' ? fromGemini : ((m) => fromProviderList(m, src, { priceUnknown: c.priceUnknown })),
   };
 }
 
@@ -147,13 +279,20 @@ export async function fetchCatalog(opts = {}) {
   if (!fetchImpl) return { models: [], errors: ['нет fetch'] };
   const timeoutMs = clamp(num(opts.timeoutMs, 8000), 1500, 20000);
   const attempts = clamp(num(opts.attempts, 2), 1, 3);
-  const sources = Array.isArray(opts.sources) && opts.sources.length ? opts.sources : ['openrouter', 'xkiro'];
+  const env = opts.env || {};
+  const sources = Array.isArray(opts.sources) && opts.sources.length
+    ? opts.sources
+    /* OpenRouter и Xkiро — всегда (их списки открыты без ключа и дают бесплатные
+       модели всему миру). Остальные — только если у нас есть их ключ: без ключа
+       запрос вернул бы 401 и занял место в ошибках. */
+    : ['openrouter', 'xkiro'].concat(listSources(env));
   const models = [];
   const errors = [];
+  const read = {};
   const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
 
   for (const src of sources) {
-    const cfg = PARSERS[src];
+    const cfg = PARSERS[src] || nativeCfg(src, env);
     if (!cfg) { errors.push(src + ': нет парсера'); continue; }
     let got = null;
     for (let i = 0; i < attempts && !got; i++) {
@@ -161,11 +300,14 @@ export async function fetchCatalog(opts = {}) {
       const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
       if (timer && timer.unref) timer.unref();
       try {
-        const r = await fetchImpl(cfg.url, { headers: { 'User-Agent': 'MeTigerAi/0.011', accept: 'application/json' }, signal: ctl ? ctl.signal : undefined });
+        const r = await fetchImpl(cfg.url, {
+          headers: Object.assign({ 'User-Agent': 'MeTigerAi/0.011' }, cfg.headers || { accept: 'application/json' }),
+          signal: ctl ? ctl.signal : undefined,
+        });
         if (!r || !r.ok) throw new Error('HTTP ' + ((r && r.status) || 0));
         const data = cfg.pick(await r.json());
         if (!data.length) throw new Error('пустой список');
-        got = data.map(cfg.map).filter(Boolean);
+        got = data.map(cfg.map).filter(Boolean).slice(0, perSource(env));
       } catch (e) {
         errors.push(src + ': ' + String((e && e.message) || e));
         if (i < attempts - 1) await sleep(Math.min(4000, 500 * 2 ** i));
@@ -173,9 +315,12 @@ export async function fetchCatalog(opts = {}) {
         if (timer) clearTimeout(timer);
       }
     }
-    if (got) for (const m of got) models.push(m);
+    if (got) {
+      read[src] = true;
+      for (const m of got) models.push(m);
+    }
   }
-  return { models, errors };
+  return { models, errors, read };
 }
 
 /**
@@ -188,10 +333,45 @@ export function buildCatalog(models, opts = {}) {
   const byId = Object.create(null);
   const out = [];
   for (const m of models || []) {
-    if (!m || !m.id || byId[m.id]) continue;
+    if (!m || !m.id) continue;
     if (!m.free || m.chat === false) continue;
-    byId[m.id] = m;
-    out.push(m);
+    const prev = byId[m.id];
+    if (!prev) { byId[m.id] = m; out.push(m); continue; }
+    /* Тот же id у другого провайдера: строку в списке держим одну, но дописываем
+       ей то, чего первый источник не знал. Иначе `gemini-3.5-flash` приехал бы
+       из OdiRouter с пустыми потолками и человек увидел бы «32К/4К» там, где
+       Google честно сказал «1М/64К». */
+    if (m.src !== prev.src) {
+      /* Про каждого провайдера держим ЕГО данные: поток через агрегатор не обязан
+         уметь столько, сколько обещает первоисточник. */
+      const fact = (o) => ({ ctx: o.ctx, maxOut: o.maxOut, vision: o.vision, visionKnown: o.visionKnown, tools: o.tools, reasoning: o.reasoning, priceKnown: o.priceKnown });
+      if (!prev.perSrc) prev.perSrc = { [prev.src]: fact(prev) };
+      prev.perSrc[m.src] = fact(m);
+      /* Витрину ведём за тем, кто про модель знает больше: строка `gemini-3.5-flash`
+         должна быть подписана Google (у него есть потолки и модальности), а не
+         агрегатором, который прислал пустую строку. Маршрутизации это не касается —
+         она читает perSrc того провайдера, куда реально идёт запрос. */
+      const score = (o) => (o.visionKnown ? 2 : 0) + (o.ctx !== 32768 || o.maxOut !== 4096 ? 1 : 0) +
+        (o.desc ? 1 : 0) + (o.tools !== undefined ? 1 : 0);
+      const all = Array.from(new Set([].concat(prev.also || [], prev.src, m.src)));
+      if (score(m) > score(prev)) {
+        const keep = fact(prev);
+        const who = prev.src;
+        const per = Object.assign({}, prev.perSrc, m.perSrc);
+        Object.assign(prev, m);
+        prev.perSrc = per;
+        prev.perSrc[who] = per[who] || keep;   /* про агрегатора не забываем */
+      } else {
+        if (prev.ctx === 32768 && m.ctx !== 32768) prev.ctx = m.ctx;
+        if (prev.maxOut === 4096 && m.maxOut !== 4096) prev.maxOut = m.maxOut;
+        if (!prev.visionKnown && m.visionKnown) { prev.vision = m.vision; prev.visionKnown = true; }
+        if (prev.tools === undefined && m.tools !== undefined) prev.tools = m.tools;
+        if (prev.reasoning === undefined && m.reasoning !== undefined) prev.reasoning = m.reasoning;
+        if (!prev.priceKnown && m.priceKnown) prev.priceKnown = true;
+        if (!prev.desc && m.desc) prev.desc = m.desc;
+      }
+      prev.also = all;
+    }
   }
   for (const c of curated) {
     if (!c || !c.id || byId[c.id]) continue;
@@ -207,18 +387,45 @@ export function buildCatalog(models, opts = {}) {
     out.push(e);
   }
   const kept = out.slice(0, MAX_ENTRIES);
-  return { updatedAt: Number(opts.now) || Date.now(), count: kept.length, total: out.length, models: kept, byId: null };
+  return {
+    updatedAt: Number(opts.now) || Date.now(), count: kept.length, total: out.length,
+    models: kept, byId: null,
+    /* какие списки ПРОЧИТАНЫ в этом обновлении — по этому признаку prune и решает,
+       можно ли считать «нет в списке» как «модель мертва» */
+    read: opts.read && typeof opts.read === 'object' ? opts.read : null,
+  };
 }
 
-/** Индекс достраиваем на месте — в KV его не пишем. */
+/**
+ * Индексы достраиваем на месте — в KV их не пишем. `bySrc` нужен потому, что
+ * один и тот же id могут выдавать несколько провайдеров (`gemini-3.5-flash` есть
+ * и у Google, и у OdiRouter), а потолки у них РАЗНЫЕ: у Google 1 048 576/65 536,
+ * у агрегатора их списка нет вовсе. Брать первое попавшееся — значит слать
+ * агрегатору запрос с чужим лимитом и ловить 400.
+ */
 function index(cat) {
   if (!cat) return null;
   if (!cat.byId) {
     const byId = Object.create(null);
-    for (const m of cat.models || []) byId[m.id] = m;
+    const bySrc = Object.create(null);
+    for (const m of cat.models || []) {
+      if (!m || !m.id) continue;
+      if (!byId[m.id]) byId[m.id] = m;
+      if (!bySrc[m.src]) bySrc[m.src] = Object.create(null);
+      bySrc[m.src][m.id] = m;
+    }
     cat.byId = byId;
+    cat.bySrc = bySrc;
   }
   return cat;
+}
+
+/** Запись о модели: сначала у того провайдера, куда идёт запрос, потом любая. */
+function rowOf(cat, id, providerId) {
+  if (!cat || !id) return null;
+  const own = providerId && cat.bySrc ? cat.bySrc[providerId] : null;
+  if (own && own[id]) return own[id];
+  return (cat.byId && cat.byId[id]) || null;
 }
 
 const ttlMs = (env) => clamp(num((env && env.MODELS_REFRESH_MS), DEFAULT_TTL_MS), 60000, 24 * 3600 * 1000);
@@ -254,18 +461,18 @@ export async function refresh(env, store, opts = {}) {
   const now = Number(opts.now) || Date.now();
   const cur = await loadCatalog(store, { env, now, force: true });
   if (cur && !cur.stale && !opts.force) return cur;
-  const { models, errors } = await fetchCatalog(opts);
+  const { models, errors, read } = await fetchCatalog(Object.assign({ env }, opts));
   if (!models.length) {
     /* Ничего не вытащили — оставляем то, что знали (пусть и протухшее): лучше
        старый каталог, чем движок, который снова начал угадывать по имени. */
     memo = { at: now, cat: cur || null };
     return cur ? Object.assign({}, cur, { errors }) : { updatedAt: 0, count: 0, models: [], byId: null, errors };
   }
-  const cat = index(buildCatalog(models, { curated: opts.curated, now }));
+  const cat = index(buildCatalog(models, { curated: opts.curated, now, read }));
   if (errors.length) cat.errors = errors;
   if (store) {
     try {
-      const val = JSON.stringify({ updatedAt: cat.updatedAt, count: cat.count, models: cat.models });
+      const val = JSON.stringify({ updatedAt: cat.updatedAt, count: cat.count, models: cat.models, read: cat.read || null });
       /* expirationTtl — чтобы мусор не лежал вечно; свой TTL всё равно проверяем,
          потому что локальное файловое хранилище его не умеет. */
       const ttlSec = Math.max(300, Math.round(ttlMs(env) / 1000) + 3600);
@@ -287,22 +494,29 @@ export function forgetMemo() { memo = { at: 0, cat: null }; }
  * Потолки модели — {ctx, maxOut} или null, если мы её не знаем.
  * `maxOut` занижаем на 1: часть шлюзов отдаёт 400 на `max_tokens == потолок`.
  */
-export function ceilings(cat, id) {
-  const m = cat && cat.byId ? cat.byId[id] : null;
+/** Если о модели есть сведения именно от того провайдера, куда идём, — верим им. */
+function factOf(m, providerId) {
+  if (!m || !providerId || !m.perSrc) return m;
+  return m.perSrc[providerId] || m;
+}
+
+export function ceilings(cat, id, providerId) {
+  const m = rowOf(cat, id, providerId);
   if (!m) return null;
-  return { ctx: num(m.ctx, 32768), maxOut: Math.max(256, num(m.maxOut, 4096) - 1) };
+  const src = factOf(m, providerId);
+  return { ctx: num(src.ctx, 32768), maxOut: Math.max(256, num(src.maxOut, 4096) - 1) };
 }
 
 /** Зрение по каталогу; null — каталог не знает, решаем по имени. */
-export function visionOf(cat, id) {
-  const m = cat && cat.byId ? cat.byId[id] : null;
+export function visionOf(cat, id, providerId) {
+  const m = factOf(rowOf(cat, id, providerId), providerId);
   if (!m || !m.visionKnown) return null;
   return !!m.vision;
 }
 
 /** Модель умеет инструменты? null — не знаем (считаем, что умеет, как раньше). */
-export function toolsOk(cat, id) {
-  const m = cat && cat.byId ? cat.byId[id] : null;
+export function toolsOk(cat, id, providerId) {
+  const m = factOf(rowOf(cat, id, providerId), providerId);
   if (!m || m.tools === undefined) return null;
   return !!m.tools;
 }
@@ -311,12 +525,19 @@ export function toolsOk(cat, id) {
  * Чей это id, если модели нет ни в одном пуле. Без этого ручной выбор модели из
  * каталога молча превращался в «Авто» — человек тыкал в модель, а отвечала другая.
  */
+/**
+ * Чей это id, если модели нет ни в одном нашем пуле. Пока каталог знал только
+ * OpenRouter с Xkiро, ответ был из двух строк, и всё остальное снималось в «Авто»
+ * — человек выбирал `mistral-code-latest`, а ему отвечал Groq. Теперь у каждого
+ * провайдера прочитан свой список, поэтому владельца отдаёт сам источник строки.
+ */
 export function ownerOf(cat, id) {
   const m = cat && cat.byId ? cat.byId[id] : null;
   if (!m) return null;
-  if (m.src === 'xkiro') return 'xkiro';
-  if (m.src === 'openrouter' || m.src === 'pool') return 'openrouter';
-  return null;
+  /* Пуловые id без привязки к списку по-прежнему пробуем через OpenRouter: он
+     терпит голые имена (glm-4.7-flash и прочее), остальные шлюзы на них 404-ят. */
+  if (m.src === 'pool') return 'openrouter';
+  return LIST_SOURCES[m.src] || m.src === 'openrouter' || m.src === 'xkiro' ? m.src : null;
 }
 
 /**
@@ -327,16 +548,25 @@ export function ownerOf(cat, id) {
 export function prune(cat, providerId, list) {
   const arr = Array.isArray(list) ? list : [];
   if (!cat || cat.stale || !arr.length) return arr;
-  if (providerId !== 'openrouter' && providerId !== 'xkiro') return arr;
   const models = cat.models || [];
   if (!models.length) return arr;                    // пустой каталог — не судья
   const byId = cat.byId || Object.create(null);
-  /* Пруним только там, где источник реально прочитан: иначе «нет в списке»
-     означает «список не пришли», и мы бы сняли живые модели. */
+  /* Два уровня доверия к «модели нет в списке».
+     Мёртвоеknown: провайдер сам сказал про этот id что-то плохое (не чат, снята,
+     устарела) — такое убираем везде, где источник прочитан.
+     Неизвестное: список прочитан, id в нём не найден. Это судит только агрегаторов
+     с полным открытым списком (openrouter, xkiro). У z.ai, например, список
+     неполный: бесплатные алиасы glm-4.7-flash в него не входят, и «нет в списке»
+     там означало бы «список не полный», а не «модель мертва». */
+  const full = providerId === 'openrouter' || providerId === 'xkiro';
+  /* Карты прочитанного может и не быть (каталог старее этого кода) — для
+     агрегаторов считаем, что список читали, они и раньше так жили. */
+  const saw = cat.read ? !!cat.read[providerId] : full;
   const sawOpenRouter = models.some((m) => m && m.src === 'openrouter');
   const keep = arr.filter((id) => {
     const known = byId[id];
-    if (known) return known.chat !== false;           // видели и отвергли — модель не для чата
+    if (known) return known.chat !== false && !known.deprecated;
+    if (!saw || !full) return true;
     if (!/:free$/i.test(String(id))) return true;     // алиасы (openrouter/free) и локальные имена не трогаем
     if (providerId === 'xkiro' && String(id).indexOf('/') < 0) return true;  // родные id xkiro вне нашего каталога
     return !sawOpenRouter;                             // id вида вендор/модель:free, каталог прочитан, модели нет — сняли
@@ -365,6 +595,8 @@ export function showcase(cat, opts = {}) {
       vision: m ? (m.visionKnown ? !!m.vision : undefined) : undefined,
       ctx: m ? m.ctx : undefined, maxOut: m ? m.maxOut : undefined,
       tier: tiers(id), curated: pool.has(id), src: m ? m.src : 'pool', desc: (m && m.desc) || '',
+      priceKnown: m ? !!m.priceKnown : false, reasoning: m ? m.reasoning : undefined,
+      tools: m ? m.tools : undefined,
     });
   }
   const rest = ((cat && cat.models) || [])
@@ -376,6 +608,7 @@ export function showcase(cat, opts = {}) {
       id: m.id, name: m.name, vendor: m.vendor, vision: m.vision, ctx: m.ctx, maxOut: m.maxOut,
       tier: pool.has(m.id) ? tiers(m.id) : (m.uncensored ? 'smart' : 'fast'),
       curated: false, src: m.src, desc: m.desc, uncensored: !!m.uncensored, tools: !!m.tools,
+      priceKnown: !!m.priceKnown, reasoning: m.reasoning,
     });
   }
   return out;
@@ -413,4 +646,4 @@ export async function warm(env, store, waitUntil) {
 /** Только для тестов: затормозить/разтормозить фоновое обновление. */
 export function resetThrottle() { lastTry = 0; }
 
-export const TEST = { fromOpenRouter, fromXkiro, isFree, prettyName, decode, ttlMs, NON_CHAT_HINT, index };
+export const TEST = { fromOpenRouter, fromXkiro, fromProviderList, fromGemini, nativeCfg, listSources, LIST_SOURCES, isFree, prettyName, decode, ttlMs, NON_CHAT_HINT, index };

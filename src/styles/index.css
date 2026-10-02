@@ -1576,6 +1576,12 @@ kbd {
   color: var(--text-3);
 }
 
+.model-row-flags {
+  color: var(--accent);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
 .model-check {
   flex: none;
   color: var(--accent);

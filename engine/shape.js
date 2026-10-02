@@ -70,7 +70,7 @@ export function buildRequest(o) {
   /* Потолок модели важнее нашей щедрости: бесплатные модели отдают 400 на
      max_tokens выше своего, а часть шлюзов — и на равном. Каталог знает настоящий
      потолок, поэтому режем здесь. Нет каталога — живём по-старому. */
-  const ceil = catalogCeilings(catalogCached(), model);
+  const ceil = catalogCeilings(catalogCached(), model, o.provider);
   if (ceil) maxTokens = Math.max(64, Math.min(maxTokens, ceil.maxOut));
   const temp = typeof o.temperature === 'number' ? o.temperature : 0.8;
   const pics = (Array.isArray(o.images) ? o.images : [])

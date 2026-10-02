@@ -226,6 +226,38 @@ export interface CatalogEntry {
   src?: string
   desc?: string
   uncensored?: boolean
+  /** провайдер сам сказал, что модель бесплатна (иначе — цена в списке не указана) */
+  priceKnown?: boolean
+  /** умеет рассуждать / принимать инструменты — по данным самого провайдера */
+  reasoning?: boolean
+  tools?: boolean
+  /** чем провайдер предлагает заменить снятую модель */
+  replaces?: string
+}
+
+/**
+ * Чьё это: каталожная строка знает источник, и человеку важно видеть, что
+ * `mistral-medium-latest` — это Mistral, а не «какая-то модель из списка».
+ */
+export const PROVIDER_LABEL: Record<string, string> = {
+  openrouter: 'OpenRouter',
+  xkiro: 'Xкиро',
+  groq: 'Groq',
+  mistral: 'Mistral',
+  gemini: 'Gemini',
+  zai: 'Z.AI',
+  cerebras: 'Cerebras',
+  cloudflare: 'Workers AI',
+  odirouter: 'OdiRouter',
+  sharellm: 'ShareLLM',
+  atria: 'Atria',
+  local: 'локально',
+  pool: 'наши пулы',
+}
+
+export function providerLabel(src?: string): string {
+  if (!src) return ''
+  return PROVIDER_LABEL[src] || src.toUpperCase()
 }
 
 export interface ModelCatalog {
@@ -236,6 +268,9 @@ export interface ModelCatalog {
   count: number
   /** сколько строк дал живой каталог (0 — сеть молчала, видны только пулы) */
   catalogCount: number
+  /** чьи собственные списки прочитаны в этом обновлении */
+  read?: Record<string, boolean> | null
+  pools?: { provider: string; label: string; count: number }[]
 }
 
 let LAST: ModelCatalog | null = null

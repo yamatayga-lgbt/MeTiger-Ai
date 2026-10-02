@@ -17,6 +17,7 @@ import {
   MODELS,
   avatarFor,
   catalogCache,
+  providerLabel,
   ceilingsLine,
   loadCatalog,
   refreshCatalog,
@@ -34,7 +35,16 @@ interface Row {
   avatar: ModelAvatar
   group: 'top' | 'pool' | 'cat'
   hint: string
+  /** чей это id — показываем отдельным чипом: список вырос втрое и искать в нём
+     «свою» модель без провайдера было бы слепо */
+  prov: string
+  /** чем модель хороша: инструменты, рассуждение, «без купюр», цена не проверена */
+  flags: string[]
 }
+
+/** Сколько строк одной группы показываем без поиска: каталог вырос до сотен id,
+    и молча рендерить 600 строк в Telegram-вебвью — способ подвесить панель. */
+const PER_GROUP = 120
 
 const AV_TOP: ModelAvatar = { bg: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)', mark: 'Me' }
 
@@ -47,6 +57,8 @@ function fromShowcase(): Row[] {
     avatar: m.avatar || AV_TOP,
     group: 'top' as const,
     hint: m.vendor,
+    prov: '',
+    flags: [],
   }))
 }
 
@@ -58,6 +70,15 @@ function build(cat: ModelCatalog | null): Row[] {
   const rest: Row[] = []
   for (const m of cat.models as CatalogEntry[]) {
     if (known.has(m.id)) continue
+    const flags = [
+      m.tools ? 'инструменты' : '',
+      m.reasoning ? 'рассуждает' : '',
+      m.uncensored ? 'без купюр' : '',
+      /* бесплатность у groq/mistral/gemini в списке не написана (тарифицируют
+         токенами, «бесплатно» там означает «влезает в суточную квоту») — молчать
+         об этом значит обещать то, чего каталог не подтверждает */
+      m.priceKnown === false ? 'цена не проверена' : '',
+    ].filter(Boolean) as string[]
     const row: Row = {
       id: m.id,
       name: m.name || m.id,
@@ -65,7 +86,9 @@ function build(cat: ModelCatalog | null): Row[] {
       vision: m.vision === true,
       avatar: avatarFor(m),
       group: m.curated ? 'pool' : 'cat',
-      hint: [m.vendor, m.tier === 'smart' ? 'умная' : '', m.uncensored ? 'без купюр' : ''].filter(Boolean).join(' · '),
+      hint: [m.vendor, m.tier === 'smart' ? 'умная' : ''].filter(Boolean).join(' · '),
+      prov: providerLabel(m.src),
+      flags,
     }
     ;(m.curated ? pool : rest).push(row)
   }
@@ -95,9 +118,20 @@ export function ModelPicker({ model, onPick }: { model: string; onPick: (id: str
   const rows = useMemo(() => build(cat), [cat])
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase()
-    if (!s) return rows
-    return rows.filter((r) => (r.id + ' ' + r.name + ' ' + r.hint).toLowerCase().includes(s))
+    if (s) return rows.filter((r) => (r.id + ' ' + r.name + ' ' + r.hint + ' ' + r.prov).toLowerCase().includes(s))
+    /* без поиска — по первых PER_GROUP в группе, «Авто» и витрина целиком */
+    const take = new Map<Row['group'], number>()
+    const out: Row[] = []
+    for (const r of rows) {
+      const n = take.get(r.group) || 0
+      /* выбранный не должен пропадать из-за среза: иначе чип «Авто», а строки нет */
+      if (r.group !== 'top' && n >= PER_GROUP && r.id !== model) continue
+      take.set(r.group, n + 1)
+      out.push(r)
+    }
+    return out
   }, [rows, q])
+  const hidden = rows.length - shown.length
 
   const counts = useMemo(() => {
     const inPool = rows.filter((r) => r.group === 'pool').length
@@ -170,7 +204,10 @@ export function ModelPicker({ model, onPick }: { model: string; onPick: (id: str
                   {r.name}
                   {r.vision ? <Eye size={12} className="vision-ic" aria-label="видит картинки" /> : null}
                 </span>
-                <span className="model-row-desc">{r.desc || r.hint}</span>
+                <span className="model-row-desc">
+                  {[r.prov, r.desc || r.hint].filter(Boolean).join(' · ')}
+                  {r.flags.length ? <span className="model-row-flags"> {r.flags.join(' · ')}</span> : null}
+                </span>
               </span>
               {selected ? <Check size={15} className="model-check" /> : null}
             </button>
@@ -183,6 +220,7 @@ export function ModelPicker({ model, onPick }: { model: string; onPick: (id: str
           ? `${counts.total} моделей · обновлено ${hhmm(cat.updatedAt) || 'только что'}${cat.stale ? ' · устарело' : ''}`
           : 'витрина: 19 · каталог недоступен'}
         {cat && cat.catalogCount ? ` · живых у провайдеров: ${cat.catalogCount}` : ''}
+        {hidden > 0 ? ` · показаны не все (ещё ${hidden}) — наберите имя` : ''}
       </div>
     </div>
   )

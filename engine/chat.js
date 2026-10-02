@@ -311,7 +311,7 @@ export function createEngine(opts) {
           : system;
         if (useReframe) reframedCalls++;
         const req = buildRequest({
-          cfg, keyIdx, model, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
+          cfg, keyIdx, model, provider: id, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
           maxTokens: input.maxTokens, temperature: input.temperature,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
@@ -384,7 +384,7 @@ export function createEngine(opts) {
           content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
         }]);
         const req = buildRequest({
-          cfg, keyIdx, model, messages: curMessages,
+          cfg, keyIdx, model, provider: id, messages: curMessages,
           system: system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
           tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
         });
