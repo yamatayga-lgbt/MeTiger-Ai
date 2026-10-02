@@ -13,6 +13,7 @@ import { fileHref, fileSize } from '../lib/api'
     можно было забрать. Ссылка (data-URI) считается один раз на файл: генерация
     весит килобайты, дважды в DOM её тащить незачем. */
 function isImgFile(f: { mime: string; kind?: string }): boolean {
+  /* источник может и не попасть в ответ — тогда в подписи только тип */
   return f.kind === 'image' || /^image\//i.test(f.mime || '')
 }
 
@@ -24,7 +25,7 @@ function FileChips({ files }: { files: NonNullable<ChatMessage['files']> }) {
       {imgs.length ? (
         <div className="msg-imgs">
           {imgs.map((x, i) => (
-            <a key={`i${i}`} className="msg-img" href={x.href} download={x.f.name} title={`${x.f.name} · ${x.f.mime}`}>
+            <a key={`i${i}`} className="msg-img" href={x.href} download={x.f.name} title={x.f.source ? `${x.f.name} · ${x.f.mime} · ${x.f.source}` : `${x.f.name} · ${x.f.mime}`}>
               <img src={x.href} alt={x.f.name} loading="lazy" />
             </a>
           ))}
@@ -32,7 +33,7 @@ function FileChips({ files }: { files: NonNullable<ChatMessage['files']> }) {
       ) : null}
       <div className="msg-files-row">
         {items.map((x, i) => (
-          <a key={i} className="file-chip" href={x.href} download={x.f.name} title={x.f.mime}>
+          <a key={i} className="file-chip" href={x.href} download={x.f.name} title={x.f.source ? `${x.f.mime} · ${x.f.source}` : x.f.mime}>
             <span className="file-name">{x.f.name}</span>
             <span className="file-size">{fileSize(x.f.size)}</span>
           </a>

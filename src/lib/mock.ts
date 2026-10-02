@@ -58,7 +58,7 @@ export interface ChatMessage {
   images?: string[]
   /** Документы, которые модель оформила файлом (в localStorage не пишутся — тот же
       мотив, что и с картинками: base64 съедает квоту молча). */
-  files?: { name: string; mime: string; size: number; b64: string; kind?: string }[]
+  files?: { name: string; mime: string; size: number; b64: string; kind?: string; source?: string }[]
   /** Навыки, включившиеся по смыслу этого вопроса. */
   skills?: string[]
   /** Вердикт совета голов словами. Пока его нет — значит совет молчал, и это тоже честно. */

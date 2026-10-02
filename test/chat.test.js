@@ -236,6 +236,53 @@ console.log('K — математика едет к тому DeepSeek, кото�
   ok('K4: INTENT_HEADS=off — движок снова слушает конфиг', seen4[0].indexOf('groq/') === 0, JSON.stringify(seen4.slice(0, 2)));
 }
 
+/** fetch для «живой gemini-картинки»: LLM отвечает чатом, генератор — inlineData. */
+function mkFetch2(b64png) {
+  return async (url, init) => {
+    const body = init && init.body ? String(init.body) : '';
+    if (body.indexOf('responseModalities') >= 0) {
+      return { status: 200, ok: true, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: b64png } }] } }] }) };
+    }
+    return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'Кот.' }, finish_reason: 'stop' }] }) };
+  };
+}
+
+console.log('K2b — правка живёт только там, где ей есть чем выполняться');
+{
+  const G = await import('../engine/imggen.js');
+  const png = new Uint8Array(900);
+  [0x89, 0x50, 0x4e, 0x47].forEach((v, i) => { png[i] = v; });
+  for (let i = 8; i < png.length; i++) png[i] = i % 251;
+  const b64p = Buffer.from(png).toString('base64');
+  /* безключевой канал: картинку отдаёт, правку не умеет вовсе */
+  const pollFetch = async (url) => {
+    if (String(url).indexOf('pollinations') < 0) {
+      return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'Кот.' }, finish_reason: 'stop' }] }) };
+    }
+    return { status: 200, ok: true, headers: { get: () => 'image/png' }, arrayBuffer: async () => png.buffer };
+  };
+  const envP = { GROQ_KEYS: 'g1', IMGGEN_SOURCE: 'pollinations' };
+  const eP = createEngine({ env: envP, fetch: pollFetch, sleep: async () => {}, imggen: G.createImggen({ env: envP, fetch: pollFetch }) });
+  const rP = await eP.run({ text: 'нарисуй кота', chatId: 'k2p', providerOrder: ['groq'] });
+  ok('K2m: картинка от безключевого канала доходит до человека',
+    (rP.files || []).length === 1 && /image\//.test(rP.files[0].mime), JSON.stringify((rP.files || []).map((x) => x.name + ' ' + x.mime)));
+  ok('K2n: и при этом навыкам правки нечем выполняться — движок этого не обещает',
+    eP.imgReady() === false && !(rP.skills || []).some((x) => x.cat === 'editing'),
+    JSON.stringify({ ready: eP.imgReady(), cats: (rP.skills || []).map((x) => x.cat) }));
+  ok('K2o: зато строка состояния показывает, кто именно жив',
+    /pollinations/.test(G.lineOf(eP.img())), G.lineOf(eP.img()).slice(0, 70));
+
+  const fG = mkFetch2(b64p);
+  const envG = { GROQ_KEYS: 'g1', GEMINI_KEYS: 'gm1', IMGGEN_SOURCE: 'gemini' };
+  const eG = createEngine({ env: envG, fetch: fG, sleep: async () => {}, imggen: G.createImggen({ env: envG, fetch: fG }) });
+  const rG = await eG.run({ text: 'нарисуй кота', chatId: 'k2g', providerOrder: ['groq'] });
+  ok('K2p: канал, умеющий правку, поднимает готовность — editing включится со следующего сообщения',
+    eG.imgReady() === true && (rG.imgSource || '') === 'gemini', JSON.stringify(eG.img().sources));
+  const rG2 = await eG.run({ text: 'убери фон с кота и верни как было', chatId: 'k2g', providerOrder: ['groq'] });
+  ok('K2q: и навык правки приезжает в промпт следующим же запросом',
+    (rG2.skills || []).some((x) => x.cat === 'editing'), JSON.stringify((rG2.skills || []).map((x) => x.id)));
+}
+
 console.log('K2 — картинки сквозь движок (engine/imggen.js)');
 {
   const G = await import('../engine/imggen.js');

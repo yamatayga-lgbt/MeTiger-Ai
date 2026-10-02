@@ -18,7 +18,7 @@ import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
 import { gatherTools } from './tools.js';
-import { sharedImggen, packImages, wantsImage } from './imggen.js';
+import { sharedImggen, packImages, wantsImage, editsReady } from './imggen.js';
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
@@ -199,7 +199,7 @@ export function createEngine(opts) {
     const useSkills = isDefaultSys && input.skills !== false && input.useTools !== false;
     /* Готовность картинок — из кэша слоя, без сети: навыки правки оживают только
        тогда, когда источник уже хоть раз вернул байт (см. LIVE_CATS в skills.js). */
-    const imgToolReady = { imggen: imggen.status().sources.some((x) => x.ready) };
+    const imgToolReady = { imggen: editsReady(imggen.status()) };
     const skills = useSkills ? detectSkills(text, { images, env, imgToolReady }) : [];
     const toolsRes = input.useTools === false
       ? { used: [], block: '', directive: '' }
@@ -682,6 +682,7 @@ export function createEngine(opts) {
     /* состояние картинок — для /api/chat: человек должен видеть, что умеет
        движок сегодня, а не что ему обещают */
     img: () => imggen.status(),
+    imgReady: () => editsReady(imggen.status()),
     imgCanEdit: () => imggen.canEdit(),
   };
 }

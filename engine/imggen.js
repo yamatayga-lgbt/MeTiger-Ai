@@ -421,6 +421,15 @@ export function sharedImggen(env, fetchImpl, log) {
   return shared;
 }
 
+/**
+ * Чем ПРАВИТЬ приложенную картинку прямо сейчас. Именно этот предикат решает,
+ * включать ли навыки категории `editing`: источник, который умеет только
+ * генерировать (Pollinations), правку не выполнит, и навыки врели бы.
+ */
+export function editsReady(status) {
+  return !!(status && status.on && (status.sources || []).some((x) => x.ready && x.edits));
+}
+
 /** Строка состояния для GET /api/chat и для подписи в блоке навыка. */
 export function lineOf(st) {
   if (!st) return 'выключен';

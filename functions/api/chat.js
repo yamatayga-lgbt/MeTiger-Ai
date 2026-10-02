@@ -211,6 +211,9 @@ export async function onRequestPost(context) {
     /* файлы, которые модель оформила блоком ```file:…``` — б64 кладём прямо в ответ:
        своего хранилища под выдачу нет, а 512 КБ — потолок одного файла */
     files: r.files || [],
+    /* каким каналом сделана картинка этого ответа — по нему видно, живой ли источник
+       сегодня отвечает, а не числится ли по наличию ключа */
+    imgSource: r.imgSource || undefined,
     reframed: !!r.reframed,
     freedomCleaned: !!r.freedomCleaned,
     tried: r.tried.slice(0, 6),
