@@ -12,6 +12,8 @@
 import { onRequestPost as chatPost, memoryStore, limitsStore } from '../api/chat.js';
 import { limitsInfo } from '../../engine/limits.js';
 import { handleUpdate, secretOk, telegramPoster } from '../../engine/telegram.js';
+import { createAttach } from '../../engine/attach.js';
+import { createStt } from '../../engine/voicein.js';
 import { freedomInfo } from '../../engine/freedom.js';
 import { label as genderLabel } from '../../engine/gender.js';
 import { stats as emotionStats } from '../../engine/emotion.js';
@@ -59,7 +61,18 @@ export async function onRequestPost(context) {
   }
 
   const post = telegramPoster(env, (u, i) => fetch(u, i));
-  const out = await handleUpdate({ update, env, prefs, ask: (payload) => askEngine(context, payload), post });
+  /* Вложения: фото → зрение, документ → текст, голосовое → расшифровка. Слои
+     создаются на запрос (сети в конструкторе нет), состояние у них общее с /api/chat
+     только в том смысле, что ключи и лимиты берутся из того же env. */
+  const fetchImpl = (u, i) => fetch(u, i);
+  const stt = createStt({ env, fetch: fetchImpl, log: (k, a, b) => console.log(k, a, String(b || '').slice(0, 160)) });
+  const attach = createAttach({ env, fetch: fetchImpl, stt, log: (k, a, b) => console.log(k, a, String(b || '').slice(0, 160)) });
+  const out = await handleUpdate({
+    update, env, prefs, post,
+    ask: (payload) => askEngine(context, payload),
+    attach: (media) => attach.take(media),
+    log: (k, a, b) => console.log(k, a, String(b || '').slice(0, 160)),
+  });
   return new Response(JSON.stringify({ ok: true, ...out }), { status: 200, headers: JSON_HEADERS });
 }
 
@@ -68,6 +81,7 @@ export async function onRequestGet(context) {
   const env = context.env || {};
   return new Response(JSON.stringify({
     ok: true,
+    attach: (() => { const s = createAttach({ env: context.env }); const st = createStt({ env: context.env }); return { on: s.stats().on, token: s.stats().token, stt: st.stats() }; })(),
     route: '/telegram/webhook',
     secret: env.TELEGRAM_WEBHOOK_SECRET ? 'задан' : '❌ не задан — вебхук не примут',
     token: env.TELEGRAM_BOT_TOKEN ? 'задан' : '❌ не задан',

@@ -13,6 +13,7 @@
 /* Предел Bot API — 4096 символов; 3900 — с запасом на то, что Telegram считает
    символы не так, как JS (суррогатные пары), и на служебную строку внизу. */
 import { normalize as normalizeGender, label as genderLabel } from './gender.js';
+import { parseMedia, compose as composeAttach } from './attach.js';
 
 export const TG_LIMIT = 3900;
 
@@ -37,6 +38,9 @@ export function parseUpdate(update) {
     replyTo: (m && m.reply_to_message) || null,
     hasVoice: !!(m && m.voice),
     hasPhoto: !!(m && Array.isArray(m.photo) && m.photo.length),
+    /* что именно приложено — см. engine/attach.js: фото идут в зрение, документы
+       читаются, голосовое расшифровывается. Пустой объект значит «ничего». */
+    media: parseMedia(update),
     message_id: m ? m.message_id : null,
   };
   out.isGroup = !!(out.chat && GROUPS.indexOf(out.chat.type) >= 0);
@@ -167,6 +171,9 @@ export async function handleUpdate(opts) {
   const env = opts.env || {};
   const ask = opts.ask;
   const post = opts.post || (async () => ({ ok: true }));
+  /* лог — необязательный: в тестах и в чужом хосте его нет, и молчание в логе
+     не имеет права ронять обработку апдейта */
+  const log = opts.log || (() => {});
   const username = env.TELEGRAM_BOT_USERNAME || 'Metigerai_bot';
   const parsed = parseUpdate(update);
   const res = { status: 200, answered: false, chunks: 0, ignored: '', sent: [], files: [] };
@@ -199,6 +206,32 @@ export async function handleUpdate(opts) {
        до createEngine, квота не горит. */
     payload.text = '/forget';
     payload.forget = true;
+  } else if (parsed.media && parsed.media.has && opts.attach) {
+    /* Есть вложение и есть чем его достать → тащим. Резолвер (opts.attach) даёт
+       webhook: он один знает про токен и про то, что сеть может не ответить. */
+    let got = null;
+    try { got = await opts.attach(parsed.media); } catch (e) {
+      res.attachError = String((e && e.message) || e).slice(0, 140);
+      log('attach', 'fail', res.attachError);
+      /* Молча ответить на подпись, не зная о потерянном файле, — значит выдать
+         уверенный ответ про то, чего не читали. Причина идёт в текст хода. */
+      got = { images: [], docs: [], voiceText: '', tried: 0, notes: ['вложение получить не вышло: ' + res.attachError] };
+    }
+    const made = composeAttach(parsed.media, got, parsed.text);
+    const nothing = !got || (!got.images.length && !got.docs.some((d) => d.ok) && !got.voiceText);
+    if (nothing && !parsed.text) {
+      /* ни слов, ни добытого текста — спрашивать модель не о чем, и человек
+         получает причину, а не тишину */
+      const text = (made.notes.length ? made.notes.join('\n') : 'Вложение разобрать не вышло.') + '\nПереспроси текстом — я не потеряю нитку.';
+      const parts = chunkText(text);
+      for (const c of parts) { await post('sendMessage', { chat_id: parsed.chat.id, text: c }); res.sent.push(c); res.chunks++; }
+      res.answered = true; res.ignored = 'вложение не разобрано';
+      return res;
+    }
+    payload.text = made.text;
+    if (made.images.length) payload.images = made.images;
+    if (made.files) res.docs = made.files;
+    if (got && got.voiceText) res.voice = true;
   } else if (parsed.hasVoice) {
     res.ignored = 'голос пока не слушаю';
     const text = 'Голосовые пока не слушаю — перепиши текстом, я не потеряю нитку разговора.';

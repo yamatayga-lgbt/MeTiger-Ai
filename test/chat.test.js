@@ -167,6 +167,34 @@ console.log('G — вход /api/chat (Pages Function): то, что видит 
   const heavy = await onRequestPost({ request: req({ text: 'что на фото?', images: ['data:image/png;base64,' + 'A'.repeat(6 * 1024 * 1024)] }), env: ENV });
   ok('G9: тяжёлую картинку не тащим до провайдера',
     heavy.status === 413 && /МБ/.test((await heavy.json()).error || ''), String(heavy.status));
+  /* Вход из чужого curl обязан быть безопасен: «system», «temperature», «model»
+     и «provider» человек пишет сам, и движок не имеет права тащить их как есть. */
+  const ENV0 = Object.assign({}, ENV, { RATE_LIMIT: '0' });
+  const big = await onRequestPost({ request: req({ text: 'привет', system: 'x'.repeat(100000), temperature: 12, chatId: 'чат\u00009' }), env: ENV0 });
+  const bj = await big.json();
+  ok('G10: чужой мегабайтный «system» режется до потолка — и это сказано человеку',
+    big.status === 200 && /системный промпт обрезан/.test((bj.inputNotes || []).join(' ')), JSON.stringify(bj.inputNotes || bj.error).slice(0, 160));
+  const bigBody = g.calls[g.calls.length - 1].body;
+  const sysSent = (bigBody.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content).length);
+  ok('G11: до провайдера уехал обрезанный промпт, а не 100 000 знаков', sysSent.length > 0 && sysSent[0] <= 32100, JSON.stringify(sysSent));
+  ok('G12: temperature=12 возвращён в 0…2 и назван словами', bigBody.temperature === 2 && /температуру 12/.test((bj.inputNotes || []).join(' ')), String(bigBody.temperature));
+  const junk = await onRequestPost({ request: req({ text: 'привет', model: '  glm\u0000-5 \u0007 ', provider: 'groq/../x' }), env: ENV0 });
+  const jj = await junk.json();
+  const junkBody = g.calls[g.calls.length - 1].body;
+  ok('G13: из имени модели вычищены управляющие символы, провайдер-мусор не перебивает выбор',
+    junk.status === 200 && junkBody.model.indexOf('\u0000') < 0 && junkBody.model.indexOf('\u0007') < 0 && !!jj.provider, JSON.stringify({ model: junkBody.model, provider: jj.provider }).slice(0, 160));
+  const hist = Array.from({ length: 30 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: 'реплика ' + i + ' ' + 'текст '.repeat(400) }));
+  const over = await onRequestPost({ request: req({ text: 'итого?', history: hist }), env: Object.assign({}, ENV0, { CTX_WINDOW: '1500', CTX_MAX_OUT: '300' }) });
+  const oj = await over.json();
+  const overBody = g.calls[g.calls.length - 1].body;
+  ok('G14: гирлянду истории не тащим — окно модели режет её, и это видно в ответе',
+    over.status === 200 && overBody.messages.length < hist.length + 1 && /окно модели/.test(String(oj.ctxFit || '')) && /взял последние 12/.test((oj.inputNotes || []).join(' ')), JSON.stringify({ sent: overBody.messages.length, fit: String(oj.ctxFit || '').slice(0, 60), notes: oj.inputNotes }).slice(0, 300));
+  ok('G15: последним в запросе идёт вопрос человека, а не обрывок истории',
+    /итого\?/.test(String(overBody.messages[overBody.messages.length - 1].content)), String(overBody.messages[overBody.messages.length - 1].content).slice(0, 60));
+  const dg = await onRequestGet({ env: ENV0 });
+  const dgj = await dg.json();
+  ok('G16: GET /api/chat показывает настройки окна — «что за лимиты сейчас» видно без чтения кода',
+    !!dgj.ctx && /окно \d+/.test(dgj.ctx), JSON.stringify(dgj.ctx));
   globalThis.fetch = saved;
 }
 

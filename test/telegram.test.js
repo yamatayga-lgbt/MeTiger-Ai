@@ -351,5 +351,47 @@ console.log('J — файлы и картинки в Telegram');
   ok('J9: счётчик картинок ведётся — по нему видно, что дошло до человека', good.res.photos === 1 && good.res.files.length === 1, JSON.stringify({ p: good.res.photos, f: good.res.files }));
 }
 
+console.log('K — вложения через handleUpdate (резолвер подставлен, сети нет)');
+{
+  const mk = (media, got) => async () => got === undefined ? media(got) : got;
+  async function run(update, attach, askExtra) {
+    const asked = [], posts = [];
+    const res = await handleUpdate({
+      update,
+      env: {},
+      attach,
+      ask: async (payload) => { asked.push(payload); return json(Object.assign({ ok: true, reply: 'Прочитал.', provider: 'groq', model: 'm' }, askExtra || {})); },
+      post: async (m, pl) => { if (m === 'sendMessage') posts.push({ m, text: pl.text }); return { status: 200 }; },
+    });
+    return { asked, posts, res };
+  }
+  const withMedia = (extra) => ({ message: Object.assign({ chat: { id: 1, type: 'private' }, from: { id: 1 }, text: 'вот подпись', message_id: 5 }, extra || {}) });
+  const voiceGot = { images: [], docs: [], voiceText: 'Привет, это Тигр', notes: [], tried: 2 };
+  const a = await run(withMedia({ voice: { file_id: 'v', duration: 3, mime_type: 'audio/ogg' } }), async (media) => ({ ...voiceGot, mediaSeen: media.voice.id }));
+  ok('K1: расшифровка голоса доходит до движка помеченной, подпись сохранена',
+    a.asked.length === 1 && /^\[Голосом: Привет, это Тигр\]/.test(a.asked[0].text) && /вот подпись/.test(a.asked[0].text), JSON.stringify(a.asked[0] && a.asked[0].text).slice(0, 140));
+  ok('K2: резолвер получил разобранное media, а не весь апдейт', a.asked.length === 1 && /Привет, это Тигр/.test(a.asked[0].text), JSON.stringify(a.asked[0] && a.asked[0].text).slice(0, 80));
+  ok('K3: ответ ушёл и в чат, и пометка о голосе осталась в итоге', a.res.answered && a.res.voice === true && /Прочитал\./.test(a.posts[0].text), JSON.stringify({ v: a.res.voice, p: a.posts[0].text }));
+  const docGot = { images: [], docs: [{ name: 'отчёт.pdf', ok: true, line: 'pdf · 1200 симв.', text: 'Итоги' }], voiceText: '', notes: [], tried: 1 };
+  const b = await run(withMedia({ document: { file_id: 'd', file_name: 'отчёт.pdf', mime_type: 'application/pdf', file_size: 900 } }), async () => docGot);
+  ok('K4: текст файла едет в движок блоком, и это видно в ответе', /\[Файл: отчёт\.pdf · pdf · 1200 симв\.\]/.test(b.asked[0].text) && b.res.docs === 1, JSON.stringify({ t: b.asked[0].text.slice(0, 60), d: b.res.docs }));
+  const c = await run({ message: { chat: { id: 1, type: 'private' }, from: { id: 1 }, message_id: 6, photo: [{ file_id: 'p', file_size: 500 }] } },
+    async () => ({ images: ['data:image/jpeg;base64,AAA'], docs: [], voiceText: '', notes: [], tried: 1 }));
+  ok('K5: картинка передана движку полем images — зрение в боте работает', c.asked.length === 1 && c.asked[0].images.length === 1 && /Посмотри/.test(c.asked[0].text), JSON.stringify(c.asked[0]).slice(0, 120));
+  const d = await run({ message: { chat: { id: 1, type: 'private' }, from: { id: 1 }, message_id: 7, voice: { file_id: 'v' } } },
+    async () => ({ images: [], docs: [], voiceText: '', notes: ['запись не расшифрована: квота'], tried: 1 }));
+  ok('K6: добыть нечего и слов нет — человек получает причину, модели — тишина',
+    d.asked.length === 0 && /запись не расшифрована/.test(d.posts[0].text) && /Переспроси текстом/.test(d.posts[0].text) && d.res.ignored === 'вложение не разобрано', JSON.stringify({ posts: d.posts.map((x) => x.text), ign: d.res.ignored }));
+  const boom = await run(withMedia({ document: { file_id: 'd', file_name: 'x.txt' } }), async () => { throw new Error('изоляция кончилась'); });
+  ok('K7: резолвер упал — апдейт не роняется, причина видна в итоге', boom.res.attachError === undefined || /изоляция кончилась/.test(boom.res.attachError), JSON.stringify(boom.res).slice(0, 160));
+  ok('K8: и запрос всё равно уходит с подписью — потерянный файл не повод молчать', boom.asked.length === 1 && /изоляция кончилась/.test(boom.asked[0].text), JSON.stringify(boom.asked[0] && boom.asked[0].text).slice(0, 160));
+  const noAttach = await run({ message: { chat: { id: 1, type: 'private' }, from: { id: 1 }, message_id: 8, voice: { file_id: 'v' } } }, undefined);
+  ok('K9: без резолвера голос — честная заготовка, а не пустой ответ (обратная совместимость)',
+    noAttach.asked.length === 0 && /Голосовые пока не слушаю/.test(noAttach.posts[0].text) && noAttach.res.ignored === 'голос пока не слушаю', JSON.stringify(noAttach.res.ignored));
+  const noPhoto = await run({ message: { chat: { id: 1, type: 'private' }, from: { id: 1 }, message_id: 9, photo: [{ file_id: 'p' }] } }, undefined);
+  ok('K10: картинка без резолвера — то же честное «не вижу»', /не вижу/.test(noPhoto.posts[0].text) && noPhoto.asked.length === 0, JSON.stringify(noPhoto.posts.map((x) => x.text)).slice(0, 100));
+}
+
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

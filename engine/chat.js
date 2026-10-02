@@ -19,6 +19,7 @@ import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } fro
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
 import { gatherTools } from './tools.js';
 import { sharedImggen, packImages, wantsImage, editsReady } from './imggen.js';
+import { fit as fitContext } from './ctxfit.js';
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
@@ -208,7 +209,8 @@ export function createEngine(opts) {
        нужен постобработке: без него движок не тратит вызовы на генерацию. */
     const imgRequested = input.useTools !== false && wantsImage(text, images);
     const imgWanted = imgRequested || toolsRes.directive.indexOf('```img') >= 0;
-    const userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
+    let userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
+    let ctxNotes = [];
     const toolsHint = toolsRes.block
       ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных.'
       : '';
@@ -248,6 +250,20 @@ export function createEngine(opts) {
        что к собеседнику обращаются ровно, без превосходства. `auto` — только эта
        строка, род модель берёт из персоны и разговора. */
     if (isDefaultSys) system = system + gender.blockFor(input, env);
+
+    /* Подгонка под окно модели (engine/ctxfit.js). Делается ЗДЕСЬ, а не на входе:
+       только сейчас известен полный system — персона + навыки + freedom + данные
+       инструментов. Иначе мы гадали бы по длине запроса и резали зря.
+       Последнюю реплику человека не трогаем никогда; история уходит с самого
+       старого конца, и отрезанное остаётся в промпте выжимкой. */
+    {
+      const fitted = fitContext({ system, history, text: userContent, images, env, maxOut: input.maxTokens || 1200 });
+      system = fitted.system;
+      history = fitted.history;
+      userContent = fitted.text;
+      ctxNotes = fitted.notes || [];
+      if (fitted.overflow) ctxNotes = ctxNotes.concat([fitted.overflow]);
+    }
 
     /* Состояние собеседника: слой смотрит на форму последней реплики и предыдущих
        четырёх (оттуда же берётся тренд) и дописывает, КАК работать — коротко или по
@@ -295,6 +311,9 @@ export function createEngine(opts) {
         if (packed.files.length) out.files = packed.files;
         if (packed.reply) out.reply = packed.reply;
       }
+      /* чем именно заплатили за окно — человек должен видеть, что история у него
+         не «испарилась», а была сжата движком */
+      if (ctxNotes.length) out.cxFit = ctxNotes.join('; ');
       if (emoCfg.label && emo && emo.id !== 'neutral') {
         out.emotion = { id: emo.id, emoji: emo.emoji, label: emo.label, confidence: Math.round(emo.confidence * 100) / 100 };
       }

@@ -28,6 +28,7 @@ function skillLine(env, imgReady) {
 import { createMemory } from '../../engine/memory.js';
 import * as modelreg from '../../engine/modelreg.js';
 import { lineOf as imgLineOf } from '../../engine/imggen.js';
+import { normalizeFields, stats as ctxStats } from '../../engine/ctxfit.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
    запрос, а «токен не принят» и «нет баланса» за одну request'у не лечатся.
@@ -141,7 +142,12 @@ export async function onRequestPost(context) {
   /* Чат, к которому приклеена память: свой chatId у клиента (телеграм- id
      пользователя или id беседы), иначе — общий «web». Без него память
      превратилась бы в один большой общий котёл. */
-  const chatId = String(body.chatId || request.headers.get('x-mt-chat') || 'web').slice(0, 80);
+  /* Поля запроса в безопасный вид (engine/ctxfit.js): «system» от клиента не
+     должен иметь возможности прислать мегабайт текста, temperature — улететь за
+     разумный диапазон, а история — притащить пустые реплики. Что пришлось
+     поправить — возвращается словами, а не молча. */
+  const norm = normalizeFields(body, context.env);
+  const chatId = norm.chatId || String(request.headers.get('x-mt-chat') || 'web').slice(0, 80);
   const store = memoryStore(env);
   /* Каталог моделей — до движка: без этого на холодном изоляте выбор модели из
      каталога снимается молча, и человек получает ответ не той модели. */
@@ -158,23 +164,23 @@ export async function onRequestPost(context) {
   const brave = createBrave({ env, store });
   await brave.pull();
   const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine, memory, brave });
-  const history = Array.isArray(body.history)
-    ? body.history.slice(-8).filter((m) => m && m.text).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text).slice(0, 4000) }))
-    : [];
+  const history = norm.history;
 
   const r = await engine.run({
-    text, history,
+    /* нормализованные поля, а не сырые из тела: иначе потолок из env на «system»
+       и «text» был бы просто украшением, а provider с путью дошёл бы до выбора */
+    text: norm.text || text, history,
     chatId: memory ? chatId : undefined,
     images,
     tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
-    only: body.provider || undefined,
+    only: norm.provider,
     /* Человек выбрал модель в окне ввода — она и отвечает. Советы голов в этом
        режиме выключены: «взято большинство» переписало бы ответ той самой модели,
        которую человек и просил. */
-    model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined,
-    noCouncils: !!(typeof body.model === 'string' && body.model.trim()),
-    temperature: typeof body.temperature === 'number' ? body.temperature : undefined,
-    system: typeof body.system === 'string' && body.system ? body.system : PERSONA_SYSTEM,
+    model: norm.model || undefined,
+    noCouncils: !!norm.model,
+    temperature: norm.temperature,
+    system: norm.system || PERSONA_SYSTEM,
     /* Род агента — настройка человека из приложения (Авто/М/Ж). Сюда идёт pick(), а
        не normalize(): распознанное значение едет в движок, пустое и мусорное — не
        едет вовсе, и тогда работает AGENT_GENDER развертывания. С normalize() поле
@@ -194,6 +200,10 @@ export async function onRequestPost(context) {
 
   if (!r.ok) return json({ ok: false, error: r.error, intent: r.intent, tier: r.tier, ms: r.ms, tried: r.tried.slice(0, 10) }, 503);
   return json({
+    /* заметки нормализации входа и то, что движок подогнал под окно модели:
+       «я тебе ответил иначе, потому что ты прислал» должно быть видно, а не молчать */
+    inputNotes: norm.notes.length ? norm.notes : undefined,
+    ctxFit: r.cxFit || undefined,
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
     /* выбранная модель не смогла ответить — фронт подписывает это словами,
@@ -250,6 +260,8 @@ export async function onRequestGet(context) {
     /* чем именно картинки делаются сегодня: без этой строки человек гадает,
        почему «нарисуй» отвечает текстом */
     imggen: imgLineOf(engine.img()),
+    /* подгонка под окно модели: видно, какое окно считаем и включена ли резка */
+    ctx: ctxStats(context.env).line,
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */
     dead: engine.quarantine(),
   });

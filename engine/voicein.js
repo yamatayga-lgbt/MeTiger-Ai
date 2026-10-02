@@ -1,0 +1,216 @@
+/**
+ * Голос → текст (STT) для входящих сообщений.
+ *
+ * Зачем: в Telegram с телефона чаще всего приходят голосовые, а движок до сих пор
+ * отвечал на них «голос пока не слушаю». Источника два, оба бесплатные и на НАШИХ
+ * же ключах (никаких новых ключей и аккаунтов не заводим):
+ *   1. Groq — `whisper-large-v3-turbo` (проверено: /v1/audio/transcriptions с нашим
+ *      ключом отвечает 200); это основной путь, он заточен именно под расшифровку.
+ *   2. OpenRouter — омни-модель с аудио-входом (по умолчанию бесплатная
+ *      `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`), если Groq молчит:
+ *      квота, 429, таймаут.
+ *
+ * Рамки: не больше `MAX_AUDIO` на файл, потолок ожидания один на источник, текст
+ * нормализуется. Провал — это `{ ok: false, why }` с человеческой причиной, а не
+ * брошенное исключение: голосовое сообщение не имеет права ломать ответ.
+ *
+ * Токена в ошибках нет никогда: URL Bot API и провайдеров содержат секреты, поэтому
+ * наружу отдаётся только статус и текст причины.
+ */
+
+const MAX_AUDIO = 8 * 1024 * 1024;
+const MIN_AUDIO = 400;
+const CALL_MS = 90000;
+
+/** Промпт стенографа: дословно, с пунктуацией, без пересказа и «улучшений». */
+const PROMPT =
+  'Ты — точная стенограмма. Расшифруй аудио ДОСЛОВНО, на языке оригинала (не переводи и не перефразируй).\n'
+  + 'Восстанавливай пунктуацию и регистр; числа, даты, имена, термины и единицы пиши так, как произнесено.\n'
+  + 'Если речи нет — верни пустую строку. Никаких пояснений, кавычек и «в аудио слышно».';
+
+/* Telegram носит opus в ogg; провайдеры берут не любой контейнер, поэтому формат
+   подбирается по mime, а у Groq ещё и перебирается в случае отказа формата. */
+const FMT = {
+  'audio/ogg': ['ogg', 'opus', 'webm'],
+  'audio/opus': ['opus', 'ogg'],
+  'audio/webm': ['webm', 'ogg'],
+  'audio/mp4': ['mp4', 'm4a'],
+  'audio/m4a': ['m4a', 'mp4'],
+  'audio/mpeg': ['mp3'],
+  'audio/mp3': ['mp3'],
+  'audio/wav': ['wav'],
+  'audio/x-wav': ['wav'],
+  'audio/aac': ['aac', 'm4a'],
+  'audio/amr': ['amr'],
+  'audio/ogg; codecs=opus': ['ogg', 'opus'],
+};
+
+const b64enc = (bytes) => {
+  let s = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) s += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(s);
+};
+const first = (v) => String(v || '').split(',')[0].trim();
+
+/* Модель любит обернуть реплику в кавычки — и в «ёлочки» тоже: их надо снимать,
+   иначе в чат уходит текст в обнимку с типографикой. */
+const Q_OPEN = /^[\s«»""'\"\u201e\u201c\u201d\u2018\u2019「」『』【】(`]+/;
+const Q_CLOSE = /[\s«»""'\"\u201c\u201d\u2018\u2019」』】)']+$/;
+const tidy = (s) => String(s == null ? '' : s)
+  .replace(/\r/g, '')
+  .replace(/[ \t]{2,}/g, ' ')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim()
+  .replace(Q_OPEN, '')
+  .replace(Q_CLOSE, '')
+  .trim();
+
+/** Пустая расшифровка и «.» от шума — не ответ: это надо сказать, а не молчать. */
+export function hasWords(text) {
+  const t = tidy(text);
+  return /[A-Za-zА-Яа-яЁё0-9]/.test(t) && t.length >= 2;
+}
+
+function fmtsOf(mime) {
+  const m = String(mime || '').toLowerCase();
+  return FMT[m] || ['ogg'];
+}
+
+/** Статус + короткая причина без URL и токена. */
+async function whyOf(res) {
+  let why = 'http ' + (res && res.status ? res.status : '?');
+  try {
+    const txt = await res.text();
+    const j = JSON.parse(txt);
+    const m = j && (j.error && (j.error.message || j.error.code) || j.message || j.detail);
+    if (m) why += ' · ' + String(m).slice(0, 140);
+    else if (txt && txt.length < 120) why += ' · ' + txt;
+  } catch { /* тело не json */ }
+  return why;
+}
+
+/**
+ * Создать слой расшифровки. o: { env, fetch, log }.
+ * `STT=off` — слой выключен (handleUpdate тогда честно отвечает голосом-не-отвечу).
+ */
+export function createStt(o) {
+  const opts = o || {};
+  const env = opts.env || {};
+  const log = opts.log || (() => {});
+  const fetchImpl = opts.fetch || ((...a) => fetch(...a));
+  const on = String(env.STT || '') !== 'off';
+  const groqKey = first(env.GROQ_KEYS || env.GROQ_KEY);
+  const orKey = first(env.OPENROUTER_KEYS || env.OPENROUTER_KEY);
+  const groqModel = String(env.STT_MODEL || 'whisper-large-v3-turbo');
+  const orModel = String(env.STT_OMNI_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free');
+  const timeoutMs = Math.max(5000, Number(env.STT_TIMEOUT_MS) || CALL_MS);
+
+  const withTimeout = (p, label) => {
+    let tm;
+    return Promise.race([
+      Promise.resolve(p).finally(() => clearTimeout(tm)),
+      new Promise((_, rej) => { tm = setTimeout(() => rej(new Error('не успел за ' + Math.round(timeoutMs / 1000) + ' с (' + label + ')')), timeoutMs); }),
+    ]);
+  };
+
+  async function viaGroq(bytes, mime) {
+    const tries = fmtsOf(mime);
+    let last = 'формат не подошёл';
+    for (const fmt of tries) {
+      const fd = new FormData();
+      fd.append('file', new Blob([bytes], { type: mime || 'audio/ogg' }), 'voice.' + (fmt === 'opus' ? 'ogg' : fmt));
+      fd.append('model', groqModel);
+      fd.append('response_format', 'verbose_json');
+      fd.append('temperature', '0');
+      fd.append('prompt', PROMPT);
+      const r = await fetchImpl('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + groqKey },
+        body: fd,
+      });
+      if (!r.ok) {
+        last = await whyOf(r);
+        /* на лимите и на своей ошибке крутить форматы бессмысленно: дело не в них.
+           Пропускаемлишние попытки и сразу идём ко второму источнику. */
+        if (r.status === 429 || r.status >= 500) return { ok: false, why: last, via: 'groq' };
+        continue;
+      }
+      let j = null;
+      try { j = await r.json(); } catch { last = 'ответ не JSON'; continue; }
+      const text = tidy(j && j.text);
+      return { ok: hasWords(text), text: hasWords(text) ? text : '', via: 'groq/' + groqModel, lang: (j && j.language) || '', why: hasWords(text) ? '' : 'речи в аудио не было' };
+    }
+    return { ok: false, why: last, via: 'groq' };
+  }
+
+  async function viaOpenRouter(bytes, mime) {
+    const fmt = fmtsOf(mime)[0] === 'opus' ? 'ogg' : fmtsOf(mime)[0];
+    const body = {
+      model: orModel,
+      max_tokens: 900,
+      temperature: 0,
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: PROMPT },
+        { type: 'input_audio', input_audio: { data: 'data:' + (mime || 'audio/ogg') + ';base64,' + b64enc(bytes), format: fmt } },
+      ] }],
+    };
+    const r = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + orKey },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return { ok: false, why: await whyOf(r), via: 'openrouter' };
+    let j = null;
+    try { j = await r.json(); } catch { return { ok: false, why: 'ответ не JSON', via: 'openrouter' }; }
+    const msg = ((j && j.choices) || [])[0];
+    const raw = msg && msg.message ? (typeof msg.message.content === 'string' ? msg.message.content : JSON.stringify(msg.message.content)) : '';
+    const text = tidy(String(raw));
+    return { ok: hasWords(text), text: hasWords(text) ? text : '', via: 'openrouter/' + orModel, why: hasWords(text) ? '' : 'речи в аудио не было' };
+  }
+
+  /**
+   * Расшифровать. src: { bytes: Uint8Array, mime }.
+   * → { ok, text, via } | { ok: false, why }
+   */
+  async function transcribe(src) {
+    if (!on) return { ok: false, why: 'распознавание голоса выключено (STT=off)' };
+    const bytes = src && src.bytes instanceof Uint8Array ? src.bytes : null;
+    if (!bytes || !bytes.length) return { ok: false, why: 'аудио пустое' };
+    if (bytes.length < MIN_AUDIO) return { ok: false, why: 'аудио в ' + bytes.length + ' байт — слишком короткое, чтобы там была речь' };
+    if (bytes.length > MAX_AUDIO) return { ok: false, why: 'аудио ' + Math.round(bytes.length / 1024 / 1024 * 10) / 10 + ' МБ — больше ' + Math.round(MAX_AUDIO / 1024 / 1024) + ' МБ не расшифровываем' };
+    const tried = [];
+    if (groqKey) {
+      try {
+        const r = await withTimeout(viaGroq(bytes, src.mime), 'groq');
+        if (r.ok) return r;
+        /* Groq ответил, просто речи не было: второй источник ту же тишину не
+           расшифрует, а лишний запрос — это секунды задержки и квота. */
+        if (/^groq\//.test(String(r.via || ''))) return { ok: false, why: r.why || 'речи в аудио не было', via: r.via };
+        tried.push('groq: ' + (r.why || 'пусто'));
+      } catch (e) { tried.push('groq: ' + String((e && e.message) || e).slice(0, 120)); }
+    } else tried.push('groq: ключа GROQ_KEYS нет');
+    if (orKey) {
+      try {
+        const r = await withTimeout(viaOpenRouter(bytes, src.mime), 'openrouter');
+        if (r.ok) return r;
+        tried.push('openrouter: ' + (r.why || 'пусто'));
+      } catch (e) { tried.push('openrouter: ' + String((e && e.message) || e).slice(0, 120)); }
+    } else if (orModel) tried.push('openrouter: ключа OPENROUTER_KEYS нет');
+    const why = tried.join(' · ');
+    log('stt', 'fail', why.slice(0, 160));
+    return { ok: false, why };
+  }
+
+  return {
+    transcribe,
+    stats: () => ({
+      on,
+      keys: { groq: !!groqKey, openrouter: !!orKey },
+      models: { groq: groqKey ? groqModel : '', omni: orKey ? orModel : '' },
+      maxBytes: MAX_AUDIO,
+    }),
+  };
+}
+
+export const sttLimits = { MAX_AUDIO, MIN_AUDIO, PROMPT };
