@@ -233,6 +233,21 @@ export interface CatalogEntry {
   tools?: boolean
   /** чем провайдер предлагает заменить снятую модель */
   replaces?: string
+  /** рейтинг смелых: как модель вела себя на темах, где обычно включают фильтр */
+  brave?: { ok: number; refused: number; total: number; score: number; provider?: string }
+}
+
+/**
+ * Что рейтинг говорит словами. Порог 2/3 и 1/3 — те же, по которым движок
+ * переставляет пул: «уверенно везёт», «упирается», «на грани» (у последней
+ * строки смысла в бейдже нет, поэтому её не возвращаем).
+ */
+export function braveLine(m: CatalogEntry): string {
+  const b = m.brave
+  if (!b || !b.total) return ''
+  if (b.score >= 0.67) return `везёт без отказа ${Math.round(b.ok)}/${Math.round(b.total)}`
+  if (b.score <= 0.33) return `упирается ${Math.round(b.refused)}/${Math.round(b.total)}`
+  return ''
 }
 
 /**

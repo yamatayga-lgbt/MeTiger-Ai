@@ -14,6 +14,7 @@ import {
   buildTable, providerAlive, pickKey, orderFor, ORDER, MIN_INTERVAL, TIMEOUT, MAX_IMAGES,
 } from './providers.js';
 import { classifyTask, tierFor, modelsFor, isVision } from './route.js';
+import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { gatherTools } from './tools.js';
 import * as freedom from './freedom.js';
@@ -64,6 +65,9 @@ export function createEngine(opts) {
   /* Память чата: либо готовый экземпляр (своё хранилище, свой кэш), либо store —
      тогда соберём сами. Без того и другого движок работает ровно как раньше. */
   const memory = o.memory || (o.store ? createMemory({ store: o.store, env, log: o.log }) : null);
+  /* Рейтинг смелых (engine/brave.js): чей опыт показывать первым на «острой»
+     теме. Как и карантин — переживается через KV, без него живёт в изоляте. */
+  const brave = o.brave || null;
   const health = Object.create(null);   /* id → [ключевое состояние] */
   const lastCallAt = Object.create(null);
   const usage = Object.create(null);    /* id → { calls, ok, refused, dead, t } */
@@ -190,6 +194,11 @@ export function createEngine(opts) {
        `system`, тот её и контролирует. Головы совета идут со своей подсказкой, так
        что к ним блок не липнет и лишние 8 КБ в спор о числе никто не везёт. */
     const adultAsk = freedom.isAdultAsk(text);
+    /* «Острая» тема = взрослый запрос или то, что freedom считает жёсткой
+       опасностью. По этому же признаку смотрим и на последние реплики: в
+       агентном разговоре суть обычно во втором ходу, а не в «продолжай». */
+    const sensitive = adultAsk || freedom.isHardDanger(text) ||
+      (!!history.length && freedom.isAdultAsk(String(history[history.length - 1] && history[history.length - 1].content || '')));
     const free = isDefaultSys ? freedom.freedomBlock(env, { intent, adult: adultAsk }) : { text: '', ids: [], chars: 0, mode: 'off', blocks: 0 };
     if (free.text) system = system + free.text;
     /* Обход ложных отказов по умолчанию молчит (его черёд — после первого отказа).
@@ -253,6 +262,11 @@ export function createEngine(opts) {
     let firstSoft = null;
 
     let order = orderFor(tier, P, { images, only: input.only, forceModel: input.forceModel, health });
+    /* На острой теме порядок провайдеров решает не конфиг, а их же поведение:
+       доказанно смелые — первыми. Доказательств нет — порядок как всегда. */
+    if (brave && sensitive && !pin0(input)) {
+      order = brave.orderProviders(order, poolOf(P));
+    }
     if (input.providerOrder && input.providerOrder.length) {
       order = input.providerOrder.filter((id) => P[id] && P[id].keys.length);
     }
@@ -289,9 +303,15 @@ export function createEngine(opts) {
       if (!providerAlive(P, id, health)) { tried.push({ provider: id, why: 'нет живых ключей' }); continue; }
       const q = punished(id);
       if (q && !allBad) { tried.push({ provider: id, why: 'в карантине: ' + q.why }); continue; }
-      const models = modelreg.prune(
+      let models = modelreg.prune(
         modelreg.cached(), id,
         pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images));
+      /* Выбор модели из пула: на острой теме вперёд те, про кого каталог знает
+         «без купюр», а внутри — по рейтингу смелых. Порядок, не состав: резать
+         пул нельзя, иначе на пустом каталоге запрос умрёт вместо того, чтобы
+         ответить второй моделью. */
+      if (sensitive && !pin) models = preferUncensored(models, modelreg.cached());
+      if (brave && !pin) models = brave.order(models, id);
       if (!models.length) { tried.push({ provider: id, why: 'нет моделей в пуле' }); continue; }
       const n = Math.max(1, Number(input.modelsPerProvider) || 2);
       for (const model of models.slice(0, n)) {
@@ -316,6 +336,12 @@ export function createEngine(opts) {
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
         const r = await attemptOne(id, model, req, left);
+        /* Копим опыт: прямой ответ весит больше, чем выдоенный обходом, — иначе
+           рейтинг смелых превратился в рейтинг терпения: кто дольше упирался, тот и «смелый». */
+        if (brave) {
+          if (r.ok) brave.mark(id, model, true, useReframe ? 0.6 : 1);
+          else if (r.soft || /ответ-отказ|блок по фильтру/.test(String(r.why || ''))) brave.mark(id, model, false);
+        }
         if (r.ok) {
           /* Обрыв на лимите токенов: одна допылка у того же провайдера, не молча обрывать. */
           let reply = r.reply;
@@ -576,6 +602,20 @@ export function createEngine(opts) {
     classify: (text, images) => classifyTask(text, images),
   };
 }
+
+/** пулы движка одной строкой — для порядка провайдеров по рейтингу смелых */
+function poolOf(P) {
+  const out = {};
+  for (const id of Object.keys(P || {})) {
+    const m = (P[id] && P[id].models) || {};
+    out[id] = [].concat(m.fast || [], m.smart || [], (P[id] && P[id].modelsLocal) || []);
+  }
+  return out;
+}
+
+/* пин выбран человеком — ничто (ни рейтинг, ни «смелые») не имеет права его
+   потеснить: человек явно попросил эту модель */
+function pin0(input) { return !!(input && String(input.model || '').trim()); }
 
 export { classifyTask, tierFor, stripThinkTags, isProviderError };
 export { ensemble, vcouncil, freedom, style };

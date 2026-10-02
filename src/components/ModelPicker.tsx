@@ -16,6 +16,7 @@ import {
   MODEL_AUTO,
   MODELS,
   avatarFor,
+  braveLine,
   catalogCache,
   providerLabel,
   ceilingsLine,
@@ -74,6 +75,9 @@ function build(cat: ModelCatalog | null): Row[] {
       m.tools ? 'инструменты' : '',
       m.reasoning ? 'рассуждает' : '',
       m.uncensored ? 'без купюр' : '',
+      /* опыт, а не обещание: «без купюр» из каталога — ярлык провайдера,
+         а это — чем модель реально ответила на прошлой острой теме */
+      braveLine(m),
       /* бесплатность у groq/mistral/gemini в списке не написана (тарифицируют
          токенами, «бесплатно» там означает «влезает в суточную квоту») — молчать
          об этом значит обещать то, чего каталог не подтверждает */

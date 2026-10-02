@@ -13,6 +13,7 @@
 import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/chat.js';
 import * as genderLayer from '../../engine/gender.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
+import { createBrave } from '../../engine/brave.js';
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
 import { createMemory } from '../../engine/memory.js';
@@ -142,7 +143,11 @@ export async function onRequestPost(context) {
   }
   const quarantine = createQuarantine({ store: limits, cfg: limitsCfg(env), base: QUARANTINE });
   await quarantine.pull();
-  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine, memory });
+  /* Рейтинг смелых — тот же KV, другой ключ. Читаем до движка (порядок моделей
+     нужен на этом же запросе), пишем после ответа и не чаще раза в минуту. */
+  const brave = createBrave({ env, store });
+  await brave.pull();
+  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine, memory, brave });
   const history = Array.isArray(body.history)
     ? body.history.slice(-8).filter((m) => m && m.text).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text).slice(0, 4000) }))
     : [];
@@ -171,7 +176,10 @@ export async function onRequestPost(context) {
 
   /* Наказания, набранные в этом ответе, уходят в общее хранилище уже после того,
      как человек получил свой текст: одна запись не должна добавлять ему секунд. */
-  const after = () => quarantine.flush().catch(() => null);
+  const after = () => Promise.all([
+    quarantine.flush().catch(() => null),
+    brave.flush().catch(() => null),
+  ]).then(() => null);
   if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 
   if (!r.ok) return json({ ok: false, error: r.error, intent: r.intent, tier: r.tier, ms: r.ms, tried: r.tried.slice(0, 10) }, 503);

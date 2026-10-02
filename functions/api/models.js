@@ -12,6 +12,7 @@
  * фронт не останется с пустым списком.
  */
 import { buildTable } from '../../engine/providers.js';
+import { createBrave, lineOf as braveLine } from '../../engine/brave.js';
 import * as modelreg from '../../engine/modelreg.js';
 import { memoryStore } from './chat.js';
 
@@ -78,6 +79,17 @@ export async function onRequestGet(context) {
     curatedIds: ids,
     tierOf: (id) => tierOf[id] || 'fast',
   });
+
+  /* Чем модель уже отличилась на «острых» темах — тот же рейтинг, что читает
+     движок: человеку полезно видеть, что «без купюр» — это не только ярлык из
+     каталога, но и проверенный опыт (или наоборот: упирается). */
+  const brave = createBrave({ env, store });
+  await brave.pull();
+  for (const row of list) {
+    const own = row.src && row.src !== 'pool' ? brave.record(row.src, row.id) : null;
+    const rec = own || brave.anyOf(row.id);
+    if (rec) row.brave = { ok: rec.ok, refused: rec.refused, total: rec.total, score: Math.round(rec.score * 100) / 100, provider: rec.provider || row.src };
+  }
   return json({
     ok: true,
     /* есть ли связка KV: без неё список живёт только в изоляте и греется заново */
@@ -92,6 +104,7 @@ export async function onRequestGet(context) {
     /* чьи собственные списки реально прочитаны в этом обновлении — чтобы «в
        каталоге нет» не выглядело приговором там, где список неполный (z.ai) */
     read: cat.read || null,
+    brave: braveLine(brave.stats()),
     models: list,
   });
 }
