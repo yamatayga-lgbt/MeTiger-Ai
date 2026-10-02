@@ -11,6 +11,8 @@
  * ошибка лучше, чем красивая заглушка, выданная за ответ агента.
  */
 
+import { currentUserId, memoryAddress } from './identity'
+
 export interface ChatTurn {
   role: 'user' | 'assistant'
   text: string
@@ -146,6 +148,157 @@ export function notesLine(r: ChatResult): string {
   return parts.join(' · ')
 }
 
+/* ============================================================
+   Профиль человека и счётчик моделей — данные вне разговора.
+   ============================================================ */
+
+export interface ProfileFields {
+  name: string
+  job: string
+  about: string
+}
+
+export interface ProfileData extends ProfileFields {
+  filled?: boolean
+  updatedAt?: number
+}
+
+export interface ProfileResult {
+  ok: boolean
+  error?: string
+  profile?: ProfileData
+  block?: string
+  signals?: string[]
+  memoryChatId?: string
+  stored?: boolean
+  truncated?: string[]
+  unchanged?: boolean
+  tooSoon?: boolean
+}
+
+const API = (path: string) => `${(import.meta.env?.VITE_API_BASE || '') + path}`
+
+/** Все ответы /api/profile одной формы: сеть может ответить чем угодно, а UI ждёт поля. */
+function asProfile(data: Partial<ProfileResult> | null, ok: boolean, status: number): ProfileResult {
+  if (!data || typeof data !== 'object') return { ok: false, error: ok ? 'пустой ответ сервера' : `сервер ответил ${status}` }
+  if (!data.ok) return { ok: false, error: data.error || `сервер ответил ${status}`, tooSoon: !!data.tooSoon }
+  return {
+    ok: true,
+    profile: data.profile,
+    block: data.block || '',
+    signals: data.signals || [],
+    memoryChatId: data.memoryChatId,
+    stored: !!data.stored,
+    truncated: data.truncated,
+    unchanged: !!data.unchanged,
+  }
+}
+
+async function profileRequest(method: string, body?: unknown): Promise<ProfileResult> {
+  const userId = currentUserId()
+  try {
+    const res = await fetch(API('/api/profile?id=' + encodeURIComponent(userId)), {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(Object.assign({ userId }, body)) : undefined,
+    })
+    const data = (await res.json().catch(() => null)) as Partial<ProfileResult> | null
+    return asProfile(data, res.ok, res.status)
+  } catch {
+    return { ok: false, error: 'сеть недоступна — профиль не прочитан' }
+  }
+}
+
+export function fetchProfile(): Promise<ProfileResult> {
+  return profileRequest('GET')
+}
+
+export function saveProfile(fields: ProfileFields): Promise<ProfileResult> {
+  return profileRequest('PUT', { name: fields.name, job: fields.job, about: fields.about })
+}
+
+export function clearProfile(): Promise<ProfileResult> {
+  return profileRequest('DELETE')
+}
+
+/** Чем подписать состояние профиля: тот же текст, что видит модель, а не догадка фронта. */
+export function signalsLine(r: ProfileResult): string {
+  const sig = (r.signals || []).filter(Boolean)
+  if (!sig.length) return 'подстройка не включена: заполни поля — и я учту их в каждом ответе'
+  return sig.join(' · ')
+}
+
+/** Что и куда легло: адрес памяти человека — не «где-то там», а конкретный ключ. */
+export function profileStatusLine(r: ProfileResult): string {
+  const p = r.profile
+  if (!r.ok) return r.error || 'профиль не прочитан'
+  const addr = r.memoryChatId || memoryAddress(currentUserId())
+  const head = p && p.filled ? 'профиль сохранён' : 'профиль пуст'
+  return head + ' · ' + identityLabelOf(addr) + (p && p.updatedAt ? ' · обновлён ' + fmtTime(p.updatedAt) : '')
+}
+
+/** «u-ab12…» → читаемая форма; сам ключ остаётся видимым, чтобы его можно было назвать. */
+function identityLabelOf(addr: string): string {
+  const key = String(addr || '')
+  if (key.indexOf('u-tg_') === 0) return 'память: Telegram (id ' + key.slice(5) + ')'
+  if (key.indexOf('u-') === 0) return 'память: это устройство (' + key.slice(2) + ')'
+  return 'память: общий ключ «' + (key || 'web') + '» — заполни профиль, и она станет личной'
+}
+
+function fmtTime(ms: number): string {
+  const d = new Date(ms)
+  if (!Number.isFinite(d.getTime())) return '—'
+  const p = (n: number) => String(n).padStart(2, '0')
+  return p(d.getDate()) + '.' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+}
+
+/**
+ * Счётчик моделей одной строкой. Чистая функция от двух ответов (/api/models и
+ * /api/chat), чтобы её можно было проверить без сети и чтобы цифры не сочинялись
+ * на фронте: здесь ровно то, что посчитал сервер.
+ */
+export function countersLine(models?: unknown, chat?: unknown): string {
+  const parts: string[] = []
+  const m = (models && typeof models === 'object' ? models : null) as {
+    count?: number; catalogTotal?: number; catalogCount?: number; pools?: { provider?: string; label?: string; count?: number }[]
+    updatedAt?: number | null; cached?: boolean; stale?: boolean; errors?: unknown[]
+  } | null
+  /* Считать есть что, только если сервер назвал хотя бы одно число. Иначе из `{}`
+     получилась бы строка «моделей доступно: 0» — по букве правдивая, по смыслу ложная:
+     ноль означает «не ответило», а не «моделей нет». */
+  if (m && (m.count != null || m.catalogCount != null || m.catalogTotal != null || Array.isArray(m.pools))) {
+    const total = Number(m.count) || 0
+    const cat = Number(m.catalogTotal) || Number(m.catalogCount) || 0
+    parts.push('моделей доступно: ' + total + (cat > total ? ' (в каталогах провайдеров: ' + cat + ')' : ''))
+    const pools = Array.isArray(m.pools) ? m.pools : []
+    if (pools.length) {
+      parts.push('по провайдерам: ' + pools.map((x) => (x.label || x.provider || '?') + ' ' + (Number(x.count) || 0)).join(', '))
+    }
+    parts.push(m.updatedAt ? 'каталог обновлён ' + fmtTime(Number(m.updatedAt)) : 'каталог ещё не обновлялся')
+    if (m.cached === false) parts.push('без KV список живёт до перезапуска')
+    if (m.stale) parts.push('список устарел')
+    if (Array.isArray(m.errors) && m.errors.length) parts.push('каталог: ' + m.errors.length + ' ошибок чтения')
+  }
+  const c = (chat && typeof chat === 'object' ? chat : null) as { alive?: unknown[]; providers?: number } | null
+  if (c && (c.providers != null || Array.isArray(c.alive))) {
+    const alive = Array.isArray(c.alive) ? c.alive.length : 0
+    const total = Number(c.providers) || 0
+    if (total) parts.push('живых провайдеров: ' + alive + ' из ' + total)
+  }
+  return parts.join(' · ')
+}
+
+/** Итого счётчик для строки в Настройках: два GET, и оба необязательны. */
+export async function fetchCounters(): Promise<{ ok: boolean; line: string; error?: string }> {
+  const [m, c] = await Promise.all([
+    fetch(API('/api/models')).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    fetch(API('/api/chat')).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+  ])
+  const line = countersLine(m, c)
+  if (line) return { ok: true, line }
+  return { ok: false, line: 'сервер не отдал список моделей', error: 'нет связи с /api/models' }
+}
+
 export async function sendChat(
   text: string,
   history: ChatTurn[] = [],
@@ -166,6 +319,9 @@ export async function sendChat(
         attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
         model: opts.model || undefined,
         gender: opts.gender || undefined,
+        /* кто пишет: по этому ключу бэкенд держит память и профиль. Без него весь
+           веб делил одну память на всех незнакомцев */
+        userId: currentUserId(),
       }),
     })
     const data = (await res.json().catch(() => null)) as Partial<ChatResult> | null

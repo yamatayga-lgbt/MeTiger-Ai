@@ -1,7 +1,7 @@
 {
   "name": "metiger-ai",
   "private": true,
-  "version": "0.014",
+  "version": "0.015",
   "type": "module",
   "description": "MeTiger Ai — универсальный ИИ-агент в Telegram Mini App",
   "scripts": {
@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "api": "node scripts/api-dev.js",
-    "test": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/emotion.test.js && node test/gender.test.js && node test/jailbreak.test.js && node test/telegram.test.js && node test/front.test.js && node test/memory.test.js && node test/limits.test.js && node test/modelreg.test.js && node test/brave.test.js && node test/filegen.test.js && node test/skills.test.js && node test/imggen.test.js && node test/inflate.test.js && node test/docparse.test.js && node test/attach.test.js && node test/voicein.test.js && node test/ctxfit.test.js && node test/attachweb.test.js",
+    "test": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/emotion.test.js && node test/gender.test.js && node test/jailbreak.test.js && node test/telegram.test.js && node test/front.test.js && node test/memory.test.js && node test/limits.test.js && node test/modelreg.test.js && node test/brave.test.js && node test/filegen.test.js && node test/skills.test.js && node test/imggen.test.js && node test/inflate.test.js && node test/docparse.test.js && node test/attach.test.js && node test/voicein.test.js && node test/ctxfit.test.js && node test/attachweb.test.js && node test/profile.test.js",
     "test:engine": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/jailbreak.test.js && node test/telegram.test.js && node test/memory.test.js",
     "publish": "bash scripts/publish.sh",
     "publish:fast": "bash scripts/publish.sh --fast",

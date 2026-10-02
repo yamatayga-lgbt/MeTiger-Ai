@@ -30,8 +30,8 @@ const dir = join(process.cwd(), 'node_modules', '.cache', 'metiger-front');
 rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 const out = join(dir, 'api.mjs');
-execFileSync(bin, ['src/lib/api.ts', '--format=esm', '--outfile=' + out, '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
-const { adviceLine, sourceLine, attachmentKind, pickAttachments, fileToAttachment, bufToB64, attachLine, notesLine, fileSize, ATTACH_ACCEPT, ATTACH_MAX, ATTACH_FILE_BYTES } = await import(out);
+execFileSync(bin, ['src/lib/api.ts', '--bundle', '--platform=node', '--packages=external', '--format=esm', '--outfile=' + out, '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
+const { adviceLine, sourceLine, attachmentKind, pickAttachments, fileToAttachment, bufToB64, attachLine, notesLine, fileSize, ATTACH_ACCEPT, ATTACH_MAX, ATTACH_FILE_BYTES, countersLine, signalsLine, profileStatusLine } = await import(out);
 execFileSync(bin, ['src/lib/images.ts', '--format=esm', '--outfile=' + join(dir, 'images.mjs'), '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
 
 console.log('F — подпись под ответом: что видел совет, то видит и человек');
@@ -317,6 +317,82 @@ console.log('J — вложения из браузера: сортировка,
   ok('J18: в пузыре человека лежит чип файла с весом — без содержимого', /sent-file/.test(html) && /отчёт\.pdf/.test(html) && /24,0 КБ|24 КБ|24,00 КБ/.test(html), html.slice(html.indexOf('sent-files') - 20, html.indexOf('sent-files') + 200));
   ok('J19: содержимое файлов в разметку не попадает — только имя и вес (base64 в истории чата кончает localStorage)',
     /data:(application|text)[^"]{40,}/.test(html) === false && html.indexOf('\"b64\"') < 0 && /отчёт\.pdf/.test(html), JSON.stringify(html.match(/data:(application|text)[^"]{0,40}/) || 'чисто').slice(0, 120));
+}
+
+/** --- K: профиль, адрес памяти и счётчик моделей в Настройках --- **/
+console.log('K — Настройки: счётчик моделей, адрес памяти и форма профиля');
+{
+  const idOut = join(dir, 'identity.mjs');
+  execFileSync(bin, ['src/lib/identity.ts', '--bundle', '--platform=node', '--packages=external', '--format=esm', '--outfile=' + idOut, '--log-level=error'], { stdio: 'inherit' });
+  const id = await import(idOut);
+  /* адрес памяти фронт показывает человеку как факт, а не как догадку: он обязан
+     совпадать с тем, что строит бэкенд (engine/profile.js) */
+  const backend = await import('../engine/profile.js');
+  const ids = ['ab12cd34ef56', 'tg_4242', 'dev-9_9'];
+  ok('K1: адрес памяти на фронте и в движке совпадает побайтово',
+    ids.every((x) => id.memoryAddress(x) === backend.memoryKey(x, 'web')), ids.map((x) => id.memoryAddress(x) + '≠' + backend.memoryKey(x, 'web')).join(' '));
+  ok('K2: без ключа фронт честно говорит про общий котёл, а не выдумывает id',
+    id.memoryAddress('') === 'web' && id.memoryAddress('@@@') === 'web' && /общий котёл|общий ключ/.test(id.identityLine('')), id.identityLine(''));
+  ok('K3: id Telegram узнаётся, гость (id 0) — не человек',
+    id.tgUserId({ id: 4242 }) === 'tg_4242' && id.tgUserId({ id: 0 }) === '' && id.tgUserId(null) === '' && id.tgUserId({ id: '77' }) === 'tg_77');
+  ok('K4: ключ устройства — 16 hex и каждый раз новый', /^[0-9a-f]{16}$/.test(id.newUserId()) && id.newUserId() !== id.newUserId(), id.newUserId());
+  /* localStorage подставляем: проверка в том, что ключ заводится один раз и переживает перезагрузку */
+  const jar = new Map();
+  globalThis.localStorage = { getItem: (k) => (jar.has(k) ? jar.get(k) : null), setItem: (k, v) => jar.set(k, String(v)), removeItem: (k) => jar.delete(k) };
+  const a1 = id.ensureDeviceUserId();
+  const a2 = id.ensureDeviceUserId();
+  ok('K5: ключ переиспользуется из localStorage (память не обнуляется перезагрузкой)', a1 === a2 && jar.get('mt-uid') === a1, a1 + '/' + a2);
+  globalThis.window = { Telegram: { WebApp: { initDataUnsafe: { user: { id: 99001 } } } } };
+  ok('K6: внутри Telegram ключ — id аккаунта: профиль и память общие с ботом', id.currentUserId() === 'tg_99001', id.currentUserId());
+  delete globalThis.window;
+  ok('K7: подпись человека понятна и не светит весь ключ', /устройство · ab12…ef56$/.test(id.identityLine('ab12cd34ef56')) && /Telegram · id 4242/.test(id.identityLine('tg_4242')), id.identityLine('ab12cd34ef56') + ' / ' + id.identityLine('tg_4242'));
+  globalThis.localStorage = undefined;
+}
+{
+  /* Счётчик моделей: числа придумываются не фронтом, а сервером — здесь ровно то,
+     что лежит в ответах /api/models и /api/chat */
+  const models = { count: 12, catalogTotal: 40, cached: true, updatedAt: 1700000000000, pools: [{ provider: 'groq', label: 'Groq', count: 5 }, { provider: 'xai', label: 'x.ai', count: 7 }] };
+  const line = countersLine(models, { alive: ['groq', 'xai'], providers: 6 });
+  ok('K8: сколько моделей и по провайдерам — из ответа сервера', /моделей доступно: 12 \(в каталогах провайдеров: 40\)/.test(line) && /Groq 5, x\.ai 7/.test(line), line);
+  ok('K9: живые провайдеры считаются по aliveness-списку движка', /живых провайдеров: 2 из 6/.test(line), line);
+  ok('K10: время обновления каталога показано, а не «когда-то»', /каталог обновлён \d{2}\.\d{2} \d{2}:\d{2}/.test(line), line);
+  const poor = countersLine({ count: 3, cached: false, updatedAt: null, pools: [] }, {});
+  ok('K11: без каталога и без KV строка объясняет состояние, а не врёт про 0', /моделей доступно: 3/.test(poor) && /каталог ещё не обновлялся/.test(poor) && /без KV список живёт/.test(poor) && !/из /.test(poor), poor);
+  ok('K12: пустые ответы — пустая строка (UI не покажет «undefined»)', countersLine(null, null) === '' && countersLine({}, {}) === '');
+  const broken = countersLine({ count: 2, pools: [], updatedAt: 1, errors: ['у', 'двух'] }, { alive: [], providers: 4 });
+  ok('K13: ошибки чтения каталога видны в строке, а не проглочены', /каталог: 2 ошибок чтения/.test(broken) && /живых провайдеров: 0 из 4/.test(broken), broken);
+}
+{
+  const p = { name: 'Иван', job: 'аналитик', about: '' };
+  ok('K14: подстройка описана теми же правилами, что уходят в промпт',
+    /2–4 строки|простым языком|обращайся по имени/.test(signalsLine({ ok: true, signals: ['попросил коротко: ответ в 2–4 строки'] })) && /подстройка не включена/.test(signalsLine({ ok: true, signals: [] })), signalsLine({ ok: true, signals: [] }));
+  const st = profileStatusLine({ ok: true, profile: Object.assign({ filled: true, updatedAt: 1700000000000 }, p), memoryChatId: 'u-dev1234' });
+  ok('K15: статус профиля содержит адрес памяти и время записи', /профиль сохранён · память: это устройство \(dev1234\)/.test(st) && /обновлён \d{2}\.\d{2} \d{2}:\d{2}/.test(st), st);
+  ok('K16: память Telegram подписана аккаунтом, а не устройством', /память: Telegram \(id 4242\)/.test(profileStatusLine({ ok: true, profile: { filled: true }, memoryChatId: 'u-tg_4242' })), profileStatusLine({ ok: true, profile: { filled: true }, memoryChatId: 'u-tg_4242' }));
+  ok('K17: пустой профиль называется пустым, ошибка — ошибкой',
+    /профиль пуст/.test(profileStatusLine({ ok: true, profile: { filled: false }, memoryChatId: 'u-dev1234' })) && /сеть недоступна/.test(profileStatusLine({ ok: false, error: 'сеть недоступна — профиль не прочитан' })), profileStatusLine({ ok: true, profile: { filled: false } }));
+}
+{
+  /* Настоящий SettingsView: человек должен увидеть три поля именно в той формулировке,
+     о которой договаривались, и подпись, чья это память. */
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const outS = join(dir, 'settings.mjs');
+  execFileSync(bin, [
+    'src/views/SettingsView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
+    '--loader:.png=dataurl', '--outfile=' + outS, '--log-level=error',
+  ], { stdio: 'inherit' });
+  const { SettingsView } = await import(outS);
+  const html = renderToStaticMarkup(React.createElement(SettingsView, {
+    user: { id: 4242, first_name: 'Тигр', username: 'tiger' },
+    themePref: 'system', onThemePref() {}, isTelegram: false, notify() {},
+  }));
+  ok('K18: в Настройках есть группа «Память» и три поля в нужной формулировке',
+    /Память/.test(html) && /Как вас зовут/.test(html) && /Ваша профессия или занятие/.test(html) && /Подробнее о вас/.test(html), [!/Память/.test(html), !/Как вас зовут/.test(html), !/Ваша профессия/.test(html), !/Подробнее о вас/.test(html)].join(','));
+  ok('K19: поля ввода и текстареа настоящие — сохранять есть чему', /<input[^>]*maxlength="60"/i.test(html) && /<input[^>]*maxlength="90"/i.test(html) && /<textarea[^>]*maxlength="1500"/i.test(html), (html.match(/maxlength=?[0-9]+/gi) || []).join(','));
+  ok('K20: строка «чья это память» видна, и это не обещание общей памяти', /у каждого человека своя/.test(html) && !/общая память/.test(html), (html.match(/Чья это память[\s\S]{0,220}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
+  ok('K21: счётчик моделей — отдельная строка с кнопкой обновления', /Модели/.test(html) && /Обновить/.test(html) && /считаю…/.test(html), (html.match(/Модели[\s\S]{0,120}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 120));
+  ok('K22: поля не автозаполняются чужими данными и не светят ключ в title', /autocomplete/.test(html) === false && /u-tg_4242/.test(html) === false);
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

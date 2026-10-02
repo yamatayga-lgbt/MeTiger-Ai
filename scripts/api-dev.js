@@ -19,6 +19,10 @@ import { dirname, join } from 'node:path';
 import { onRequestPost, onRequestGet, onRequestOptions } from '../functions/api/chat.js';
 import { onRequestPost as tgPost, onRequestGet as tgGet } from '../functions/telegram/webhook.js';
 import { onRequestGet as modelsGet } from '../functions/api/models.js';
+/* Профиль человека (имя · профессия · о себе) — отдельная дверь, и в разработке она
+   обязана быть: иначе Настройки в браузере показывали бы «сеть недоступна» и весь
+   этап приходилось бы проверять только на проде. */
+import { onRequestDelete as profileDelete, onRequestGet as profileGet, onRequestPut as profilePut } from '../functions/api/profile.js';
 import * as modelreg from '../engine/modelreg.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -100,6 +104,11 @@ createServer((req, res) => {
         return reply(req.method === 'GET' ? await onRequestGet(context) : await onRequestPost(context));
       }
       if (path === '/api/models') return reply(await modelsGet(context));
+      if (path === '/api/profile') {
+        if (req.method === 'PUT') return reply(await profilePut(context));
+        if (req.method === 'DELETE') return reply(await profileDelete(context));
+        return reply(await profileGet(context));
+      }
       if (path === '/telegram/webhook') {
         return reply(req.method === 'GET' ? await tgGet(context) : await tgPost(context));
       }
@@ -114,7 +123,7 @@ createServer((req, res) => {
         return reply(new Response(JSON.stringify({ ok: true, sent: echoes }), { status: 200, headers: { 'content-type': 'application/json' } }));
       }
       return reply(new Response(JSON.stringify({
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'POST /telegram/webhook', 'GET /echo'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'POST /telegram/webhook', 'GET /echo'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       }), { status: 200, headers: { 'content-type': 'application/json' } }));
     } catch (e) {

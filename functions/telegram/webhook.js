@@ -14,6 +14,7 @@ import { limitsInfo } from '../../engine/limits.js';
 import { handleUpdate, secretOk, telegramPoster } from '../../engine/telegram.js';
 import { createAttach } from '../../engine/attach.js';
 import { createStt } from '../../engine/voicein.js';
+import { createProfile } from '../../engine/profile.js';
 import { freedomInfo } from '../../engine/freedom.js';
 import { label as genderLabel } from '../../engine/gender.js';
 import { stats as emotionStats } from '../../engine/emotion.js';
@@ -71,6 +72,9 @@ export async function onRequestPost(context) {
     update, env, prefs, post,
     ask: (payload) => askEngine(context, payload),
     attach: (media) => attach.take(media),
+    /* /профиль: бот показывает и правит то, что человек написал о себе. Хранилище то
+       же, что у памяти чатов, — новой связки в дашборде заводить не нужно. */
+    profile: createProfile({ env, store: memoryStore(env), log: (k, a, b) => console.log(k, a, String(b || '').slice(0, 160)) }),
     log: (k, a, b) => console.log(k, a, String(b || '').slice(0, 160)),
   });
   return new Response(JSON.stringify({ ok: true, ...out }), { status: 200, headers: JSON_HEADERS });

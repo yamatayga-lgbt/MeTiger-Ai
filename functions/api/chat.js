@@ -41,6 +41,7 @@ import { createMemory } from '../../engine/memory.js';
 import * as modelreg from '../../engine/modelreg.js';
 import { lineOf as imgLineOf } from '../../engine/imggen.js';
 import { normalizeFields, stats as ctxStats } from '../../engine/ctxfit.js';
+import { createProfile, memoryKey, sanitizeUserId } from '../../engine/profile.js';
 import { compose as composeAttach, readDocBytes, readVoiceBytes, DOC_CHARS } from '../../engine/attach.js';
 import { createStt } from '../../engine/voicein.js';
 
@@ -240,15 +241,19 @@ export async function onRequestPost(context) {
     }
   }
 
-  /* Чат, к которому приклеена память: свой chatId у клиента (телеграм- id
-     пользователя или id беседы), иначе — общий «web». Без него память
-     превратилась бы в один большой общий котёл. */
+  /* Чат, к которому приклеена память. Раньше адрес брался из канала: у телеграма
+     свой id беседы, а у всего веба — ОДИН общий «web», то есть у незнакомых людей
+     была одна память на всех (чужие факты, чужие предпочтения). Теперь адрес
+     выводится из человека: `userId` из приложения (или id чата в Telegram, где он
+     и так личный — его не переименовываем, чтобы не потерять накопленное). */
   /* Поля запроса в безопасный вид (engine/ctxfit.js): «system» от клиента не
      должен иметь возможности прислать мегабайт текста, temperature — улететь за
      разумный диапазон, а история — притащить пустые реплики. Что пришлось
      поправить — возвращается словами, а не молча. */
   const norm = normalizeFields(Object.assign({}, body, { text }), context.env);
-  const chatId = norm.chatId || String(request.headers.get('x-mt-chat') || 'web').slice(0, 80);
+  const userId = sanitizeUserId(body.userId)
+    || (/^tg_[0-9]{3,}$/.test(String(norm.chatId || '')) ? norm.chatId : '');
+  const chatId = memoryKey(userId, norm.chatId || String(request.headers.get('x-mt-chat') || 'web').slice(0, 80));
   const store = memoryStore(env);
   /* Каталог моделей — до движка: без этого на холодном изоляте выбор модели из
      каталога снимается молча, и человек получает ответ не той модели. */
@@ -266,6 +271,20 @@ export async function onRequestPost(context) {
   await brave.pull();
   const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine, memory, brave });
   const history = norm.history;
+  /* Профиль — то, что человек написал о себе сам в Настройках. Читается один раз на
+     запрос и не имеет права его сломать: нет KV, нет сети — ответ выходит обычный,
+     просто без персонализации. */
+  let profileBlock = '';
+  let profileWhy = '';
+  if (userId) {
+    try {
+      const got = await createProfile({ env, store, log: (k, m, x) => console.log(k, m, String(x || '').slice(0, 120)) }).get(userId);
+      if (got && got.ok) { profileBlock = String(got.block || ''); profileWhy = got.why || ''; }
+      else profileWhy = (got && got.why) || 'профиль не читается';
+    } catch (e) {
+      profileWhy = String((e && e.message) || e).slice(0, 120);
+    }
+  }
 
   const r = await engine.run({
     /* нормализованные поля, а не сырые из тела: иначе потолок из env на «system»
@@ -288,6 +307,9 @@ export async function onRequestPost(context) {
        «не прислано» превращалось в явное `auto` и затырало настройку сервера у
        каждого, кто про поле не знает (Telegram, curl, старые клиенты). */
     gender: genderLayer.pick(body.gender),
+    /* Блок профиля уходит в system после персоны и до резки окна (см. engine/chat.js):
+       его же читают и головы совета — у них входа отдельно от ctx.system нет. */
+    profile: profileBlock || undefined,
     deadlineMs: Number(env.CHAT_DEADLINE_MS || 50000),
   });
 
@@ -303,6 +325,10 @@ export async function onRequestPost(context) {
   return json({
     /* заметки нормализации входа и то, что движок подогнал под окно модели:
        «я тебе ответил иначе, потому что ты прислал» должно быть видно, а не молчать */
+    /* куда легла память этого человека — по строке видно, что веб больше не общий
+       котёл: 'u-ab12…' значит «память этого человека», 'web' — ключ не пришёл */
+    memoryChatId: chatId,
+    profile: userId ? (profileBlock ? 'учтён' : 'пусто') : 'нет идентификатора' + (profileWhy ? ' · ' + profileWhy : ''),
     inputNotes: norm.notes.length ? norm.notes : undefined,
     ctxFit: r.cxFit || undefined,
     /* чем обернулись приложенные файлы: что прочитано (имя · формат · знаков) и почему
@@ -369,6 +395,14 @@ export async function onRequestGet(context) {
     imggen: imgLineOf(engine.img()),
     /* подгонка под окно модели: видно, какое окно считаем и включена ли резка */
     ctx: ctxStats(context.env).line,
+    /* профиль и адрес памяти: чем/personой храним и что умеем подставлять в промпт */
+    profile: (() => {
+      const st = createProfile({ env: context.env, store: memoryStore(context.env) }).stats();
+      return (st.on ? 'профили включены' : 'профили выключены (PROFILE=off)')
+        + ' · ' + (st.store ? 'связка KV есть' : 'связки KV нет — сохранять некуда')
+        + ' · поля имя/профессия/о себе до ' + st.caps.name + '/' + st.caps.job + '/' + st.caps.about + ' знаков'
+        + ' · запись не чаще раза в ' + st.writeMs + ' мс';
+    })(),
     /* чем читаем приложенное из браузера: лимиты и есть ли чем распознавать голос */
     attach: attachLine(context.env),
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */

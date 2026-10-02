@@ -78,11 +78,12 @@ export function commandReply(parsed, env, prefs) {
       + '/id — с identifier этой беседы (память привязана к нему)\n'
       + '/forget — я забываю этот чат целиком\n'
       + '/род — как мне о себе писать: авто · м · ж\n'
+      + '/профиль — кто ты для меня: имя · дело · о себе\n'
       + '/help — что я умею и чего не умею';
   }
   if (head === 'help') {
     return 'Пиши как в обычном чате: спрашиваю — отвечаю, считаю — считаю.\n\n'
-      + 'Настройки: /род — как мне о себе писать (авто · м · ж), /forget — забыть чат, /id — ключ памяти.\n'
+      + 'Настройки: /род — как мне о себе писать (авто · м · ж), /forget — забыть чат, /id — ключ памяти, /профиль — что мне знать о тебе.\n'
       + 'Что умею: помнить разговор, уточнять цифры по внешним данным, сверять спорное несколькими моделями.\n'
       + 'Чего пока не умею: слушать голосовые и смотреть фотографии — для этого я ещё не подключён.\n'
       + 'В группах молчу, пока не позовёшь: @' + String((env && env.TELEGRAM_BOT_USERNAME) || 'Metigerai_bot').replace(/^@/, '') + ' или ответом на моё сообщение.';
@@ -163,7 +164,62 @@ export function metaLine(json) {
  * Главный вход. ask(payload) → Response-подобный объект {status, json()};
  * post(method, payload) → отправка в Telegram.
  */
+/**
+ * Ответ на /профиль: показать, записать, стереть. Отдельной функцией — потому что
+ * текст должны видеть и человек, и тесты: «что я о тебе знаю» обязано совпадать с
+ * тем, что реально ушло в промпт, а не быть вежливым пересказом.
+ *
+ * Формы: /профиль — показать · /профиль <имя> | <дело> | <о себе> — записать
+ * (пустой кусок = не трогать поле, «нет» = очистить) · /профиль очисть — забыть всё.
+ */
+export async function profileLine(profile, userId, arg) {
+  const raw = String(arg || '').trim();
+  if (!profile) return 'Профили здесь не подключены: нет общего хранилища. Заполни три поля в Настройках приложения — они действуют и в разговоре со мной.';
+  if (!userId) return 'Не вижу id отправителя, а значит не знаю, чей это профиль. Ничего не сохраняю — иначе записал бы чужие данные на тебя.';
+  if (/^(очисть|сброс|забудь|clear|delete|удали)$/i.test(raw)) {
+    const r = await profile.clear(userId);
+    return r.ok
+      ? 'Профиль забыт: имени и предпочтений у меня больше нет. Память разговора — отдельно, для неё есть /forget.'
+      : 'Очистить не вышло: ' + (r.why || 'хранилище не ответило');
+  }
+  const fields = [['name', 'Как обращаться'], ['job', 'Чем занимаешься'], ['about', 'О себе']];
+  const shown = (p) => fields.map((f) => '· ' + f[1] + ': ' + (p && p[f[0]] ? p[f[0]] : '— не заполнено')).join('\n');
+  if (!raw) {
+    const got = await profile.get(userId);
+    if (!got.ok) return 'Прочитать профиль не вышло: ' + (got.why || 'хранилище не ответило');
+    if (!got.profile.filled) {
+      return 'О тебе я пока ничего не записывал.\n' + shown(got.profile)
+        + '\n\nЗапиши одной строкой: /профиль <имя> | <чем занимаешься> | <о себе>'
+        + '\nПустой кусок между «|» не меняет поле, «нет» — очищает его. Тот же профиль — в Настройках приложения.';
+    }
+    const sig = (got.signals || []).length ? '\n\nКак я подстраиваюсь:\n· ' + got.signals.join('\n· ') : '';
+    return 'Что я знаю о тебе (твои слова, не мои догадки):\n' + shown(got.profile) + sig
+      + '\n\n/профиль очисть — забыть это.';
+  }
+  const segs = raw.split('|').map((x) => String(x || '').trim());
+  if (segs.length > fields.length) {
+    return 'Слишком много кусков: жду «имя | дело | о себе» — не больше трёх, разделитель «|».';
+  }
+  const cur = await profile.get(userId);
+  const base = (cur && cur.ok && cur.profile) || {};
+  const next = { name: base.name || '', job: base.job || '', about: base.about || '' };
+  const touched = [];
+  for (let i = 0; i < segs.length; i++) {
+    const k = fields[i][0];
+    if (!segs[i]) continue;
+    next[k] = /^(нет|-|ничего)$/i.test(segs[i]) ? '' : segs[i];
+    touched.push(k);
+  }
+  if (!touched.length) return 'Нечего записывать: все куски пустые. Напиши, например: /профиль Иван | аналитик данных | люблю таблицы и покороче';
+  const res = await profile.put(userId, next);
+  if (!res.ok) return 'Сохранить не вышло: ' + (res.why || 'хранилище не ответило');
+  const cut = (res.truncated || []).length ? '\n' + res.truncated.join('; ') + ' — остальное я не сохраняю.' : '';
+  const sig = (res.signals || []).length ? '\n\nКак я подстраиваюсь:\n· ' + res.signals.join('\n· ') : '';
+  return 'Записал. Теперь о тебе знаю такое:\n' + shown(res.profile) + sig + cut;
+}
+
 export async function handleUpdate(opts) {
+
   /* prefs — хранилище настройки «род агента» для этого чата (get/set). В воркере это Map,
      живущий, пока тёплый изолятор: постоянной настройку делает приложение. */
   const prefs = (opts || {}).prefs || null;
@@ -188,6 +244,20 @@ export async function handleUpdate(opts) {
 
   const cmd = commandReply(parsed, env, prefs);
   const chatId = memoryChatId(parsed.chat);
+  /* /профиль — что человек рассказал о себе. Хранится в том же KV, что память чатов,
+     но по ключу ЛИЧНОГО id отправителя: в боте и в браузере (когда приложение открыто
+     внутри Telegram) это один и тот же человек, поэтому профиль у него один, а бесед
+     может быть несколько. Команда нужна и здесь: до настроек приложения человек
+     в боте может не дойти. */
+  const pcmd = /^\/(?:профиль|profile)(?:\s+([\s\S]*))?$/.exec(String(parsed.text || '').trim());
+  if (pcmd) {
+    const uid = parsed.from && parsed.from.id != null ? 'tg_' + parsed.from.id : '';
+    const line = await profileLine(opts.profile, uid, pcmd[1] || '');
+    for (const c of chunkText(line)) { await post('sendMessage', { chat_id: parsed.chat.id, text: c }); res.sent.push(c); res.chunks++; }
+    res.answered = true;
+    res.profile = uid ? 'ok' : 'нет id отправителя';
+    return res;
+  }
   if (cmd && cmd !== '__forget__') {
     const parts = chunkText(cmd);
     for (const p of parts) { await post('sendMessage', { chat_id: parsed.chat.id, text: p }); res.sent.push(p); res.chunks++; }
@@ -198,7 +268,9 @@ export async function handleUpdate(opts) {
     try { await post('sendChatAction', { chat_id: parsed.chat.id, action: 'typing' }); } catch (e) { /* украшение, не суть */ }
   }
 
-  const payload = { chatId };
+  /* id отправителя уезжает в /api/chat как userId: там по нему адрес памяти
+     (у незнакомцев она больше не общая) и там же читается профиль для промпта */
+  const payload = { chatId, userId: parsed.from && parsed.from.id != null ? 'tg_' + parsed.from.id : undefined };
   if (cmd === '__forget__') {
     /* Текст при забвении обязателен: вход /api/chat отсекает пустой запрос раньше,
        чем доходит до ветки forget, и команда «забудь» тихо превращалась в 400
