@@ -28,6 +28,10 @@ export interface ChatResult {
   error?: string
   /** Что перебрал движок: провайдеры и причины. */
   tried?: { provider: string; model?: string; why?: string }[]
+  /** Какую модель выбрал человек, если до неё не дошло. */
+  pinned?: string
+  /** Выбранная модель не ответила — говорили другой. */
+  pinMiss?: boolean
   /** Вердикт совета голов словами (пусто — значит совет молчал). */
   ensemble?: string
   /** Вердикт совета зрячих голов по картинке. */
@@ -121,6 +125,7 @@ export function sourceLine(r: ChatResult): string {
   const tools = (r.tools || []).map((t) => TOOL_RU[t] || t)
   return (
     `${r.provider} · ${r.model || '?'} · ${r.intent || '?'}/${r.tier || '?'} · ${r.ms ?? 0} мс` +
+    (r.pinMiss && r.pinned ? ` · ${r.pinned} не ответил` : '') +
     (tools.length ? ` · данные: ${tools.join(', ')}` : '') +
     /* состояние собеседника — если его включили (EMOTION_LABEL=1); без него строка
        выглядит ровно как раньше */

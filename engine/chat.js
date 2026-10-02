@@ -272,7 +272,13 @@ export function createEngine(opts) {
          по данным каталога знаем, чей это id (OpenRouter или Xkiро). */
       const owner2 = owner || modelreg.ownerOf(modelreg.cached(), pinName);
       if (owner2) pin = { id: owner2, model: pinName };
-      if (pin) order = [pin.id];
+      /* Выбранную модель ставим ПЕРВОЙ, а не единственной. Каталоги провайдеров
+         врут: на проде `nex-agi/nex-n2.5-mini:free` числится бесплатной, а
+         OpenRouter отвечает 404 «эта модель недоступна бесплатно». Жёсткий пин
+         превращал такой выбор в красную ошибку «ни один провайдер не ответил»,
+         хотя ответить было чем. Теперь: пин имеет первый отказ, а дальше идёт
+         обычный обход — и человек видит, какой моделью его всё-таки накормили. */
+      if (pin) order = [pin.id].concat(order.filter((x) => x !== pin.id));
     }
 
     const tried = [];
@@ -331,6 +337,10 @@ export function createEngine(opts) {
           }
           const hit = {
             reply, reasoning: r.reasoning, provider: id, model, intent, tier,
+            /* выбор человека не состоялся — говорим об этом прямо, а не молча
+               подменяем: подпись «xkiro · wide/model-b» скрывала бы подмену */
+            pinned: pin ? pin.model : undefined,
+            pinMiss: !!pin && (id !== pin.id || model !== pin.model),
             tools: toolsRes.used, reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
           };
           /* Советы голов (Этап 2): факт может поправить большинство, манеру не трогаем.
@@ -384,6 +394,8 @@ export function createEngine(opts) {
           const hit = {
             reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
             tools: toolsRes.used, reframed: true, freedomCleaned: !!r.freedomCleaned,
+            pinned: pin ? pin.model : undefined,
+            pinMiss: !!pin && (id !== pin.id || model !== pin.model),
           };
           const final = input.noCouncils ? hit : await runCouncils(input, hit, tried);
           return withMeta(finish(final, tried, started, intent, tier));
@@ -546,6 +558,8 @@ export function createEngine(opts) {
       vision: hit ? hit.vision : null, visionSkip: hit ? (hit.visionSkip || '') : '',
       visionApplied: hit ? !!hit.visionApplied : false,
       memory: hit ? (hit.memory || null) : null,
+      /* был ли выбор человека — и состоялся ли он (см. пин выше) */
+      pinned: hit ? hit.pinned : undefined, pinMiss: hit ? !!hit.pinMiss : false,
       intent, tier, ms: Date.now() - started, tried,
       error: hit ? '' : (why || 'нет ответа'),
     };

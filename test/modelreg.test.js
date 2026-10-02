@@ -272,6 +272,39 @@ console.log('── I · потолок модели доходит до тел�
     return r.length === 1 && r[0].name === 'Live';
   })());
 
+  /* Запись в каталоге может врать: провайдер выставляет id как бесплатную, а на
+     запрос отвечает 404. На проде так упал пин nex-agi/nex-n2.5-mini:free — и весь
+     ответ. Пин теперь имеет первый отказ, но не монопонию. */
+  {
+    const kv4 = fakeKv(Date.now());
+    await kv4.put(M.CATALOG_KEY, JSON.stringify({
+      updatedAt: Date.now(), count: 2,
+      models: [
+        { id: 'wide/model-b', name: 'Wide', vendor: 'W', src: 'xkiro', free: true, chat: true, ctx: 200000, maxOut: 32000, vision: true, visionKnown: true, tools: true },
+        { id: 'live/openrouter-x:free', name: 'Live', vendor: 'L', src: 'openrouter', free: true, chat: true, ctx: 8192, maxOut: 1024, vision: false, visionKnown: true, tools: true },
+      ],
+    }));
+    M.forgetMemo(); M.resetThrottle();
+    await M.warm({}, kv4, null);
+    const calls2 = [];
+    const deadFetch = async (url, init) => {
+      const body = JSON.parse(init.body);
+      calls2.push(body.model);
+      if (body.model === 'wide/model-b') {
+        return { status: 404, text: async () => '{"error":{"message":"This model is unavailable for free."}}', json: async () => ({ error: { message: 'This model is unavailable for free.' } }) };
+      }
+      return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'жив' }, finish_reason: 'stop' }] }), json: async () => ({ choices: [{ message: { content: 'жив' }, finish_reason: 'stop' }] }) };
+    };
+    const eng2 = createEngine({ env: ENV, fetch: deadFetch, sleep: async () => {} });
+    const r2 = await eng2.run({ text: 'привет', model: 'wide/model-b' });
+    ok('J6: мёртвая запись каталога не роняет ответ — движок добирается до запасных',
+       r2.ok === true && r2.model !== 'wide/model-b', JSON.stringify(r2).slice(0, 150));
+    ok('J7: подмена выбрана честно — известно, кого звали',
+       r2.pinMiss === true && r2.pinned === 'wide/model-b' && calls2[0] === 'wide/model-b',
+       calls2.slice(0, 3).join(', ') + ' · pinMiss=' + r2.pinMiss);
+    M.forgetMemo();
+  }
+
   console.log('── K · эндпоинт /api/models ───');
   {
     const store = {

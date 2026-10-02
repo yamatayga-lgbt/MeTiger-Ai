@@ -178,6 +178,9 @@ export async function onRequestPost(context) {
   return json({
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
+    /* выбранная модель не смогла ответить — фронт подписывает это словами,
+       чтобы «я выбрал X, а ответил Y» не выглядело поломкой выбора */
+    pinned: r.pinned, pinMiss: !!r.pinMiss,
     /* Как ответили — родом и (по желанию) наблюдением о состоянии собеседника.
        Фронт показывает род в подписи, emotion — только если включён EMOTION_LABEL. */
     gender: r.gender, emotion: r.emotion || undefined,
