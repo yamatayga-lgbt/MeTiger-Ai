@@ -9,7 +9,8 @@
  *   npm run api   → http://127.0.0.1:8788  (POST /api/chat)
  *   npm run dev   → фронт на 5173 с прокси /api сюда
  *
- * Ключи читаются из `.dev.vars` (формат Cloudflare: KEY=value) и из окружения.
+ * Ключи читаются из `keys/.dev.vars` (формат Cloudflare: KEY=value) и из окружения;
+ * если файла там нет, берётся `.dev.vars` в корне — как привыкли старые руки.
  */
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
@@ -23,8 +24,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 /** .dev.vars → env. То, что уже стоит в окружении, не перетирается. */
 function loadEnv() {
   const env = { ...process.env };
-  const file = join(root, '.dev.vars');
-  if (existsSync(file)) {
+  const file = [join(root, 'keys', '.dev.vars'), join(root, '.dev.vars')].find(existsSync);
+  if (file) {
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       const m = /^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
       if (m && env[m[1]] === undefined) env[m[1]] = m[2].replace(/^["']|["']$/g, '');

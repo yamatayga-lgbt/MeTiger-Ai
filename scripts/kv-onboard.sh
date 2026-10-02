@@ -17,7 +17,8 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
-SECRETS="$REPO/../.secrets.env"
+SECRETS=${METIGER_SECRETS:-$REPO/keys/.secrets.env}
+[ -f "$SECRETS" ] || SECRETS="$REPO/../.secrets.env"
 TOML="$REPO/wrangler.toml"
 PROJECT=${PAGES_PROJECT:-metiger-ai}
 NS_TITLE=${KV_NAMESPACE:-metiger-memory}

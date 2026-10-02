@@ -13,3 +13,7 @@ npm-debug.log*
 .wrangler
 workers/stats/.wrangler
 .mt-memory/
+
+# Папка для ключей: здесь живёт .secrets.env (CF/Telegram/GitHub-доступы).
+# Значений в git попадать не должно ни при каких обстоятельствах.
+keys/

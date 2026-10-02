@@ -14,7 +14,8 @@
     "publish": "bash scripts/publish.sh",
     "publish:fast": "bash scripts/publish.sh --fast",
     "publish:bump": "bash scripts/publish.sh --bump",
-    "kv:onboard": "bash scripts/kv-onboard.sh"
+    "kv:onboard": "bash scripts/kv-onboard.sh",
+    "ask": "node scripts/ask.js"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",

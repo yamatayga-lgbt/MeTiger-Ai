@@ -23,7 +23,12 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 REPO=$PWD
-SECRETS=${METIGER_SECRETS:-$REPO/../.secrets.env}
+# Ключи — в папке keys/ внутри репозитория, но в git они не живут (.gitignore).
+# Переопределение адреса: METIGER_SECRETS=/путь/.secrets.env.
+SECRETS=${METIGER_SECRETS:-$REPO/keys/.secrets.env}
+# Старый адрес рядом с репозиторием остаётся запасным: пусть работают те,
+# кто ещё не знает о переезде.
+[ -f "$SECRETS" ] || SECRETS="$REPO/../.secrets.env"
 PROJECT=${PAGES_PROJECT:-metiger-ai}
 PROD=https://metiger-ai.pages.dev
 MODE=production
@@ -111,12 +116,24 @@ if [ -n "$COMMIT_MSG" ]; then
     fi
     GIT_USER=${GITHUB_USER:-yamatayga-lgbt}
     ASK=$(mktemp); chmod 700 "$ASK"
-    printf '#!/bin/sh\ncase "$1" in\n*Username*) printf "%s" "$GIT_USER";;\n*) printf "%s" "$GITHUB_PAT";;\nesac\n' > "$ASK"
+    # Важно: генерировать heredoc'ом, а не printf. Наружный printf съедает %s
+    # внутри собственного текста — askpass возвращал пустые строки, и пуш уходил
+    # анонимным («No anonymous write access»).
+    cat > "$ASK" <<'EOS'
+#!/bin/sh
+case "$1" in
+  *Username*) printf '%s' "$GIT_USER" ;;
+  *) printf '%s' "$GITHUB_PAT" ;;
+esac
+EOS
     trap 'rm -f "$ASK"' EXIT
     # ASK читает $GITHUB_PAT и $GIT_USER в момент вызова — значит обе переменные
     # надо передать в окружение git, иначе askpass вернёт пустую строку и GitHub
     # ответит «No anonymous write access».
-    GITHUB_PAT="$PAT" GIT_USER="$GIT_USER" GIT_ASKPASS="$ASK" run git push origin HEAD:main
+    # credential.helper=store мешает: он отрабатывает раньше, чем git успевает
+    # спросить GIT_ASKPASS, и пуш уходит анонимным («No anonymous write access»).
+    # Отключаем хелперы именно на эту команду — авторизация идёт через askpass.
+    GITHUB_PAT="$PAT" GIT_USER="$GIT_USER" GIT_ASKPASS="$ASK" run git -c credential.helper= push origin HEAD:main
     rm -f "$ASK"; trap - EXIT
   fi
 fi
