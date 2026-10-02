@@ -1,7 +1,7 @@
 {
   "name": "metiger-ai",
   "private": true,
-  "version": "0.016",
+  "version": "0.017",
   "type": "module",
   "description": "MeTiger Ai — универсальный ИИ-агент в Telegram Mini App",
   "scripts": {

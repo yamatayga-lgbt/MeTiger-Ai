@@ -23,6 +23,7 @@ const CATS = [
   { id: 'code', title: 'Код и расчёты' },
   { id: 'plan', title: 'Планы и задачи' },
   { id: 'problem', title: '🧩 Решение проблем' },
+  { id: 'decision', title: '⚖️ Принятие решений' },
   { id: 'life', title: 'Быт и развлечения' },
   { id: 'data', title: 'Data & Analytics' },
   { id: 'automation', title: 'Automation' },

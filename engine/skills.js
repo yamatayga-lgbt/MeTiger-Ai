@@ -41,6 +41,7 @@ import s_code from './skills/code.js';
 import s_plan from './skills/plan.js';
 import s_life from './skills/life.js';
 import s_problem from './skills/problem.js';
+import s_decision from './skills/decision.js';
 import s_data from './skills/data.js';
 import s_automation from './skills/automation.js';
 import s_safety from './skills/safety.js';
@@ -58,7 +59,7 @@ const RAW = [
   ...s_automation, ...s_safety, ...s_context, ...s_emotion, ...s_style, ...s_neural,
   ...s_bypass, ...s_adult,
   /* наше дополнение (не донорское): цикл решения проблем — см. engine/skills/problem.js */
-  ...s_problem,
+  ...s_problem, ...s_decision,
 ];
 
 /* ============================== соответствие имён ============================== */

@@ -25,15 +25,21 @@ const OURS = [
   'r-deduction', 'r-induction', 'r-ambiguity',
   'p-constraints', 'p-alternatives', 'p-replan', 'p-blockers', 'p-done',
   'pr-define', 'pr-generate', 'pr-root', 'pr-bottleneck', 'pr-sideeffects', 'pr-prevent',
+  'dc-criteria', 'dc-tradeoff', 'dc-incomplete', 'dc-sensitivity', 'dc-exit', 'dc-record',
+  'd-gapchain', 'd-needsearch', 'd-strategy',
+  'sr-query', 'sr-expand', 'sr-refine', 'sr-source', 'sr-internal', 'sr-period', 'sr-merge',
+  'fc-primary', 'fc-date', 'fc-opinion', 'fc-scope', 'fc-links',
 ];
+/* 04–07 — вторая поставка навыков; их id тоже в OURS, а свои тексты проверяются в P/Q */
+const GROUP2 = OURS.slice(14);
 const OURS_SET = new Set(OURS);
 
 console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 26 (25 донорских + «Решение проблем»), и каждая непустая',
-  CATS.length === 26 && CATS.some((c) => c.id === 'problem') && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 27 (25 донорских + «Решение проблем» + «Принятие решений»), и каждая непустая',
+  CATS.length === 27 && ['problem', 'decision'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -141,9 +147,9 @@ console.log('P — добавленные группы: логика · план
     OURS.map((id) => get(id).desc.length).join(','));
   ok('P3: тексты не раздувают промпт — каждый в пределах 500 знаков',
     OURS.every((id) => get(id).text.length <= 500), Math.max(...OURS.map((id) => get(id).text.length)));
-  ok('P4: ни один новый навык не требует инструмента (это правила рассуждения, а не сети)',
-    OURS.every((id) => !get(id).tools || !get(id).tools.length) && OURS.every((id) => !get(id).need.length),
-    JSON.stringify(OURS.filter((id) => get(id).need.length).map((id) => id + ':' + get(id).need)));
+  ok('P4: первая поставка (14 навыков) — правила рассуждения без инструментов (у 06–07 сеть есть, это проверяет Q4)',
+    OURS.slice(0, 14).every((id) => (!get(id).tools || !get(id).tools.length) && !get(id).need.length),
+    JSON.stringify(OURS.slice(0, 14).filter((id) => get(id).need.length)));
   ok('P5: «Решение проблем» — своя категория из шести навыков, в сводке видна',
     SKILLS.filter((x) => x.cat === 'problem').length === 6 && stats().groups.some((g) => g.id === 'problem' && g.on === 6),
     JSON.stringify(stats().groups.find((g) => g.id === 'problem')));
@@ -225,6 +231,143 @@ console.log('P — добавленные группы: логика · план
   ok('P28: на бытовых репликах новые навыки не лезут (не раздувают промпт попусту)',
     ['привет, как дела', 'переведи на английский: good morning', 'погода в Минске', 'напиши письмо клиенту'].every((q) => !detect(q, {}).some((x) => OURS_SET.has(x.id))),
     detect('напиши письмо клиенту', {}).map((x) => x.id).join());
+}
+
+
+console.log('Q — добавленные группы 04–07: решения · самоконтроль · поиск · факты');
+{
+  const get = (id) => skillById(id);
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  ok('Q1: все 21 навык второй поставки в реестре и активны',
+    GROUP2.every((id) => get(id) && !get(id).off), GROUP2.filter((id) => !get(id) || get(id).off).join(','));
+  ok('Q2: тексты в потолке 500 знаков и заголовки не повторяются',
+    GROUP2.every((id) => get(id).text.length <= 500) && new Set(GROUP2.map((id) => get(id).title)).size === GROUP2.length,
+    Math.max(...GROUP2.map((id) => get(id).text.length)));
+  ok('Q3: «Принятие решений» — своя категория из шести навыков, видна в сводке',
+    SKILLS.filter((x) => x.cat === 'decision').length === 6 && stats().groups.some((g) => g.id === 'decision' && g.on === 6),
+    JSON.stringify(stats().groups.find((g) => g.id === 'decision')));
+  ok('Q4: поиск и проверка фактов зовут сеть, а правила рассуждения — нет',
+    ['sr-source', 'sr-period', 'fc-primary', 'fc-date', 'fc-opinion', 'fc-scope', 'fc-links'].every((id) => get(id).need.includes('web-search'))
+    && ['dc-criteria', 'dc-tradeoff', 'dc-incomplete', 'dc-sensitivity', 'dc-exit', 'dc-record', 'd-gapchain', 'd-needsearch', 'd-strategy', 'sr-query', 'sr-expand', 'sr-refine', 'sr-internal', 'sr-merge'].every((id) => !get(id).need.length),
+    JSON.stringify(GROUP2.filter((id) => get(id).need.length).map((id) => id + ':' + get(id).need.join('+'))));
+  ok('Q5: ни один новый навык не выключен (всё это правила, а не недоступные инструменты)',
+    GROUP2.every((id) => !get(id).off) && stats().off === 43, String(stats().off));
+  ok('Q6: supersedes новых навыков ссылается только на существующие id',
+    GROUP2.every((id) => (get(id).supersedes || []).every((x) => !!skillById(x))),
+    JSON.stringify(GROUP2.map((id) => get(id).supersedes).filter((x) => x && x.length)));
+
+  const crit = get('dc-criteria').text;
+  ok('Q7: критерии требуются до сравнения и чистятся от неизмеримого и дублей',
+    fired('по каким критериям мне выбрать сервер').includes('dc-criteria') && /до сравнения зафиксируй критерии/.test(crit)
+    && /неизмеримое/.test(crit) && /дубли/.test(crit), crit.slice(0, 140));
+  const trade = get('dc-tradeoff').text;
+  ok('Q8: компромисс показывается обменом и назван там, где он необратим',
+    fired('на какой компромисс тут идём').includes('dc-tradeoff') && /за каждое преимущество — что именно отдаётся/.test(trade)
+    && /необратим/.test(trade), trade.slice(0, 140));
+  const inc = get('dc-incomplete').text;
+  ok('Q9: при неполных данных вывод делится на три кучи и проверяется худшим случаем',
+    fired('данных не хватает, но решать надо сегодня').includes('dc-incomplete') && /известно точно/.test(inc)
+    && /не катастрофичен при худшем раскладе/.test(inc) && /какие два-три факта дороже всего уточнить/.test(inc), inc.slice(0, 200));
+  const sens = get('dc-sensitivity').text;
+  ok('Q10: чувствительность — это точка, где вывод разворачивается, а не «±1%»',
+    fired('при каком значении ставки вывод меняется').includes('dc-sensitivity') && /противоположный/.test(sens)
+    && /не ±1%|своим реалистичным разбросом/.test(sens), sens.slice(0, 160));
+  const exit = get('dc-exit').text;
+  ok('Q11: условия отказа задаются заранее, потраченное не аргумент и есть действие после',
+    fired('в какой момент понять, что пора слить проект').includes('dc-exit') && /не аргумент продолжать/.test(exit)
+    && /откатиться|что делать после отказа/.test(exit), exit.slice(0, 200));
+  const rec = get('dc-record').text;
+  ok('Q12: карточка решения фиксирует отвергнутые варианты и причину, а не переписку',
+    fired('запиши решение и его обоснование').includes('dc-record') && /какие варианты отбросили и по какой причине/.test(rec)
+    && /дата и кто решал/.test(rec) && /через полгода/.test(rec), rec.slice(0, 220));
+
+  const gap = get('d-gapchain').text;
+  ok('Q13: пробел в рассуждении показывается парой «посылка → вывод», а не замазывается',
+    fired('где тут дыра в рассуждении').includes('d-gapchain') && /пара|парой/.test(gap)
+    && /уверенным тоном/.test(gap) && /здесь пропуск/.test(gap), gap.slice(0, 220));
+  const ns = get('d-needsearch').text;
+  ok('Q14: нужен ли поиск — решается по свежести данных, «на всякий случай» запрещён',
+    fired('надо ли искать это в интернете или ты знаешь').includes('d-needsearch') && /мог измениться после твоего обучения/.test(ns)
+    && /на всякий случай/.test(ns), ns.slice(0, 200));
+  const strat = get('d-strategy').text;
+  ok('Q15: смена стратегии требует, чтобы новый путь отличался объяснимо',
+    fired('опять не выходит, меняй подход').includes('d-strategy') && /не «ещё чуть-чуть»/.test(strat)
+    && /признак, по которому увидишь/.test(strat) && /не план/.test(strat), strat.slice(0, 220));
+
+  const q = get('sr-query').text;
+  ok('Q16: постановка запроса отдаёт готовые строки, а не совет «поищи»',
+    fired('как сформулировать поисковый запрос по этой теме').includes('sr-query') && /2–3 готовых варианта/.test(q)
+    && /вежливые слова/.test(q), q.slice(0, 200));
+  const ex = get('sr-expand').text;
+  ok('Q17: расширение — 4–6 разных формулировок, шесть одинаковых не считаются',
+    fired('расширь запрос синонимами').includes('sr-expand') && /4\D{0,2}6 формулиров/.test(ex) && /синоним/.test(ex) && /не считай шесть одинаковых/.test(ex), ex.slice(0, 200));
+  const rf = get('sr-refine').text;
+  ok('Q18: уточнение — диагноз, один ограничитель за раз, потом смена угла',
+    fired('уточни запрос, не то находит').includes('sr-refine') && /сначала диагноз/.test(rf)
+    && /дв[иу]х-тр[её]х итераций/.test(rf), rf.slice(0, 200));
+  const src = get('sr-source').text;
+  ok('Q19: поиск по источнику держится внутри него и сверяет домен, а не подменяет',
+    fired('ищи только на docs.python.org').includes('sr-source') && /держи источник/.test(src)
+    && /зеркало/.test(src) && /не подменяй чужой ссылкой/.test(src), src.slice(0, 220));
+  const intl = get('sr-internal').text;
+  ok('Q20: сначала то, что уже под рукой, и выдуманная ссылка на прошлое запрещена',
+    fired('посмотри в нашей переписке, что я говорил про бюджет').includes('sr-internal') && /память разговора/.test(intl)
+    && /придумать ссылку на собственное прошлое/i.test(intl), intl.slice(0, 220));
+  ok('Q21: и не дублирует навык «мы обсуждали» — вытесняет его, а не ложится сверху',
+    !fired('у нас это уже обсуждалось, что ты помнишь').includes('kn-user') && fired('у нас это уже обсуждалось').includes('sr-internal'),
+    fired('у нас это уже обсуждалось, что ты помнишь').join(','));
+  const per = get('sr-period').text;
+  ok('Q22: период проверяется по дате публикации, а не по «страница лежит»',
+    fired('нужны данные за 2024 год').includes('sr-period') && /дату публикации страницы/.test(per)
+    && /на какой момент она верна/.test(per), per.slice(0, 220));
+  const mg = get('sr-merge').text;
+  ok('Q23: сведение не считает перепечатки одним пресс-релиза пятью подтверждениями',
+    fired('объедини результаты трёх запросов').includes('sr-merge') && /пресс-релиза/.test(mg)
+    && /усредняй молча/.test(mg) && /осталось несогласованным/.test(mg), mg.slice(0, 240));
+
+  const prim = get('fc-primary').text;
+  ok('Q24: первоисточник — документ, а не новость про документ; недоступен — сказано вслух',
+    fired('дойди до первоисточника').includes('fc-primary') && /не новость про исследование/.test(prim)
+    && /по пересказу/.test(prim), prim.slice(0, 220));
+  const dt = get('fc-date').text;
+  ok('Q25: дата публикации отделяется от «последнего обновления»',
+    fired('какая дата публикации у этой статьи').includes('fc-date') && /последнее обновление/.test(dt)
+    && /устаревшее не выдавай/.test(dt), dt.slice(0, 220));
+  const op = get('fc-opinion').text;
+  ok('Q26: мнение не оформляется как факт, а интерес источника стоит рядом с цифрой',
+    fired('это факт или мнение автора').includes('fc-opinion') && /три кучи/.test(op)
+    && /рядом с его цифрой/.test(op) && /«Обычно считают» фактом не становится/.test(op), op.slice(0, 240));
+  const sc = get('fc-scope').text;
+  ok('Q27: ограничения источника называются до вывода, а не сноской после',
+    fired('какие ограничения у этой выборки').includes('fc-scope') && /до вывода, а не мелким шрифтом/.test(sc)
+    && /не поднимай до «всегда»/.test(sc), sc.slice(0, 240));
+  const ln = get('fc-links').text;
+  ok('Q28: ссылки обязаны быть проверяемыми: [1], адрес, дата обращения, место',
+    fired('дай ссылки, по которым я проверю').includes('fc-links') && /\[1\]/.test(ln)
+    && /дата обращения/.test(ln) && /короткая цитата/.test(ln), ln.slice(0, 240));
+  ok('Q29: и прямо запрещено выдумывать адрес, если данных из поиска нет',
+    /не выдумывай адрес/.test(ln) && /главный сайт вместо страницы/.test(ln), ln.slice(-200));
+
+  const corpus = ['привет, как дела', 'сколько будет 17*23', 'переведи на английский: good morning', 'погода в Минске',
+    'напиши письмо клиенту про перенос сроков', 'посчитай 5% от 200', 'нарисуй кота в шляпе', 'что такое инфляция',
+    'курс доллара', 'придумай имя для кота', 'резюме по статье', 'код не запускается, помоги', 'посоветуй фильм на вечер'];
+  const mine = /^dc-|^d-(gapchain|needsearch|strategy)$|^sr-(query|expand|refine|source|internal|period|merge)$|^fc-/;
+  ok('Q30: на бытовых репликах новые навыки не лезут (промпт не распухает попусту)',
+    corpus.every((x) => !fired(x).some((y) => mine.test(y))),
+    corpus.map((x) => x + '→' + fired(x).filter((y) => mine.test(y)).join('+')).filter((x) => x.includes('→')).join(' ; ').slice(0, 160));
+  const many = detect('как сформулировать запрос, расширь его и уточни, ищи только на официальном сайте за прошлый год, сведи результаты, найди первоисточник, сверь дату и авторство, отдели факт от мнения, назови ограничения и дай ссылки, зафиксируй критерии, компромисс, чувствительность, условия отказа и запиши обоснование, проверь пробелы в рассуждении и нужен ли поиск', {});
+  ok('Q31: «всё сразу» не ломает бюджет: ≤16 навыков и ≤3000 знаков сверх всегдашних',
+    many.length <= 16 && (() => {
+      const len = (x) => x.title.length + x.text.length;
+      const always = many.filter((x) => x.always).reduce((n, x) => n + len(x), 0);
+      return many.reduce((n, x) => n + len(x), 0) - always <= 3000;
+    })(), [many.length, many.reduce((n, x) => n + x.title.length + x.text.length, 0)].join('/'));
+  ok('Q32: в новых текстах нет обещаний того, чего в клиенте нет (файлы, клики, «я запущу»)',
+    GROUP2.every((id) => !/кликну|открою браузер|сохраню в файл|напишу в файл|поставлю напоминание|я запущу|проверю прогоном/i.test(get(id).text)),
+    (GROUP2.find((id) => /кликну|сохраню в файл|я запущу/i.test(get(id).text)) || '-'));
+  ok('Q33: ни один новый навык не ссылается на чужие механизмы (localStorage, Mini App, imggen)',
+    GROUP2.every((id) => !/localStorage|Mini App|imggen|n8n/i.test(get(id).text + get(id).title)),
+    (GROUP2.find((id) => /localStorage|Mini App|imggen|n8n/i.test(get(id).text)) || '-'));
 }
 
 /* ═══════════ живые категории (LIVE_CATS): картинки ═══════════ */
