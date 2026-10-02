@@ -9,6 +9,39 @@ import { modelOption } from '../lib/models'
 import { ModelPicker } from '../components/ModelPicker'
 import { fileHref, fileSize } from '../lib/api'
 
+/** Картинки из ответа: превью прямо в пузыре, файл — рядом чипом, чтобы его
+    можно было забрать. Ссылка (data-URI) считается один раз на файл: генерация
+    весит килобайты, дважды в DOM её тащить незачем. */
+function isImgFile(f: { mime: string; kind?: string }): boolean {
+  return f.kind === 'image' || /^image\//i.test(f.mime || '')
+}
+
+function FileChips({ files }: { files: NonNullable<ChatMessage['files']> }) {
+  const items = files.map((f) => ({ f, href: fileHref(f), img: isImgFile(f) }))
+  const imgs = items.filter((x) => x.img)
+  return (
+    <div className="msg-files">
+      {imgs.length ? (
+        <div className="msg-imgs">
+          {imgs.map((x, i) => (
+            <a key={`i${i}`} className="msg-img" href={x.href} download={x.f.name} title={`${x.f.name} · ${x.f.mime}`}>
+              <img src={x.href} alt={x.f.name} loading="lazy" />
+            </a>
+          ))}
+        </div>
+      ) : null}
+      <div className="msg-files-row">
+        {items.map((x, i) => (
+          <a key={i} className="file-chip" href={x.href} download={x.f.name} title={x.f.mime}>
+            <span className="file-name">{x.f.name}</span>
+            <span className="file-size">{fileSize(x.f.size)}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function joinText(base: string, extra: string): string {
   const b = base.trimEnd()
   const e = extra.trim()
@@ -250,16 +283,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
                   {/* Файлы, которые модель оформила блоком. Ссылка — data-URI:
                       своего хранилища под раздачу нет, файл живёт, пока открыта
                       вкладка. После перезагрузки его нужно попросить заново. */}
-                  {Array.isArray(m.files) && m.files.length ? (
-                    <div className="msg-files">
-                      {m.files.map((f, i) => (
-                        <a key={i} className="file-chip" href={fileHref(f)} download={f.name} title={f.mime}>
-                          <span className="file-name">{f.name}</span>
-                          <span className="file-size">{fileSize(f.size)}</span>
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
+                  {Array.isArray(m.files) && m.files.length ? <FileChips files={m.files} /> : null}
                   {Array.isArray(m.skills) && m.skills.length ? (
                     <div className="msg-skills">по навыкам: {m.skills.join(' · ')}</div>
                   ) : null}

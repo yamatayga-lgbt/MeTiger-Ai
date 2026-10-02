@@ -18,6 +18,7 @@ import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
 import { gatherTools } from './tools.js';
+import { sharedImggen, packImages, wantsImage } from './imggen.js';
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
@@ -71,6 +72,14 @@ export function createEngine(opts) {
   /* Рейтинг смелых (engine/brave.js): чей опыт показывать первым на «острой»
      теме. Как и карантин — переживается через KV, без него живёт в изоляте. */
   const brave = o.brave || null;
+  /* Картинки — единственный инструмент, который работает ПОСЛЕ ответа модели:
+     блок ```img``` из текста доезжает до генератора, битые base64 чинятся, а
+     отказавший источник паркуется на 5 минут, чтобы каждый запрос не стучался
+     в ту же дверь. Слой создаётся один на изолят — кэш состояния общий. */
+  const noteLog = o.log || (() => {});
+  /* Слой общий на изолят — тогда /api/skills и чат видят одно состояние.
+     В тестах (и в чужих сборках) его подменяют своим: createEngine({ imggen }). */
+  const imggen = o.imggen || sharedImggen(env, fetchImpl, noteLog);
   const health = Object.create(null);   /* id → [ключевое состояние] */
   const lastCallAt = Object.create(null);
   const usage = Object.create(null);    /* id → { calls, ok, refused, dead, t } */
@@ -188,10 +197,17 @@ export function createEngine(opts) {
        без которых навык был бы просто красивым текстом. Свой `system` от caller'а —
        своя ответственность: навыки к нему не липнут, как и блоки freedom. */
     const useSkills = isDefaultSys && input.skills !== false && input.useTools !== false;
-    const skills = useSkills ? detectSkills(text, { images, env }) : [];
+    /* Готовность картинок — из кэша слоя, без сети: навыки правки оживают только
+       тогда, когда источник уже хоть раз вернул байт (см. LIVE_CATS в skills.js). */
+    const imgToolReady = { imggen: imggen.status().sources.some((x) => x.ready) };
+    const skills = useSkills ? detectSkills(text, { images, env, imgToolReady }) : [];
     const toolsRes = input.useTools === false
       ? { used: [], block: '', directive: '' }
-      : await gatherTools(text, env, fetchImpl, { force: skillTools(skills) });
+      : await gatherTools(text, env, fetchImpl, { force: skillTools(skills), img: imggen });
+    /* Картинок человек просит — по формулировке или по block-у в ответе. Флаг
+       нужен постобработке: без него движок не тратит вызовы на генерацию. */
+    const imgRequested = input.useTools !== false && wantsImage(text, images);
+    const imgWanted = imgRequested || toolsRes.directive.indexOf('```img') >= 0;
     const userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
     const toolsHint = toolsRes.block
       ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных.'
@@ -263,7 +279,7 @@ export function createEngine(opts) {
         /* память не имеет права сломать ответ — максимум, она молчит */
       }
     }
-    function withMeta(out) {
+    async function withMeta(out) {
       if (!out) return out;
       out.gender = genderVal;
       if (skills.length) out.skills = skills.map((s) => ({ id: s.id, cat: s.cat, title: s.title }));
@@ -281,6 +297,30 @@ export function createEngine(opts) {
       }
       if (emoCfg.label && emo && emo.id !== 'neutral') {
         out.emotion = { id: emo.id, emoji: emo.emoji, label: emo.label, confidence: Math.round(emo.confidence * 100) / 100 };
+      }
+      /* Картинки — последним: вынимаем block из того текста, который человек
+         действительно увидит (совет головы могли переписать), и бьёмся за него
+         до конца. Не вышел ни один источник — в ответе остаётся честная строка
+         с причиной, а не выдуманная ссылка. */
+      if (out.ok && out.reply && imgWanted) {
+        try {
+          const packed = await packImages(out.reply, {
+            generate: (i) => imggen.generate(i),
+            edit: (i) => imggen.edit(images.length ? { ...i, images } : i),
+            wanted: imgRequested,
+            images,
+            text,
+          });
+          if (packed.reply) out.reply = packed.reply;
+          if (packed.files.length) {
+            out.files = (out.files || []).concat(packed.files);
+            out.imgSource = packed.files.map((f) => f.source).filter(Boolean).join(', ');
+          }
+          const bad = packed.notes.filter((n) => /не вышла/.test(n));
+          if (bad.length) out.fileError = out.fileError ? out.fileError + ' · ' + bad.join('; ') : bad.join('; ');
+        } catch (e) {
+          noteLog('imggen', 'pack error', String((e && e.message) || e).slice(0, 120));
+        }
       }
       return out;
     }
@@ -355,7 +395,7 @@ export function createEngine(opts) {
       const n = Math.max(1, Number(input.modelsPerProvider) || 2);
       for (const model of models.slice(0, n)) {
         const left = deadline - Date.now();
-        if (left < 2500) { tried.push({ provider: id, model, why: 'вышел бюджет времени' }); return withMeta(finish(null, tried, started, intent, tier, 'время вышло')); }
+        if (left < 2500) { tried.push({ provider: id, model, why: 'вышел бюджет времени' }); return await withMeta(finish(null, tried, started, intent, tier, 'время вышло')); }
         const keyIdx = pickKey(P, id, health);
         if (keyIdx < 0) { tried.push({ provider: id, why: 'ключи исчерпаны' }); break; }
         const okPace = await pace(id, left);
@@ -426,7 +466,7 @@ export function createEngine(opts) {
               final.memory = await memory.stats(input.chatId);
             } catch (e) {}
           }
-          return withMeta(finish(final, tried, started, intent, tier));
+          return await withMeta(finish(final, tried, started, intent, tier));
         }
         if (r.soft && allowReframe) {
           reframed = true;
@@ -463,13 +503,13 @@ export function createEngine(opts) {
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
           };
           const final = input.noCouncils ? hit : await runCouncils(input, hit, tried);
-          return withMeta(finish(final, tried, started, intent, tier));
+          return await withMeta(finish(final, tried, started, intent, tier));
         }
         tried.push({ provider: id, model, why: r.why, status: r.status, soft: r.soft, reframed: true });
       }
     }
 
-    return withMeta(finish(null, tried, started, intent, tier, 'ни один провайдер не ответил'));
+    return await withMeta(finish(null, tried, started, intent, tier, 'ни один провайдер не ответил'));
   }
 
 
@@ -639,6 +679,10 @@ export function createEngine(opts) {
     quarantine: () => Array.from(quar.entries()).map(([id, v]) => ({ provider: id, why: v.why, ms: Math.max(0, v.until - Date.now()) })),
     punish,
     classify: (text, images) => classifyTask(text, images),
+    /* состояние картинок — для /api/chat: человек должен видеть, что умеет
+       движок сегодня, а не что ему обещают */
+    img: () => imggen.status(),
+    imgCanEdit: () => imggen.canEdit(),
   };
 }
 

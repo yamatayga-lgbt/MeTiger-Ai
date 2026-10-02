@@ -6,6 +6,7 @@
  */
 import {
   SKILLS, ON_SKILLS, OFF_SKILLS, CATS, detect, blockOf, toolsOf, stats, skillById,
+  OFF_CATS, LIVE_CATS,
   TOOL_ALIAS, GATE,
 } from '../engine/skills.js';
 import { TOOL_IDS } from '../engine/tools.js';
@@ -111,6 +112,38 @@ ok('E5: каждое донорское имя инструмента либо �
   const bad = [...used].filter((t) => !TOOL_IDS().includes(t) && !TOOL_ALIAS[t] && !byDesign.has(t));
   return bad.length === 0;
 })(), 'непонятные имена: ' + ([...new Set(SKILLS.flatMap((s) => s.tools || []))].filter((t) => !TOOL_IDS().includes(t) && !TOOL_ALIAS[t] && !['imggen', 'n8n', 'bypass'].includes(t)).join(', ') || '-'));
+
+
+/* ═══════════ живые категории (LIVE_CATS): картинки ═══════════ */
+console.log('S7 — категория оживает сама, когда инструмент отвечает');
+{
+  const editing = SKILLS.filter((x) => x.cat === 'editing');
+  ok('S71: в категории editing есть навыки, и все они живые (live=imggen)',
+    editing.length >= 8 && editing.every((x) => x.live === 'imggen'), String(editing.length));
+  ok('S72: без готового инструмента они выключены с причиной про источник',
+    editing.every((x) => /источник картинок/.test(x.off || '')), editing[0].off);
+  const ask = 'убери фон с картинки и верни всё как было';
+  const dead = detect(ask, { env: {} });
+  const live = detect(ask, { env: {}, imgToolReady: { imggen: true } });
+  ok('S73: на просьбу правки навык включается только когда imggen жив',
+    !dead.some((x) => x.cat === 'editing') && live.some((x) => x.cat === 'editing'),
+    JSON.stringify({ dead: dead.map((x) => x.id), live: live.map((x) => x.id) }));
+  ok('S74: и тянет за собой инструмент картинок (а без готовности — не тянет)',
+    toolsOf(live).indexOf('imggen') >= 0 && toolsOf(dead).indexOf('imggen') < 0,
+    toolsOf(live).join() + ' / ' + toolsOf(dead).join());
+  ok('S75: текст ожившего навыка доезжает до промпта', blockOf(live, {}).length > blockOf(dead, {}).length,
+    [blockOf(dead, {}).length, blockOf(live, {}).length].join('→'));
+  const st = stats({ imgToolReady: { imggen: true } });
+  const st0 = stats();
+  ok('S76: сводка это показывает: on растёт ровно на размер категории',
+    st.on - st0.on === editing.length, [st0.on, st.on, editing.length].join('/'));
+  ok('S77: и в live-разделе написано, чем именно категория оживает',
+    st0.live.length === 1 && st0.live[0].tool === 'imggen' && st0.live[0].ready === false, JSON.stringify(st0.live));
+  ok('S78: когда инструмент жив, причины «нечем выполнять» в сводке не остаётся',
+    st.reasons.join(' ').indexOf('источник картинок') < 0, st.reasons.join(' '));
+  ok('S79: OFF_CATS больше не держит editing вечно — только files',
+    !('editing' in OFF_CATS) && 'files' in OFF_CATS, JSON.stringify(Object.keys(OFF_CATS)));
+}
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

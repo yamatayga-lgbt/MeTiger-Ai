@@ -19,14 +19,15 @@ import { TOOL_IDS } from '../../engine/tools.js';
 import { stats as skillStats } from '../../engine/skills.js';
 
 /** одной строкой — сколько навыков на ходу и чем выключены (для curl-диагностики) */
-function skillLine(env) {
-  const s = skillStats();
+function skillLine(env, imgReady) {
+  const s = skillStats({ imgToolReady: { imggen: !!imgReady } });
   return env && env.SKILLS === 'off'
     ? 'выключены (SKILLS=off)'
     : `на ходу ${s.on} из ${s.total}` + (s.off ? ` · выключено ${s.off}: ${s.reasons.slice(0, 2).join('; ')}` : '');
 }
 import { createMemory } from '../../engine/memory.js';
 import * as modelreg from '../../engine/modelreg.js';
+import { lineOf as imgLineOf } from '../../engine/imggen.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
    запрос, а «токен не принят» и «нет баланса» за одну request'у не лечатся.
@@ -239,7 +240,10 @@ export async function onRequestGet(context) {
       ? 'включён · ' + (emotionLayer.stats(context.env).label ? 'метка в ответе' : 'метка выключена')
       : 'выключен (EMOTION=0)',
     tools: TOOL_IDS(),
-    skills: skillLine(context.env),
+    skills: skillLine(context.env, engine.img().sources.some((x) => x.ready)),
+    /* чем именно картинки делаются сегодня: без этой строки человек гадает,
+       почему «нарисуй» отвечает текстом */
+    imggen: imgLineOf(engine.img()),
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */
     dead: engine.quarantine(),
   });

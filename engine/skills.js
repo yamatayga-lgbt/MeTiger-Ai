@@ -85,14 +85,23 @@ export const OFF_IDS = {
 /** Категории, которым нечего выполнять целиком. */
 export const OFF_CATS = {
   files: 'загрузки файлов в чат нет — текст и картинки принимает, файл нет',
-  editing: 'генерации и правки картинок в этом клиенте нет',
+};
+
+/**
+ * Категории, которые оживают сами. `tool` — инструмент, которым навык выполняется;
+ * пока он не ответил хоть раз, навык остаётся выключенным и причина видна человеку.
+ * Так 11 навыков правки картинок не врут «я готово», когда генератор молчит, и
+ * включаются без правки кода, как только канал заработает.
+ */
+export const LIVE_CATS = {
+  editing: { tool: 'imggen', reason: 'ни один источник картинок ещё не ответил' },
 };
 
 /* ====================== тексты, которые переписаны под нас ====================== */
 
 /** Навык остаётся, но формулировка донора ссылалась на его механизм, а не на наш. */
 export const OVERRIDES = {
-  'd-capabilities': 'опиши возможности по факту: инструменты перечислены в блоке «Инструменты этого ответа», ниже — активные навыки, приложены ли картинки. Перечисляй конкретно и не обещай то, чего в блоке нет: загрузки файлов, генерации картинок, кликов по сайтам и расписания у нас нет.',
+  'd-capabilities': 'опиши возможности по факту: инструменты перечислены в блоке «Инструменты этого ответа», ниже — активные навыки, приложены ли картинки. Перечисляй конкретно и не обещай то, чего в блоке нет: загрузки файлов в чат, кликов по сайтам и расписания у нас нет; генерация картинок есть ровно тогда, когда в инструментах этого ответа числятся «Картинки» — нет их там, значит канал молчит и надо сказать это прямо.',
   'd-tools': 'перечисли инструменты из блока «Инструменты этого ответа» — только те, что там написаны, с назначением и примером. Отвечать «инструментов нет», пока блок не пуст, — врать; выдумывать инструменты тоже нельзя. Что инструмент уже сработал — видно по блоку данных над твоим ответом.',
   'd-tool-health': 'о здоровье инструментов суди по факту этого ответа: если данные инструмента пришли — он работает, если блок пуст или в нём ошибка — назови инструмент, что именно не пришло и что человек может сделать сам. Пробных вызовов ты не делаешь и не ври, что сделал.',
   'tool-use': 'если для ответа есть инструмент — его данные уже подложены в твоё сообщение блоками [Инструмент: …]; отвечай по ним, а не по памяти. Блока нет — значит инструмента для этого запроса не было: скажи прямо, а не придумывай результат его работы.',
@@ -137,13 +146,16 @@ function build(s) {
   const need = (s.tools || []).map(alias);
   const missing = need.filter((t) => !HAVE.has(t));
   let off = null;
+  const live = LIVE_CATS[s.cat] || null;
   if (OFF_CATS[s.cat]) off = OFF_CATS[s.cat];
+  else if (live) off = live.reason;
   else if (OFF_IDS[s.id]) off = OFF_IDS[s.id];
   else if (missing.length) off = 'нет инструмента ' + missing.join(', ');
   const text = OVERRIDES[s.id] || s.prompt || s.desc;
   return Object.assign({}, s, {
     need,
     off,
+    live: live ? live.tool : '',
     text: String(text) + (FRAME_BY_ID[s.id] || ''),
   });
 }
@@ -174,7 +186,11 @@ export function detect(message, ctx) {
   const maxChars = num(env.SKILL_MAX_CHARS, 3000);
   const t = String(message || '').toLowerCase();
 
-  const usable = ON_SKILLS;
+  /* Живой инструмент поднимает свою категорию: imggen доказал, что отдаёт картинки,
+     — значит навыкам правки есть чем выполняться. Доказательства нет — не поднимаем. */
+  const usable = (o.imgToolReady && o.imgToolReady.imggen)
+    ? SKILLS.filter((x) => !x.off || x.live === 'imggen')
+    : ON_SKILLS;
   const always = usable.filter((s) => s.always);
   const hit = usable.filter((s) => !s.always && s.re && s.re.test(t) && (!GATE[s.id] || GATE[s.id].test(t)));
 
@@ -248,26 +264,30 @@ export function toolsOf(active) {
 }
 
 /** Сводка для /api/skills и тестов: сколько чего и почему выключено. */
-export function stats() {
+export function stats(ctx) {
+  const ready = (ctx && ctx.imgToolReady && ctx.imgToolReady.imggen) || false;
+  const offNow = (s) => !!s.off && !(ready && s.live === 'imggen');
   const groups = CATS.map((c) => {
     const list = SKILLS.filter((s) => s.cat === c.id);
     return {
       id: c.id,
       title: c.title,
       total: list.length,
-      on: list.filter((s) => !s.off).length,
-      off: list.filter((s) => s.off).length,
+      on: list.filter((s) => !offNow(s)).length,
+      off: list.filter(offNow).length,
     };
   });
   const why = {};
-  for (const s of OFF_SKILLS) { const k = s.off; why[k] = (why[k] || 0) + 1; }
+  for (const s of SKILLS.filter(offNow)) { const k = s.off; why[k] = (why[k] || 0) + 1; }
   return {
     total: SKILLS.length,
-    on: ON_SKILLS.length,
-    off: OFF_SKILLS.length,
+    on: SKILLS.length - SKILLS.filter(offNow).length,
+    off: SKILLS.filter(offNow).length,
     tools: [...HAVE].sort(),
     groups,
     reasons: Object.entries(why).map(([reason, n]) => reason + ' ×' + n),
+    /* что может включиться само: инструмент жив — категория оживает */
+    live: Object.entries(LIVE_CATS).map(([cat, v]) => ({ cat, tool: v.tool, ready })),
   };
 }
 

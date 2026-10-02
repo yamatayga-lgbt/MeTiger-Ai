@@ -2275,9 +2275,33 @@ kbd {
    ответа. */
 .msg-files {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
   margin-top: 6px;
+}
+.msg-files-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.msg-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.msg-img {
+  display: block;
+  max-width: min(320px, 100%);
+  border: 1px solid var(--line, #d8dde5);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-2, #f6f7f9);
+}
+.msg-img img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 .file-chip {
   display: inline-flex;

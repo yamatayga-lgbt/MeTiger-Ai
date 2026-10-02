@@ -109,8 +109,8 @@ const noKey = await gatherTools('новости про науку', {}, fakeFetc
 ok('T15: новости без ключей → тишина, а не выдумка', noKey.used.length === 0 && noKey.block === '');
 
 console.log('T — состав слоя и бытовые инструменты (перенос из донора)');
-ok('T16: в слое 15 инструментов — состав ровно тот, что ожидаем',
-  TOOL_IDS().join() === 'time,calc,currency,random,weather,wikipedia,url,news,web-search,date,coin,dice,joke,image-search,filegen',
+ok('T16: в слое 16 инструментов — состав ровно тот, что ожидаем',
+  TOOL_IDS().join() === 'time,calc,currency,random,weather,wikipedia,url,news,web-search,date,coin,dice,joke,image-search,imggen,filegen',
   TOOL_IDS().join());
 
 const dateRes = await gatherTools('какая сегодня дата', { TZ_NAME: 'Europe/Minsk' }, fakeFetch({}));

@@ -236,5 +236,72 @@ console.log('K — математика едет к тому DeepSeek, кото�
   ok('K4: INTENT_HEADS=off — движок снова слушает конфиг', seen4[0].indexOf('groq/') === 0, JSON.stringify(seen4.slice(0, 2)));
 }
 
+console.log('K2 — картинки сквозь движок (engine/imggen.js)');
+{
+  const G = await import('../engine/imggen.js');
+  const png = new Uint8Array(900);
+  [0x89, 0x50, 0x4e, 0x47].forEach((v, i) => { png[i] = v; });
+  for (let i = 8; i < png.length; i++) png[i] = i % 251;
+  const toB64 = (u) => Buffer.from(u).toString('base64');
+  const imgAnswer = '\n\n```img|кот\na red cat on a windowsill\n```';
+  /* Один fetch на два дела: генерация картинок отличается телом запроса
+     (responseModalities), LLM-вызовы — нет. */
+  const mkFetch = (o) => {
+    const calls = [];
+    const impl = async (url, init) => {
+      const body = init && init.body ? String(init.body) : '';
+      const isImg = body.indexOf('responseModalities') >= 0 || String(url).indexOf('/images/') >= 0;
+      calls.push({ url: String(url), isImg, body });
+      if (!isImg) {
+        return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: (o.reply || 'Вот кот.') + (o.block === false ? '' : imgAnswer) }, finish_reason: 'stop' }] }) };
+      }
+      if (o.imgFail) return { status: 429, text: async () => JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED', message: 'quota' } }) };
+      return { status: 200, ok: true, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: toB64(png) } }] } }] }), arrayBuffer: async () => png.buffer };
+    };
+    impl.calls = calls;
+    return impl;
+  };
+  const env = { GROQ_KEYS: 'g1', GEMINI_KEYS: 'gm1', IMGGEN_SOURCE: 'gemini' };
+  const f = mkFetch({});
+  const layer = G.createImggen({ env, fetch: f });
+  const e = createEngine({ env, fetch: f, sleep: async () => {}, imggen: layer });
+  const r = await e.run({ text: 'нарисуй кота на подоконнике', chatId: 'k2a', providerOrder: ['groq'] });
+  ok('K2a: блок ```img``` из ответа превращается в приложенную картинку',
+    r.ok && r.files.length === 1 && r.files[0].kind === 'image' && /кот\.png/.test(r.files[0].name), JSON.stringify((r.files || []).map((x) => x.name)));
+  ok('K2b: сам блок из текста вынут, человек видит обычный ответ', r.reply.indexOf('```img') < 0 && /^Вот кот\./.test(r.reply), JSON.stringify(r.reply));
+  ok('K2c: размер и base64 считаются по байтам источника', r.files[0].size === 900 && Buffer.from(r.files[0].b64, 'base64').length === 900, r.files[0].size);
+  ok('K2d: tools показывают, что картинки участвовали', (r.tools || []).indexOf('imggen') >= 0, JSON.stringify(r.tools));
+  ok('K2e: и是谁 сгенерировал — видно из imgSource', r.imgSource === 'gemini', JSON.stringify(r.imgSource));
+  ok('K2f: источник помечен живым — навыки правки оживают со следующего сообщения', layer.status().sources.some((x) => x.ready && x.edits), JSON.stringify(layer.status().sources));
+
+  const f2 = mkFetch({ reply: 'Кот на подоконнике, как договорились.', block: false });
+  const layer2 = G.createImggen({ env, fetch: f2 });
+  const e2 = createEngine({ env, fetch: f2, sleep: async () => {}, imggen: layer2 });
+  const r2 = await e2.run({ text: 'нарисуй кота', chatId: 'k2b', providerOrder: ['groq'] });
+  ok('K2g: модель ответила без блока — промпт берётся из слов человека, картинка всё равно выходит',
+    r2.files.length === 1 && f2.calls.some((c) => c.isImg), JSON.stringify({ files: (r2.files || []).length }));
+
+  const f3 = mkFetch({ imgFail: true, reply: 'Кот на подоконнике, как договорились.' });
+  const layer3 = G.createImggen({ env, fetch: f3 });
+  const e3 = createEngine({ env, fetch: f3, sleep: async () => {}, imggen: layer3 });
+  const r3 = await e3.run({ text: 'нарисуй кота', chatId: 'k2c', providerOrder: ['groq'] });
+  ok('K2h: когда источник молчит, человек читает причину, а не пустоту',
+    r3.ok && !(r3.files || []).length && /RESOURCE_EXHAUSTED|quota/.test(String(r3.fileError)) && /не вышла/.test(r3.reply),
+    JSON.stringify({ err: r3.fileError, reply: r3.reply.slice(0, 90) }));
+  ok('K2i: ответ модели при этом остаётся целиком', /^Кот на подоконнике, как договорились\./.test(r3.reply.replace(/\n+· [\s\S]*$/, '')), JSON.stringify(r3.reply.slice(0, 60)));
+  const r4 = await e3.run({ text: 'нарисуй ещё кота', chatId: 'k2c', providerOrder: ['groq'] });
+  ok('K2j: и не долбится в тот же API каждый запрос — источник припаркован',
+    !/ждём 0 с/.test(String(r4.fileError)) && /ждём \d+ с/.test(String(r4.fileError)), String(r4.fileError).slice(0, 90));
+
+  const offEnv = { GROQ_KEYS: 'g1', GEMINI_KEYS: 'gm1', IMGGEN: 'off' };
+  const f4 = mkFetch({});
+  const e4 = createEngine({ env: offEnv, fetch: f4, sleep: async () => {}, imggen: G.createImggen({ env: offEnv, fetch: f4 }) });
+  const r5 = await e4.run({ text: 'нарисуй кота', chatId: 'k2d', providerOrder: ['groq'] });
+  ok('K2k: IMGGEN=off — движок не делает ни одного картиночного вызова',
+    !f4.calls.some((c) => c.isImg) && !(r5.files || []).length && (r5.tools || []).indexOf('imggen') < 0,
+    JSON.stringify({ calls: f4.calls.length, tools: r5.tools }));
+  ok('K2l: и блок, который модель всё равно выдала, человеку не показывается', r5.reply.indexOf('```img') < 0, JSON.stringify(r5.reply));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

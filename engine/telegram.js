@@ -244,16 +244,21 @@ export async function handleUpdate(opts) {
   const files = Array.isArray(json && json.files) ? json.files.slice(0, 3) : [];
   for (const f of files) {
     const name = String((f && f.name) || 'файл').slice(0, 100);
+    const mime = String(f && f.mime || 'application/octet-stream');
+    /* Картинку отдаём картинкой: sendPhoto ставит её в ленту просматриваемой,
+       sendDocument — это вечно «скачай и открой». Документом идёт всё остальное. */
+    const isImg = (f && f.kind === 'image') || /^image\//.test(mime);
     try {
       const bytes = fromB64(String((f && f.b64) || ''));
       if (!bytes.length) throw new Error('пустой файл');
-      await post('sendDocument', {
+      await post(isImg ? 'sendPhoto' : 'sendDocument', {
         chat_id: parsed.chat.id,
         caption: name + ' · ' + sizeLine(Number(f.size) || bytes.length) + '\n' + (meta ? meta.replace(/^· /, '') : ''),
-      }, { filename: name, type: String(f.mime || 'application/octet-stream'), bytes });
+      }, { filename: name, type: mime, bytes, field: isImg ? 'photo' : 'document' });
       res.files.push(name);
+      if (isImg) res.photos = (res.photos || 0) + 1;
     } catch (e) {
-      const text = 'Файл «' + name + '» отправить не вышло: ' + String((e && e.message) || e) + '. Текст ответа выше — он полный.';
+      const text = (isImg ? 'Картинку «' : 'Файл «') + name + '» отправить не вышло: ' + String((e && e.message) || e) + '. Текст ответа выше — он полный.';
       await post('sendMessage', { chat_id: parsed.chat.id, text });
       res.sent.push(text); res.chunks++;
       res.fileError = String((e && e.message) || e);
@@ -287,7 +292,7 @@ export function telegramPoster(env, fetchImpl) {
       const fd = new FormData();
       for (const [k, v] of Object.entries(payload || {})) if (v != null && v !== '') fd.append(k, String(v));
       fd.append('disable_notification', 'true');
-      fd.append('document', new Blob([file.bytes], { type: file.type || 'application/octet-stream' }), file.filename || 'файл');
+      fd.append(file.field || 'document', new Blob([file.bytes], { type: file.type || 'application/octet-stream' }), file.filename || 'файл');
       const r = await doFetch(base + '/bot' + token + '/' + method, { method: 'POST', body: fd });
       return { status: r.status, body: await r.text().catch(() => '') };
     }

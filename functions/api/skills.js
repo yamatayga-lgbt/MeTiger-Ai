@@ -8,6 +8,7 @@
  * какие именно, сколько их влезает в ответ и почему часть выключена.
  */
 import { SKILLS, stats, detect } from '../../engine/skills.js';
+import { sharedImggen } from '../../engine/imggen.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -21,9 +22,11 @@ export async function onRequestGet(context) {
   const q = String((context.request && context.request.url) || '');
   const m = /[?&]q=([^&]*)/.exec(q);
   const ask = m ? decodeURIComponent(m[1].replace(/\+/g, ' ')).slice(0, 600) : '';
+  /* Готовность инструмента — из того же зеркала, что и у чата (кэш на изолят). */
+  const ready = { imggen: sharedImggen(context.env).status().sources.some((x) => x.ready) };
   return json({
     ok: true,
-    ...stats(),
+    ...stats({ imgToolReady: ready }),
     items: SKILLS.map((s) => ({
       id: s.id,
       cat: s.cat,
@@ -35,7 +38,7 @@ export async function onRequestGet(context) {
       off: s.off || null,
     })),
     /* что включится именно на этот вопрос — той же функцией, что и в бою */
-    onAsk: ask ? detect(ask, { env: context.env }).map((s) => ({ id: s.id, title: s.title, tools: s.tools, offTools: s.offTools })) : undefined,
+    onAsk: ask ? detect(ask, { env: context.env, imgToolReady: ready }).map((s) => ({ id: s.id, title: s.title, tools: s.tools, offTools: s.offTools })) : undefined,
   });
 }
 

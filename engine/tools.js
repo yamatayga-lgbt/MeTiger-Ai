@@ -17,6 +17,7 @@
 
 /* Форматы файла — единый источник правды: у инструмента-указания и у постобработки. */
 import { FMT, formatFromText } from './filegen.js';
+import { sharedImggen, IMG_DIRECTIVE, wantsImage, lineOf as imgLineOf } from './imggen.js';
 
 const TIMEOUT_MS = 7000;
 
@@ -512,6 +513,32 @@ export const TOOLS = [
     },
   },
   {
+    id: 'imggen',
+    title: 'Картинки',
+    /* Тоже указание, а не данные: генерируем ПОСЛЕ ответа модели (engine/imggen.js),
+       по block-у из её текста. Здесь же — честный вердикт источников: если все
+       отказывают, модель обязана сказать это словами, а не вставлять чужую ссылку
+       и не обещать «вот картинка». */
+    kind: 'directive',
+    when: (t) => wantsImage(t),
+    async run({ text, env, fetch, img }) {
+      /* Слой ОДИН на изолят (кэш вердиктов): своя копия не видела бы,
+         что источник уже отвечал, и соврала бы про «не проверено». */
+      const layer = img || sharedImggen(env, fetch);
+      const st = layer.status();
+      if (!st.on) return null;
+      const ready = st.sources.filter((x) => x.ready);
+      const blocked = st.sources.filter((x) => !x.ready && x.blocked);
+      if (!ready.length && st.sources.every((x) => x.blocked || !x.edits)) {
+        return 'Источник картинок сейчас не отвечает (' + (blocked.map((x) => x.id + ': ' + x.blocked).join('; ') || 'каналы не проверены') +
+          '). Так и скажи человеку — коротко и без извинений — и предложи то, что работает: поиск готовых изображений (Поиск картинок) или текст. Ссылки на «сгенерированное» не вставляй.';
+      }
+      const canEdit = ready.some((x) => x.edits) || st.sources.some((x) => x.edits && !x.blocked);
+      return IMG_DIRECTIVE + (canEdit ? '' : '\nПравка приложенной картинки сейчас недоступна: если просят правку — скажи об этом прямо.')
+        + '\nСостояние источников: ' + imgLineOf(st);
+    },
+  },
+  {
     id: 'filegen',
     title: 'Файл',
     /* Документ на выход — двусторонний инструмент: здесь модель получает правило
@@ -546,7 +573,9 @@ export async function gatherTools(text, env, fetchImpl, o) {
     if (!hit) { try { hit = !!t.when(String(text || ''), env); } catch { hit = false; } }
     if (!hit) continue;
     try {
-      const data = await t.run({ text, env, fetch: fi, force: force.has(t.id) });
+      /* `img` — подменяемый слой картинок: тесты и чужие сборки движка обязаны
+         видеть в инструменте ровно тот экземпляр, что у движка, а не модульный. */
+      const data = await t.run({ text, env, fetch: fi, force: force.has(t.id), img: opts.img });
       if (!data) continue;
       used.push(t.id);
       /* kind: 'directive' — правило для модели, а не внешние данные. */

@@ -311,5 +311,45 @@ console.log('I — настройка рода в боте (/род)');
     store.get('tg_1') === 'auto' && n.asked.length === 1 && n.asked[0].forget === true, JSON.stringify(store.get('tg_1')));
 }
 
+console.log('J — файлы и картинки в Telegram');
+{
+  const b64 = Buffer.from('a'.repeat(640)).toString('base64');
+  const img = { name: 'котик.png', mime: 'image/png', size: 640, b64, kind: 'image' };
+  const doc = { name: 'план.md', mime: 'text/markdown', size: 240, b64 };
+  async function run(files, throwOn) {
+    const posts = [];
+    const res = await handleUpdate({
+      update: priv('сделай картинку'),
+      env: {},
+      ask: async () => json(Object.assign({ ok: true, reply: 'Готово.', provider: 'gemini', model: 'm', ms: 100 }, files ? { files } : {})),
+      post: async (m, p, f) => {
+        posts.push({ m, p, f });
+        if (f && throwOn && f.filename === throwOn) throw new Error('Telegram не принял файл');
+        return { status: 200 };
+      },
+    });
+    return { posts, res };
+  }
+  const a = await run([img, doc]);
+  const photo = a.posts.find((x) => x.m === 'sendPhoto');
+  const document = a.posts.find((x) => x.m === 'sendDocument');
+  ok('J1: картинка уходит sendPhoto — она видна в ленте, а не «скачай и открой»',
+    !!photo && photo.f.field === 'photo' && photo.f.filename === 'котик.png', JSON.stringify(a.posts.map((x) => x.m + ':' + (x.f && x.f.field))));
+  ok('J2: обычный файл — по-прежнему sendDocument', !!document && document.f.field === 'document', JSON.stringify(document && document.f.field));
+  ok('J3: подпись под файлом — имя и размер', /котик\.png/.test(photo.p.caption) && /640|0\.6|КБ/.test(photo.p.caption), photo.p.caption);
+  ok('J4: тип файла передан в multipart', photo.f.type === 'image/png' && document.f.type === 'text/markdown', [photo.f.type, document.f.type].join('/'));
+  const byMime = await run([{ name: 'закат.jpg', mime: 'image/jpeg', size: 640, b64 }]);
+  ok('J5: kind можно не присылать — mime решает', byMime.posts.some((x) => x.m === 'sendPhoto'), JSON.stringify(byMime.posts.map((x) => x.m)));
+  const many = await run([img, img, img, img, img]);
+  ok('J6: не больше трёх файлов за ответ — как в веб-чате',
+    many.posts.filter((x) => x.f).length === 3, JSON.stringify(many.posts.filter((x) => x.f).length));
+  const bad = await run([img], 'котик.png');
+  ok('J7: сбой отправки картинки называется картинкой, а не файлом',
+    bad.posts.some((x) => x.m === 'sendMessage' && /Картинку «котик.png» отправить не вышло/.test(x.p.text)), JSON.stringify(bad.posts.map((x) => x.p && (x.p.text || '')).join('|').slice(0, 120)));
+  ok('J8: и ошибка ложится в поле, которое показывает фронт', /не принял файл/.test(String(bad.res.fileError || '')), JSON.stringify(bad.res.fileError));
+  const good = await run([img]);
+  ok('J9: счётчик картинок ведётся — по нему видно, что дошло до человека', good.res.photos === 1 && good.res.files.length === 1, JSON.stringify({ p: good.res.photos, f: good.res.files }));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
