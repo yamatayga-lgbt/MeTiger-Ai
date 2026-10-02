@@ -167,6 +167,11 @@ if [ "$MODE" = production ] && [ "$DRY" = 0 ]; then
   C=$(curl -s --max-time 90 -X POST "$PROD/api/chat" -H 'content-type: application/json' \
         -d '{"text":"2+2","chatId":"publish_smoke","history":[]}')
   printf '  ответ:   %s\n' "$(printf '%s' "$C" | head -c 220)"
-  printf '%s' "$C" | grep -q '"4"' && say "  дымовой тест: ок" || say "  дымовой тест: ОТВЕТ НЕ ПОХОЖ НА 4 — смотри выше"
+  # Смотрим ровно в поле reply и на любую отдельно стоящую четвёрку. Прежняя проверка искала
+  # `"4"` во всём JSON и падала, когда модель отвечала «2 + 2 = 4» или ставила неразрывный пробел:
+  # дымовой тест спорил с форматированием ответа, а не со сломанным счётом.
+  R=$(printf '%s' "$C" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let r="";try{r=(JSON.parse(s).reply||"")}catch(e){}console.log(r.replace(/[\s\u00a0\u202f]+/g," "))})' 2>/dev/null)
+  printf '  реплика:  %s\n' "$(printf '%s' "$R" | head -c 120)"
+  printf '%s' "$R" | grep -qE '(^|[^0-9.,])4([^0-9]|$)' && say "  дымовой тест: ок" || say "  дымовой тест: в ответе нет четвёрки — смотри выше"
 fi
 say "готово"
