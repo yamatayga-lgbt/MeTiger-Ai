@@ -45,6 +45,7 @@ const OURS = [
   'tx-draft', 'tx-edit', 'tx-expand', 'tx-clear', 'tx-brief',
   'md-video', 'md-subs', 'md-format', 'md-transcribe',
   'ux-scenario', 'ux-ia', 'ux-flow', 'ux-feedback', 'ux-problems', 'ux-proto', 'ux-a11y',
+  'vd-direction', 'vd-system', 'vd-type', 'vd-color', 'vd-layout', 'vd-states', 'vd-spec', 'vd-consistency',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -56,8 +57,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 39 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing), и каждая непустая',
-  CATS.length === 39 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 40 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing), и каждая непустая',
+  CATS.length === 40 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -788,8 +789,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 69 — 407 → 476 (13–17, 18–21, 22 и 23), выключенных не прибавилось',
-    st1.total === 476 && st1.on === 452 && st1.off === 24 && st1.groups.length === 39, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 77 — 407 → 484 (13–17, 18–21, 22–24), выключенных не прибавилось',
+    st1.total === 484 && st1.on === 460 && st1.off === 24 && st1.groups.length === 40, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -872,9 +873,9 @@ console.log('U — добавленные группы 18–21: четыре з�
        · каждый навык с нашим префиксом обязан быть в OURS — иначе он молча выпадает из A1/V1.
      А «добавил навык в файл и забыл OURS» теперь ловит пропускной пункт (skillcheck), он
      бьёт раньше теста. */
-  ok('U12: каждый id из OURS есть в реестре и дублей нет — ' + OURS.length + ' шт.',
-    new Set(OURS).size === OURS.length && OURS.every((id) => get(id)),
-    OURS.filter((id) => !get(id)).join(', '));
+  ok('U12: каждый id из OURS есть в реестре, дублей и дырок нет — ' + OURS.length + ' шт.',
+    new Set(OURS).size === OURS.length && OURS.every((id) => typeof id === 'string' && get(id)),
+    OURS.filter((id) => !get(id)).map((x) => JSON.stringify(x)).join(', '));
   const OUR_PREFIX = /^(wd|ds|tl|tx|db|md)-/;
   const missed = SKILLS.filter((x) => OUR_PREFIX.test(x.id) && !OURS.includes(x.id)).map((x) => x.id);
   ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-) перечислены в OURS',
@@ -983,6 +984,59 @@ console.log('U — добавленные группы 18–21: четыре з�
   const deadb = SKILLS.filter((x) => x.re && /[\\]b(?=[а-яё])|[а-яё][\\]b/.test(x.re.source)).map((x) => x.id);
   ok('X13: ни в одном триггере нет «\\b» рядом с кириллицей (в JS это всегда мёртвая ветка)',
     deadb.length === 0, deadb.slice(0, 6).join(', '));
+}
+
+
+/* ═══════════ Y — группа 24 «Визуальный дизайн» (поставка 0.027) ═══════════
+   Все восемь текстов обязаны обещать спецификацию, а не рендер: картинки мы не рисуем,
+   макет не открываем, hex берём из присланного. */
+{
+  const get = (id) => skillById(id);
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  const vd = SKILLS.filter((x) => /^vd-/.test(x.id));
+  ok('Y1: 8 visual-навыков на месте, тексты ≤ 500, приоритет 5, своя категория',
+    vd.length === 8 && vd.every((x) => x.text.length <= 500 && x.priority === 5 && x.cat === 'visual'),
+    vd.map((x) => x.id + '=' + x.text.length).join(' '));
+  ok('Y2: ни один не зовёт инструмент — Figma и рендера у нас нет',
+    vd.every((x) => (!x.need || x.need.length === 0) && (!x.tools || x.tools.length === 0)),
+    vd.filter((x) => (x.need || []).length || (x.tools || []).length).map((x) => x.id).join(' '));
+  ok('Y3: рамка «макет не рендерим» приклеена ко всем восьми',
+    vd.every((x) => x.text.includes('Макет не рендерим') || x.text.includes('линейкой не меряем')),
+    vd[0].text.slice(-40));
+  ok('Y4: vd-type даёт шкалу и длину строки, а не «красивый шрифт»',
+    /16px/.test(get('vd-type').text) && /1\.2/.test(get('vd-type').text) && /45.75/.test(get('vd-type').text)
+      && /табличн/.test(get('vd-type').text));
+  ok('Y5: vd-color строит роли и держит контраст как входное требование',
+    /роли, а не список hex/.test(get('vd-color').text) && /4\.5:1/.test(get('vd-color').text)
+      && /не декор/.test(get('vd-color').text));
+  ok('Y6: vd-spec требует токен вместо hex «на глаз» и кратность шагу, экспорт — через filegen',
+    /цвет токеном/.test(get('vd-spec').text) && /кратно базовому шагу/.test(get('vd-spec').text)
+      && /filegen/.test(get('vd-spec').text));
+  ok('Y7: vd-states перечисляет девять состояний и запрещает «чуть темнее»',
+    /default, hover, focus-visible/.test(get('vd-states').text) && /числом/.test(get('vd-states').text)
+      && /рамка, не цвет текста/.test(get('vd-states').text));
+  ok('Y8: vd-consistency сверяет повторимое и отвечает таблицей расхождений',
+    /повторимое, а не вкус/.test(get('vd-consistency').text) && /где — что разошлось — чем свести/.test(get('vd-consistency').text));
+  ok('Y9: vd-system держит три слоя имён и зовёт устаревание сломанным контрактом',
+    /примитивы/.test(get('vd-system').text) && /семантика/.test(get('vd-system').text)
+      && /сломанный контракт/.test(get('vd-system').text));
+  ok('Y10: vd-direction требует число или токен в каждой опоре и не рисует мудборд картинкой',
+    /число или имя токена/.test(get('vd-direction').text) && /картинок не рисуем/.test(get('vd-direction').text)
+      && /отказ от трёх соседних/.test(get('vd-direction').text));
+  ok('Y11: vd-layout оперирует базовым шагом и кратностью',
+    /базовый шаг/.test(get('vd-layout').text) && /кратны/.test(get('vd-layout').text) && /16px/.test(get('vd-layout').text));
+  ok('Y12: донорские границы — ar-distributed отдал визуальную согласованность, v-design остался при картинке',
+    !fired('проверь согласованность экранов').includes('ar-distributed')
+      && fired('согласованность данных между сервисами').includes('ar-distributed')
+      && fired('оцени дизайн этого экрана').includes('v-design')
+      && !fired('собери палитру и распиши роли цветов').includes('v-design'));
+  ok('Y13: бытовые фразы (палитра для комнаты, состояние дороги, специи, размеры чемодана) не будят vd-*',
+    MUNDANE_CORP.filter((q) => fired(q).some((id) => /^vd-/.test(id))).length === 0);
+  const ids = ['vd-direction', 'vd-system', 'vd-type', 'vd-color', 'vd-layout', 'vd-states', 'vd-spec', 'vd-consistency'];
+  const hits = {};
+  for (const id of ids) hits[id] = CANON.filter((x) => x[2] === 'Y' && x[1] === id).length;
+  ok('Y14: у каждого из восьми пунктов группы 24 — по две живые фразы в корпусе',
+    Object.values(hits).every((n) => n >= 2), JSON.stringify(hits));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
