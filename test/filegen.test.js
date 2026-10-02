@@ -276,12 +276,18 @@ console.log('E — эндпоинты: человек видит файлы и �
   const skills = await import('../functions/api/skills.js');
   const res = await skills.onRequestGet({ request: new Request('https://metiger.example/api/skills?q=' + encodeURIComponent('переведи на английский')), env: {} });
   const d = await res.json();
-  ok('E4: /api/skills отдаёт реестр целиком (351) и сводку по категориям',
-    d.ok === true && d.total === 351 && d.items.length === 351 && d.groups.length === 25, JSON.stringify([d.total, d.items && d.items.length]));
+  /* Числа берём из живого реестра, а не вписываем: их стало больше после наших
+     групп (логика · планирование · решение проблем), и тест не должен чиниться
+     подгонкой константы — он проверяет, что эндпоинт отдаёт ВСЁ. */
+  const reg = await import('../engine/skills.js');
+  ok('E4: /api/skills отдаёт реестр целиком и сводку по категориям (не меньше донорских 351, наши категории видны)',
+    d.ok === true && d.total === reg.SKILLS.length && d.items.length === reg.SKILLS.length && d.groups.length === reg.CATS.length
+    && d.total >= 351 && reg.SKILLS.some((x) => x.cat === 'problem'),
+    JSON.stringify([d.total, d.items && d.items.length, d.groups.length, reg.SKILLS.length]));
   ok('E5: и что включится на живой вопрос — той же функцией, что в бою',
     d.onAsk.some((s) => s.id === 'translate') && !d.onAsk.some((s) => s.id === 'ad-lang'), JSON.stringify(d.onAsk.map((s) => s.id)));
   ok('E6: выключенные навыки видны с причиной, а не молча',
-    d.items.filter((s) => s.off).length === 43 && d.reasons.some((x) => /загрузки файлов/.test(x)), String(d.off));
+    d.items.filter((s) => s.off).length === reg.OFF_SKILLS.length && d.reasons.some((x) => /загрузки файлов/.test(x)), String(d.off));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);

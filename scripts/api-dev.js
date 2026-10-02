@@ -23,6 +23,9 @@ import { onRequestGet as modelsGet } from '../functions/api/models.js';
    обязана быть: иначе Настройки в браузере показывали бы «сеть недоступна» и весь
    этап приходилось бы проверять только на проде. */
 import { onRequestDelete as profileDelete, onRequestGet as profileGet, onRequestPut as profilePut } from '../functions/api/profile.js';
+/* Реестр навыков — тоже дверью: без неё «что включится на мой вопрос» можно было
+   смотреть только на проде, а проверять новые навыки надо локально. */
+import { onRequestGet as skillsGet } from '../functions/api/skills.js';
 import * as modelreg from '../engine/modelreg.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -104,6 +107,7 @@ createServer((req, res) => {
         return reply(req.method === 'GET' ? await onRequestGet(context) : await onRequestPost(context));
       }
       if (path === '/api/models') return reply(await modelsGet(context));
+      if (path === '/api/skills') return reply(await skillsGet(context));
       if (path === '/api/profile') {
         if (req.method === 'PUT') return reply(await profilePut(context));
         if (req.method === 'DELETE') return reply(await profileDelete(context));
@@ -123,7 +127,7 @@ createServer((req, res) => {
         return reply(new Response(JSON.stringify({ ok: true, sent: echoes }), { status: 200, headers: { 'content-type': 'application/json' } }));
       }
       return reply(new Response(JSON.stringify({
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'POST /telegram/webhook', 'GET /echo'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills', 'POST /telegram/webhook', 'GET /echo'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       }), { status: 200, headers: { 'content-type': 'application/json' } }));
     } catch (e) {

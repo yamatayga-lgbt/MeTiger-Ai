@@ -146,7 +146,10 @@ console.log('F — то же во фронте (src/lib/gender.ts через esb
 {
   const bin = join(process.cwd(), 'node_modules', '.bin', 'esbuild');
   if (!existsSync(bin)) {
-    console.log('  esbuild не установлен — фронтовые проверки пропущены (не найден ' + bin + ')');
+    /* молча проглотить семь проверок фронта — тот же грех, что зелёный npm test без
+       node_modules: пропущенное считается провалом, пока его не починили */
+    fail++;
+    console.log('  ✖ фронтовые проверки не выполнены: esbuild не найден (' + bin + '), нужен `npm install`');
   } else {
     const dir = join(process.cwd(), 'node_modules', '.cache', 'metiger-front');
     rmSync(dir, { recursive: true, force: true });

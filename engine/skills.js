@@ -40,6 +40,7 @@ import s_text from './skills/text.js';
 import s_code from './skills/code.js';
 import s_plan from './skills/plan.js';
 import s_life from './skills/life.js';
+import s_problem from './skills/problem.js';
 import s_data from './skills/data.js';
 import s_automation from './skills/automation.js';
 import s_safety from './skills/safety.js';
@@ -56,6 +57,8 @@ const RAW = [
   ...s_control, ...s_search, ...s_text, ...s_code, ...s_plan, ...s_life, ...s_data,
   ...s_automation, ...s_safety, ...s_context, ...s_emotion, ...s_style, ...s_neural,
   ...s_bypass, ...s_adult,
+  /* наше дополнение (не донорское): цикл решения проблем — см. engine/skills/problem.js */
+  ...s_problem,
 ];
 
 /* ============================== соответствие имён ============================== */
@@ -118,7 +121,7 @@ export const FRAMES = {
   data_visual: ' Картинки ты не рисуешь: график — это код или таблица, а не изображение.',
 };
 
-/** У技能 слишком широких триггеров — второе условие: без него навык лезет в спокойный разговор.
+/** У навыков со слишком широких триггеров — второе условие: без него навык лезет в спокойный разговор.
     Измерено на корпусе: ad-lang срабатывал на «переведи на английский» и тащил в промпт
     инструкции про флирт — этого в системном блоке быть не должно. */
 export const GATE = {

@@ -17,9 +17,23 @@ const ok = (name, cond, detail) => {
   else { fail++; console.log('  ✖ ' + name + (detail ? ' — ' + String(detail).slice(0, 160) : '')); }
 };
 
+/* Наши дополнения к донорскому каталогу (фазы «Логика · Планирование · Решение
+   проблем»). Отдельным списком — чтобы проверка «донор перенесён целиком» не
+   требовала каждый раз править число, и чтобы новые навыки нельзя было потерять
+   молча: убрали навык → A1 падает. */
+const OURS = [
+  'r-deduction', 'r-induction', 'r-ambiguity',
+  'p-constraints', 'p-alternatives', 'p-replan', 'p-blockers', 'p-done',
+  'pr-define', 'pr-generate', 'pr-root', 'pr-bottleneck', 'pr-sideeffects', 'pr-prevent',
+];
+const OURS_SET = new Set(OURS);
+
 console.log('A — реестр и перенос данных');
-ok('A1: перенесены все 351 навык донора', SKILLS.length === 351, SKILLS.length);
-ok('A2: категорий 25, и каждая непустая', CATS.length === 25 && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
+  SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
+  [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
+ok('A2: категорий 26 (25 донорских + «Решение проблем»), и каждая непустая',
+  CATS.length === 26 && CATS.some((c) => c.id === 'problem') && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -30,8 +44,9 @@ ok('A5: имена инструментов переведены на наши i
 
 console.log('B — гейт: чего в этом клиенте нет, то не обещается');
 const reasons = OFF_SKILLS.map((s) => s.off);
-ok('B1: выключено ровно то, что нечем выполнять (43 из 351), остальное на ходу',
-  OFF_SKILLS.length === 43 && ON_SKILLS.length === 308, OFF_SKILLS.length + '/' + ON_SKILLS.length);
+ok('B1: выключено ровно то, что нечем выполнять (43), остальное на ходу — и наши 14 среди активных',
+  OFF_SKILLS.length === 43 && ON_SKILLS.length === SKILLS.length - 43 && OURS.every((id) => !OFF_SKILLS.some((x) => x.id === id)),
+  [OFF_SKILLS.length, ON_SKILLS.length, SKILLS.length].join('/'));
 ok('B2: ни один выключенный навык не попал в подбор',
   ['f-pdf-read', 'img-create', 'auto-n8n', 'bypass-generic', 'neural-typing', 'w-form'].every((id) => !detect(id + ' ' + 'нужен').some((s) => s.id === id)));
 ok('B3: files и editing выключены целыми категориями с объяснением',
@@ -113,6 +128,104 @@ ok('E5: каждое донорское имя инструмента либо �
   return bad.length === 0;
 })(), 'непонятные имена: ' + ([...new Set(SKILLS.flatMap((s) => s.tools || []))].filter((t) => !TOOL_IDS().includes(t) && !TOOL_ALIAS[t] && !['imggen', 'n8n', 'bypass'].includes(t)).join(', ') || '-'));
 
+
+
+console.log('P — добавленные группы: логика · планирование · решение проблем');
+{
+  const get = (id) => skillById(id);
+  ok('P1: все 14 новых навыков в реестре, активны и с нашим заголовком',
+    OURS.every((id) => get(id)) && OURS.every((id) => !get(id).off) && OURS.every((id) => /[а-яё]/.test(get(id).title)),
+    OURS.filter((id) => !get(id) || get(id).off).join(','));
+  ok('P2: описания короткие и внятные (витрина /api/skills читается целиком)',
+    OURS.every((id) => get(id).desc.length >= 8 && get(id).desc.length <= 64) && new Set(OURS.map((id) => get(id).title)).size === OURS.length,
+    OURS.map((id) => get(id).desc.length).join(','));
+  ok('P3: тексты не раздувают промпт — каждый в пределах 500 знаков',
+    OURS.every((id) => get(id).text.length <= 500), Math.max(...OURS.map((id) => get(id).text.length)));
+  ok('P4: ни один новый навык не требует инструмента (это правила рассуждения, а не сети)',
+    OURS.every((id) => !get(id).tools || !get(id).tools.length) && OURS.every((id) => !get(id).need.length),
+    JSON.stringify(OURS.filter((id) => get(id).need.length).map((id) => id + ':' + get(id).need)));
+  ok('P5: «Решение проблем» — своя категория из шести навыков, в сводке видна',
+    SKILLS.filter((x) => x.cat === 'problem').length === 6 && stats().groups.some((g) => g.id === 'problem' && g.on === 6),
+    JSON.stringify(stats().groups.find((g) => g.id === 'problem')));
+  ok('P6: supersedes новых навыков ссылается только на существующие id',
+    OURS.every((id) => (get(id).supersedes || []).every((x) => !!skillById(x))),
+    JSON.stringify(OURS.map((id) => get(id).supersedes).filter(Boolean)));
+
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  ok('P7: дедукция и индукция не путаются между собой',
+    fired('выполни это дедуктивным выводом').includes('r-deduction') && !fired('выполни это дедуктивным выводом').includes('r-induction')
+    && fired('это индуктивный вывод из наблюдений').includes('r-induction'),
+    [fired('выполни это дедуктивным выводом').join(), fired('это индуктивный вывод из наблюдений').join()].join(' / '));
+  const ded = get('r-deduction').text;
+  ok('P8: дедукция требует назвать правило и факт и не подгонять вывод под ответ',
+    /назови правило/.test(ded) && /не шире посылок/.test(ded) && /подгоняй/.test(ded), ded.slice(0, 120));
+  const ind = get('r-induction').text;
+  ok('P9: индукция честно помечена как правдоподобие и ищет контрпример',
+    /правдоподобие, а не доказательство/.test(ind) && /границей применимости/.test(ind) && /контрпример/.test(ind), ind.slice(0, 120));
+  const amb = fired('тут неоднозначно, у вопроса несколько смыслов');
+  ok('P10: неоднозначность берётся на двусмысленном вопросе и молчит на ясном',
+    amb.includes('r-ambiguity') && !fired('сколько будет 17*23').includes('r-ambiguity'), amb.join());
+  ok('P11: и её правило не превращается в бесконечный переспрос',
+    /два-три, а не десять/.test(get('r-ambiguity').text) && /один короткий уточняющий вопрос/.test(get('r-ambiguity').text)
+    && /отвечай сразу/.test(get('r-ambiguity').text), get('r-ambiguity').text.slice(0, 140));
+  ok('P12: «оценка уверенности в выводах» вшита в логический вывод (плюс d-confidence)',
+    /хрупкое место цепочки/.test(get('r-logic').text) && !get('d-confidence').off && /опровергнет/.test(get('r-logic').text),
+    get('r-logic').text.slice(-120));
+
+  ok('P13: ограничения берутся и в рамке бюджета, и в рамке срока',
+    fired('успеть нужно в рамках этого срока, бюджет не больше трёх тысяч').includes('p-constraints'), fired('успеть нужно в рамках этого срока, бюджет не больше трёх тысяч').join());
+  const con = get('p-constraints').text;
+  ok('P14: при несовместимости рамок навык требует сказать это прямо, а не растянуть задачу',
+    /не влезает — скажи сразу|скажи сразу и дай два выхода|два выхода/.test(con) && /убрать объём или сдвинуть рамку/.test(con), con.slice(0, 180));
+  ok('P15: запасной маршрут включается по «если не получится» и требует признак переключения',
+    fired('а если не получится — какой у нас план Б').includes('p-alternatives') && /по какому признаку он включается/.test(get('p-alternatives').text),
+    fired('а если не получится — какой у нас план Б').join());
+  ok('P16: перепланирование — переписать, а не залатать (и не тащить старые обещания)',
+    fired('всё пошло не по плану, надо перепланировать').includes('p-replan') && /Переписывай, а не латай/.test(get('p-replan').text)
+    && /уважения к прошлому тексту/.test(get('p-replan').text), get('p-replan').text.slice(0, 160));
+  ok('P17: блокирующие зависимости ищутся среди «в чужих руках» и дают параллельные работы',
+    fired('какие зависимости блокируют старт проекта').includes('p-blockers') && /в чужих руках/.test(get('p-blockers').text)
+    && /параллельно/.test(get('p-blockers').text), get('p-blockers').text.slice(0, 140));
+  ok('P18: критерии завершения — наблюдаемые признаки, а не намерения',
+    fired('по каким критериям понять, что работа готова').includes('p-done') && /наблюдаемых признаков/.test(get('p-done').text)
+    && /готово от идеально/.test(get('p-done').text), get('p-done').text.slice(0, 160));
+
+  ok('P19: формулировка проблемы требует разрыв в фактах и отделяет диагноз от решения',
+    fired('не понимаю, в чём вообще проблема').includes('pr-define') && /разрыв в числах, датах или проверяемых фактах/.test(get('pr-define').text)
+    && /без «всё плохо»|Без «всё плохо»/.test(get('pr-define').text), get('pr-define').text.slice(0, 160));
+  ok('P20: версии собираются пачкой до отбора и формулируются ложноспрогнозируемо',
+    fired('придумай версии, почему так может быть').includes('pr-generate') && /5–8/.test(get('pr-generate').text)
+    && /которое может оказаться ложным/.test(get('pr-generate').text), get('pr-generate').text.slice(0, 140));
+  ok('P21: первопричина — 3–5 «почему», и «виноватый человек» не считается причиной',
+    fired('копни глубже, нужна первопричина, а не симптом').includes('pr-root') && /3–5 «почему»/.test(get('pr-root').text)
+    && /условие на месте/.test(get('pr-root').text), get('pr-root').text.slice(0, 160));
+  ok('P22: узкое место: починка мимо узла не даёт эффекта, и узел переедет',
+    fired('где у нас узкое место процесса').includes('pr-bottleneck') && /Починка вне узкого места эффекта почти не даёт/.test(get('pr-bottleneck').text)
+    && /переедет/.test(get('pr-bottleneck').text), get('pr-bottleneck').text.slice(0, 160));
+  ok('P23: цена решения делит обратимое и необратимое и допускает «не трогать»',
+    fired('какие побочные эффекты у такого решения').includes('pr-sideeffects') && /обратимое от необратимого/.test(get('pr-sideeffects').text)
+    && /лучше не трогать/.test(get('pr-sideeffects').text), get('pr-sideeffects').text.slice(0, 160));
+  ok('P24: предотвращение даёт три уровня и силу воли не считает решением',
+    fired('что сделать, чтобы не повторилось').includes('pr-prevent') && /Три уровня/.test(get('pr-prevent').text)
+    && /вместо силы воли/.test(get('pr-prevent').text) && /честно нельзя/.test(get('pr-prevent').text), get('pr-prevent').text.slice(0, 200));
+  ok('P25: проверка и сравнение не продублированы — они у r-hypotheses и r-compare',
+    fired('как проверить эту гипотезу').includes('r-hypotheses') && fired('сравни варианты решения и выбери').includes('r-compare')
+    && !OURS.some((id) => /^(pr-verify|pr-compare)$/.test(id)),
+    [fired('как проверить эту гипотезу').includes('r-hypotheses'), fired('сравни варианты решения и выбери').includes('r-compare')].join('/'));
+  ok('P26: новые тексты не обещают того, чего в клиенте нет (файлы, клики, расписание, «я запущу»)',
+    OURS.every((id) => !/напишу в файл|сохраню файл|кликну|открою браузер|поставлю напоминание|напомню тебе завтра|я запущу|проверю прогоном/i.test(get(id).text)),
+    (OURS.find((id) => /напишу в файл|кликну|поставлю напоминание|я запущу/i.test(get(id).text)) || '-'));
+  const many = detect('сформулируй проблему, найди первопричину и узкое место, оцени ограничения, собери версии, распиши этапы, приоритеты, блокировки, критерии завершения, план Б, перепланируй, оцени неоднозначность дедукцией и индукцией и цену решения, чтобы не повторилось', {});
+  ok('P27: даже на «всё сразу» бюджет держится (не больше 16 и ~3000 знаков сверх всегдашних)',
+    many.length <= 16 && (() => {
+      const len = (x) => x.title.length + x.text.length;
+      const always = many.filter((x) => x.always).reduce((n, x) => n + len(x), 0);
+      return many.reduce((n, x) => n + len(x), 0) - always <= 3000;
+    })(), [many.length, many.reduce((n, x) => n + x.title.length + x.text.length, 0)].join('/'));
+  ok('P28: на бытовых репликах новые навыки не лезут (не раздувают промпт попусту)',
+    ['привет, как дела', 'переведи на английский: good morning', 'погода в Минске', 'напиши письмо клиенту'].every((q) => !detect(q, {}).some((x) => OURS_SET.has(x.id))),
+    detect('напиши письмо клиенту', {}).map((x) => x.id).join());
+}
 
 /* ═══════════ живые категории (LIVE_CATS): картинки ═══════════ */
 console.log('S7 — категория оживает сама, когда инструмент отвечает');

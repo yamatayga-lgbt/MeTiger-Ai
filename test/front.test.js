@@ -19,8 +19,11 @@ function ok(name, cond, extra) {
 
 const bin = join(process.cwd(), 'node_modules', '.bin', 'esbuild');
 if (!existsSync(bin)) {
-  console.log('фронт: esbuild не установлен — проверки подписи пропущены (не найден ' + bin + ')');
-  process.exit(0);
+  /* Пропуск с зелёным кодом — это дыра: как-то раз node_modules в песочнице испарился,
+     и «фронт» не проверил ни одного из 77 пунктов, а цепочка npm test осталась зелёной.
+     Не выполненные проверки должны валить сборку, а не делать вид, что всё хорошо. */
+  console.log('✖ фронт: esbuild не найден (' + bin + ') — проверки НЕ выполнены. Нужно `npm install`.');
+  process.exit(1);
 }
 
 /* Временные файлы — внутри node_modules/.cache: react и react-dom должны
