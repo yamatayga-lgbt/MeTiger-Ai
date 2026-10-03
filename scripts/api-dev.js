@@ -104,10 +104,19 @@ createServer((req, res) => {
         if (req.method === 'DELETE') return reply(await profileDelete(context));
         return reply(await profileGet(context));
       }
-      return reply(new Response(JSON.stringify({
+      const index = {
         ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
-      }), { status: 200, headers: { 'content-type': 'application/json' } }));
+      };
+      /* Прод на неизвестный путь не отвечает 200: Pages отдаёт либо заглушку
+         приложения, либо 405 для POST в несуществующий маршрутизатор. Здесь тот же
+         отказ, иначе локальный прогон считает «маршрут есть» там, где его убрали. */
+      if (path === '/' || path === '/api') {
+        return reply(new Response(JSON.stringify(index), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      return reply(new Response(JSON.stringify(Object.assign({}, index, { ok: false, error: 'нет такого маршрута: ' + path })), {
+        status: 404, headers: { 'content-type': 'application/json' },
+      }));
     } catch (e) {
       return reply(new Response(JSON.stringify({ ok: false, error: String((e && e.message) || e) }), {
         status: 500, headers: { 'content-type': 'application/json' },

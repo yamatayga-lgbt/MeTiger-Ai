@@ -162,10 +162,18 @@ fi
 # ── проверка прода ────────────────────────────────────────────────────────────
 if [ "$MODE" = production ] && [ "$DRY" = 0 ]; then
   say "── проверка прода"
-  # Дверь бота обязана быть закрыта: с 0.036 бота нет, и если маршрут вдруг
-  # отвечает — значит в прод уехал старый бандль или Functions не пересобрались.
-  W=$(curl -s -o /dev/null -w '%{http_code}' --max-time 40 "$PROD/telegram/webhook")
-  printf '  /telegram/webhook: %s (ожидаем 404 — бота больше нет)\n' "$W"
+  # Дверь бота обязана быть закрыта: с 0.036 бота нет. Мерить надо POST-ом и типом
+  # ответа: GET на несуществующий путь Pages отдаёт index.html с кодом 200 (заглушка
+  # приложения), и по одному коду «маршрут жив» не отличить от «маршрута нет».
+  W=$(curl -s -o /dev/null -w '%{http_code}' --max-time 40 -X POST -H 'content-type: application/json' \
+        -d '{"ok":"проверка"}' "$PROD/telegram/webhook")
+  J=$(curl -s --max-time 40 "$PROD/telegram/webhook" | head -c 400)
+  if [ "$W" = 405 ] || [ "$W" = 404 ]; then
+    printf '  /telegram/webhook: %s — приёма апдейтов нет (так и задумано)\n' "$W"
+  else
+    say "  /telegram/webhook: $W — ДВЕРЬ БОТА ОТКРЫТА, хотя кода приёмника нет"; exit 1
+  fi
+  case "$J" in *'"route"'*) say "  вебхук отдаёт статус — старый_functions ещё жив"; exit 1;; esac
   C=$(curl -s --max-time 90 -X POST "$PROD/api/chat" -H 'content-type: application/json' \
         -d '{"text":"2+2","chatId":"publish_smoke","history":[]}')
   printf '  ответ:   %s\n' "$(printf '%s' "$C" | head -c 220)"
