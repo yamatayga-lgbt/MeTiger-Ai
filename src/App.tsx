@@ -71,6 +71,8 @@ export default function App() {
   /* черновик рассуждений той же головы — отдельная строка над ответом, только когда
      человек сам попросил «думать вслух» */
   const [draftReasoning, setDraftReasoning] = useState<string | null>(null)
+  /* сколько секунд шло рассуждение текущего черновика (для «Thought for N seconds») */
+  const [draftThinkingSec, setDraftThinkingSec] = useState<number>(1)
   /* показывать ли, как модель думала: выбор живёт между сессиями, как и модель */
   const [reasoningOn, setReasoningOn] = usePersistentState<boolean>(
     'mt-reasoning',
@@ -216,9 +218,12 @@ export default function App() {
         ),
       )
       const allowThink = reasoningOn && canModelThink(model)
+      const startedAt = Date.now()
+      let thinkEndedAt = 0
       setTyping(true)
       setDraft('')
       setDraftReasoning(allowThink ? '' : null)
+      setDraftThinkingSec(1)
       void (async () => {
         const r = await sendChat(text, history, {
           ...(images && images.length ? { images } : {}),
@@ -228,7 +233,20 @@ export default function App() {
           /* ответ показывается по мере чтения провайдера; null — попытка ушла в запасной
              пул, обрывки с экрана убираем */
           onDraft: (t) => setDraft(t),
-          ...(allowThink ? { onReasoning: (t: string | null) => setDraftReasoning(t), reasoningEffort: effort } : {}),
+          ...(allowThink
+            ? {
+                onReasoning: (t: string | null) => {
+                  if (t) {
+                    thinkEndedAt = Date.now()
+                    setDraftThinkingSec(Math.max(1, Math.round((thinkEndedAt - startedAt) / 1000)))
+                  } else if (t === null) {
+                    thinkEndedAt = 0
+                  }
+                  setDraftReasoning(t)
+                },
+                reasoningEffort: effort,
+              }
+            : {}),
           temperature: genParams.temperature,
           ...(genParams.maxTokens > 0 ? { maxTokens: genParams.maxTokens } : {}),
           topP: genParams.topP,
@@ -240,6 +258,10 @@ export default function App() {
             (r.reply ? r.reply.length : 0) + (r.reasoning ? r.reasoning.length : 0),
           )
         }
+        const finalThinkSec = Math.max(
+          1,
+          Math.round(((thinkEndedAt || Date.now()) - startedAt) / 1000),
+        )
         const reply =
           r.ok && r.reply
             ? r.reply
@@ -257,12 +279,15 @@ export default function App() {
               files: r.files && r.files.length ? r.files : undefined,
               fileError: r.fileError || undefined,
               skills: r.skills && r.skills.length ? r.skills : undefined,
+              tools: r.tools && r.tools.length ? r.tools : undefined,
+              ms: r.ms,
               /* что прочитали из вложений и чем оплатили окно — две строки под ответом */
               attach: r.ok ? attachLine(r) || undefined : undefined,
               notes: r.ok ? notesLine(r) || undefined : undefined,
-              /* что модель передумала по дороге — под ответом, свёрнуто в <details>:
+              /* что модель передумала по дороге — над ответом, автоматически свёрнуто в <details>:
                  думать вслух — постоянная функция для думающих моделей */
               reasoning: r.ok && allowThink && r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
+              thinkingSec: r.ok && allowThink && r.reasoning ? finalThinkSec : undefined,
               /* проверенные ссылки из поиска/вики/новостей — кликабельны под ответом */
               sources: r.ok && Array.isArray(r.sources) && r.sources.length ? r.sources.slice(0, 8) : undefined,
             }
@@ -355,6 +380,7 @@ export default function App() {
                 typing={typing}
                 draft={draft}
                 draftReasoning={draftReasoning}
+                draftThinkingSec={draftThinkingSec}
                 reasoningOn={reasoningOn}
                 onToggleReasoning={() => setReasoningOn((v) => !v)}
                 onSend={sendMessage}

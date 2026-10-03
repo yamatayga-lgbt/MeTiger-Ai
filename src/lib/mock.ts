@@ -75,6 +75,12 @@ export interface ChatMessage {
   adviceTone?: 'ok' | 'warn' | 'quiet'
   /** Кусок того, как модель рассуждала (только если «думать вслух» было включено). */
   reasoning?: string
+  /** Сколько секунд модель думала перед ответом (для «Thought for N seconds»). */
+  thinkingSec?: number
+  /** Какие инструменты вызывались при подготовке ответа (web-search, calc, wiki…). */
+  tools?: string[]
+  /** Общее время ответа в мс. */
+  ms?: number
   /** Проверенные источники ответа (заголовок + ссылка) — кликабельны под пузырём. */
   sources?: { title: string; url: string }[]
 }

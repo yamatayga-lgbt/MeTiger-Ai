@@ -70,6 +70,124 @@ function fmtTime(total: number): string {
 
 const WAVE_WEIGHTS = [0.55, 0.95, 0.7, 1, 0.55, 0.85, 0.65]
 
+function BrainGlyph({ className = 'reason-brain-icon' }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
+      <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
+      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
+      <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
+      <path d="M19.938 10.5a4 4 0 0 1 .585.396" />
+      <path d="M6 18a4 4 0 0 1-1.967-.516" />
+      <path d="M19.967 17.484A4 4 0 0 1 18 18" />
+    </svg>
+  )
+}
+
+function TerminalGlyph() {
+  return (
+    <svg
+      className="tool-term-icon"
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="m7 9 3 3-3 3" />
+      <path d="M13 15h4" />
+    </svg>
+  )
+}
+
+/** Форматирует текст мыслей: инлайн-код в `обратных кавычках` и стрелки -> → */
+function renderReasonTokens(raw: string) {
+  const normalized = raw.replace(/\s->\s/g, ' → ')
+  const parts = normalized.split(/(`[^`\n]+`)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <code key={i} className="reason-inline-code">
+          {part.slice(1, -1)}
+        </code>
+      )
+    }
+    return part
+  })
+}
+
+function ReasoningViewport({ text, live = false }: { text: string; live?: boolean }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!live) return
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [text, live])
+
+  return (
+    <div className="msg-reason-thread">
+      <div
+        ref={scrollRef}
+        className={`msg-reason-text${live ? ' is-live-scroll' : ''}`}
+      >
+        {renderReasonTokens(text)}
+      </div>
+    </div>
+  )
+}
+
+function CollapsedThought({ reasoning, sec }: { reasoning: string; sec?: number }) {
+  const duration = Math.max(1, sec || Math.max(1, Math.round(reasoning.length / 180)))
+  const label = `Thought for ${duration} second${duration === 1 ? '' : 's'}`
+  return (
+    <details className="msg-reason">
+      <summary title="думал вслух" aria-label={`думал вслух · ${label}`}>
+        <BrainGlyph />
+        <span className="reason-summary-label">{label}</span>
+        <span className="sr-only">думал вслух</span>
+      </summary>
+      <ReasoningViewport text={reasoning} />
+    </details>
+  )
+}
+
+function ToolUsedBadge({ tools, ms }: { tools: string[]; ms?: number }) {
+  if (!tools.length) return null
+  const toolMs = ms ? Math.max(80, Math.min(950, Math.round(ms * 0.18))) : 308
+  return (
+    <details className="msg-tool-used">
+      <summary>
+        <TerminalGlyph />
+        <span className="tool-used-label">used {tools.join(', ')}</span>
+        <span className="tool-used-check" aria-hidden="true">✓</span>
+        <span className="tool-used-ms">{toolMs}ms</span>
+        <ChevronDown size={13} className="tool-used-chev" />
+      </summary>
+      <div className="msg-tool-details">
+        Инструменты агента: {tools.join(' · ')}
+      </div>
+    </details>
+  )
+}
+
 function RichText({ text, onRunOutput }: { text: string; onRunOutput?: (t: string) => void }) {
   const segments = text.split(/```/)
   return (
@@ -112,6 +230,8 @@ interface ChatViewProps {
   draft?: string | null
   /** Черновик рассуждений — той же головы, но над ответом и другим стилем */
   draftReasoning?: string | null
+  /** Сколько секунд модель думала над текущим черновиком */
+  draftThinkingSec?: number
   /** Переключатель «думать вслух» в панели ввода */
   reasoningOn?: boolean
   onToggleReasoning?: () => void
@@ -136,6 +256,7 @@ export function ChatView({
   typing,
   draft,
   draftReasoning,
+  draftThinkingSec = 1,
   reasoningOn = true,
   onToggleReasoning,
   onSend,
@@ -387,6 +508,14 @@ export function ChatView({
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="ai-name">MeTiger Ai</div>
+                  {/* Мысли модели и вызванные инструменты идут СВЕРХУ ответа и автоматически
+                      сворачиваются в «Thought for N seconds», как только ответ готов. */}
+                  {m.reasoning ? (
+                    <CollapsedThought reasoning={m.reasoning} sec={m.thinkingSec} />
+                  ) : null}
+                  {Array.isArray(m.tools) && m.tools.length ? (
+                    <ToolUsedBadge tools={m.tools} ms={m.ms} />
+                  ) : null}
                   <div className="bubble">
                     <RichText text={m.text} onRunOutput={(t) => onSend(t)} />
                   </div>
@@ -408,12 +537,6 @@ export function ChatView({
                   {m.notes ? <div className="msg-note">{m.notes}</div> : null}
                   {Array.isArray(m.skills) && m.skills.length ? (
                     <div className="msg-skills">по навыкам: {m.skills.join(' · ')}</div>
-                  ) : null}
-                  {m.reasoning ? (
-                    <details className="msg-reason">
-                      <summary>думал вслух</summary>
-                      <div className="msg-reason-text">{m.reasoning}</div>
-                    </details>
                   ) : null}
                   {Array.isArray(m.sources) && m.sources.length ? (
                     <div className="msg-sources" aria-label="Источники">
@@ -448,29 +571,43 @@ export function ChatView({
               <div className="msg-avatar">
                 <img src={avatarUrl} alt="" />
               </div>
-              <div>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ai-name">MeTiger Ai</div>
-                {draftReasoning ? (
-                  /* рассуждения идут ПЕРЕД ответом и гаснут: это не часть ответа, это то,
-                     как модель к нему шла — показывать её так, будто это текст, нельзя */
+                {draft && draftReasoning ? (
+                  /* Как только модель закончила думать и начала писать ответ (draft),
+                     блок мыслей в реальном времени автоматически сворачивается в
+                     «Thought for N seconds» над пишущимся ответом. */
+                  <CollapsedThought reasoning={draftReasoning} sec={draftThinkingSec} />
+                ) : draftReasoning !== null && !draft ? (
+                  /* Пока ответ ещё не начался — показываем живой поток мыслей со значком
+                     «Мозг», анимацией слова «Thinking...», вертикальной линией и
+                     полупрозрачным текстом сверху вниз. */
                   <div className="msg-reason msg-reason-live" aria-live="polite" aria-label="Модель думает вслух">
-                    {draftReasoning}
+                    <div className="thinking-live-head">
+                      <BrainGlyph className="reason-brain-icon is-pulsing" />
+                      <span className="thinking-word">Thinking...</span>
+                    </div>
+                    {draftReasoning ? (
+                      <ReasoningViewport text={draftReasoning} live />
+                    ) : null}
                   </div>
                 ) : null}
                 {draft ? (
-                  /* текст летит с сервера кусками: показываем его живьём вместо «печатаю»,
-                     иначе человек смотрит на три точки там, где ответ уже пишется */
+                  /* Текст ответа пишется сверху вниз с плавным проявлением и белой точкой внизу */
                   <div className="msg-text msg-draft" aria-live="polite" aria-label="Ответ пишется">
                     {draft}
                     <span className="draft-caret" aria-hidden="true" />
                   </div>
-                ) : (
+                ) : draftReasoning === null ? (
                   <div className="typing" aria-label="Печатает">
                     <span />
                     <span />
                     <span />
                   </div>
-                )}
+                ) : null}
+                <div className="stream-dot-row" aria-hidden="true">
+                  <span className="stream-dot" />
+                </div>
               </div>
             </div>
           ) : null}

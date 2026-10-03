@@ -894,6 +894,42 @@ console.log('L — песочница: запуск кода в браузере
         && /class="topbar-side topbar-right"/.test(htmlTopbar)
         && cssSrc.includes('grid-template-columns: 44px 1fr 44px')
         && cssSrc.includes('grid-template-rows: minmax(0, 1fr)'));
+
+    const htmlLiveThink = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{ id: 'u1', role: 'user', text: 'вопрос' }],
+        typing: true,
+        draft: '',
+        draftReasoning: 'Checking `rollback` -> `dv-release` in English',
+        onSend() {},
+      }),
+    );
+    const htmlAutoCollapsed = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{
+          id: 'a1',
+          role: 'assistant',
+          text: 'Готовый ответ.',
+          reasoning: 'Step 1: analyze in English',
+          thinkingSec: 4,
+          tools: ['web-search'],
+          ms: 1700,
+        }],
+        typing: false,
+        onSend() {},
+      }),
+    );
+    ok('M32: живой блок мыслей со значком Мозг, анимацией «Thinking...», инлайн-кодом и авто-сворачиванием в «Thought for 4 seconds» + used tool',
+      /class="reason-brain-icon is-pulsing"/.test(htmlLiveThink)
+        && /<span class="thinking-word">Thinking\.\.\.<\/span>/.test(htmlLiveThink)
+        && /<code class="reason-inline-code">rollback<\/code>/.test(htmlLiveThink)
+        && /class="stream-dot"/.test(htmlLiveThink)
+        && /Thought for 4 seconds/.test(htmlAutoCollapsed)
+        && /used web-search/.test(htmlAutoCollapsed)
+        && cssSrc.includes('@keyframes thinkingShimmer')
+        && cssSrc.includes('mask-image: linear-gradient'));
   }
 }
 

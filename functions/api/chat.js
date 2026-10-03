@@ -286,6 +286,81 @@ async function handlePost(context) {
      рассуждения в потоке не нужны: это килобайты текста, которые никто не увидит,
      а лимиты и тариф провайдера считаются по нему так же, как по ответу. */
   const wantReasoning = !!(body && body.showReasoning === true);
+  /* Потоковый разделитель <think>...</think>: если модель шлёт рассуждения тегом
+     внутри обычного content (а не отдельным reasoning_content), перенаправляем
+     содержимое <think>...</think> в живой канал reasoning в реальном времени, а
+     всё после </think> — в канал ответа. */
+  let thinkMode = 'init'; // 'init' | 'think' | 'text'
+  let thinkBuf = '';
+  const resetThink = () => { thinkMode = 'init'; thinkBuf = ''; };
+  const feedDelta = (provider, model, chunk) => {
+    if (!wantReasoning) {
+      context.__send({ kind: 'draft', provider, model, text: chunk });
+      return;
+    }
+    if (thinkMode === 'text') {
+      if (chunk) context.__send({ kind: 'draft', provider, model, text: chunk });
+      return;
+    }
+    thinkBuf += chunk;
+    if (thinkMode === 'init') {
+      const trimmed = thinkBuf.replace(/^\s+/, '');
+      if (!trimmed) {
+        if (thinkBuf.length > 32) {
+          thinkMode = 'text';
+          context.__send({ kind: 'draft', provider, model, text: thinkBuf });
+          thinkBuf = '';
+        }
+        return;
+      }
+      if (trimmed[0] !== '<') {
+        thinkMode = 'text';
+        context.__send({ kind: 'draft', provider, model, text: thinkBuf });
+        thinkBuf = '';
+        return;
+      }
+      const openMatch = /^<\s*(think(?:ing)?|reasoning)\b[^>]*>/i.exec(trimmed);
+      if (openMatch) {
+        thinkMode = 'think';
+        thinkBuf = trimmed.slice(openMatch[0].length).replace(/^\r?\n/, '');
+      } else {
+        const isPrefix = trimmed.length <= 14
+          && /^<\s*(?:t(?:h(?:i(?:n(?:k(?:i(?:n(?:g)?)?)?)?)?)?)?|r(?:e(?:a(?:s(?:o(?:n(?:i(?:n(?:g)?)?)?)?)?)?)?)?)?$/i.test(trimmed);
+        if (isPrefix) return;
+        thinkMode = 'text';
+        context.__send({ kind: 'draft', provider, model, text: thinkBuf });
+        thinkBuf = '';
+        return;
+      }
+    }
+    if (thinkMode === 'think') {
+      const closeMatch = /<\s*\/\s*(think(?:ing)?|reasoning)\s*>/i.exec(thinkBuf);
+      if (closeMatch) {
+        const before = thinkBuf.slice(0, closeMatch.index);
+        const after = thinkBuf.slice(closeMatch.index + closeMatch[0].length).replace(/^\s*\r?\n/, '');
+        if (before) context.__send({ kind: 'draft', channel: 'reasoning', provider, model, text: before });
+        thinkMode = 'text';
+        thinkBuf = '';
+        if (after) context.__send({ kind: 'draft', provider, model, text: after });
+        return;
+      }
+      const lastLt = thinkBuf.lastIndexOf('<');
+      if (
+        lastLt >= 0
+        && thinkBuf.length - lastLt <= 14
+        && /^<\s*\/?\s*(?:t(?:h(?:i(?:n(?:k(?:i(?:n(?:g)?)?)?)?)?)?)?|r(?:e(?:a(?:s(?:o(?:n(?:i(?:n(?:g)?)?)?)?)?)?)?)?)?$/i.test(thinkBuf.slice(lastLt))
+      ) {
+        const safe = thinkBuf.slice(0, lastLt);
+        thinkBuf = thinkBuf.slice(lastLt);
+        if (safe) context.__send({ kind: 'draft', channel: 'reasoning', provider, model, text: safe });
+        return;
+      }
+      if (thinkBuf) {
+        context.__send({ kind: 'draft', channel: 'reasoning', provider, model, text: thinkBuf });
+        thinkBuf = '';
+      }
+    }
+  };
   const engine = createEngine({
     env, fetch: (u, i) => fetch(u, i), quarantine, memory, brave,
     /* Куски ответа летят в браузер по мере чтения провайдера. Без
@@ -295,6 +370,7 @@ async function handlePost(context) {
       ? (ev) => {
           if (!ev) return;
           if (ev.kind === 'drop') {
+            resetThink();
             // одна команда сбрасывает оба канала: и ответ, и рассуждения неудачной головы
             context.__send({ kind: 'drop', provider: ev.provider, model: ev.model });
             return;
@@ -304,7 +380,7 @@ async function handlePost(context) {
             context.__send({ kind: 'draft', channel: 'reasoning', provider: ev.provider, model: ev.model, text: ev.text || '' });
             return;
           }
-          context.__send({ kind: 'draft', provider: ev.provider, model: ev.model, text: ev.text || '' });
+          feedDelta(ev.provider, ev.model, ev.text || '');
         }
       : undefined,
   });
@@ -341,6 +417,7 @@ async function handlePost(context) {
     maxTokens: norm.maxTokens,
     topP: norm.topP,
     reasoningEffort: norm.reasoningEffort,
+    showReasoning: wantReasoning,
     system: norm.system || PERSONA_SYSTEM,
     /* Род агента — настройка человека из приложения (Авто/М/Ж). Сюда идёт pick(), а
        не normalize(): распознанное значение едет в движок, пустое и мусорное — не

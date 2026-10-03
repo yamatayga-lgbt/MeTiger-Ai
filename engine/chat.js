@@ -241,7 +241,19 @@ export function createEngine(opts) {
     const skBlock = skills.length
       ? skillsBlockOf(skills, { toolTitles: toolsRes.used.map((id) => TOOL_TITLES[id] || id) })
       : '';
-    let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint
+    /* Рассуждение на английском для точности русского ответа: когда включён режим
+       «Думает» (showReasoning), просим модель сначала кратко продумать ход решения
+       на английском внутри <think>...</think>, а затем дать точный ответ на языке человека. */
+    const thinkEffortHint = input.reasoningEffort === 'low'
+      ? 'Keep the <think> block brief (1–3 sentences).'
+      : input.reasoningEffort === 'high'
+        ? 'Make the <think> block thorough, verifying steps and edge cases.'
+        : 'Keep the <think> block concise and structured (2–5 sentences).';
+    const thinkHint = isDefaultSys && input.showReasoning === true
+      ? '\n\n[Thinking protocol]: Before answering, ALWAYS think step-by-step IN ENGLISH inside <think>...</think> tags (reasoning in English maximizes logical and factual accuracy), then close </think> and write the final response in the user\'s language (Russian unless asked otherwise). '
+        + thinkEffortHint
+      : '';
+    let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint + thinkHint
       + (skBlock ? '\n\n' + skBlock : '')
       + (toolsRes.directive ? '\n\n' + toolsRes.directive : '');
     /* Свобода ответа: блоки правил из engine/freedom.data.js (данные перенесены из

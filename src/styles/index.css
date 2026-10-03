@@ -1259,44 +1259,222 @@ kbd {
   color: #ecd9b4;
 }
 
-/* ── «думать вслух»: рассуждения модели ───────────────────────────────
-   Живой кусок и архивный выглядят одинаково (тихий, моноширинный не надо —
-   это обычная речь), но никогда не выглядят частью ответа: отсюда приглушение
-   и левая граница вместо пузыря. */
+/* ── «думать вслух»: рассуждения модели в реальном времени (стиль Thinking / Thought for N seconds) ── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .msg-reason {
-  margin: 4px 0;
-  padding: 6px 10px;
-  border-left: 2px solid var(--border);
-  border-radius: 0 8px 8px 0;
-  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
-  color: var(--text-3);
-  font-size: 12.5px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 220px;
-  overflow: auto;
+  margin: 4px 0 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
 .msg-reason summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 0;
   cursor: pointer;
-  color: var(--text-3);
-  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 68%, transparent);
+  font-size: 14px;
+  font-weight: 450;
   list-style: none;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.msg-reason summary:hover {
+  color: var(--text);
 }
 
 .msg-reason summary::-webkit-details-marker {
   display: none;
 }
 
+.reason-brain-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+}
+
+.reason-brain-icon.is-pulsing {
+  animation: brainBreath 2s ease-in-out infinite;
+}
+
+@keyframes brainBreath {
+  0%, 100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.thinking-live-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 0;
+}
+
+/* Слово «Thinking...» с бегущим бликом света слева направо */
+.thinking-word {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text) 38%, transparent) 0%,
+    color-mix(in srgb, var(--text) 96%, transparent) 48%,
+    color-mix(in srgb, var(--text) 38%, transparent) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinkingShimmer 1.75s linear infinite;
+}
+
+@keyframes thinkingShimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+/* Вертикальная линия под иконкой мозга слева и полупрозрачный поток мыслей справа */
+.msg-reason-thread {
+  margin-top: 6px;
+  margin-left: 7px;
+  padding-left: 16px;
+  border-left: 1.5px solid color-mix(in srgb, var(--text) 14%, transparent);
+}
+
 .msg-reason-text {
-  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.68;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--text) 56%, transparent);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  max-height: 230px;
+  overflow-y: auto;
+  padding: 6px 0 10px;
+  scrollbar-width: none;
+  /* Мягкая прозрачность сверху и снизу, чтобы поток мыслей плавно проявлялся и уходил */
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.84) 11%,
+    #000 24%,
+    #000 76%,
+    rgba(0, 0, 0, 0.8) 89%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.84) 11%,
+    #000 24%,
+    #000 76%,
+    rgba(0, 0, 0, 0.8) 89%,
+    transparent 100%
+  );
+}
+
+.msg-reason-text::-webkit-scrollbar {
+  display: none;
+}
+
+.reason-inline-code {
+  display: inline-block;
+  padding: 1px 7px;
+  margin: 0 2px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 .msg-reason-live {
-  font-style: italic;
+  font-style: normal;
+}
+
+/* ── Строка использованного инструмента (used web-search ✓ 308ms ⌄) ── */
+.msg-tool-used {
+  margin: 2px 0 8px;
+}
+
+.msg-tool-used summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 13.5px;
+  color: color-mix(in srgb, var(--text) 58%, transparent);
+}
+
+.msg-tool-used summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-term-icon {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+}
+
+.tool-used-check {
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.tool-used-ms {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 46%, transparent);
+}
+
+.tool-used-chev {
+  color: color-mix(in srgb, var(--text) 44%, transparent);
+  transition: transform 0.18s ease;
+}
+
+.msg-tool-used[open] .tool-used-chev {
+  transform: rotate(180deg);
+}
+
+.msg-tool-details {
+  margin-left: 7px;
+  padding: 4px 0 4px 16px;
+  border-left: 1.5px solid color-mix(in srgb, var(--text) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 50%, transparent);
 }
 
 .reason-toggle,
@@ -1361,20 +1539,63 @@ kbd {
   white-space: nowrap;
 }
 
+/* Сверху вниз пишется ответ модели с лёгкой прозрачностью на свежем крае */
 .msg-draft {
-  opacity: 0.88;
+  opacity: 0.92;
+  white-space: pre-wrap;
+  animation: draftRevealDown 0.18s ease-out;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 84%, rgba(0, 0, 0, 0.65) 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 84%, rgba(0, 0, 0, 0.65) 100%);
+}
+
+@keyframes draftRevealDown {
+  from {
+    opacity: 0.55;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 0.92;
+    transform: translateY(0);
+  }
 }
 
 /* каретка черновика: без неё непонятно, что текст ещё пишется, а не оборвался */
 .draft-caret {
   display: inline-block;
-  width: 7px;
-  height: 1.05em;
+  width: 6px;
+  height: 1em;
   margin-left: 3px;
   vertical-align: -2px;
   border-radius: 1px;
-  background: var(--accent);
+  background: color-mix(in srgb, var(--text) 70%, transparent);
   animation: caretBlink 1.05s steps(1) infinite;
+}
+
+/* Белая пульсирующая точка внизу живого потока (как в референсе) */
+.stream-dot-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0 2px;
+}
+
+.stream-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--text) 35%, transparent);
+  animation: streamDotPulse 1.25s ease-in-out infinite;
+}
+
+@keyframes streamDotPulse {
+  0%, 100% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.84);
+  }
 }
 
 @keyframes caretBlink {
@@ -1384,7 +1605,10 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .draft-caret {
+  .draft-caret,
+  .thinking-word,
+  .stream-dot,
+  .reason-brain-icon.is-pulsing {
     animation: none;
   }
 }

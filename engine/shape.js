@@ -108,12 +108,22 @@ export function buildRequest(o) {
       url: url(cfg.base) + '/models/' + model + (o.stream ? ':streamGenerateContent?alt=sse&' : ':generateContent?') + 'key=' + encodeURIComponent(key),
       headers: { 'content-type': 'application/json' },
       ...(o.stream ? {
-        sse: (d) => ({
-          text: ((d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [])
-            .map((x) => (x && typeof x.text === 'string' ? x.text : '')).join(''),
-          finish: (d.candidates && d.candidates[0] && d.candidates[0].finishReason) || '',
+        sse: (d) => {
+          const parts = (d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [];
+          return {
+            text: parts.map((x) => (x && !x.thought && typeof x.text === 'string' ? x.text : '')).join(''),
+            reasoning: parts.map((x) => (x && x.thought && typeof x.text === 'string' ? x.text : '')).join(''),
+            finish: (d.candidates && d.candidates[0] && d.candidates[0].finishReason) || '',
+          };
+        },
+        wrap: (text, finish, reasoning) => ({
+          candidates: [{
+            content: {
+              parts: (reasoning ? [{ thought: true, text: reasoning }] : []).concat([{ text }]),
+            },
+            finishReason: finish,
+          }],
         }),
-        wrap: (text, finish) => ({ candidates: [{ content: { parts: [{ text }] }, finishReason: finish }] }),
       } : {}),
       body: {
         contents: sys.concat(contents),
@@ -123,12 +133,16 @@ export function buildRequest(o) {
         const cand = (d.candidates && d.candidates[0]) || {};
         const parts = (cand.content && cand.content.parts) || [];
         /* parts бывает и { inlineData: ... } — без text; undefined в ответ нельзя */
-        const text = parts.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('');
+        const rawText = parts.map((p) => (p && !p.thought && typeof p.text === 'string' ? p.text : '')).join('');
+        const thoughtText = parts.map((p) => (p && p.thought && typeof p.text === 'string' ? p.text : '')).join('');
+        const cut = stripThinkTags(rawText);
+        const text = cut.reasoning ? cut.text : rawText;
+        const reasoning = String(thoughtText || '').trim() || cut.reasoning;
         /* Блок приходит и в promptFeedback, и в finishReason — смотреть надо оба: во втором
            случае ответ пустой, и без этой проверки он выглядел бы как «модель промолчала». */
         const blockedReason = (d.promptFeedback && d.promptFeedback.blockReason)
           || (/(SAFETY|BLOCKLIST|PROHIBITED|RECITATION)/.test(String(cand.finishReason || '')) ? cand.finishReason : '');
-        return { reply: text, reasoning: '', finish: cand.finishReason || '', blocked: !!blockedReason, blockReason: blockedReason };
+        return { reply: text, reasoning, finish: cand.finishReason || '', blocked: !!blockedReason, blockReason: blockedReason };
       },
     };
   }

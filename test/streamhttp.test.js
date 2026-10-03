@@ -228,6 +228,42 @@ console.log('── H · SSE-обёртка двери /api/chat ───');
       JSON.stringify(fin && fin.payload));
   });
 
+  await withFetch(async () => {
+    let sysSeen = '';
+    const tOpen = '<' + 'think>';
+    const tClose = '<' + '/think>';
+    globalThis.fetch = async (_u, init) => {
+      const b = JSON.parse(String(init && init.body));
+      const sysMsg = (b.messages || []).find((m) => m.role === 'system');
+      if (sysMsg) sysSeen = sysMsg.content || '';
+      const rows = [
+        { choices: [{ delta: { content: tOpen + 'Let me analyze ' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'in English first.' + tClose + '\nТочный ' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'ответ.' }, finish_reason: 'stop' }] },
+      ];
+      const rs = new ReadableStream({
+        start(c) {
+          for (const x of rows) c.enqueue(enc.encode('data: ' + JSON.stringify(x) + '\n\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      });
+      return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+    };
+    const res = await post({ text: 'объясни кратко', chatId: 'sse9', showReasoning: true }, SSE);
+    const { events: ev } = await drain(res);
+    const reason = ev.filter((e) => e.kind === 'draft' && e.channel === 'reasoning');
+    const answer = ev.filter((e) => e.kind === 'draft' && !e.channel);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H15: showReasoning просит думать на английском (IN ENGLISH) и на лету режет <think>...</think> в канал reasoning',
+      /IN ENGLISH/.test(sysSeen)
+        && reason.map((e) => e.text).join('') === 'Let me analyze in English first.'
+        && answer.map((e) => e.text).join('') === 'Точный ответ.'
+        && fin.payload.reasoning === 'Let me analyze in English first.'
+        && fin.payload.reply === 'Точный ответ.',
+      JSON.stringify({ sys: /IN ENGLISH/.test(sysSeen), r: reason.map((e) => e.text), a: answer.map((e) => e.text), fin: fin && fin.payload }));
+  });
+
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
