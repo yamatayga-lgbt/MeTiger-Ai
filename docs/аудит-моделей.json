@@ -1,20 +1,37 @@
 {
- "at": "2026-10-03T14:42:15.469Z",
+ "at": "2026-10-03T15:31:59.469Z",
  "engine": "http://127.0.0.1:8788",
- "tested": 25,
- "catalogTotal": 234,
+ "tested": 57,
+ "catalogTotal": 75,
  "alive": [
-  "codestral-latest",
-  "cohere/command-r-plus-08-2024",
-  "gemini-2.5-flash",
-  "meituan/longcat-2.5-preview:free",
-  "ministral-8b-2512",
-  "mistralai/mistral-large-2512",
-  "openai/gpt-oss-20b",
-  "qwen/qwen3.7-flash:free",
-  "qwen/qwen3.8-27b"
+  "gemma-4-26b-a4b-it",
+  "openai/gpt-oss-120b"
  ],
  "dead": [
+  {
+   "id": "claude-fable-5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "claude-fable-5.1",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "claude-opus-4-6",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
   {
    "id": "claude-opus-4-8",
    "why": "отвечает не этой моделью",
@@ -22,6 +39,26 @@
    "tried": [
     "odirouter:rate-limit"
    ]
+  },
+  {
+   "id": "claude-opus-5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "claude-sonnet-4-5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "claude-sonnet-4-6",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": []
   },
   {
    "id": "claude-sonnet-5",
@@ -40,11 +77,21 @@
    ]
   },
   {
+   "id": "deepseek-v4-flash-0731",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
    "id": "deepseek-v4-pro",
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
-    "odirouter:rate-limit"
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -52,7 +99,34 @@
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "free-gemini-2.5-flash",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "free-gemini-2.5-flash-lite",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "free-gemini-2.5-pro",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -60,7 +134,16 @@
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
-    "odirouter:rate-limit"
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "free-vclaude-haiku-4.5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -68,11 +151,12 @@
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
-    "odirouter:rate-limit"
+    "gemini:http 404 {\n  \"error\": {\n    \"code\": 404,",
+    "groq:rate-limit"
    ]
   },
   {
-   "id": "gemini-3.8-flash",
+   "id": "gemini-3.1-pro-preview",
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
@@ -80,19 +164,64 @@
    ]
   },
   {
-   "id": "glm-4.7-flash",
+   "id": "gemini-3.7-flash",
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
-    "zai:в карантине: нет баланса (429)"
+    "gemini:http 503 {\n  \"error\": {\n    \"code\": 503,"
    ]
   },
   {
-   "id": "glm-5.3",
+   "id": "gemini-3.8-flash",
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
-    "zai:в карантине: нет баланса (429)"
+    "gemini:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gemini-pro-latest",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "gemini:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "glm-5.1",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "zai:rate-limit"
+   ]
+  },
+  {
+   "id": "glm-5.2",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "zai:в карантине: нет баланса (429)",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gpt-5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gpt-5.4",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -104,11 +233,62 @@
    ]
   },
   {
+   "id": "gpt-5.6-sol",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gpt-5.6-terra",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
+   ]
+  },
+  {
+   "id": "grok-4.5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
    "id": "grok-4.6",
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "kimi-k2.5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
+   ]
+  },
+  {
+   "id": "kimi-k2.6",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
    ]
   },
   {
@@ -120,7 +300,16 @@
    ]
   },
   {
-   "id": "minimax-m3",
+   "id": "magistral-small-latest",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "mistral:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax-m2.5",
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
@@ -128,11 +317,153 @@
    ]
   },
   {
-   "id": "minimax/minimax-m2.7-highspeed:free",
+   "id": "minimax-m2.7",
    "why": "отвечает не этой моделью",
    "err": "",
    "tried": [
-    "xkiro:http 404 {\"error\":{\"message\":\"This model"
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax-m3",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2.1-highspeed:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2.1:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "minimax/minimax-m2.5-highspeed:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2.5:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2.7-highspeed:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "minimax/minimax-m2.7:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m3:free",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "mistral-medium-3.5",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "mistral:rate-limit"
+   ]
+  },
+  {
+   "id": "mistral-small-2603",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "mistral:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.5-plus",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.6-flash",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
+   ]
+  },
+  {
+   "id": "qwen3.6-plus",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.7-max",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.7-plus",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
    ]
   },
   {
@@ -141,12 +472,66 @@
    "err": "",
    "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.8-max-preview",
+   "why": "отвечает не этой моделью",
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   }
  ],
  "quota": [],
  "results": [
   {
+   "id": "claude-fable-5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 711,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "claude-fable-5.1",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 497,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "claude-opus-4-6",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 374,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
    "id": "claude-opus-4-8",
    "http": 200,
    "ok": true,
@@ -154,12 +539,53 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 611,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 366,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
    ]
+  },
+  {
+   "id": "claude-opus-5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 140,
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "claude-sonnet-4-5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 377,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "claude-sonnet-4-6",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 141,
+   "err": "",
+   "tried": []
   },
   {
    "id": "claude-sonnet-5",
@@ -169,38 +595,12 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 1399,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 354,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
    ]
-  },
-  {
-   "id": "codestral-latest",
-   "http": 200,
-   "ok": true,
-   "answered": true,
-   "sameModel": true,
-   "pinMiss": false,
-   "provider": "mistral",
-   "used": "codestral-latest",
-   "ms": 341,
-   "err": "",
-   "tried": []
-  },
-  {
-   "id": "cohere/command-r-plus-08-2024",
-   "http": 200,
-   "ok": true,
-   "answered": true,
-   "sameModel": true,
-   "pinMiss": false,
-   "provider": "xkiro",
-   "used": "cohere/command-r-plus-08-2024",
-   "ms": 862,
-   "err": "",
-   "tried": []
   },
   {
    "id": "deepseek-v4-flash",
@@ -210,11 +610,27 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 543,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 367,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "deepseek-v4-flash-0731",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 523,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -225,11 +641,12 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 514,
+   "used": "openai/gpt-oss-20b",
+   "ms": 483,
    "err": "",
    "tried": [
-    "odirouter:rate-limit"
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -240,11 +657,59 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 910,
+   "used": "openai/gpt-oss-20b",
+   "ms": 439,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "free-gemini-2.5-flash",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 355,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "free-gemini-2.5-flash-lite",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 498,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "free-gemini-2.5-pro",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 570,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -252,28 +717,31 @@
    "http": 200,
    "ok": true,
    "answered": true,
-   "sameModel": true,
-   "pinMiss": true,
+   "sameModel": false,
+   "pinMiss": false,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 882,
+   "used": "openai/gpt-oss-20b",
+   "ms": 180,
    "err": "",
    "tried": [
-    "odirouter:rate-limit"
+    "groq:rate-limit"
    ]
   },
   {
-   "id": "gemini-2.5-flash",
+   "id": "free-vclaude-haiku-4.5",
    "http": 200,
    "ok": true,
    "answered": true,
    "sameModel": true,
-   "pinMiss": false,
-   "provider": "gemini",
-   "used": "gemini-2.5-flash",
-   "ms": 636,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 373,
    "err": "",
-   "tried": []
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
   },
   {
    "id": "gemini-2.5-pro",
@@ -283,11 +751,42 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 462,
+   "used": "openai/gpt-oss-20b",
+   "ms": 613,
    "err": "",
    "tried": [
-    "odirouter:rate-limit"
+    "gemini:http 404 {\n  \"error\": {\n    \"code\": 404,",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gemini-3.1-pro-preview",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 245,
+   "err": "",
+   "tried": [
+    "gemini:rate-limit"
+   ]
+  },
+  {
+   "id": "gemini-3.7-flash",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 7344,
+   "err": "",
+   "tried": [
+    "gemini:http 503 {\n  \"error\": {\n    \"code\": 503,"
    ]
   },
   {
@@ -298,41 +797,104 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 639,
+   "used": "openai/gpt-oss-20b",
+   "ms": 400,
    "err": "",
    "tried": [
-    "gemini:rate-limit"
+    "gemini:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
-   "id": "glm-4.7-flash",
+   "id": "gemini-pro-latest",
    "http": 200,
    "ok": true,
    "answered": true,
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 268,
+   "used": "openai/gpt-oss-20b",
+   "ms": 504,
    "err": "",
    "tried": [
-    "zai:в карантине: нет баланса (429)"
+    "gemini:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
-   "id": "glm-5.3",
+   "id": "gemma-4-26b-a4b-it",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": false,
+   "provider": "gemini",
+   "used": "gemma-4-26b-a4b-it",
+   "ms": 4083,
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "glm-5.1",
    "http": 200,
    "ok": true,
    "answered": true,
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 665,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 667,
    "err": "",
    "tried": [
-    "zai:в карантине: нет баланса (429)"
+    "zai:rate-limit"
+   ]
+  },
+  {
+   "id": "glm-5.2",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 418,
+   "err": "",
+   "tried": [
+    "zai:в карантине: нет баланса (429)",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gpt-5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 870,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gpt-5.4",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 628,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -343,11 +905,61 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 454,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 399,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "gpt-5.6-sol",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 530,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "gpt-5.6-terra",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "openrouter",
+   "used": "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "ms": 2834,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
+   ]
+  },
+  {
+   "id": "grok-4.5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 538,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   },
   {
@@ -358,11 +970,47 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 430,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 363,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "kimi-k2.5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "openrouter",
+   "used": "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "ms": 1734,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
+   ]
+  },
+  {
+   "id": "kimi-k2.6",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "openrouter",
+   "used": "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "ms": 5934,
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
    ]
   },
   {
@@ -373,25 +1021,59 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 554,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 1033,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
    ]
   },
   {
-   "id": "meituan/longcat-2.5-preview:free",
+   "id": "magistral-small-latest",
    "http": 200,
    "ok": true,
    "answered": true,
    "sameModel": true,
-   "pinMiss": false,
-   "provider": "xkiro",
-   "used": "meituan/longcat-2.5-preview:free",
-   "ms": 5846,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 957,
    "err": "",
-   "tried": []
+   "tried": [
+    "mistral:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax-m2.5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 615,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax-m2.7",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 530,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
   },
   {
    "id": "minimax-m3",
@@ -401,11 +1083,94 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 570,
+   "used": "openai/gpt-oss-20b",
+   "ms": 454,
    "err": "",
    "tried": [
-    "odirouter:rate-limit"
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2:free",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "openrouter",
+   "used": "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "ms": 7489,
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2.1-highspeed:free",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "openrouter",
+   "used": "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "ms": 5896,
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2.1:free",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 149,
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "minimax/minimax-m2.5-highspeed:free",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 255,
+   "err": "",
+   "tried": [
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m2.5:free",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "openrouter",
+   "used": "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "ms": 4500,
+   "err": "",
+   "tried": [
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)",
+    "cloudflare:в карантине: ключ не принят (http 401)"
    ]
   },
   {
@@ -413,80 +1178,168 @@
    "http": 200,
    "ok": true,
    "answered": true,
-   "sameModel": true,
-   "pinMiss": true,
-   "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 578,
-   "err": "",
-   "tried": [
-    "xkiro:http 404 {\"error\":{\"message\":\"This model"
-   ]
-  },
-  {
-   "id": "ministral-8b-2512",
-   "http": 200,
-   "ok": true,
-   "answered": true,
-   "sameModel": true,
-   "pinMiss": false,
-   "provider": "mistral",
-   "used": "ministral-8b-2512",
-   "ms": 406,
-   "err": "",
-   "tried": []
-  },
-  {
-   "id": "mistralai/mistral-large-2512",
-   "http": 200,
-   "ok": true,
-   "answered": true,
-   "sameModel": true,
-   "pinMiss": false,
-   "provider": "xkiro",
-   "used": "mistralai/mistral-large-2512",
-   "ms": 911,
-   "err": "",
-   "tried": []
-  },
-  {
-   "id": "openai/gpt-oss-20b",
-   "http": 200,
-   "ok": true,
-   "answered": true,
-   "sameModel": true,
-   "pinMiss": false,
-   "provider": "groq",
-   "used": "openai/gpt-oss-20b",
-   "ms": 310,
-   "err": "",
-   "tried": []
-  },
-  {
-   "id": "qwen/qwen3.7-flash:free",
-   "http": 200,
-   "ok": true,
-   "answered": true,
-   "sameModel": true,
-   "pinMiss": false,
-   "provider": "xkiro",
-   "used": "qwen/qwen3.7-flash:free",
-   "ms": 3401,
-   "err": "",
-   "tried": []
-  },
-  {
-   "id": "qwen/qwen3.8-27b",
-   "http": 200,
-   "ok": true,
-   "answered": true,
-   "sameModel": true,
+   "sameModel": false,
    "pinMiss": false,
    "provider": "groq",
    "used": "qwen/qwen3.8-27b",
-   "ms": 168,
+   "ms": 166,
    "err": "",
    "tried": []
+  },
+  {
+   "id": "minimax/minimax-m2.7:free",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 371,
+   "err": "",
+   "tried": [
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "minimax/minimax-m3:free",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": false,
+   "pinMiss": false,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 140,
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "mistral-medium-3.5",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 423,
+   "err": "",
+   "tried": [
+    "mistral:rate-limit"
+   ]
+  },
+  {
+   "id": "mistral-small-2603",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 610,
+   "err": "",
+   "tried": [
+    "mistral:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "openai/gpt-oss-120b",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": false,
+   "provider": "groq",
+   "used": "openai/gpt-oss-120b",
+   "ms": 440,
+   "err": "",
+   "tried": []
+  },
+  {
+   "id": "qwen3.5-plus",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 928,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.6-flash",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "gemini",
+   "used": "gemini-3.5-flash",
+   "ms": 3806,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
+   ]
+  },
+  {
+   "id": "qwen3.6-plus",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "qwen/qwen3.8-27b",
+   "ms": 846,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.7-max",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 681,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.7-plus",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "openrouter",
+   "used": "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "ms": 3665,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit",
+    "groq:rate-limit",
+    "zai:в карантине: нет баланса (429)"
+   ]
   },
   {
    "id": "qwen3.8-max",
@@ -496,11 +1349,27 @@
    "sameModel": true,
    "pinMiss": true,
    "provider": "groq",
-   "used": "openai/gpt-oss-120b",
-   "ms": 405,
+   "used": "qwen/qwen3.8-27b",
+   "ms": 623,
    "err": "",
    "tried": [
     "odirouter:rate-limit"
+   ]
+  },
+  {
+   "id": "qwen3.8-max-preview",
+   "http": 200,
+   "ok": true,
+   "answered": true,
+   "sameModel": true,
+   "pinMiss": true,
+   "provider": "groq",
+   "used": "openai/gpt-oss-20b",
+   "ms": 657,
+   "err": "",
+   "tried": [
+    "odirouter:rate-limit",
+    "groq:rate-limit"
    ]
   }
  ]

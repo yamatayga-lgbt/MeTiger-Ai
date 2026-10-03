@@ -42,8 +42,8 @@ export const TABLE = {
     envPrefix: 'GEMINI',
     limit: 250,
     models: {
-      fast: ["gemini-2.5-flash","gemini-3.5-flash","gemini-3.6-flash","gemini-3.7-flash","gemini-3.8-flash","gemini-3.1-flash-lite","gemini-flash-lite-latest","gemma-4-26b-a4b-it"],
-      smart: ["gemini-3.1-pro-preview","gemini-3.8-flash","gemini-3.5-flash","gemini-pro-latest","gemma-4-31b-it"],
+      fast: ["gemini-2.5-flash","gemini-3.5-flash","gemini-3.6-flash","gemini-3.1-flash-lite","gemini-flash-lite-latest","gemma-4-26b-a4b-it"],
+      smart: ["gemini-3.5-flash","gemma-4-31b-it"],
     },
   },
   cerebras: {
@@ -86,8 +86,8 @@ export const TABLE = {
     envPrefix: 'MISTRAL',
     limit: 1000,
     models: {
-      fast: ["ministral-3b-2512","ministral-8b-2512","mistral-small-2603","codestral-2508"],
-      smart: ["mistral-medium-3.5","ministral-14b-2512","magistral-small-latest"],
+      fast: ["ministral-3b-2512","ministral-8b-2512","codestral-2508"],
+      smart: ["ministral-14b-2512"],
     },
   },
   openrouter: {
@@ -119,8 +119,8 @@ export const TABLE = {
     envPrefix: 'XKIRO',
     limit: 1000,
     models: {
-      fast: ["qwen/qwen3.7-flash:free","qwen/qwen3.5-flash:free","qwen/qwen3.6-27b:free","qwen/qwen3.6-35b-a3b:free","qwen/qwen3-omni-flash:free","qwen/qwen3.5-omni-flash:free","qwen/qwen3.8-omni-flash:free","mistralai/ministral-8b","mistralai/ministral-3b","mistralai/ministral-14b","minimax/minimax-m2.7-highspeed:free","minimax/minimax-m2.5-highspeed:free","minimax/minimax-m2.1-highspeed:free","sensenova/sensenova-6.8-flash-lite","sensenova/sensenova-6.7-flash-lite"],
-      smart: ["qwen/qwen3.8-max:free","qwen/qwen3.7-max:free","qwen/qwen3.6-max-preview:free","qwen/qwen3-max:free","qwen/qwen3.7-plus:free","qwen/qwen3.6-plus:free","qwen/qwen3.5-plus:free","qwen/qwen3.5-397b-a17b:free","qwen/qwen-plus-2025-07-28:free","minimax/minimax-m3:free","minimax/minimax-m2.7:free","minimax/minimax-m2.5:free","minimax/minimax-m2:free","minimax/minimax-m2.1:free","mistralai/mistral-large-2512","mistralai/mistral-medium-3.5","mistralai/mistral-small-2603","mistralai/devstral-medium","mistralai/codestral-2508","qwen/qwen3-coder-plus:free","qwen/qwen3.5-omni-plus:free","qwen/qwen3-vl-plus:free"],
+      fast: ["qwen/qwen3.7-flash:free","qwen/qwen3.5-flash:free","qwen/qwen3.6-27b:free","qwen/qwen3.6-35b-a3b:free","qwen/qwen3-omni-flash:free","qwen/qwen3.5-omni-flash:free","qwen/qwen3.8-omni-flash:free","mistralai/ministral-8b","mistralai/ministral-3b","mistralai/ministral-14b","sensenova/sensenova-6.8-flash-lite","sensenova/sensenova-6.7-flash-lite"],
+      smart: ["qwen/qwen3.8-max:free","qwen/qwen3.7-max:free","qwen/qwen3.6-max-preview:free","qwen/qwen3-max:free","qwen/qwen3.7-plus:free","qwen/qwen3.6-plus:free","qwen/qwen3.5-plus:free","qwen/qwen3.5-397b-a17b:free","qwen/qwen-plus-2025-07-28:free","mistralai/mistral-large-2512","mistralai/mistral-medium-3.5","mistralai/mistral-small-2603","mistralai/devstral-medium","mistralai/codestral-2508","qwen/qwen3-coder-plus:free","qwen/qwen3.5-omni-plus:free","qwen/qwen3-vl-plus:free"],
     },
   },
   zai: {
@@ -174,8 +174,8 @@ export const TABLE = {
     envPrefix: 'ODIROUTER',
     limit: 1000,
     models: {
-      fast: ["free-gemini-3-flash-preview","free-gemini-2.5-flash-lite","free-gemini-3.1-flash-lite","free-qwen3.5-plus","free-qwen3.5-flash","qwen3.5-flash","gemini-3.1-flash-lite","free-gemini-2.5-flash","free-vclaude-haiku-4.5","free-claude-haiku-4.5","qwen3.6-flash","free-gemini-2.5-pro"],
-      smart: ["claude-opus-4-8","claude-fable-5.1","claude-opus-4-6","claude-opus-5","claude-fable-5","claude-sonnet-5","claude-sonnet-4-6","claude-sonnet-4-5","gemini-3.8-flash","gemini-3.7-flash","gemini-3.5-flash","gemini-2.5-pro","grok-4.6","grok-4.5","qwen3.8-max","qwen3.8-max-preview","qwen3.7-max","qwen3.7-plus","glm-5.3","glm-5.3-flash","glm-5","glm-5.1","glm-5.2","kimi-k3","kimi-k2.6","kimi-k2.5","deepseek-v4-pro","deepseek-v4-flash","deepseek-v4-flash-0731","gpt-5.6-sol","gpt-5.6-terra","gpt-5.5","gpt-5.4","gpt-5","minimax-m2.7","minimax-m2.5","minimax-m3","qwen3.6-plus","qwen3.5-plus"],
+      fast: ["free-gemini-3.1-flash-lite","free-qwen3.5-plus","free-qwen3.5-flash","qwen3.5-flash","gemini-3.1-flash-lite"],
+      smart: ["gemini-3.5-flash","deepseek-v4-pro","deepseek-v4-flash"],
     },
   },
 };
