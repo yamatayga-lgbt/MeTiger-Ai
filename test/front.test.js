@@ -734,6 +734,73 @@ console.log('L — песочница: запуск кода в браузере
       chat.includes('<details className="msg-reason">') && chat.includes('думал вслух')
         && app.includes('slice(0, 4000)'));
   }
+
+  {
+    const saved4 = globalThis.fetch;
+    const bodies = [];
+    try {
+      globalThis.fetch = async (_u, init) => {
+        bodies.push(String((init && init.body) || ''));
+        return new Response(JSON.stringify({
+          ok: true,
+          reply: 'Ответ [1]',
+          sources: [{ title: 'Википедия', url: 'https://ru.wikipedia.org/wiki/Тест' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+      const r1 = await sendChat('вопрос', [], { webSearch: true });
+      await sendChat('вопрос', [], {});
+      ok('M23: webSearch уходит в теле запроса только по явной просьбе и возвращает sources',
+        JSON.parse(bodies[0]).webSearch === true
+          && !/webSearch/.test(bodies[1])
+          && Array.isArray(r1.sources)
+          && r1.sources[0].url === 'https://ru.wikipedia.org/wiki/Тест',
+        JSON.stringify({ b0: bodies[0], b1: bodies[1], s: r1.sources }));
+    } finally { globalThis.fetch = saved4 }
+  }
+
+  {
+    const React = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const out4 = join(dir, 'chatview-search.mjs');
+    execFileSync(bin, [
+      'src/views/ChatView.tsx', '--bundle', '--platform=node', '--format=esm',
+      '--packages=external', '--loader:.png=dataurl', '--outfile=' + out4, '--log-level=error',
+    ], { stdio: 'inherit' });
+    const { ChatView } = await import(out4);
+    const app = readFileSync('src/App.tsx', 'utf8');
+    const htmlOn = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{
+          id: 's1',
+          role: 'assistant',
+          text: 'Ответ по источникам [1].',
+          sources: [{ title: 'Квантовый компьютер', url: 'https://ru.wikipedia.org/wiki/Квантовый_компьютер' }],
+        }],
+        typing: false,
+        searchOn: true,
+        onSend() {},
+      }),
+    );
+    const htmlOff = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{ id: 's2', role: 'assistant', text: 'Без поиска.' }],
+        typing: false,
+        searchOn: false,
+        onSend() {},
+      }),
+    );
+    ok('M24: переключатель «поиск» живёт рядом со «вслух» и сохраняется между сессиями (mt-search)',
+      app.includes("'mt-search'")
+        && /class="search-toggle is-on"[^>]*aria-pressed="true"/.test(htmlOn)
+        && /class="search-toggle"[^>]*aria-pressed="false"/.test(htmlOff));
+    ok('M25: источники рендерятся кликабельными ссылками под ответом только тогда, когда они реально есть',
+      /class="msg-sources"/.test(htmlOn)
+        && /href="https:\/\/ru\.wikipedia\.org\/wiki\/Квантовый_компьютер"/.test(htmlOn)
+        && /\[1\]/.test(htmlOn)
+        && !/msg-sources/.test(htmlOff));
+  }
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

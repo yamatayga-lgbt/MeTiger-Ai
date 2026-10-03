@@ -61,6 +61,81 @@ function queryOf(text, extraStop) {
 
 export const URL_RE = /https?:\/\/[^\s<>"')\]]+/i;
 
+/**
+ * Распаковка редиректов поисковой выдачи (DuckDuckGo Lite прячет прямую ссылку в
+ * `//duckduckgo.com/l/?uddg=https%3A%2F%2F...`). Чистая функция: на вход любой
+ * href из выдачи, на выход — прямая `https://…` ссылка без промежуточного трекера.
+ */
+export function unwrapSearchUrl(href) {
+  const raw = String(href || '').trim();
+  if (!raw) return '';
+  const m = /[?&]uddg=([^&#]+)/i.exec(raw);
+  if (m) {
+    try {
+      const dec = decodeURIComponent(m[1]);
+      if (/^https?:\/\//i.test(dec)) return dec;
+    } catch { /* битый процент-код — оставляем исходный адрес */ }
+  }
+  if (raw.startsWith('//')) return 'https:' + raw;
+  return raw;
+}
+
+/**
+ * Собрать проверенные источники `{ title, url }` из текстового блока инструмента.
+ * Понимает все наши форматы: нумерованную выдачу `1) Заголовок — сниппет (https://…)`,
+ * новости `(дата; https://…)`, карточку страницы `Страница: … / URL: …` и
+ * википедию `Заголовок: … / Источник: …`. Дубли по адресу убираются.
+ */
+export function extractSources(block) {
+  const lines = String(block || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  const add = (title, rawUrl) => {
+    const url = unwrapSearchUrl(String(rawUrl || '').replace(/[),.;]+$/, '').trim());
+    if (!/^https?:\/\//i.test(url) || /creativecommons\.org\/licenses/i.test(url)) return;
+    if (seen.has(url)) return;
+    seen.add(url);
+    let t = clean(String(title || '').replace(/^\d+\)\s*/, '').replace(/^\[Инструмент:[^\]]*\]\s*/i, ''));
+    if (!t || /^https?:\/\//i.test(t)) {
+      try { t = new URL(url).hostname.replace(/^www\./i, ''); } catch { t = url; }
+    }
+    if (t.length > 80) t = t.slice(0, 79).trimEnd() + '…';
+    out.push({ title: t, url });
+  };
+  let prevTitle = '';
+  for (const line of lines) {
+    if (/^\[Инструмент:/i.test(line) || /^Результаты поиска/i.test(line) || /^Выжимка из источника/i.test(line)) continue;
+    const pageMatch = /^Страница:\s*(.+)$/i.exec(line);
+    if (pageMatch) { prevTitle = pageMatch[1]; continue; }
+    const directMatch = /^(?:Источник|URL):\s*(https?:\/\/\S+)/i.exec(line);
+    if (directMatch) {
+      add(prevTitle, directMatch[1]);
+      prevTitle = '';
+      continue;
+    }
+    const urls = [...line.matchAll(/https?:\/\/[^\s<>"')\];]+/gi)].map((m) => m[0]);
+    if (!urls.length) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx > 0 && colonIdx < 80) prevTitle = line.slice(0, colonIdx);
+      continue;
+    }
+    const url = urls[urls.length - 1];
+    const head = line
+      .replace(/^\d+\)\s*/, '')
+      .replace(/\s*\([^()]*https?:\/\/[^()]*\)\s*$/i, '')
+      .replace(/https?:\/\/\S+/gi, '')
+      .trim();
+    const iDash = head.indexOf(' — ');
+    const iCol = head.indexOf(': ');
+    const sep = iDash > 0 && iCol > 0 ? Math.min(iDash, iCol) : (iDash > 0 ? iDash : iCol);
+    const title = sep > 0 && sep < 90 ? head.slice(0, sep) : head;
+    add(title || prevTitle, url);
+    prevTitle = '';
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 /** Байты для «честной случайности»: в рантайме Workers crypto есть, в node — из node:crypto. */
 function rndBytes(n) {
   const out = new Uint8Array(n);
@@ -357,10 +432,12 @@ export const TOOLS = [
     id: 'web-search',
     title: 'Веб-поиск',
     when: (t) => /найди в интернете|найди в сети|погугли|поищи|поиск[аи]?\s+в\s+интернете|search\s+the\s+web|найди информацию|актуальн\w*\s+данн|последн\w+\s+(верси|данн|инфо)/i.test(t),
-    async run({ text, fetch: fi }) {
-      const q = queryOf(text);
+    async run({ text, fetch: fi, force, deep }) {
+      const q = queryOf(text) || ((force || deep) ? clean(text).slice(0, 120) : '');
       if (!q) return null;
       const out = [];
+      const webUrls = [];
+      const wikiCap = deep ? 3 : 5;
       /* Источники по порядку надёжности из Workers: поиск Wikimedia REST (тот же
          контур, что у живой вики), потом DDG IA (хорош на английском), потом
          lite-выдача DDG. Action API википедии из CF не отвечает — не используем. */
@@ -369,27 +446,38 @@ export const TOOLS = [
         const j = await r.json();
         const pages = (j && j.pages) || [];
         for (const p of pages) {
-          if (out.length >= 5) break;
-          const desc = clean(String(p.description || p.excerpt || '').replace(/<[^>]+>/g, ''));
-          out.push(`${clean(p.title)}${desc ? `: ${desc}` : ''}`);
+          if (out.length >= wikiCap) break;
+          const d = clean(String(p.description || '').replace(/<[^>]+>/g, ''));
+          const ex = clean(String(p.excerpt || '').replace(/<[^>]+>/g, ''));
+          const desc = d && ex && ex.toLowerCase().indexOf(d.toLowerCase()) < 0 ? `${d} — ${ex}` : (d || ex);
+          const slug = encodeURIComponent(String(p.key || p.title || '').trim().replace(/\s+/g, '_'));
+          const pageUrl = slug ? `https://${lang}.wikipedia.org/wiki/${slug}` : '';
+          out.push(`${clean(p.title)}${desc ? `: ${desc}` : ''}${pageUrl ? ` (${pageUrl})` : ''}`);
         }
       };
       try { await wikiSearch('ru'); } catch { /* источник молчит — пробуем следующий */ }
       if (out.length < 3) {
         try { await wikiSearch('en'); } catch { /* ignore */ }
       }
-      if (out.length < 3) {
+      if (out.length < 3 || deep) {
         try {
           const r = await fetchT(fi, `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1&no_redirect=1`);
           const j = await r.json();
-          if (j && j.AbstractText) out.push(`${clean(j.AbstractText)}${j.AbstractURL ? ` (${j.AbstractURL})` : ''}`);
+          if (j && j.AbstractText) {
+            const absUrl = unwrapSearchUrl(j.AbstractURL || '');
+            if (absUrl) webUrls.push(absUrl);
+            out.push(`${clean(j.AbstractText)}${absUrl ? ` (${absUrl})` : ''}`);
+          }
           for (const t of (j && j.RelatedTopics) || []) {
-            if (out.length >= 5) break;
-            if (t && t.Text) out.push(clean(t.Text));
+            if (out.length >= 6) break;
+            if (t && t.Text) {
+              const u = unwrapSearchUrl(t.FirstURL || '');
+              out.push(`${clean(t.Text)}${u ? ` (${u})` : ''}`);
+            }
           }
         } catch { /* ignore */ }
       }
-      if (out.length < 3) {
+      if (out.length < 3 || deep) {
         try {
           const r = await fetchT(fi, `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`);
           const html = await r.text();
@@ -397,14 +485,38 @@ export const TOOLS = [
           const snips = [...String(html).matchAll(/<td[^>]*class="[^"]*result-snippet[^"]*"[^>]*>([\s\S]*?)<\/td>/g)];
           for (let i = 0; i < links.length; i++) {
             if (out.length >= 6) break;
-            const title = clean(links[i][2]);
-            const href = links[i][1];
+            const title = clean(links[i][2].replace(/<[^>]+>/g, ''));
+            const href = unwrapSearchUrl(links[i][1]);
             const snip = snips[i] ? clean(snips[i][1].replace(/<[^>]+>/g, '')) : '';
-            if (title) out.push(`${title}${snip ? ` — ${snip}` : ''} (${href})`);
+            if (title) {
+              if (/^https?:\/\//i.test(href)) webUrls.push(href);
+              out.push(`${title}${snip ? ` — ${snip}` : ''}${href ? ` (${href})` : ''}`);
+            }
           }
         } catch { /* ignore */ }
       }
-      return out.length ? `Результаты поиска по запросу «${q}»:\n${out.map((s, i) => `${i + 1}) ${s}`).join('\n')}` : null;
+      if (!out.length) return null;
+      let extra = '';
+      /* Глубокий поиск (по явному переключателю «поиск»): не ограничиваемся сниппетом,
+         а читаем первую найденную веб-страницу внутри бюджета и отдаём её выжимку. */
+      if (deep && webUrls.length) {
+        try {
+          const topUrl = webUrls[0];
+          const pr = await fetchT(fi, topUrl, { timeout: 3500 });
+          const html = await pr.text();
+          const body = String(html || '')
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&quot;/g, '"')
+            .replace(/&#?\w+;/g, ' ');
+          const frag = clean(body).slice(0, 900);
+          if (frag.length >= 40) extra = `\nВыжимка из источника (${topUrl}): ${frag}`;
+        } catch { /* страница закрыта или медлит — остаётся основная выдача */ }
+      }
+      return `Результаты поиска по запросу «${q}»:\n${out.map((s, i) => `${i + 1}) ${s}`).join('\n')}${extra}`;
     },
   },
 
@@ -555,18 +667,22 @@ export const TOOLS = [
   },
 ];
 
+const SOURCE_TOOLS = new Set(['web-search', 'wikipedia', 'news', 'url']);
+
 /**
  * Собрать данные всех сработавших инструментов.
- * Возвращает { used: string[], block: string } — block пустой, если данных нет.
+ * Возвращает { used: string[], block: string, directive: string, sources: {title,url}[] }.
  */
 export async function gatherTools(text, env, fetchImpl, o) {
   const fi = fetchImpl || ((...a) => fetch(...a));
   const opts = o || {};
   const force = new Set(opts.force || []);
+  if (opts.deep) force.add('web-search');
   const off = new Set(String((env && env.TOOLS_OFF) || '').split(',').map((s) => s.trim()).filter(Boolean));
   const used = [];
   const parts = [];
   const directives = [];
+  const srcParts = [];
   for (const t of TOOLS) {
     if (off.has(t.id)) continue;
     let hit = force.has(t.id);
@@ -575,15 +691,17 @@ export async function gatherTools(text, env, fetchImpl, o) {
     try {
       /* `img` — подменяемый слой картинок: тесты и чужие сборки движка обязаны
          видеть в инструменте ровно тот экземпляр, что у движка, а не модульный. */
-      const data = await t.run({ text, env, fetch: fi, force: force.has(t.id), img: opts.img });
+      const data = await t.run({ text, env, fetch: fi, force: force.has(t.id), deep: !!opts.deep, img: opts.img });
       if (!data) continue;
       used.push(t.id);
+      if (SOURCE_TOOLS.has(t.id)) srcParts.push(data);
       /* kind: 'directive' — правило для модели, а не внешние данные. */
       (t.kind === 'directive' ? directives : parts).push(
         t.kind === 'directive' ? `【${t.title}】\n${data}` : `[Инструмент: ${t.title}]\n${data}`);
     } catch { /* ошибка инструмента — не ошибка чата */ }
   }
-  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n') };
+  const sources = srcParts.length ? extractSources(srcParts.join('\n')) : [];
+  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources };
 }
 
 export const TOOL_IDS = () => TOOLS.map((t) => t.id);

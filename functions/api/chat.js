@@ -348,6 +348,9 @@ async function handlePost(context) {
     /* Блок профиля уходит в system после персоны и до резки окна (см. engine/chat.js):
        его же читают и головы совета — у них входа отдельно от ctx.system нет. */
     profile: profileBlock || undefined,
+    /* Явный запрос глубокого поиска («поиск» в панели ввода): принудительно зовёт
+       web-search и читает первую найденную страницу, даже если в вопросе нет слова «погугли». */
+    webSearch: body && body.webSearch === true ? true : undefined,
     deadlineMs: Number(env.CHAT_DEADLINE_MS || 50000),
   });
 
@@ -401,6 +404,8 @@ async function handlePost(context) {
     gender: r.gender, emotion: r.emotion || undefined,
     /* Какие инструменты реально накормили ответ — видно в подписи под пузырём. */
     tools: r.tools || [],
+    /* Проверенные ссылки из поиска, вики, новостей или прочитанной страницы — кликабельно под ответом. */
+    sources: r.sources && r.sources.length ? r.sources : undefined,
     /* навыки (engine/skills.js): чем именно модель себя правила на этом вопросе, и
        что человек может проверить сам — тот же curl покажет список, а не догадку */
     skills: (r.skills || []).map((s) => s.title),

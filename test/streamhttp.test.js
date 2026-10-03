@@ -197,6 +197,35 @@ console.log('── H · SSE-обёртка двери /api/chat ───');
       ev.filter((e) => e.channel === 'reasoning').length === 0 && ev.filter((e) => e.kind === 'draft').length === 1
         && ev.filter((e) => e.kind === 'final').pop().payload.reply === 'ок',
       JSON.stringify(ev.map((e) => e.kind + (e.channel ? ':' + e.channel : ''))));
+    ok('H13: без поисковых инструментов поле sources не засоряет ответ',
+      ev.filter((e) => e.kind === 'final').pop().payload.sources === undefined);
+  });
+
+  await withFetch(async () => {
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('api.wikimedia.org/core/v1/wikipedia/ru/search')) {
+        return new Response(JSON.stringify({
+          pages: [{ title: ' графен ', key: 'Графен', description: 'двумерный кристалл', excerpt: 'слой атомов углерода' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (u.includes('duckduckgo.com')) {
+        return new Response(JSON.stringify({ AbstractText: '', RelatedTopics: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'Графен [1]' }, finish_reason: 'stop' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const res = await post({ text: 'расскажи про двумерный углерод', chatId: 'sse8', webSearch: true }, SSE);
+    const { events: ev } = await drain(res);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H14: webSearch:true включает глубокий поиск без слова «погугли» и отдаёт проверенные sources в финале',
+      fin && fin.payload.ok === true
+        && (fin.payload.tools || []).includes('web-search')
+        && Array.isArray(fin.payload.sources)
+        && fin.payload.sources.length === 1
+        && fin.payload.sources[0].title === 'графен'
+        && /ru\.wikipedia\.org\/wiki\//.test(fin.payload.sources[0].url),
+      JSON.stringify(fin && fin.payload));
   });
 
 

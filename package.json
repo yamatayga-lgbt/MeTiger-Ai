@@ -1,7 +1,7 @@
 {
   "name": "metiger-ai",
   "private": true,
-  "version": "0.047",
+  "version": "0.048",
   "type": "module",
   "description": "MeTiger Ai — универсальный ИИ-агент: один чат на сайте, тексты, код, картинки, файлы",
   "scripts": {

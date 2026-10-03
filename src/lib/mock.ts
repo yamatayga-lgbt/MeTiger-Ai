@@ -75,6 +75,8 @@ export interface ChatMessage {
   adviceTone?: 'ok' | 'warn' | 'quiet'
   /** Кусок того, как модель рассуждала (только если «думать вслух» было включено). */
   reasoning?: string
+  /** Проверенные источники ответа (заголовок + ссылка) — кликабельны под пузырём. */
+  sources?: { title: string; url: string }[]
 }
 
 const REPLIES: { match: RegExp; text: string }[] = [

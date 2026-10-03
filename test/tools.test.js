@@ -4,7 +4,7 @@
  * Запуск: node test/tools.test.js
  */
 import assert from 'node:assert';
-import { gatherTools, evalExpr, TOOL_IDS, JOKES, isoWeek } from '../engine/tools.js';
+import { gatherTools, evalExpr, TOOL_IDS, JOKES, isoWeek, unwrapSearchUrl, extractSources } from '../engine/tools.js';
 import { formatFromText, nameFromText } from '../engine/filegen.js';
 
 let pass = 0, fail = 0;
@@ -153,6 +153,47 @@ ok('T29: TOOLS_OFF выключает инструмент целиком — и
   (await gatherTools('анекдот про котов', { TOOLS_OFF: 'joke' }, fakeFetch({ 'x': {} }))).block === '');
 ok('T30: force зовёт инструмент без триггера (так навык получает свои данные)',
   (await gatherTools('привет', {}, fakeFetch({}), { force: ['coin'] })).used.join() === 'coin', '');
+
+console.log('T — глубокий поиск, распаковка редиректов и источники');
+ok('T31: unwrapSearchUrl разворачивает редирект DDG Lite в прямую ссылку',
+  unwrapSearchUrl('//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc%3Fa%3D1&rut=9') === 'https://example.com/doc?a=1'
+    && unwrapSearchUrl('//example.org/p') === 'https://example.org/p',
+  unwrapSearchUrl('//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdoc%3Fa%3D1&rut=9'));
+
+const parsedSrc = extractSources([
+  'Результаты поиска по запросу «квантовый компьютер»:',
+  '1) Квантовый компьютер: вычислительное устройство — использует кубиты (https://ru.wikipedia.org/wiki/Квантовый_компьютер)',
+  '2) Обзор кубитов — свежая статья (https://qc.example/article)',
+  '3) Дубль той же статьи — другой сниппет (https://qc.example/article)',
+].join('\n'));
+ok('T32: extractSources вынимает заголовки и ссылки без дублей',
+  parsedSrc.length === 2
+    && parsedSrc[0].title === 'Квантовый компьютер'
+    && parsedSrc[0].url === 'https://ru.wikipedia.org/wiki/Квантовый_компьютер'
+    && parsedSrc[1].title === 'Обзор кубитов'
+    && parsedSrc[1].url === 'https://qc.example/article',
+  JSON.stringify(parsedSrc));
+
+const deepRes = await gatherTools('сверхпроводники при комнатной температуре', {}, fakeFetch({
+  'api.wikimedia.org/core/v1/wikipedia/ru/search': {
+    pages: [{ title: 'Сверхпроводимость', key: 'Сверхпроводимость', description: 'свойство материалов', excerpt: 'нулевое электрическое сопротивление' }],
+  },
+  'api.duckduckgo.com': { AbstractText: '', RelatedTopics: [] },
+  'lite.duckduckgo.com': '<a class="result-link" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fphys.example%2Flk99">Проверка образцов</a><td class="result-snippet">Критический разбор</td>',
+  'https://phys.example/lk99': '<html><body><p>Подробный отчёт лаборатории показал отсутствие эффекта Мейснера при комнатной температуре в проверенных образцах.</p></body></html>',
+}), { deep: true });
+ok('T33: deep=true включает веб-поиск без слова «погугли», склеивает вики + выдачу + выжимку страницы и собирает sources',
+  deepRes.used.includes('web-search')
+    && deepRes.block.includes('нулевое электрическое сопротивление')
+    && deepRes.block.includes('Выжимка из источника (https://phys.example/lk99)')
+    && deepRes.block.includes('отсутствие эффекта Мейснера')
+    && deepRes.sources.length === 2
+    && deepRes.sources[1].url === 'https://phys.example/lk99',
+  JSON.stringify({ sources: deepRes.sources, block: deepRes.block.slice(0, 220) }));
+
+const deepOff = await gatherTools('сверхпроводники', { TOOLS_OFF: 'web-search' }, fakeFetch({}), { deep: true });
+ok('T34: TOOLS_OFF запрещает web-search даже при deep=true',
+  deepOff.used.length === 0 && deepOff.block === '' && deepOff.sources.length === 0);
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

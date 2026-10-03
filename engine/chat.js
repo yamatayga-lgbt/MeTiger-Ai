@@ -220,9 +220,10 @@ export function createEngine(opts) {
        тогда, когда источник уже хоть раз вернул байт (см. LIVE_CATS в skills.js). */
     const imgToolReady = { imggen: editsReady(imggen.status()) };
     const skills = useSkills ? detectSkills(text, { images, env, imgToolReady }) : [];
+    const wantWeb = input.webSearch === true;
     const toolsRes = input.useTools === false
-      ? { used: [], block: '', directive: '' }
-      : await gatherTools(text, env, fetchImpl, { force: skillTools(skills), img: imggen });
+      ? { used: [], block: '', directive: '', sources: [] }
+      : await gatherTools(text, env, fetchImpl, { force: skillTools(skills), deep: wantWeb, img: imggen });
     /* Картинок человек просит — по формулировке или по block-у в ответе. Флаг
        нужен постобработке: без него движок не тратит вызовы на генерацию. */
     const imgRequested = input.useTools !== false && wantsImage(text, images);
@@ -230,7 +231,8 @@ export function createEngine(opts) {
     let userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
     let ctxNotes = [];
     const toolsHint = toolsRes.block
-      ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных.'
+      ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных'
+        + (toolsRes.sources && toolsRes.sources.length ? ' и ссылайся на источники номерами [1], [2] по порядку их появления.' : '.')
       : '';
     const styleHint = isDefaultSys ? style.hintFor(intent, env) : '';
     /* Блок навыков идёт после подсказки про инструменты, указание про файл — самым
@@ -507,7 +509,8 @@ export function createEngine(opts) {
                подменяем: подпись «xkiro · wide/model-b» скрывала бы подмену */
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
-            tools: toolsRes.used, reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
+            tools: toolsRes.used, sources: toolsRes.sources || [],
+            reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
           };
           /* Советы голов (Этап 2): факт может поправить большинство, манеру не трогаем.
              Головы вызываются с других провайдеров и сами совет не собирают. */
@@ -559,7 +562,8 @@ export function createEngine(opts) {
         if (r.ok) {
           const hit = {
             reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
-            tools: toolsRes.used, reframed: true, freedomCleaned: !!r.freedomCleaned,
+            tools: toolsRes.used, sources: toolsRes.sources || [],
+            reframed: true, freedomCleaned: !!r.freedomCleaned,
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
           };
@@ -638,6 +642,7 @@ export function createEngine(opts) {
       providerOrder: [provider],
       noCouncils: true,
       allowReframe: false,
+      webSearch: false,
       deadlineMs: Math.max(3500, wall - Date.now()),
       modelsPerProvider: 1,
     });
@@ -717,6 +722,7 @@ export function createEngine(opts) {
       ok: !!hit, reply: hit ? scrubToolMarkers(hit.reply) : '', reasoning: hit ? hit.reasoning : '',
       provider: hit ? hit.provider : '', model: hit ? hit.model : '',
       tools: hit ? (hit.tools || []) : [],
+      sources: hit && Array.isArray(hit.sources) ? hit.sources : [],
       reframed: hit ? !!hit.reframed : false,
       freedomCleaned: hit ? !!hit.freedomCleaned : false,
       ensemble: hit ? hit.ensemble : null, ensembleSkip: hit ? (hit.ensembleSkip || '') : '',

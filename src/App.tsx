@@ -69,6 +69,12 @@ export default function App() {
     false,
     (v): v is boolean => typeof v === 'boolean',
   )
+  /* глубокий поиск в сети («поиск» рядом с «вслух»): выбор тоже живёт между сессиями */
+  const [searchOn, setSearchOn] = usePersistentState<boolean>(
+    'mt-search',
+    false,
+    (v): v is boolean => typeof v === 'boolean',
+  )
   /* Выбранная модель ответа — между сессиями (как и все настройки). '' = Авто. */
   const [model, setModel] = usePersistentState<string>('mt-model', '', isModelId)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -208,6 +214,7 @@ export default function App() {
              пул, обрывки с экрана убираем */
           onDraft: (t) => setDraft(t),
           ...(reasoningOn ? { onReasoning: (t: string | null) => setDraftReasoning(t) } : {}),
+          ...(searchOn ? { webSearch: true } : {}),
         })
         const reply =
           r.ok && r.reply
@@ -232,6 +239,8 @@ export default function App() {
               /* что модель передумала по дороге — под ответом, раскрытым не будет:
                  это справочная строка для тех, кто включил «думать вслух» */
               reasoning: r.ok && reasoningOn && r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
+              /* проверенные ссылки из поиска/вики/новостей — кликабельны под ответом */
+              sources: r.ok && Array.isArray(r.sources) && r.sources.length ? r.sources.slice(0, 8) : undefined,
             }
           : ({} as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet' })
         setChats((prev) =>
@@ -324,6 +333,8 @@ export default function App() {
                 draftReasoning={draftReasoning}
                 reasoningOn={reasoningOn}
                 onToggleReasoning={() => setReasoningOn((v) => !v)}
+                searchOn={searchOn}
+                onToggleSearch={() => setSearchOn((v) => !v)}
                 onSend={sendMessage}
                 model={model}
                 onModelChange={setModel}

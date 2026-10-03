@@ -18,6 +18,11 @@ export interface ChatTurn {
   text: string
 }
 
+export interface SourceLink {
+  title: string
+  url: string
+}
+
 export interface ChatResult {
   ok: boolean
   reply: string
@@ -40,6 +45,8 @@ export interface ChatResult {
   vision?: string
   /** Какие инструменты агента накормили ответ (web-search, news, calc…). */
   tools?: string[]
+  /** Проверенные ссылки из поиска, вики, новостей или прочитанной страницы. */
+  sources?: SourceLink[]
   /** Навыки, которые включились по смыслу вопроса (engine/skills.js). */
   skills?: string[]
   /** Документы, которые модель оформила файлом: имя, mime, вес и base64 целиком. */
@@ -410,6 +417,11 @@ export async function sendChat(
      * Просим их только когда переключатель включён — сервер без просьбы их не шлёт.
      */
     onReasoning?: (text: string | null) => void
+    /**
+     * Явный запрос глубокого поиска («поиск» в панели ввода): принудительно зовёт
+     * web-search и читает первую найденную страницу, даже без слова «погугли».
+     */
+    webSearch?: boolean
   } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
@@ -431,6 +443,8 @@ export async function sendChat(
         gender: opts.gender || undefined,
         /* явная просьба показать, как модель думала; без неё сервер в этом канале молчит */
         showReasoning: opts.onReasoning ? true : undefined,
+        /* явная просьба глубокого поиска в сети; без неё работают только собственные триггеры */
+        webSearch: opts.webSearch ? true : undefined,
         /* кто пишет: по этому ключу бэкенд держит память и профиль. Без него весь
            веб делил одну память на всех незнакомцев */
         userId: currentUserId(),

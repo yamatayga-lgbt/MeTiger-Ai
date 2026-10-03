@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Brain, ChevronDown, Mic, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Brain, ChevronDown, Globe, Mic, Paperclip, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
@@ -107,6 +107,9 @@ interface ChatViewProps {
   /** Переключатель «думать вслух» в панели ввода */
   reasoningOn?: boolean
   onToggleReasoning?: () => void
+  /** Переключатель глубокого поиска («поиск») в панели ввода */
+  searchOn?: boolean
+  onToggleSearch?: () => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Выбранная модель ('' = Авто) и смена — живут в App и сохраняются. */
   model?: string
@@ -121,6 +124,8 @@ export function ChatView({
   draftReasoning,
   reasoningOn,
   onToggleReasoning,
+  searchOn,
+  onToggleSearch,
   onSend,
   model = '',
   onModelChange,
@@ -393,6 +398,23 @@ export function ChatView({
                       <div className="msg-reason-text">{m.reasoning}</div>
                     </details>
                   ) : null}
+                  {Array.isArray(m.sources) && m.sources.length ? (
+                    <div className="msg-sources" aria-label="Источники">
+                      {m.sources.map((s, i) => (
+                        <a
+                          key={i}
+                          className="msg-source-chip"
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={s.url}
+                        >
+                          <span className="msg-source-idx">[{i + 1}]</span>
+                          <span className="msg-source-title">{s.title || s.url}</span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                   {m.advice || m.src ? (
                     <div className={`msg-meta${m.adviceTone ? ' is-' + m.adviceTone : ''}`}>
                       {m.advice ? <span className="msg-advice">{m.advice}</span> : null}
@@ -530,6 +552,19 @@ export function ChatView({
             >
               <Brain size={13} />
               вслух
+            </button>
+            <button
+              type="button"
+              className={`search-toggle${searchOn ? ' is-on' : ''}`}
+              aria-pressed={!!searchOn}
+              title="Глубокий поиск в сети: сверять ответ со свежими источниками и показывать ссылки"
+              onClick={() => {
+                haptic('light')
+                onToggleSearch?.()
+              }}
+            >
+              <Globe size={13} />
+              поиск
             </button>
           </div>
           <div className="composer-main">
