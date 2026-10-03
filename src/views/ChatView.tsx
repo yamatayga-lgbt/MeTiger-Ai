@@ -3,7 +3,7 @@ import { ArrowUp, ChevronDown, Mic, Paperclip, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic, type TgUser } from '../lib/telegram'
 import { timeGreeting, type ChatMessage } from '../lib/mock'
-import { fileToDataUrl, MAX_IMAGES, pickImages } from '../lib/images'
+import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
 import { modelOption } from '../lib/models'
 import { ModelPicker } from '../components/ModelPicker'
@@ -104,6 +104,8 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
+  /* Перетаскивание показываем словами: без подсветки человек не знает, что на окно можно ронять. */
+  const [dropping, setDropping] = useState(false)
   /* Документы и голос, приложенные в браузере: картинки показываются превью, а они
      — чипом с именем и весом, потому что превью у pdf нет и быть не может. */
   const [docs, setDocs] = useState<Attachment[]>([])
@@ -232,7 +234,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
-  const addFiles = async (list: FileList | null) => {
+  const addFiles = async (list: FileList | File[] | null) => {
     const all = list ? Array.from(list) : []
     if (!all.length) return
     /* Сколько картинок ещё влезает: MAX_IMAGES = 2, и всё, что сверх, раньше молча
@@ -271,7 +273,31 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
   }
 
   return (
-    <div className="chat-root">
+    <div
+      className="chat-root"
+      onDragOver={(e) => {
+        const t = e.dataTransfer ? Array.from(e.dataTransfer.types || []) : []
+        if (t.indexOf('Files') >= 0) { e.preventDefault(); if (!dropping) setDropping(true) }
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(e) => {
+        const fs = filesFromTransfer(e.dataTransfer)
+        e.preventDefault()
+        setDropping(false)
+        if (fs.length) void addFiles(fs)
+      }}
+    >
+      {dropping ? (
+        <div
+          style={{
+            position: 'fixed', left: '50%', top: 12, transform: 'translateX(-50%)', zIndex: 40,
+            padding: '6px 12px', borderRadius: 999, background: 'rgba(18,18,22,.92)',
+            color: '#fff', fontSize: 13, pointerEvents: 'none',
+          }}
+        >
+          отпустите — приложу фото или файл
+        </div>
+      ) : null}
       {empty ? (
         <div className="chat-hero">
           <img className="hero-mark" src={avatarUrl} alt="MeTiger Ai" />
@@ -480,6 +506,13 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
               setValue(el.value)
               el.style.height = 'auto'
               el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+            }}
+            onPaste={(e) => {
+              /* Вставка из буфера — второй способ, которым фото реально шлют: скриншот
+                 или копия из галереи. Файлов в буфере нет → событие не трогаем, текст
+                 вставляется как вставлялся. */
+              const fs = filesFromTransfer(e.clipboardData)
+              if (fs.length) { e.preventDefault(); void addFiles(fs) }
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

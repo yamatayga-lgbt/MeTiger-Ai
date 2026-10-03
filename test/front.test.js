@@ -147,6 +147,22 @@ console.log('H — вложения: что уходит в движок и чт
       && eng.sniffImageMime(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8])) === 'image/jpeg'
       && eng.sniffImageMime(new TextEncoder().encode('просто текст, не картинка')) === '',
     String(eng.sniffImageMime(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 1, 2, 3, 4]))));
+  const F = (name, type) => ({ name, type });
+  ok('H12: вставка из буфера — файлы берутся из files, при пустых из items (скриншот в WebKit)',
+    img.filesFromTransfer({ files: [F('a.png', 'image/png')] }).length === 1
+      && img.filesFromTransfer({ files: [], items: [{ kind: 'file', type: 'image/png', getAsFile: () => F('скриншот', 'image/png') }] })[0].name === 'скриншот',
+    JSON.stringify(img.filesFromTransfer({ files: [] }).length));
+  ok('H13: текст в буфере — ничего не возвращаем, событие не трогаем (вставка слов не ломается)',
+    img.filesFromTransfer({ files: [], items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }] }).length === 0
+      && img.filesFromTransfer(null).length === 0 && img.filesFromTransfer({}).length === 0);
+  const chatSrc = readFileSync('src/views/ChatView.tsx', 'utf8');
+  ok('H14: вставка и перетаскивание ведут в тот же addFiles, что и скрепка, а не в свою копию',
+    /onPaste=\{[^}]*filesFromTransfer\(e\.clipboardData\)[^}]*addFiles\(fs\)/s.test(chatSrc)
+      && /onDrop=\{[^}]*filesFromTransfer\(e\.dataTransfer\)[^}]*addFiles\(fs\)/s.test(chatSrc),
+    'нет связки paste/drop → addFiles');
+  ok('H15: drop подсвечивается словами, а addFiles принимает и File[], и FileList',
+    /отпустите — приложу/.test(chatSrc) && /list: FileList \| File\[\] \| null/.test(chatSrc));
+
 }
 
 console.log('I — окно выбора модели: витрина, пулы и живой каталог');

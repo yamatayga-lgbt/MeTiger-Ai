@@ -87,6 +87,33 @@ export async function fileToDataUrl(file: File, maxSide = MAX_SIDE): Promise<Pic
   }
 }
 
+/**
+ * Файлы из вставки (Ctrl+V) и перетаскивания. Возвращаем [] — и вызывающий НЕ трогает
+ * событие: текст в поле должен вставляться как вставлялся.
+ *
+ * `items` читаем вторым шагом не от жадности: в старых WebKit при вставке скриншота
+ * `files` пустой, а картинка лежит именно в items.
+ */
+export function filesFromTransfer(dt: {
+  files?: ArrayLike<File> | null
+  items?: ArrayLike<{ kind?: string; type?: string; getAsFile?: () => File | null }> | null
+} | null | undefined): File[] {
+  const out: File[] = []
+  const fl = dt && dt.files
+  if (fl && fl.length) for (let i = 0; i < fl.length; i++) { const f = fl[i]; if (f) out.push(f) }
+  if (out.length) return out
+  const items = dt && dt.items ? dt.items : null
+  if (items && items.length) {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      if (!it || it.kind !== 'file') continue
+      const f = it.getAsFile ? it.getAsFile() : null
+      if (f) out.push(f)
+    }
+  }
+  return out
+}
+
 async function load(objectUrl: string, file: File): Promise<{ width: number; height: number }> {
   if (typeof createImageBitmap === 'function' && file) {
     try {
