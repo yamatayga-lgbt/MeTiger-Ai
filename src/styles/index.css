@@ -1167,6 +1167,91 @@ kbd {
   color: #e6e4df;
 }
 
+/* Запуск кода. Песочница — iframe нулевой высоты, пока не запущен: сам фрейм
+   существует только время выполнения и убивается вместе с состоянием (см. CodeRunner). */
+.code-run {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 12px 10px;
+}
+
+.run-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7d5d0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.run-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.run-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.run-btn.ghost {
+  border-style: dashed;
+}
+
+.run-ms {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #7f8590;
+}
+
+.run-frame {
+  display: block;
+  width: 100%;
+  height: 0;
+  border: 0;
+}
+
+.run-note {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #7f8590;
+}
+
+.run-out {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent);
+  background: rgba(255, 255, 255, 0.03);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e6e4df;
+}
+
+.run-out.err {
+  border-left-color: var(--danger);
+  color: #f0c6bd;
+}
+
+.run-out.timeout {
+  border-left-color: #d6a13c;
+  color: #ecd9b4;
+}
+
 .typing {
   display: inline-flex;
   gap: 4px;

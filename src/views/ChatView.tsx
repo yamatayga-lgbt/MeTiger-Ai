@@ -8,6 +8,8 @@ import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
 import { modelOption } from '../lib/models'
 import { ModelPicker } from '../components/ModelPicker'
+import { CodeRunner } from '../components/CodeRunner'
+import { runnable } from '../lib/sandbox'
 import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment } from '../lib/api'
 
 /** Картинки из ответа: превью прямо в пузыре, файл — рядом чипом, чтобы его
@@ -60,7 +62,7 @@ function fmtTime(total: number): string {
 
 const WAVE_WEIGHTS = [0.55, 0.95, 0.7, 1, 0.55, 0.85, 0.65]
 
-function RichText({ text }: { text: string }) {
+function RichText({ text, onRunOutput }: { text: string; onRunOutput?: (t: string) => void }) {
   const segments = text.split(/```/)
   return (
     <div className="msg-text">
@@ -73,11 +75,14 @@ function RichText({ text }: { text: string }) {
             <div className="code-block" key={i}>
               <div className="code-head">
                 <span>{lang || 'code'}</span>
-                <span>demo</span>
+                {/* Не «demo» для JS: его можно запустить, и человек должен видеть,
+                    что блок проверялся, а не просто красиво подсвечен. */}
+                <span>{runnable(lang) ? 'песочница' : 'demo'}</span>
               </div>
               <pre>
                 <code>{code.replace(/\n$/, '')}</code>
               </pre>
+              {runnable(lang) ? <CodeRunner code={code.replace(/\n$/, '')} onSend={onRunOutput} /> : null}
             </div>
           )
         }
@@ -343,7 +348,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="ai-name">MeTiger Ai</div>
                   <div className="bubble">
-                    <RichText text={m.text} />
+                    <RichText text={m.text} onRunOutput={(t) => onSend(t)} />
                   </div>
                   {/* Кто ответил и что сказал совет. Это не украшение: по ней видно,
                       что ответ проверяли, а не угадали, и где его исправили. */}

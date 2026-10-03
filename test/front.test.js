@@ -461,6 +461,71 @@ console.log('K — Настройки: счётчик моделей, адрес
   ok('K22: поля не автозаполняются чужими данными и не светят ключ в title', /autocomplete/.test(html) === false && /u-tg_4242/.test(html) === false);
 }
 
+
+console.log('L — песочница: запуск кода в браузере (исполнять на платформе негде)');
+{
+  /* Зачем: модель обязана видеть результат своего кода, иначе «работает» — это догадка.
+     Проверки держат ровно то, что нельзя отдать на глаз: рамки изоляции, экранирование
+     `</script>`, названный отказ вместо молчаливого пропуска и подсказку по ошибке. */
+  const sb = join(dir, 'sandbox.mjs')
+  execFileSync(bin, ['src/lib/sandbox.ts', '--bundle', '--platform=node', '--format=esm', '--outfile=' + sb], { cwd: process.cwd(), stdio: 'inherit' })
+  const S = await import(sb)
+
+  ok('L1: к запуску допускается только явный JS (ts/python/без языка — нет)',
+    S.runnable('js') && S.runnable('JavaScript') && !S.runnable('ts') && !S.runnable('python') && !S.runnable(''),
+    [S.runnable('js'), S.runnable('ts'), S.runnable('')].join('/'))
+  ok('L2: пустой код и код через край — отказ назван словами, а не тишина',
+    /пустой код/.test(S.prepare('   ').error) && S.prepare('1'.repeat(S.MAX_CODE + 1)).ok === false
+      && S.prepare('1'.repeat(S.MAX_CODE + 1)).error.indexOf(String(S.MAX_CODE)) > 0,
+    JSON.stringify(S.prepare('').error))
+  ok('L3: request к Node-модулям отсекается ДО запуска и объясняет, почему',
+    S.prepare('const x = require("fs")').ok === false && /Node/.test(S.prepare('const x = require("fs")').error),
+    JSON.stringify(S.prepare('require("fs")')))
+  ok('L4: в изоляции нет ни same-origin, ни сети: CSP и allow-scripts на месте',
+    /default-src 'none'/.test(S.buildSrcDoc('console.log(1)')) && /<\/script>/.test(S.buildSrcDoc('1')),
+    S.buildSrcDoc('1').slice(0, 60))
+
+  const evilSrc = 'console.log("' + '</scr' + 'ipt><img src=x onerror=alert(1)>' + '")'
+  const evil = S.buildSrcDoc(evilSrc)
+  ok('L5: `</script>` внутри кода не закрывает наш тег (остался ровно один настоящий)',
+    (evil.match(/<\/script>/g) || []).length === 1 && /<\\\/script/.test(evil),
+    String((evil.match(/<\/script>/g) || []).length))
+
+  const r1 = S.normalize({ logs: ['a', 'b'], value: '7', ms: 12 }, 'console.log("a")')
+  ok('L6: вывод = строки консоли плюс возвращённое значение отдельной строкой',
+    r1.ok && r1.output.indexOf('a\nb') === 0 && /→ 7/.test(r1.output), JSON.stringify(r1.output))
+  const r2 = S.normalize({ logs: [], value: 'undefined' }, 'let x = 1')
+  ok('L7: «ничего не вернул и ничего не вывел» — это отдельный вердикт, а не успех молчания',
+    r2.ok && /ничего не вернул/.test(r2.output), JSON.stringify(r2.output))
+  const r3 = S.normalize({ logs: ['x'.repeat(S.MAX_OUT + 400)] }, 'x')
+  ok('L8: вывод режется на потолке и это сказано в тексте',
+    r3.output.length < S.MAX_OUT + 120 && /обрезан на/.test(r3.output), String(r3.output.length))
+  const r4 = S.normalize({ logs: [], error: 'qwe is not defined', stack: '    at <anonymous>:3:7' }, 'qwe')
+  ok('L9: ошибка ответа даёт ok:false, подсказку и строку из стека без служебного мусора',
+    !r4.ok && !!r4.hint && /строки|код/.test(r4.output) && !/<anonymous>/.test(r4.output), JSON.stringify(r4))
+  const r5 = S.killed(S.TIMEOUT_MS)
+  ok('L10: убитый по таймауту код — не «ошибки нет», а названный таймаут',
+    r5.ok === false && r5.killed === true && /не завершился/.test(r5.output), JSON.stringify(r5))
+  ok('L11: счёт проверок живёт в выводе, а не в отдельном наставлении модели',
+    /проверок в коде: 0/.test(S.withTestCount('1+1', 'готово')) && /недоказанным/.test(S.withTestCount('1+1', 'готово'))
+      && /проверок в коде: 2/.test(S.withTestCount('assert(1);assert(2)', 'x')), S.withTestCount('1+1', 'готово').slice(-40))
+  ok('L12: отказа без браузера не скрыть — текст названного отказа экспортирован',
+    /не проверен/.test(S.NO_SANDBOX), S.NO_SANDBOX)
+
+  /* А вот это уже про вёрстку: кнопка обязана быть у JS-блока, а iframe — без same-origin. */
+  const runner = readFileSync(join(process.cwd(), 'src', 'components', 'CodeRunner.tsx'), 'utf8')
+  const chat = readFileSync(join(process.cwd(), 'src', 'views', 'ChatView.tsx'), 'utf8')
+  ok('L13: iframe запускается строго с allow-scripts и без allow-same-origin',
+    (() => { const m = /sandbox="([^"]*)"/.exec(runner); return !!m && m[1] === 'allow-scripts'; })(),
+    (runner.match(/sandbox="[^"]*"/) || [''])[0])
+  ok('L14: watchdog стоит, и по нему фрейм снимается (убить цикл больше нечем)',
+    /setTimeout\(/.test(runner) && /setDoc\(null\)/.test(runner))
+  ok('L15: JS-блок в чате помечен «песочница», а не «demo», и кнопка ему дана',
+    /runnable\(lang\)[\s\S]{0,80}песочница/.test(chat) && /<CodeRunner/.test(chat))
+  ok('L16: вывод можно вернуть модели — иначе цикл обрывается на «у меня упало»',
+    /onSend/.test(runner) && /Вывод — модели/.test(runner) && /onRunOutput/.test(chat))
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
 
