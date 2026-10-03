@@ -128,6 +128,20 @@ const BYT3 = ['для спины', 'для поясницы', 'для колен
   'для дачи'];
 const OMO_FRAMES3 = ['%s %s', 'подбери %s %s', 'сделай %s %s', 'напиши %s %s', 'проверь %s %s'];
 for (const r of AMBIG3) for (const c of BYT3) for (const f of OMO_FRAMES3) omono.push(f.replace('%s', r).replace('%s', c));
+
+/* Четвёртый контекст — быт вокруг слов про вызов инструмента (группа 28): «инструменты для
+   ремонта», «аргументы в споре», «схема проводки», «результат матча», «вызов врача»,
+   «проверка давления». Слово «инструмент» в этой семье самое опасное: у продукта оно про
+   вызов, у человека — про молоток. */
+const AMBIG4 = ['инструмент', 'инструменты', 'аргументы', 'аргумент', 'схема', 'схемы', 'результат',
+  'результаты', 'вызов', 'вызова', 'ошибки', 'побочный эффект', 'проверка', 'ключ', 'успех',
+  'параметры', 'откат', 'сделай вызов', 'что вернул'];
+const BYT4 = ['для ремонта', 'в ящике', 'в гараже', 'для сверления', 'в аптечке', 'от таблетки',
+  'в споре', 'на даче', 'на кухне', 'для вязания', 'у врача', 'за свет', 'вчера', 'на рыбалке',
+  'из-за протечки', 'в боулинге', 'для тортика', 'по квитанции'];
+const OMO_FRAMES4 = ['%s %s', 'подбери %s %s', 'сделай %s %s', 'напиши %s %s', 'проверь %s %s',
+  'какие %s %s', 'что с %s %s'];
+for (const r of AMBIG4) for (const c of BYT4) for (const f of OMO_FRAMES4) omono.push(f.replace('%s', r).replace('%s', c));
 const omonoHit = [];
 for (const q of omono) {
   const who = guardedSkills.filter((x) => x.re.test(q)).map((x) => x.id);
@@ -136,7 +150,7 @@ for (const q of omono) {
 const omonoBy = new Map();
 for (const q of omono) {
   for (const x of guardedSkills.filter((y) => y.re.test(q))) {
-    const root = AMBIG.concat(AMBIG2, AMBIG3).find((r) => q.includes(r)) || '?';
+    const root = AMBIG.concat(AMBIG2, AMBIG3, AMBIG4).find((r) => q.includes(r)) || '?';
     const k = root + ' → ' + x.id;
     omonoBy.set(k, (omonoBy.get(k) || 0) + 1);
   }

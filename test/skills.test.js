@@ -49,6 +49,7 @@ const OURS = [
   'td-guide', 'td-runbook', 'td-changelog', 'td-spec', 'td-fresh',
   'l10-ui', 'l10-units', 'l10-term', 'l10-audit', 'l10-source', 'l10-mt', 'l10-fit',
   'ed-example', 'ed-task', 'ed-quiz', 'ed-gap', 'ed-feedback',
+  'tc-args', 'tc-input', 'tc-result', 'tc-effect',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -60,8 +61,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 43 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc/i18n/learning), и каждая непустая',
-  CATS.length === 43 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc', 'i18n', 'learning'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 44 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc/i18n/learning/toolcraft), и каждая непустая',
+  CATS.length === 44 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc', 'i18n', 'learning', 'toolcraft'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -792,8 +793,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 94 — 407 → 501 (13–17, 18–21, 22–27), выключенных не прибавилось',
-    st1.total === 501 && st1.on === 477 && st1.off === 24 && st1.groups.length === 43, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 98 — 407 → 505 (13–17, 18–21, 22–28), выключенных не прибавилось',
+    st1.total === 505 && st1.on === 481 && st1.off === 24 && st1.groups.length === 44, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -879,9 +880,9 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('U12: каждый id из OURS есть в реестре, дублей и дырок нет — ' + OURS.length + ' шт.',
     new Set(OURS).size === OURS.length && OURS.every((id) => typeof id === 'string' && get(id)),
     OURS.filter((id) => !get(id)).map((x) => JSON.stringify(x)).join(', '));
-  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md|ux|vd|td|l10|ed)-/;
+  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md|ux|vd|td|l10|ed|tc)-/;
   const missed = SKILLS.filter((x) => OUR_PREFIX.test(x.id) && !OURS.includes(x.id)).map((x) => x.id);
-  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-, ux-, vd-, td-, l10-, ed-) перечислены в OURS',
+  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-, ux-, vd-, td-, l10-, ed-, tc-) перечислены в OURS',
     missed.length === 0, missed.join(', '));
 }
 
@@ -1231,6 +1232,80 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('BB14: рамка стоит в конце каждого текста и ни один текст не вышел за 500',
     ed.every((x) => /уровень не приписываем\.$/.test(x.text.trim()) && x.text.length <= 500),
     ed.map((x) => x.text.length).join(' '));
+}
+
+
+/* ── секция CC: группа 28 «Использование инструментов» (tc-*) ── */
+{
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  const get = (id) => skillById(id);
+  const tc = SKILLS.filter((x) => /^tc-/.test(x.id));
+  ok('CC1: 4 навыка вызова на месте, своя категория, приоритет 5, тексты 200–500',
+    tc.length === 4 && tc.every((x) => x.cat === 'toolcraft' && x.priority === 5 && x.text.length <= 500 && x.text.length > 200),
+    tc.map((x) => x.id + ':' + x.text.length).join(' '));
+  ok('CC2: ни один не зовёт инструмент — движок вызывает сам, у навыка только текст',
+    tc.every((x) => !(x.tools || []).length && !(x.need || []).length),
+    tc.filter((x) => (x.tools || []).length || (x.need || []).length).map((x) => x.id).join(','));
+  ok('CC3: рамка «вызов исполняет движок» приклеена ко всем четверым',
+    tc.every((x) => /Вызов исполняет движок/.test(x.text)),
+    tc.filter((x) => !/Вызов исполняет движок/.test(x.text)).map((x) => x.id).join(','));
+  ok('CC4: tc-args берёт имена из схемы, не подставляет молча дефолт и требует формат значения',
+    /по объявленной схеме, а не по памяти/.test(get('tc-args').text)
+      && /не подставляем «по умолчанию»/.test(get('tc-args').text)
+      && /дата в ISO/.test(get('tc-args').text)
+      && /параметр → значение → откуда взялось/.test(get('tc-args').text));
+  ok('CC5: tc-input различает пустую строку, null и отсутствие поля и не объявляет «валидно» без схемы',
+    /Пустая строка, null и отсутствие поля — три разных случая/.test(get('tc-input').text)
+      && /Без присланной схемы «валидно» не заявляем/.test(get('tc-input').text)
+      && /поле → что ожидалось → что пришло → как исправить/.test(get('tc-input').text));
+  ok('CC6: tc-result не превращает пустоту в ноль и берёт числа из блока, а не «примерно»',
+    /пустой результат — не ноль/.test(get('tc-result').text)
+      && /не переносим в ответ того, чего в блоке нет/.test(get('tc-result').text)
+      && /не подгоняем/.test(get('tc-result').text));
+  ok('CC7: tc-effect делит читай и запись, требует идемпотентность с откатом и не говорит «безопасно»',
+    /Читай-вызов и вызов-запись — разные риски/.test(get('tc-effect').text)
+      && /идемпотентность \(повтор создаст вторую запись\?\)/.test(get('tc-effect').text)
+      && /вместо «безопасно»/.test(get('tc-effect').text)
+      && /действие → что затронет → чем откатить/.test(get('tc-effect').text));
+  ok('CC8: донорские границы расширены, но выбор инструмента остался у a-tool',
+    fired('какой инструмент тут подойдёт').includes('a-tool')
+      && fired('проверь, есть ли у тебя такой инструмент').includes('d-tools')
+      && fired('почему вызов упал и что делать').includes('ctl-tool-error')
+      && fired('проверь, что действие действительно выполнилось').includes('ctl-verify')
+      && !fired('какой инструмент тут подойдёт').some((id) => /^tc-/.test(id)),
+    ['какой инструмент тут подойдёт', 'проверь, есть ли у тебя такой инструмент',
+     'почему вызов упал и что делать', 'проверь, что действие действительно выполнилось']
+      .map((q) => q + ' → ' + (fired(q).join(',') || 'ТИШИНА')).join(' ;; '));
+  const byt28 = ['купи инструменты для ремонта в ящик', 'у меня побочные эффекты от сиропа',
+    'аргументы в споре были слабые', 'схема проводки на кухне', 'результат матча вчера был обидный',
+    'вызов врача на дом', 'ошибка в квитанции за свет', 'проверка давления утром',
+    'схема вязания спицами для шарфа', 'какие инструменты нужны для сверления стены'];
+  ok('CC9: бытовые значения слов «инструмент», «аргумент», «схема», «результат», «вызов» не будят tc-*',
+    byt28.every((q) => !fired(q).some((id) => /^tc-/.test(id))),
+    byt28.filter((q) => fired(q).some((id) => /^tc-/.test(id))).join(' ;; '));
+  const leak28 = MUNDANE_CORP.filter((q) => fired(q).some((id) => /^tc-/.test(id)));
+  ok('CC10: весь бытовой корпус (' + MUNDANE_CORP.length + ' фраз) не будит навыки группы 28',
+    leak28.length === 0, leak28.slice(0, 4).map((q) => q + ' → ' + fired(q).filter((id) => /^tc-/.test(id)).join(',')).join(' ;; '));
+  ok('CC11: тексты не обещают запустить, отправить и проверить прогоном',
+    !tc.some((x) => /я (?:запущу|вызову|отправлю|нажму|проверю прогоном)|запущу инструмент|кликну/i.test(x.text)),
+    tc.filter((x) => /я (?:запущу|вызову|отправлю|нажму)|кликну/i.test(x.text)).map((x) => x.id).join(','));
+  const hits28 = {};
+  for (const id of ['tc-args', 'tc-input', 'tc-result', 'tc-effect']) {
+    hits28[id] = CANON.filter((x) => x[2] === 'AC' && x[1] === id).length;
+  }
+  const donors28 = {};
+  for (const id of ['a-tool', 'd-tools', 'ctl-tool-error', 'ctl-verify']) {
+    donors28[id] = CANON.filter((x) => x[2] === 'AC' && x[1] === id).length;
+  }
+  ok('CC12: у каждого из четырёх наших пунктов и у четырёх донорских — по две живые фразы',
+    Object.values(hits28).every((n) => n >= 2) && Object.values(donors28).every((n) => n >= 2),
+    JSON.stringify(Object.assign(hits28, donors28)));
+  ok('CC13: рамка стоит в конце каждого текста и ни один текст не вышел за 500',
+    tc.every((x) => /сами не запускаем\.$/.test(x.text.trim()) && x.text.length <= 500),
+    tc.map((x) => x.text.length).join(' '));
+  ok('CC14: тул-префикс не отобран — tool-use остался всегдашним и нет ни одного tool-* у нас',
+    !!skillById('tool-use') && skillById('tool-use').always === true
+      && !OURS.some((id) => /^tool-/.test(id)) && tc.every((x) => /^tc-/.test(x.id)));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
