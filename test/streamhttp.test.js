@@ -1,0 +1,153 @@
+/**
+ * Стриминг на входе: `accept: text/event-stream` у POST /api/chat.
+ *
+ * Зачем: обёртка не должна ни менять, ни дублировать логику двери — память, лимиты,
+ * инструменты и совет считаются ровно один раз. Проверяется три вещи: куски летят по
+ * мере чтения провайдера (а не все в конце), финальное событие несёт тот же payload,
+ * что вернул бы обычный POST, и любая ошибка отказа (400/503) приходит как `final`,
+ * а не как висящее «думает».
+ *
+ *   node test/streamhttp.test.js
+ */
+import { onRequestPost } from '../functions/api/chat.js';
+
+let pass = 0, fail = 0;
+function ok(name, cond, extra) {
+  if (cond) { pass++; console.log('  ✔ ' + name); }
+  else { fail++; console.log('  ✖ ' + name + (extra ? ' — ' + String(extra).slice(0, 220) : '')); }
+}
+
+const ENV = { GROQ_KEYS: 'g1', RATE_LIMIT: '0' };
+const req = (o, accept) => new Request('http://x/api/chat', {
+  method: 'POST',
+  headers: Object.assign({ 'content-type': 'application/json' }, accept ? { accept } : {}),
+  body: JSON.stringify(o),
+});
+/* Дверь Pages Function вызывают контекстом ({ request, env }) — не голимым Request. */
+const post = (o, accept) => onRequestPost({ request: req(o, accept), env: ENV, waitUntil: () => {} });
+const SSE = 'text/event-stream';
+const enc = new TextEncoder();
+
+/** Провайдер, который отвечает потоком: три куска и [DONE]. */
+function streamFetch(parts, calls) {
+  return async (url, init) => {
+    let body = null;
+    try { body = JSON.parse(String(init && init.body)); } catch (e) { body = null; }
+    if (calls) calls.push({ chat: /chat\/completions/.test(String(url)), stream: !!(body && body.stream) });
+    const chunks = parts.map((t) => 'data: ' + JSON.stringify({ choices: [{ delta: { content: t }, finish_reason: '' }] }) + '\n\n');
+    chunks.push('data: [DONE]\n\n');
+    const rs = new ReadableStream({
+      start(c) { for (const x of chunks) c.enqueue(enc.encode(x)); c.close() },
+    });
+    return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+  };
+}
+/** Провайдер, который про stream:true слышать не хочет: один json. */
+function jsonFetch(text, calls) {
+  return async (_u, init) => {
+    let body = null;
+    try { body = JSON.parse(String(init && init.body)); } catch (e) { body = null }
+    if (calls) calls.push({ chat: true, stream: !!(body && body.stream) });
+    return new Response(JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'stop' }] }),
+      { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+}
+
+async function drain(res) {
+  const events = []
+  const rd = res.body && res.body.getReader ? res.body.getReader() : null;
+  if (!rd) return { text: await res.text(), events };
+  const dec = new TextDecoder();
+  let buf = '', out = '';
+  for (;;) {
+    const r = await rd.read();
+    if (r.done) break;
+    buf += dec.decode(r.value, { stream: true });
+    out += dec.decode(r.value, { stream: false });
+    let cut = buf.indexOf('\n\n');
+    while (cut >= 0) {
+      const block = buf.slice(0, cut);
+      buf = buf.slice(cut + 2);
+      const line = block.split('\n').find((x) => x.startsWith('data:'));
+      if (line) { try { events.push(JSON.parse(line.slice(5).trim())) } catch (e) { /* обрыв строки */ } }
+      cut = buf.indexOf('\n\n');
+    }
+  }
+  return { text: out, events };
+}
+
+const withFetch = async (fn) => {
+  const saved = globalThis.fetch;
+  try { return await fn(); } finally { globalThis.fetch = saved }
+};
+
+console.log('── H · SSE-обёртка двери /api/chat ───');
+{
+  await withFetch(async () => {
+    const calls = [];
+    globalThis.fetch = streamFetch(['При', 'вет', '!'], calls);
+    const res = await post({ text: 'скажи привет', chatId: 'sse1' }, SSE);
+    const { events: ev } = await drain(res);
+    const drafts = ev.filter((e) => e.kind === 'draft');
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H1: ответ идёт потоком — content-type и финальное событие на месте',
+      /text\/event-stream/.test(res.headers.get('content-type') || '') && !!fin, res.headers.get('content-type'));
+    const chatCall = calls.filter((x) => x.chat)[0];
+    ok('H2: провайдер реально спрошен со stream:true, куски долетели по отдельности',
+      !!chatCall && chatCall.stream === true && drafts.length >= 2, JSON.stringify({ calls, drafts: drafts.length }));
+    ok('H3: куски складываются в тот же текст, что был бы в json',
+      drafts.map((d) => d.text).join('') === 'Привет!' && fin.payload.reply === 'Привет!',
+      JSON.stringify({ draft: drafts.map((d) => d.text).join(''), reply: fin && fin.payload.reply }));
+    ok('H4: дельты помечены провайдером — черновик не перепутается с другим пулом',
+      drafts.every((d) => d.provider === 'groq'), JSON.stringify(drafts.map((d) => d.provider)));
+    ok('H5: в финале обычные поля (model, ms, chatId) — обёртка ничего не съела',
+      fin.status === 200 && fin.payload.ok === true && !!fin.payload.model && fin.payload.memoryChatId === 'sse1',
+      JSON.stringify({ st: fin.status, m: fin.payload.model }));
+  });
+
+  await withFetch(async () => {
+    const calls = [];
+    globalThis.fetch = jsonFetch('Привет без потока', calls);
+    const res = await post({ text: 'скажи привет', chatId: 'sse2' }, SSE);
+    const { events: ev } = await drain(res);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H6: провайдер без потока — тот же ответ, просто одним куском (ничего не отвалилось)',
+      calls.filter((x) => x.chat)[0].stream === true && ev.filter((e) => e.kind === 'draft').length === 0 && fin.payload.reply === 'Привет без потока',
+      JSON.stringify({ drafts: ev.filter((e) => e.kind === 'draft').length, reply: fin && fin.payload.reply }));
+  });
+
+  await withFetch(async () => {
+    const calls = [];
+    globalThis.fetch = jsonFetch('обычный путь', calls);
+    const res = await post({ text: 'скажи привет', chatId: 'sse3' });
+    const ct = res.headers.get('content-type') || '';
+    const j = await res.json();
+    ok('H7: без accept: text/event-stream — прежний голый JSON, провайдер не дразнится потоком',
+      /application\/json/.test(ct) && j.ok === true && (calls.filter((x) => x.chat)[0] || {}).stream === false,
+      JSON.stringify({ ct, stream: calls.filter((x) => x.chat)[0] }));
+  });
+
+  /* Отказ обязан быть назван и в потоке: код + payload, а не пустой закрытый ответ. */
+  await withFetch(async () => {
+    globalThis.fetch = streamFetch(['x']);
+    const res = await post({ text: '', chatId: 'sse4' }, SSE);
+    const { events: ev } = await drain(res);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H8: пустой запрос приходит как final со статусом 400, а не как молчаливый конец потока',
+      !!fin && fin.status === 400 && fin.payload.ok === false, JSON.stringify(ev).slice(0, 160));
+  });
+
+  await withFetch(async () => {
+    globalThis.fetch = async () => new Response('нет', { status: 503 });
+    const res = await post({ text: 'скажи что-нибудь', chatId: 'sse5' }, SSE);
+    const { events: ev } = await drain(res);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    const kinds = ev.map((e) => e.kind).join('+');
+    ok('H9: все провайдеры легли — финал со статусом 503 и причиной, а не молчаливый конец',
+      !!fin && fin.status === 503 && fin.payload.ok === false && !!fin.payload.error,
+      JSON.stringify({ kinds, err: fin && fin.payload.error }));
+  });
+}
+
+console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
+if (fail) process.exit(1);

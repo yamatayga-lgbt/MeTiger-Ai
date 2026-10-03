@@ -15,7 +15,7 @@ import {
 } from './providers.js';
 import { classifyTask, tierFor, modelsFor, isVision, visionFirst, preferHeads } from './route.js';
 import { preferUncensored } from './brave.js';
-import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
+import { buildRequest, rawCall, streamCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
 import { gatherTools } from './tools.js';
 import { sharedImggen, packImages, wantsImage, editsReady } from './imggen.js';
@@ -66,6 +66,9 @@ export function createEngine(opts) {
   const o = opts || {};
   const env = o.env || {};
   const fetchImpl = o.fetch || ((...a) => fetch(...a));
+  /* Кому отдавать текст по мере прихода (стриминг). Нет колбэка — ходим ровно прежним
+     путём: один ответ целиком. Стрим — надстройка, а не новый режим движка. */
+  const onDelta = typeof o.onDelta === 'function' ? o.onDelta : null;
   const P = buildTable(env);
   /* Память чата: либо готовый экземпляр (своё хранилище, свой кэш), либо store —
      тогда соберём сами. Без того и другого движок работает ровно как раньше. */
@@ -129,7 +132,13 @@ export function createEngine(opts) {
    * Возвращает { ok, reply, reasoning, provider, model, finish } или { ok:false, why }.
    */
   async function attemptOne(id, model, req, deadlineLeft) {
-    const res = await rawCall(fetchImpl, req, Math.min(TIMEOUT[req.tier] || 30000, deadlineLeft));
+    const budget = Math.min(TIMEOUT[req.tier] || 30000, deadlineLeft);
+    /* Поток имеет смысл только там, где мы умеем его читать (req.sse) и есть кому его
+       нести. Провайдер, проигнорировавший stream:true, вернёт json — streamCall это
+       видит и ведёт себя как rawCall, то есть ничего не ломается. */
+    const res = (req.sse && onDelta)
+      ? await streamCall(fetchImpl, req, budget, (t) => onDelta({ kind: 'delta', provider: id, model, text: t }))
+      : await rawCall(fetchImpl, req, budget);
     if (res.error === 'timeout' || res.status === 0 && !res.text) {
       return { ok: false, why: 'timeout', status: res.status };
     }
@@ -155,10 +164,10 @@ export function createEngine(opts) {
       punish(id, 'нет баланса/квоты', Math.max(600000, QUARANTINE_MS * 2));
       return { ok: false, why: 'квота/баланс', status: res.status };
     }
-    if (res.status >= 400 || !res.data) {
+    if (res.status >= 400 || (!res.data && !res.parsed)) {
       return { ok: false, why: 'http ' + res.status + ' ' + String(res.text || res.error || '').slice(0, 120), status: res.status };
     }
-    const parsed = req.parse(res.data);
+    const parsed = res.parsed || req.parse(res.data);
     if (parsed.error) return { ok: false, why: 'provider: ' + parsed.error, status: res.status };
     if (parsed.blocked) { note(id, 'refused'); return { ok: false, why: 'блок по фильтру (' + (parsed.blockReason || 'prompt') + ')', status: res.status }; }
     const rawReply = String(parsed.reply || '').trim();
@@ -173,7 +182,8 @@ export function createEngine(opts) {
     markKey(id, req.keyIdx, { used: day + 1 });
     return {
       ok: true, reply, reasoning: parsed.reasoning || '', finish: parsed.finish,
-      provider: id, model: req.model, freedomCleaned: fr.cleaned,
+      provider: id, model: req.model, freedomCleaned: fr.cleaned, streamed: !!res.streamed,
+      streamError: res.streamError || '',
     };
   }
 
@@ -450,11 +460,14 @@ export function createEngine(opts) {
           : system;
         if (useReframe) reframedCalls++;
         const req = buildRequest({
-          cfg, keyIdx, model, provider: id, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
+          cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
           maxTokens: input.maxTokens, temperature: input.temperature,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
         const r = await attemptOne(id, model, req, left);
+        /* Не сошлось — черновик, который уже потёк в окно, надо убрать, а не бросать
+           посреди экрана: следующая голова отвечает совсем другим текстом. */
+        if (!r.ok && onDelta) onDelta({ kind: 'drop', provider: id, model });
         /* Копим опыт: прямой ответ весит больше, чем выдоенный обходом, — иначе
            рейтинг смелых превратился в рейтинг терпения: кто дольше упирался, тот и «смелый». */
         if (brave) {

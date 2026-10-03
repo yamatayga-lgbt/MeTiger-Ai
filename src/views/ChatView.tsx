@@ -100,13 +100,15 @@ interface ChatViewProps {
   user: Person
   messages: ChatMessage[]
   typing: boolean
+  /** Живой черновик ответа (пустая строка = ждём первый кусок, null = его нет) */
+  draft?: string | null
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Выбранная модель ('' = Авто) и смена — живут в App и сохраняются. */
   model?: string
   onModelChange?: (id: string) => void
 }
 
-export function ChatView({ user, messages, typing, onSend, model = '', onModelChange }: ChatViewProps) {
+export function ChatView({ user, messages, typing, draft, onSend, model = '', onModelChange }: ChatViewProps) {
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
@@ -387,11 +389,20 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
               </div>
               <div>
                 <div className="ai-name">MeTiger Ai</div>
-                <div className="typing" aria-label="Печатает">
-                  <span />
-                  <span />
-                  <span />
-                </div>
+                {draft ? (
+                  /* текст летит с сервера кусками: показываем его живьём вместо «печатаю»,
+                     иначе человек смотрит на три точки там, где ответ уже пишется */
+                  <div className="msg-text msg-draft" aria-live="polite" aria-label="Ответ пишется">
+                    {draft}
+                    <span className="draft-caret" aria-hidden="true" />
+                  </div>
+                ) : (
+                  <div className="typing" aria-label="Печатает">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                )}
               </div>
             </div>
           ) : null}

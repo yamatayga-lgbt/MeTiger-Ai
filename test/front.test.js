@@ -34,7 +34,7 @@ rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 const out = join(dir, 'api.mjs');
 execFileSync(bin, ['src/lib/api.ts', '--bundle', '--platform=node', '--packages=external', '--format=esm', '--outfile=' + out, '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
-const { adviceLine, sourceLine, attachmentKind, pickAttachments, fileToAttachment, bufToB64, attachLine, notesLine, fileSize, ATTACH_ACCEPT, ATTACH_MAX, ATTACH_FILE_BYTES, countersLine, signalsLine, profileStatusLine } = await import(out);
+const { adviceLine, sourceLine, attachmentKind, pickAttachments, fileToAttachment, bufToB64, attachLine, notesLine, fileSize, ATTACH_ACCEPT, ATTACH_MAX, ATTACH_FILE_BYTES, countersLine, signalsLine, profileStatusLine, parseSse, sendChat } = await import(out);
 execFileSync(bin, ['src/lib/images.ts', '--format=esm', '--outfile=' + join(dir, 'images.mjs'), '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
 
 console.log('F — подпись под ответом: что видел совет, то видит и человек');
@@ -524,6 +524,132 @@ console.log('L — песочница: запуск кода в браузере
     /runnable\(lang\)[\s\S]{0,80}песочница/.test(chat) && /<CodeRunner/.test(chat))
   ok('L16: вывод можно вернуть модели — иначе цикл обрывается на «у меня упало»',
     /onSend/.test(runner) && /Вывод — модели/.test(runner) && /onRunOutput/.test(chat))
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   M · живой черновик. Поток разбирает фронт, и на нём же он чаще всего и
+   ломается: кусок сети рвёт строку посреди слова, ретраят пул, сервер закрывает
+   соединение без финала. Проверяются РОВНЫЕ ТЕ функции из src/lib/api.ts.
+   ────────────────────────────────────────────────────────────────────────── */
+{
+  const enc = new TextEncoder();
+  const sseRes = (blocks) => new Response(new ReadableStream({
+    start(c) { for (const b of blocks) c.enqueue(enc.encode(b)); c.close(); },
+  }), { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } });
+  const draftEv = (t) => 'data: ' + JSON.stringify({ kind: 'draft', provider: 'groq', text: t }) + '\n\n';
+  const finalEv = (payload) => 'data: ' + JSON.stringify({ kind: 'final', status: 200, payload }) + '\n\n';
+
+  ok('M1: съедается только целое событие, оборванный хвост возвращается назад',
+    parseSse(draftEv('При') + 'data: {"kind":"dra').events.length === 1
+      && parseSse('data: {"kind":"dra').rest.indexOf('data:') === 0,
+    JSON.stringify(parseSse('data: {"kind":"dra')));
+
+  {
+    /* событие, приехавшее в двух чанках, — обычное дело для SSE поверх HTTP/2 */
+    const whole = draftEv('вет');
+    const first = parseSse(whole.slice(0, 14));
+    const second = parseSse(first.rest + whole.slice(14));
+    ok('M2: событие, разорванное между чанками, достраивается и не теряется',
+      first.events.length === 0 && second.events.length === 1 && second.events[0].text === 'вет',
+      JSON.stringify({ a: first.events.length, b: second.events.map((e) => e.text) }));
+  }
+
+  ok('M3: [DONE] и комментарии сервера не считаются событиями (падать на них незачем)',
+    parseSse('data: [DONE]\n\n\n: ping\n\n' + draftEv('x')).events.length === 1);
+
+  {
+    const saved = globalThis.fetch;
+    const seen = [];
+    try {
+      globalThis.fetch = async (url, init) => {
+        seen.push(init && init.headers);
+        return sseRes([draftEv('При'), draftEv('вет'), finalEv({ ok: true, reply: 'Привет!', model: 'groq/x' })]);
+      };
+      const got = [];
+      const r = await sendChat('привет', [], { onDraft: (t) => got.push(t) });
+      ok('M4: черновик копится по кускам, а не показывается обрывками',
+        got.join('|') === 'При|Привет', JSON.stringify(got));
+      ok('M5: финальный payload — обычный ответ (reply и модель берутся из него)',
+        r.ok === true && r.reply === 'Привет!' && r.model === 'groq/x', JSON.stringify(r).slice(0, 120));
+      ok('M6: поток запрошен только потому, что попросили черновик',
+        /text\/event-stream/.test(String((seen[0] || {}).accept || '')), JSON.stringify(seen[0]));
+    } finally { globalThis.fetch = saved }
+  }
+
+  {
+    const saved = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => sseRes([
+        draftEv('неудачн'),
+        'data: ' + JSON.stringify({ kind: 'drop', provider: 'groq' }) + '\n\n',
+        draftEv('с '), draftEv('запаса'),
+        finalEv({ ok: true, reply: 'с запаса', model: 'x/y' }),
+      ]);
+      const got = [];
+      const r = await sendChat('текст', [], { onDraft: (t) => got.push(t) });
+      ok('M7: забраксованная попытка стирается с экрана, а не склеивается с новой',
+        got[1] === null && got.join('|') === 'неудачн||с |с запаса', JSON.stringify(got));
+      ok('M8: ответ при этом обычный — провал автора не превращается в ошибку',
+        r.ok === true && r.reply === 'с запаса', JSON.stringify(r).slice(0, 120));
+    } finally { globalThis.fetch = saved }
+  }
+
+  {
+    const saved = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => sseRes([draftEv('начало'), 'data: {"kind":"fin']);
+      const r = await sendChat('текст', [], { onDraft: () => {} });
+      ok('M9: поток закрыли без финала — отказ назван, а не показан пустой ответ',
+        r.ok === false && /оборвался/.test(r.error || ''), JSON.stringify(r).slice(0, 140));
+    } finally { globalThis.fetch = saved }
+  }
+
+  {
+    const saved = globalThis.fetch;
+    const seen = [];
+    try {
+      globalThis.fetch = async (url, init) => {
+        seen.push(init && init.headers);
+        return new Response(JSON.stringify({ ok: true, reply: 'обычный путь', model: 'groq/x' }),
+          { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+      let touched = 0;
+      const r = await sendChat('текст', [], { onDraft: () => { touched++ } });
+      ok('M10: сервер ответил json — черновика просто нет, ответ всё равно получен',
+        touched === 0 && r.ok === true && r.reply === 'обычный путь', JSON.stringify({ touched, r }).slice(0, 140));
+    } finally { globalThis.fetch = saved }
+  }
+
+  {
+    /* без заголовка accept запрос обязан быть байт-в-байт прежним: его шлют бот,
+       смоуки и curl — им поток не нужен */
+    const saved = globalThis.fetch;
+    const seen = [];
+    try {
+      globalThis.fetch = async (url, init) => {
+        seen.push(init && init.headers);
+        return new Response(JSON.stringify({ ok: true, reply: 'ок' }), { status: 200,
+          headers: { 'content-type': 'application/json' } });
+      };
+      await sendChat('текст', [], {});
+      ok('M11: без onDraft — никакого accept: text/event-stream и никакого чтения потока',
+        seen.length === 1 && !/event-stream/.test(JSON.stringify(seen[0] || {})), JSON.stringify(seen[0]));
+    } finally { globalThis.fetch = saved }
+  }
+
+  {
+    const api = readFileSync('src/lib/api.ts', 'utf8');
+    const chat = readFileSync('src/views/ChatView.tsx', 'utf8');
+    const app = readFileSync('src/App.tsx', 'utf8');
+    ok('M12: черновик дошёл до экрана: App просит его и отдаёт в ChatView, а ChatView показывает текст вместо трёх точек',
+      /onDraft: \(t\) => setDraft\(t\)/.test(app) && /draft=\{draft\}/.test(app)
+        && /draft \? \(/.test(chat) && /msg-draft/.test(chat));
+    ok('M13: оборванный хвост не прячется — streamError показывается человеку',
+      /streamError\?: string/.test(api) && /r\.streamError/.test(app));
+    ok('M14: движок трогает поток только у автора — совет, память и заголовки просят одним ответом',
+      !/stream: true/.test(readFileSync('engine/chat.js', 'utf8').replace(/stream: !!onDelta[^\n]*/g, '')),
+      readFileSync('engine/chat.js', 'utf8').match(/stream:[^\n]*/g));
+  }
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

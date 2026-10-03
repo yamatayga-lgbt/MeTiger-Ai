@@ -103,8 +103,17 @@ export function buildRequest(o) {
       pics.forEach((p) => contents[contents.length - 1].parts.push({ inline_data: { mime_type: p.mime, data: p.data } }));
     }
     return {
-      url: url(cfg.base) + '/models/' + model + ':generateContent?key=' + encodeURIComponent(key),
+      /* alt=sse — иначе gemini отдаёт один большой json и поток превращается в ожидание. */
+      url: url(cfg.base) + '/models/' + model + (o.stream ? ':streamGenerateContent?alt=sse&' : ':generateContent?') + 'key=' + encodeURIComponent(key),
       headers: { 'content-type': 'application/json' },
+      ...(o.stream ? {
+        sse: (d) => ({
+          text: ((d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [])
+            .map((x) => (x && typeof x.text === 'string' ? x.text : '')).join(''),
+          finish: (d.candidates && d.candidates[0] && d.candidates[0].finishReason) || '',
+        }),
+        wrap: (text, finish) => ({ candidates: [{ content: { parts: [{ text }] }, finishReason: finish }] }),
+      } : {}),
       body: {
         contents: sys.concat(contents),
         generationConfig: { maxOutputTokens: maxTokens, temperature: temp },
@@ -142,7 +151,7 @@ export function buildRequest(o) {
   return {
     url: url(cfg.base) + '/chat/completions',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
-    body: Object.assign({ model, messages, max_tokens: maxTokens, temperature: temp }, cfg.id === 'openrouter' ? { models: [model] } : {}),
+    body: Object.assign({ model, messages, max_tokens: maxTokens, temperature: temp }, o.stream ? { stream: true } : {}, cfg.id === 'openrouter' ? { models: [model] } : {}),
     parse: (d) => {
       const err = d.error && (d.error.message || d.error.code);
       const ch = (d.choices && d.choices[0]) || {};
@@ -155,6 +164,25 @@ export function buildRequest(o) {
         finish: ch.finish_reason || '', error: err ? String(err).slice(0, 300) : '',
       };
     },
+    /* Читалка потока и упаковка собранного обратно в «настоящий» ответ провайдера.
+       Второе нужно, чтобы стрим проходил те же нормализации (think-теги, reasoning,
+       error), что и обычный: один parse на два пути, а не два почти одинаковых. */
+    ...(o.stream ? {
+      sse: (d) => {
+        const ch = (d.choices && d.choices[0]) || {};
+        const dl = ch.delta || ch.message || {};
+        const e = d.error && (d.error.message || d.error.code);
+        return {
+          text: typeof dl.content === 'string' ? dl.content : '',
+          reasoning: dl.reasoning_content || dl.reasoning || '',
+          finish: ch.finish_reason || '',
+          error: e ? String(e).slice(0, 300) : '',
+        };
+      },
+      wrap: (text, finish, reasoning) => ({
+        choices: [{ message: { content: text, reasoning_content: reasoning || '' }, finish_reason: finish }],
+      }),
+    } : {}),
   };
 }
 
@@ -179,4 +207,101 @@ export async function rawCall(impl, req, timeoutMs) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Тот же запрос, но потоком: читает SSE по мере прихода и отдаёт куски в `onDelta`.
+ *
+ * Возвращает результат в ФОРМЕ rawCall (status/text/data), чтобы вызывающий не знал
+ * о двух режимах: собранный текст упаковывается `req.wrap` и проходит обычный
+ * `req.parse` — те же think-теги, reasoning и разбор error.
+ *
+ * Честно про границы:
+ *   · провайдер обязан прислать `content-type: text/event-stream`; прислал json —
+ *     тихо продолжаем как обычно (значит, stream:true он не поддерживает);
+ *   · поток обрывается на середине: если текст уже есть — считаем его (модель ответила,
+ *     хвост доесть нечем), если нет — это ошибка, и вызывающий уйдёт к следующему;
+ *   · битую строку не считаем провайдерской ошибкой: режем её и идём дальше, но
+ *     количество `bad` отдаём — по нему видно, что формат у провайдера свой.
+ */
+export async function streamCall(impl, req, timeoutMs, onDelta) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), Math.max(2000, timeoutMs || 30000));
+  let res = null;
+  try {
+    res = await impl(req.url, {
+      method: 'POST',
+      headers: req.headers,
+      body: JSON.stringify(req.body),
+      signal: ac.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    return { status: 0, text: '', data: null, error: String((e && e.name === 'AbortError') ? 'timeout' : (e && e.message) || e) };
+  }
+  const status = res.status;
+  const ct = String((res.headers && res.headers.get && res.headers.get('content-type')) || '');
+  const isSse = /event-stream/i.test(ct) && typeof req.sse === 'function';
+  if (status >= 400 || !isSse || !res.body || !res.body.getReader) {
+    /* Не поток (или ошибка целиком) — прежний путь, без веток в вызывающем коде. */
+    let text = '';
+    try { text = await res.text(); } catch (e) { text = '' }
+    clearTimeout(timer);
+    let data = null;
+    try { data = JSON.parse(text); } catch (e) { /* не-json: провайдеры так отвечают на ошибки */ }
+    return { status, text, data, streamed: false };
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder('utf-8');
+  let buf = '', reply = '', reason = '', finish = '', err = '', chunks = 0, bad = 0, aborted = false;
+  const feed = (block) => {
+    for (const line of block.split('\n')) {
+      const t = line.trim();
+      if (!t.startsWith('data:')) continue;
+      const payload = t.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      let d = null;
+      try { d = JSON.parse(payload); } catch (e) { bad++; continue; }
+      const got = req.sse(d) || {};
+      if (got.error) err = String(got.error);
+      if (got.reasoning) reason += got.reasoning;
+      if (got.finish) finish = got.finish;
+      if (got.text) {
+        reply += got.text;
+        chunks++;
+        if (onDelta) { try { onDelta(got.text); } catch (e) { /*Consumer упал — поток не его вина */ } }
+      }
+    }
+  };
+  try {
+    for (;;) {
+      const r = await reader.read();
+      if (r.done) break;
+      buf += dec.decode(r.value, { stream: true });
+      let cut = buf.indexOf('\n\n');
+      while (cut >= 0) {
+        feed(buf.slice(0, cut));
+        buf = buf.slice(cut + 2);
+        cut = buf.indexOf('\n\n');
+      }
+    }
+    if (buf.trim()) feed(buf);
+  } catch (e) {
+    aborted = !!(e && e.name === 'AbortError');
+    if (!reply && !err) err = aborted ? 'timeout' : 'поток оборвался: ' + String((e && e.message) || e);
+  } finally {
+    clearTimeout(timer);
+    try { if (reader.cancel && !aborted) await reader.cancel().catch(() => {}); } catch (e) { /* уже закрыт */ }
+    try { reader.releaseLock(); } catch (e) { /* не у всех есть */ }
+  }
+  if (!reply) {
+    return { status: err ? status : 0, text: '', data: null, error: err || 'пустой поток', streamed: true, chunks, bad };
+  }
+  /* Ошибка в середине потока при уже собранном тексте — НЕ повод выбрасывать ответ
+     (половину ответа лучше показать, чем молча уйти к следующей голове), но и молчать
+     про неё нельзя: поле streamError доезжает до подписи под ответом. */
+  return {
+    status, text: reply, data: req.wrap ? req.wrap(reply, finish, reason) : null,
+    streamed: true, chunks, bad, streamError: err || '',
+  };
 }

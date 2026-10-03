@@ -60,7 +60,79 @@ export interface ChatResult {
   attachNotes?: string[]
   /** Что движок прочитал в форме последней реплики (только при EMOTION_LABEL=1). */
   emotion?: { id: string; emoji: string; label: string; confidence: number }
+
+  /** Поток оборвался в самом конце: текст есть, хвоста нет. Отдельная строка, не ошибка. */
+  streamError?: string
 }
+
+export interface SseEvent {
+  kind: string
+  provider?: string
+  model?: string
+  text?: string
+  status?: number
+  payload?: unknown
+}
+
+/**
+ * Разбор SSE-буфера: съедаются только целые блоки до пустой строки, хвост отдаётся назад —
+ * кусок сети может разорвать строку посреди слова. Функция вынесена и экспортирована,
+ * потому что именно на ней ломается потоковый ответ и именно её надо уметь проверить
+ * без браузера.
+ */
+export function parseSse(buf: string): { events: SseEvent[]; rest: string } {
+  const events: SseEvent[] = []
+  let i = 0
+  for (;;) {
+    const cut = buf.indexOf('\n\n', i)
+    if (cut < 0) break
+    const block = buf.slice(i, cut)
+    i = cut + 2
+    for (const line of block.split('\n')) {
+      if (!line.startsWith('data:')) continue
+      const raw = line.slice(5).trim()
+      if (!raw || raw === '[DONE]') continue
+      try {
+        const o = JSON.parse(raw)
+        if (o && typeof o === 'object') events.push(o as SseEvent)
+      } catch (e) {
+        /* строка пришла рваной — ждём продолжения в следующем чанке */
+      }
+    }
+  }
+  return { events, rest: buf.slice(i) }
+}
+
+/** Читает поток ответа, показывает черновик и возвращает финальный payload (или null). */
+async function readDraftStream(res: Response, onDraft: (text: string | null) => void): Promise<Partial<ChatResult> | null> {
+  const rd = res.body && typeof res.body.getReader === 'function' ? res.body.getReader() : null
+  if (!rd) return null
+  const dec = new TextDecoder()
+  let buf = ''
+  let draft: string | null = null
+  let final: Partial<ChatResult> | null = null
+  for (;;) {
+    const r = await rd.read()
+    if (r.done) break
+    buf += dec.decode(r.value, { stream: true })
+    const got = parseSse(buf)
+    buf = got.rest
+    for (const ev of got.events) {
+      if (ev.kind === 'draft') {
+        draft = (draft || '') + String(ev.text || '')
+        onDraft(draft)
+      } else if (ev.kind === 'drop') {
+        // попытка ушла в запасной пул: на экране не должно остаться её обрывков
+        draft = null
+        onDraft(null)
+      } else if (ev.kind === 'final' && ev.payload && typeof ev.payload === 'object') {
+        final = ev.payload as Partial<ChatResult>
+      }
+    }
+  }
+  return final
+}
+
 
 const ENDPOINT = (import.meta.env?.VITE_API_BASE || '') + '/api/chat'
 
@@ -306,7 +378,19 @@ export async function fetchCounters(): Promise<{ ok: boolean; line: string; erro
 export async function sendChat(
   text: string,
   history: ChatTurn[] = [],
-  opts: { signal?: AbortSignal; images?: string[]; attachments?: Attachment[]; model?: string; gender?: string } = {},
+  opts: {
+    signal?: AbortSignal
+    images?: string[]
+    attachments?: Attachment[]
+    model?: string
+    gender?: string
+    /**
+     * Живой черновик. Если он задан, у сервера просится поток (`accept: text/event-stream`):
+     * на каждом куске провайдера сюда приходит накопленный текст, а `null` значит «сбрось —
+     * эта попытка не пойдёт в ответ». Без колбэка запрос и ответ остаются ровно прежними.
+     */
+    onDraft?: (text: string | null) => void
+  } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), 75_000)
@@ -314,7 +398,9 @@ export async function sendChat(
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: opts.onDraft
+        ? { 'content-type': 'application/json', accept: 'text/event-stream' }
+        : { 'content-type': 'application/json' },
       signal: ac.signal,
       body: JSON.stringify({
         text,
@@ -328,7 +414,20 @@ export async function sendChat(
         userId: currentUserId(),
       }),
     })
-    const data = (await res.json().catch(() => null)) as Partial<ChatResult> | null
+    let data: Partial<ChatResult> | null
+    if (opts.onDraft && (res.headers.get('content-type') || '').indexOf('text/event-stream') >= 0) {
+      // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
+      // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
+      const fin = (await readDraftStream(res, opts.onDraft)) as Partial<ChatResult> | null
+      if (!fin) {
+        // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
+        // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост
+        return { ok: false, reply: '', error: 'ответ оборвался на середине' }
+      }
+      data = fin
+    } else {
+      data = (await res.json().catch(() => null)) as Partial<ChatResult> | null
+    }
     if (!res.ok || !data) {
       return { ok: false, reply: '', error: (data && data.error) || `сервер ответил ${res.status}`, tried: data?.tried }
     }

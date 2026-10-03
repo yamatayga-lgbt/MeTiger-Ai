@@ -58,6 +58,8 @@ export default function App() {
     loadActiveChatId('c-start'),
   )
   const [typing, setTyping] = useState(false)
+  /* черновик текущего ответа: приходит кусками из /api/chat, пока он идёт */
+  const [draft, setDraft] = useState<string | null>(null)
   /* Выбранная модель ответа — между сессиями (как и все настройки). '' = Авто. */
   const [model, setModel] = usePersistentState<string>('mt-model', '', isModelId)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -185,12 +187,16 @@ export default function App() {
         ),
       )
       setTyping(true)
+      setDraft('')
       void (async () => {
         const r = await sendChat(text, history, {
           ...(images && images.length ? { images } : {}),
           ...(attachments && attachments.length ? { attachments } : {}),
           ...(model ? { model } : {}),
           gender: genderForRequest(readGender()),
+          /* ответ показывается по мере чтения провайдера; null — попытка ушла в запасной
+             пул, обрывки с экрана убираем */
+          onDraft: (t) => setDraft(t),
         })
         const reply =
           r.ok && r.reply
@@ -226,6 +232,10 @@ export default function App() {
           ),
         )
         setTyping(false)
+        setDraft(null)
+        /* поток мог оборваться в самом конце: текст на экране, хвоста нет — это
+           не причина звать ответ неудачным, но сказать про него надо */
+        if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
       })()
     },
     [activeChatId, chats, model],
@@ -295,6 +305,7 @@ export default function App() {
                 user={user}
                 messages={activeChat?.messages ?? []}
                 typing={typing}
+                draft={draft}
                 onSend={sendMessage}
                 model={model}
                 onModelChange={setModel}

@@ -199,7 +199,7 @@ export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS });
 }
 
-export async function onRequestPost(context) {
+async function handlePost(context) {
   const { request, env } = context;
   let body = null;
   try { body = await request.json(); } catch (e) { return json({ ok: false, error: 'нужен JSON' }, 400); }
@@ -282,7 +282,17 @@ export async function onRequestPost(context) {
      нужен на этом же запросе), пишем после ответа и не чаще раза в минуту. */
   const brave = createBrave({ env, store });
   await brave.pull();
-  const engine = createEngine({ env, fetch: (u, i) => fetch(u, i), quarantine, memory, brave });
+  const engine = createEngine({
+    env, fetch: (u, i) => fetch(u, i), quarantine, memory, brave,
+    /* Куски ответа летят в браузер по мере чтения провайдера. Без
+       `accept: text/event-stream` колбэка нет — движок идёт ровно прежним путём,
+       поэтому curl, бот и дымовой тест публикации ничего не замечают. */
+    onDelta: typeof context.__send === 'function'
+      ? (ev) => context.__send(ev && ev.kind === 'drop'
+        ? { kind: 'drop', provider: ev.provider, model: ev.model }
+        : { kind: 'draft', provider: ev.provider, model: ev.model, text: ev.text || '' })
+      : undefined,
+  });
   const history = norm.history;
   /* Профиль — то, что человек написал о себе сам в Настройках. Читается один раз на
      запрос и не имеет права его сломать: нет KV, нет сети — ответ выходит обычный,
@@ -353,6 +363,9 @@ export async function onRequestPost(context) {
        «я тебе ответил иначе, потому что ты прислал» должно быть видно, а не молчать */
     /* куда легла память этого человека — по строке видно, что веб больше не общий
        котёл: 'u-ab12…' значит «память этого человека», 'web' — ключ не пришёл */
+    /* Провайдер оборвал поток на середине: половину ответа человек получил, но
+       врать, что это целый ответ, нельзя — это видно по этой строке. */
+    streamError: r.streamError || undefined,
     memoryChatId: chatId,
     profile: userId ? (profileBlock ? 'учтён' : 'пусто') : 'нет идентификатора' + (profileWhy ? ' · ' + profileWhy : ''),
     inputNotes: norm.notes.length ? norm.notes : undefined,
@@ -433,5 +446,47 @@ export async function onRequestGet(context) {
     attach: attachLine(context.env),
     /* чем именно движок считает мёртвым — чтобы не гадать по логам */
     dead: engine.quarantine(),
+  });
+}
+
+/** Браузер может попросить ответ потоком (`accept: text/event-stream`): тогда текст
+ *  прилетает кусками по мере чтения провайдера, а не одним блоком через пару секунд.
+ *
+ *  Это обёртка, а не второй режим: вся логика (лимиты, память, инструменты, совет)
+ *  живёт в handlePost и выполняется ровно один раз, а сюда приходят только события
+ *  draft/drop из движка. Дойдёт до финала — шлём `final` с тем же payload, что вернул
+ *  бы обычный POST; сорвётся — `error`. Кто не просил SSE, получает прежний JSON.
+ */
+export async function onRequestPost(context) {
+  const hdr = context && context.request && context.request.headers;
+  const accept = String((hdr && hdr.get && hdr.get('accept')) || '');
+  if (accept.indexOf('text/event-stream') < 0) return handlePost(context);
+
+  const enc = new TextEncoder();
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  let closed = false;
+  const send = (obj) => {
+    if (closed) return;
+    try { writer.write(enc.encode('data: ' + JSON.stringify(obj) + '\n\n')); } catch (e) { closed = true; }
+  };
+  /* Поток обязан закрываться в любом случае: висячий ответ держит соединение и
+     выглядит для браузера как «думает», хотя движок уже умер. */
+  const job = handlePost(Object.assign({}, context, { __send: send }))
+    .then(async (res) => {
+      let payload = null;
+      try { payload = await res.json(); } catch (e) { payload = { ok: false, error: 'сервер вернул не JSON' }; }
+      send({ kind: 'final', status: res.status, payload });
+    })
+    .catch((e) => { send({ kind: 'error', error: String((e && e.message) || e) }); })
+    .finally(() => { closed = true; try { writer.close(); } catch (e) { /* уже закрыт */ } });
+  void job;
+  return new Response(readable, {
+    headers: Object.assign({}, CORS, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store',
+      /* Прокси и браузеры любят добуферизовать поток до конца — это убивает смысл. */
+      'x-accel-buffering': 'no',
+    }),
   });
 }
