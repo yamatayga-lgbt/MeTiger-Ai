@@ -68,6 +68,10 @@ export interface ModelOption {
   ctx?: number
   /** Ориентировочная скорость генерации (токенов/сек). */
   tokPerSec?: number
+  /** Лимит запросов в день (RPD). */
+  rpd?: number
+  /** Лимит запросов в минуту (RPM), если есть. */
+  rpm?: number
   /** Поддерживает ли модель режим рассуждений («Думает»). */
   canThink?: boolean
   /** Поддерживает ли модель выбор усилия («Низкое / Среднее / Высокое»). */
@@ -453,14 +457,40 @@ export function formatContextBadge(ctx?: number): string {
   return `${n} Контекст`
 }
 
-/* ==================== Счётчик запросов и скорость (ток/с) ==================== */
+/* ==================== Счётчик запросов (в день / в минуту) и скорость (ток/с) ==================== */
 
 export interface ModelTelemetryEntry {
   requests: number
+  day?: string
+  dayCount?: number
+  minStamps?: number[]
   tokPerSec?: number
 }
 
 const TELEMETRY_KEY = 'mt-model-telemetry'
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** Определяет лимиты запросов в день и в минуту по модели и источнику (engine/providers.js). */
+export function modelLimitsFor(
+  id?: string,
+  src?: string,
+  meta?: { rpd?: number; rpm?: number },
+): { rpd: number; rpm?: number } {
+  if (meta?.rpd) return { rpd: meta.rpd, rpm: meta.rpm }
+  if (!id) return { rpd: 5000, rpm: 60 }
+  const s = `${id} ${src || ''}`.toLowerCase()
+  if (/gemini|gemma/.test(s) && src !== 'odirouter') return { rpd: 250, rpm: 15 }
+  if (src === 'groq' || /gpt-oss|qwen3\.8-27b/.test(s)) return { rpd: 1000, rpm: 30 }
+  if (src === 'openrouter') return { rpd: 50, rpm: 20 }
+  if (src === 'cerebras') return { rpd: 900, rpm: 30 }
+  if (src === 'odirouter') return { rpd: 1000, rpm: 15 }
+  if (src === 'zai' || /\bglm\b/.test(s)) return { rpd: 1000, rpm: 30 }
+  if (src === 'mistral' || /ministral|codestral|devstral|mistral/.test(s)) return { rpd: 1000, rpm: 60 }
+  return { rpd: 1000, rpm: 60 }
+}
 
 function readTelemetryMap(): Record<string, ModelTelemetryEntry> {
   try {
@@ -474,13 +504,42 @@ function readTelemetryMap(): Record<string, ModelTelemetryEntry> {
   }
 }
 
-export function getModelTelemetry(id: string, fallbackTps?: number): { requests: number; totalRequests: number; tokPerSec: number } {
+export function getModelTelemetry(
+  id: string,
+  fallbackTps?: number,
+  src?: string,
+  meta?: { rpd?: number; rpm?: number },
+): {
+  requests: number
+  dayUsed: number
+  minUsed: number
+  rpd: number
+  rpm?: number
+  quotaLabel: string
+  totalRequests: number
+  tokPerSec: number
+} {
   const map = readTelemetryMap()
   const key = id || '_auto'
   const entry = map[key]
   const total = map._total?.requests || 0
+  const today = todayIso()
+  const dayUsed = entry?.day === today ? entry?.dayCount || 0 : 0
+  const now = Date.now()
+  const minUsed = Array.isArray(entry?.minStamps)
+    ? entry.minStamps.filter((t) => now - t < 60_000).length
+    : 0
+  const { rpd, rpm } = modelLimitsFor(id, src, meta)
+  const dayPart = dayUsed > 0 ? `${dayUsed}/${rpd} в день` : `${rpd}/день`
+  const minPart = rpm ? (minUsed > 0 ? `${minUsed}/${rpm} в мин` : `${rpm}/мин`) : ''
+  const quotaLabel = [dayPart, minPart].filter(Boolean).join(' · ')
   return {
     requests: entry?.requests || 0,
+    dayUsed,
+    minUsed,
+    rpd,
+    rpm,
+    quotaLabel,
     totalRequests: total,
     tokPerSec: entry?.tokPerSec || fallbackTps || 135,
   }
@@ -492,13 +551,23 @@ export function recordModelTelemetry(id: string | undefined, ms?: number, chars?
     const map = readTelemetryMap()
     const key = id || '_auto'
     const prev = map[key] || { requests: 0 }
+    const today = todayIso()
+    const now = Date.now()
+    const dayCount = (prev.day === today ? prev.dayCount || 0 : 0) + 1
+    const minStamps = (Array.isArray(prev.minStamps) ? prev.minStamps.filter((t) => now - t < 60_000) : []).concat(now)
     let tps = prev.tokPerSec
     if (ms && ms > 100 && chars && chars > 12) {
       const estTokens = Math.max(4, Math.round(chars / 3.3))
       const measured = Math.min(450, Math.max(15, Math.round((estTokens * 1000) / ms)))
       tps = prev.tokPerSec ? Math.round(prev.tokPerSec * 0.6 + measured * 0.4) : measured
     }
-    map[key] = { requests: (prev.requests || 0) + 1, ...(tps ? { tokPerSec: tps } : {}) }
+    map[key] = {
+      requests: (prev.requests || 0) + 1,
+      day: today,
+      dayCount,
+      minStamps,
+      ...(tps ? { tokPerSec: tps } : {}),
+    }
     const totalPrev = map._total?.requests || 0
     map._total = { requests: totalPrev + 1, ...(tps ? { tokPerSec: tps } : {}) }
     localStorage.setItem(TELEMETRY_KEY, JSON.stringify(map))

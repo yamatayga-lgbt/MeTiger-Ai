@@ -7,23 +7,26 @@ interface TopbarProps {
   onOpenWorkspace: () => void
 }
 
-/** Верхняя панель: меню слева, заголовок по центру, Workspace справа. */
+/** Верхняя панель: меню слева, заголовок строго по центру, Workspace справа. */
 export function Topbar({ title, onOpenMenu, onOpenWorkspace }: TopbarProps) {
   return (
     <header className="topbar">
-      <IconButton
-        icon={PanelLeft}
-        label="Меню"
-        onClick={onOpenMenu}
-        className="only-mobile"
-      />
+      <div className="topbar-side topbar-left">
+        <IconButton
+          icon={PanelLeft}
+          label="Меню"
+          onClick={onOpenMenu}
+          className="only-mobile"
+        />
+      </div>
       <div className="page-title">{title}</div>
-      <div className="topbar-spacer" />
-      <IconButton
-        icon={Folder}
-        label="Workspace"
-        onClick={onOpenWorkspace}
-      />
+      <div className="topbar-side topbar-right">
+        <IconButton
+          icon={Folder}
+          label="Workspace"
+          onClick={onOpenWorkspace}
+        />
+      </div>
     </header>
   )
 }

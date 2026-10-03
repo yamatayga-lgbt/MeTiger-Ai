@@ -43,6 +43,7 @@ interface Row {
   flags: string[]
   ctx: number
   tokPerSec: number
+  src?: string
   canThink: boolean
   supportsEffort: boolean
 }
@@ -104,6 +105,7 @@ function build(cat: ModelCatalog | null): Row[] {
       flags,
       ctx: m.ctx || 131072,
       tokPerSec: m.src === 'groq' || m.src === 'cerebras' ? 240 : m.tier === 'smart' ? 105 : 150,
+      src: m.src,
       canThink: think,
       supportsEffort: canModelEffort(m.id, m),
     }
@@ -184,8 +186,8 @@ export function ModelPicker({
   }, [rows, model])
 
   const telemetry = useMemo(
-    () => getModelTelemetry(activeRow.id, activeRow.tokPerSec),
-    [activeRow.id, activeRow.tokPerSec],
+    () => getModelTelemetry(activeRow.id, activeRow.tokPerSec, activeRow.src),
+    [activeRow.id, activeRow.tokPerSec, activeRow.src],
   )
 
   const upd = async () => {
@@ -304,8 +306,8 @@ export function ModelPicker({
               <span className="model-stat-chip" title="Средняя скорость генерации токенов">
                 <Zap size={11} /> ~{telemetry.tokPerSec} ток/с
               </span>
-              <span className="model-stat-chip" title="Счётчик выполненных запросов">
-                <Activity size={11} /> Запросов: {telemetry.requests}
+              <span className="model-stat-chip" title="Лимит запросов в день и в минуту">
+                <Activity size={11} /> {telemetry.quotaLabel}
               </span>
             </div>
           </div>

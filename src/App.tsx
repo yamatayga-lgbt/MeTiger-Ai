@@ -89,12 +89,6 @@ export default function App() {
     DEFAULT_GEN_PARAMS,
     isGenParams,
   )
-  /* глубокий поиск в сети («поиск» рядом с «вслух»): выбор тоже живёт между сессиями */
-  const [searchOn, setSearchOn] = usePersistentState<boolean>(
-    'mt-search',
-    false,
-    (v): v is boolean => typeof v === 'boolean',
-  )
   /* Выбранная модель ответа — между сессиями (как и все настройки). '' = Авто. */
   const [model, setModel] = usePersistentState<string>('mt-model', '', isModelId)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -235,7 +229,6 @@ export default function App() {
              пул, обрывки с экрана убираем */
           onDraft: (t) => setDraft(t),
           ...(allowThink ? { onReasoning: (t: string | null) => setDraftReasoning(t), reasoningEffort: effort } : {}),
-          ...(searchOn ? { webSearch: true } : {}),
           temperature: genParams.temperature,
           ...(genParams.maxTokens > 0 ? { maxTokens: genParams.maxTokens } : {}),
           topP: genParams.topP,
@@ -267,9 +260,9 @@ export default function App() {
               /* что прочитали из вложений и чем оплатили окно — две строки под ответом */
               attach: r.ok ? attachLine(r) || undefined : undefined,
               notes: r.ok ? notesLine(r) || undefined : undefined,
-              /* что модель передумала по дороге — под ответом, раскрытым не будет:
-                 это справочная строка для тех, кто включил «думать вслух» */
-              reasoning: r.ok && reasoningOn && r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
+              /* что модель передумала по дороге — под ответом, свёрнуто в <details>:
+                 думать вслух — постоянная функция для думающих моделей */
+              reasoning: r.ok && allowThink && r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
               /* проверенные ссылки из поиска/вики/новостей — кликабельны под ответом */
               sources: r.ok && Array.isArray(r.sources) && r.sources.length ? r.sources.slice(0, 8) : undefined,
             }
@@ -293,7 +286,7 @@ export default function App() {
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
       })()
     },
-    [activeChatId, chats, model, reasoningOn, effort, searchOn, genParams],
+    [activeChatId, chats, model, reasoningOn, effort, genParams],
   )
   // ⌘K — палитра, ⌘N — новый чат, Esc — закрыть оверлеи
   useEffect(() => {
@@ -364,8 +357,6 @@ export default function App() {
                 draftReasoning={draftReasoning}
                 reasoningOn={reasoningOn}
                 onToggleReasoning={() => setReasoningOn((v) => !v)}
-                searchOn={searchOn}
-                onToggleSearch={() => setSearchOn((v) => !v)}
                 onSend={sendMessage}
                 model={model}
                 onModelChange={setModel}

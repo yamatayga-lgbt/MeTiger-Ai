@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Brain, ChevronDown, Globe, Mic, Paperclip, SlidersHorizontal, Square, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, Mic, Paperclip, SlidersHorizontal, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
@@ -136,10 +136,8 @@ export function ChatView({
   typing,
   draft,
   draftReasoning,
-  reasoningOn,
+  reasoningOn = true,
   onToggleReasoning,
-  searchOn,
-  onToggleSearch,
   onSend,
   model = '',
   onModelChange,
@@ -585,7 +583,7 @@ export function ChatView({
                   fileRef.current?.click()
                 }}
               >
-                <Paperclip size={17} />
+                <Paperclip size={18} />
               </button>
               <input
                 ref={fileRef}
@@ -596,34 +594,6 @@ export function ChatView({
                 data-role="attach"
                 onChange={(e) => void addFiles(e.target.files)}
               />
-              <button
-                type="button"
-                className={`search-toggle${searchOn ? ' is-on' : ''}`}
-                aria-pressed={!!searchOn}
-                title="Глубокий поиск в сети: сверять ответ со свежими источниками и показывать ссылки"
-                onClick={() => {
-                  haptic('light')
-                  onToggleSearch?.()
-                }}
-              >
-                <Globe size={14} />
-                поиск
-              </button>
-              {modelOpt.canThink !== false ? (
-                <button
-                  type="button"
-                  className={`reason-toggle${reasoningOn ? ' is-on' : ''}`}
-                  aria-pressed={!!reasoningOn}
-                  title="Показывать рассуждения модели, пока ответ пишется (и сворачивать их под ответом)"
-                  onClick={() => {
-                    haptic('light')
-                    onToggleReasoning?.()
-                  }}
-                >
-                  <Brain size={13} />
-                  вслух
-                </button>
-              ) : null}
             </div>
 
             <div className="composer-foot-right">

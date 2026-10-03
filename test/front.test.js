@@ -728,8 +728,8 @@ console.log('L — песочница: запуск кода в браузере
     ok('M20: живой канал рассуждений доехал до экрана и выглядит не как ответ',
       chat.includes('msg-reason-live') && chat.includes('aria-label="Модель думает вслух"')
         && api.includes("ev.channel === 'reasoning'"));
-    ok('M21: переключатель помнит выбор между сессиями и стоит рядом с выбором модели',
-      app.includes("'mt-reasoning'") && chat.includes('reason-toggle') && chat.includes('aria-pressed'));
+    ok('M21: «думает вслух» — постоянная функция для думающих моделей (управляется тумблером «Думает» в пикере, без отдельной кнопки в окне ввода)',
+      app.includes("'mt-reasoning'") && app.includes('canModelThink(model)') && !chat.includes('reason-toggle'));
     ok('M22: сказанное под ответом свёрнуто, а не вывалено в пузырь (рассуждения — не текст ответа)',
       chat.includes('<details className="msg-reason">') && chat.includes('думал вслух')
         && app.includes('slice(0, 4000)'));
@@ -767,7 +767,7 @@ console.log('L — песочница: запуск кода в браузере
       '--packages=external', '--loader:.png=dataurl', '--outfile=' + out4, '--log-level=error',
     ], { stdio: 'inherit' });
     const { ChatView } = await import(out4);
-    const app = readFileSync('src/App.tsx', 'utf8');
+    const toolsSrc = readFileSync('engine/tools.js', 'utf8');
     const htmlOn = renderToStaticMarkup(
       React.createElement(ChatView, {
         user: { name: 'Тигр', language_code: 'ru' },
@@ -778,7 +778,6 @@ console.log('L — песочница: запуск кода в браузере
           sources: [{ title: 'Квантовый компьютер', url: 'https://ru.wikipedia.org/wiki/Квантовый_компьютер' }],
         }],
         typing: false,
-        searchOn: true,
         onSend() {},
       }),
     );
@@ -787,14 +786,13 @@ console.log('L — песочница: запуск кода в браузере
         user: { name: 'Тигр', language_code: 'ru' },
         messages: [{ id: 's2', role: 'assistant', text: 'Без поиска.' }],
         typing: false,
-        searchOn: false,
         onSend() {},
       }),
     );
-    ok('M24: переключатель «поиск» живёт рядом со «вслух» и сохраняется между сессиями (mt-search)',
-      app.includes("'mt-search'")
-        && /class="search-toggle is-on"[^>]*aria-pressed="true"/.test(htmlOn)
-        && /class="search-toggle"[^>]*aria-pressed="false"/.test(htmlOff));
+    ok('M24: поиск в интернете работает автоматически в движке (без лишней кнопки «поиск» в панели ввода)',
+      !/class="search-toggle/.test(htmlOn)
+        && toolsSrc.includes('Выжимка из источника')
+        && toolsSrc.includes('extractSources'));
     ok('M25: источники рендерятся кликабельными ссылками под ответом только тогда, когда они реально есть',
       /class="msg-sources"/.test(htmlOn)
         && /href="https:\/\/ru\.wikipedia\.org\/wiki\/Квантовый_компьютер"/.test(htmlOn)
@@ -816,6 +814,7 @@ console.log('L — песочница: запуск кода в браузере
       "export { ModelPicker } from '../../../src/components/ModelPicker'",
       "export { ParamsPopover } from '../../../src/components/ParamsPopover'",
       "export { ModelIcon, detectBrand } from '../../../src/components/ModelIcon'",
+      "export { Topbar } from '../../../src/components/Topbar'",
       "export { canModelThink, DEFAULT_GEN_PARAMS } from '../../../src/lib/models'",
       '',
     ].join('\n'), 'utf8');
@@ -823,7 +822,7 @@ console.log('L — песочница: запуск кода в браузере
       entry5, '--bundle', '--platform=node', '--format=esm',
       '--packages=external', '--loader:.png=dataurl', '--outfile=' + out5, '--log-level=error',
     ], { stdio: 'inherit' });
-    const { ModelPicker: MP5, ParamsPopover, detectBrand, canModelThink, DEFAULT_GEN_PARAMS } = await import(out5);
+    const { ModelPicker: MP5, ParamsPopover, Topbar, detectBrand, canModelThink, DEFAULT_GEN_PARAMS } = await import(out5);
 
     ok('M27: оригинальные бренд-иконки определяются по семейству ИИ (Google, Qwen, DeepSeek, Mistral, OpenAI, MeTiger)',
       detectBrand('') === 'metiger'
@@ -849,14 +848,14 @@ console.log('L — песочница: запуск кода в браузере
         onPick() {},
       }),
     );
-    ok('M28: двухколоночный пикер показывает категории ИИ, контекст (1M Контекст), ток/с и счётчик запросов',
+    ok('M28: двухколоночный пикер показывает категории ИИ, контекст (1M Контекст), ток/с и лимит запросов в день и в минуту (250/день · 15/мин)',
       /Google/.test(htmlThink)
         && /Qwen/.test(htmlThink)
         && /Mistral/.test(htmlThink)
         && /OpenAI/.test(htmlThink)
         && /1M Контекст/.test(htmlThink)
         && /ток\/с/.test(htmlThink)
-        && /Запросов:/.test(htmlThink));
+        && /250\/день · 15\/мин/.test(htmlThink));
 
     ok('M29: у думающей модели есть переключатель «Думает» и «УСИЛИЕ» (Низкое/Среднее/Высокое), а у не-думающей переключатель «Думает» пропадает',
       canModelThink('gemini-3.6-flash') === true
@@ -880,6 +879,21 @@ console.log('L — песочница: запуск кода в браузере
         && /temperature/.test(htmlParams)
         && /max_tokens/.test(htmlParams) && /Макс\./.test(htmlParams)
         && /top_p/.test(htmlParams));
+
+    const htmlTopbar = renderToStaticMarkup(
+      React.createElement(Topbar, {
+        title: 'Новый чат',
+        onOpenMenu() {},
+        onOpenWorkspace() {},
+      }),
+    );
+    const cssSrc = readFileSync('src/styles/index.css', 'utf8');
+    ok('M31: заголовок «Новый чат» центрирован в Topbar, а список моделей в пикере прокручивается (grid-template-rows: minmax(0, 1fr))',
+      /class="topbar-side topbar-left"/.test(htmlTopbar)
+        && /<div class="page-title">Новый чат<\/div>/.test(htmlTopbar)
+        && /class="topbar-side topbar-right"/.test(htmlTopbar)
+        && cssSrc.includes('grid-template-columns: 44px 1fr 44px')
+        && cssSrc.includes('grid-template-rows: minmax(0, 1fr)'));
   }
 }
 
