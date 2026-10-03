@@ -244,7 +244,7 @@ export function profileStatusLine(r: ProfileResult): string {
 /** «u-ab12…» → читаемая форма; сам ключ остаётся видимым, чтобы его можно было назвать. */
 function identityLabelOf(addr: string): string {
   const key = String(addr || '')
-  if (key.indexOf('u-tg_') === 0) return 'память: Telegram (id ' + key.slice(5) + ')'
+  if (key.indexOf('u-tg_') === 0) return 'память: Telegram (id ' + key.slice(5) + ')' /* ключи бота: чистим по-прежнему */
   if (key.indexOf('u-') === 0) return 'память: это устройство (' + key.slice(2) + ')'
   return 'память: общий ключ «' + (key || 'web') + '» — заполни профиль, и она станет личной'
 }

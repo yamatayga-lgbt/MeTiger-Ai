@@ -17,7 +17,6 @@ import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync } from '
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { onRequestPost, onRequestGet, onRequestOptions } from '../functions/api/chat.js';
-import { onRequestPost as tgPost, onRequestGet as tgGet } from '../functions/telegram/webhook.js';
 import { onRequestGet as modelsGet } from '../functions/api/models.js';
 /* Профиль человека (имя · профессия · о себе) — отдельная дверь, и в разработке она
    обязана быть: иначе Настройки в браузере показывали бы «сеть недоступна» и весь
@@ -76,14 +75,6 @@ function fileKV(dirName) {
 
 if (!env.MEMORY) env.MEMORY = fileKV('.mt-memory');
 
-/* Telegram локально не ходим: токен и вебхук — действие владельца на живом аккаунте.
-   Здесь секрет и токен подставляются фиктивные, а отправка уходит в /echo ниже,
-   чтобы «бот ответил» можно было проверить, не дёргая Telegram и не светя сообщения. */
-const DEV_TG_SECRET = 'local-dev-secret';
-if (!env.TELEGRAM_WEBHOOK_SECRET) env.TELEGRAM_WEBHOOK_SECRET = DEV_TG_SECRET;
-if (!env.TELEGRAM_BOT_TOKEN) env.TELEGRAM_BOT_TOKEN = '000000:local-fake-token';
-if (!env.TELEGRAM_API_BASE) env.TELEGRAM_API_BASE = 'http://127.0.0.1:' + (process.env.PORT || 8788) + '/echo';
-const echoes = [];
 const port = Number(process.env.PORT || 8788);
 
 createServer((req, res) => {
@@ -113,21 +104,8 @@ createServer((req, res) => {
         if (req.method === 'DELETE') return reply(await profileDelete(context));
         return reply(await profileGet(context));
       }
-      if (path === '/telegram/webhook') {
-        return reply(req.method === 'GET' ? await tgGet(context) : await tgPost(context));
-      }
-      if (path.indexOf('/echo/') === 0) {
-        let body = {};
-        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch (e) {}
-        echoes.push({ method: path.split('/')[2], body });
-        if (echoes.length > 50) echoes.shift();
-        return reply(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
-      if (path === '/echo') {
-        return reply(new Response(JSON.stringify({ ok: true, sent: echoes }), { status: 200, headers: { 'content-type': 'application/json' } }));
-      }
       return reply(new Response(JSON.stringify({
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills', 'POST /telegram/webhook', 'GET /echo'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       }), { status: 200, headers: { 'content-type': 'application/json' } }));
     } catch (e) {
@@ -145,7 +123,6 @@ modelreg.refresh(env, env.MEMORY, {}).then((c) => {
   console.log('каталог моделей: ' + ((c && c.models) || []).length + ' бесплатных' +
     (c && c.errors && c.errors.length ? ' (не полностью: ' + c.errors[0] + ')' : ''));
 }, () => console.log('каталог моделей: недоступен, движок работает по пулам'));
-  console.log('телеграм: секрет вебхука для локальных тестов — ' + DEV_TG_SECRET + ', отправка → ' + env.TELEGRAM_API_BASE);
   console.log(keys.length ? 'провайдеры с ключами: ' + keys.map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()).join(', ') :
     'ключей нет — движок ответит 503 со списком попыток (это правильное поведение, а не поломка)');
 });

@@ -162,8 +162,10 @@ fi
 # ── проверка прода ────────────────────────────────────────────────────────────
 if [ "$MODE" = production ] && [ "$DRY" = 0 ]; then
   say "── проверка прода"
-  T=$(curl -s --max-time 40 "$PROD/telegram/webhook")
-  printf '  вебхук: %s\n' "$(printf '%s' "$T" | head -c 300)"
+  # Дверь бота обязана быть закрыта: с 0.036 бота нет, и если маршрут вдруг
+  # отвечает — значит в прод уехал старый бандль или Functions не пересобрались.
+  W=$(curl -s -o /dev/null -w '%{http_code}' --max-time 40 "$PROD/telegram/webhook")
+  printf '  /telegram/webhook: %s (ожидаем 404 — бота больше нет)\n' "$W"
   C=$(curl -s --max-time 90 -X POST "$PROD/api/chat" -H 'content-type: application/json' \
         -d '{"text":"2+2","chatId":"publish_smoke","history":[]}')
   printf '  ответ:   %s\n' "$(printf '%s' "$C" | head -c 220)"

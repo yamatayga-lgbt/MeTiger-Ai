@@ -298,7 +298,7 @@ export function reframeMark(env, info) {
   return jbMark(env, Object.assign({ escalated: true }, info || {}));
 }
 
-/** Что слой вообще знает про себя — для `GET /telegram/webhook` и для тестов. */
+/** Что слой вообще знает про себя — для `GET /api/chat` и для тестов. */
 export function freedomInfo(env) {
   const cfg = cfgOf(env);
   return {

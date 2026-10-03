@@ -220,7 +220,7 @@ export function createQuarantine(opts) {
   };
 }
 
-/** Что слой о себе знает — для диагностики в /api/chat и /telegram/webhook. */
+/** Что слой о себе знает — для диагностики в GET /api/chat. */
 export function limitsInfo(env, store) {
   const cfg = cfgOf(env);
   return {

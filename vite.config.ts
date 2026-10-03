@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // base: './' — приложение работает и на GitHub Pages (проектный сайт),
-// и внутри Telegram Mini App, независимо от регистра пути.
+// и внутри любой вебвью, независимо от регистра пути.
 export default defineConfig({
   base: './',
   plugins: [react()],

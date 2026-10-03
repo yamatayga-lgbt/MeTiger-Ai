@@ -3,7 +3,7 @@
  *
  * Проверяется настоящее: модуль `engine/profile.js`, эндпоинт `/api/profile`,
  * вход `/api/chat` (какой ключ памяти реально получается у двух людей и доезжает ли
- * профиль до промпта) и ветка `/профиль` в Telegram. Сети нет — fetch подставлен,
+ * профиль до промпта); команда в боте — с 0.036 вместе с ботом убрана. Сети нет — fetch подставлен,
  * хранилище — подставной KV, поэтому проверяются решения кода, а не провайдеры.
  *
  *   node test/profile.test.js
@@ -11,7 +11,6 @@
 import { blockOf, createProfile, memoryKey, normalize, profileKey, sanitizeUserId, signalsOf, CAPS } from '../engine/profile.js';
 import { onRequestGet, onRequestPut, onRequestDelete } from '../functions/api/profile.js';
 import { onRequestGet as chatGet, onRequestPost as chatPost } from '../functions/api/chat.js';
-import { handleUpdate, profileLine } from '../engine/telegram.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -180,41 +179,6 @@ console.log('F — вход /api/chat: разные люди — разные к
   } finally {
     globalThis.fetch = saved;
   }
-}
-
-console.log('G — /профиль в Telegram');
-{
-  const priv = (text, from) => ({ message: { message_id: 5, chat: { id: 1, type: 'private' }, from: from || { id: 4242, is_bot: false, first_name: 'Иван' }, text } });
-  const spy = () => { const posts = [], texts = []; return { posts, texts, post: async (m, p) => { posts.push({ m, p }); if (m === 'sendMessage') texts.push(p.text || ''); return { status: 200 }; } }; };
-  const kv = fakeKv();
-  const api = createProfile({ env: { MEMORY: kv, PROFILE_WRITE_MS: '0' }, store: kv });
-  const asked = [];
-  const s1 = spy();
-  const r1 = await handleUpdate({ update: priv('/профиль'), env: {}, ask: async (pl) => { asked.push(pl); return { ok: true, reply: 'не должен быть вызван' }; }, post: s1.post, profile: api });
-  ok('G1: команда не идёт к моделям — отвечает словами и не жжёт квоту', r1.answered === true && asked.length === 0 && s1.texts.length === 1, 'ask=' + asked.length + ' texts=' + s1.texts.length);
-  ok('G2: пустой профиль описан как пустой, с формой записи', /ничего не записывал/.test(s1.texts[0]) && /не заполнено/.test(s1.texts[0]) && /<имя> \| <чем занимаешься>/.test(s1.texts[0]), s1.texts[0].slice(0, 200));
-  const s2 = spy();
-  await handleUpdate({ update: priv('/профиль Иван | аналитик данных | люблю таблицы и покороче'), env: {}, ask: async (pl) => { asked.push(pl); return { ok: true, reply: 'нет' }; }, post: s2.post, profile: api });
-  ok('G3: запись одной строкой раскладывается по трём полям', /Как обращаться: Иван/.test(s2.texts[0]) && /Чем занимаешься: аналитик данных/.test(s2.texts[0]) && /О себе: люблю таблицы и покороче/.test(s2.texts[0]), s2.texts[0].slice(0, 240));
-  ok('G4: подстройка показана человеку теми же словами, что ушла в промпт', /Как я подстраиваюсь/.test(s2.texts[0]) && /2–4 строки/.test(s2.texts[0]), (s2.texts[0].match(/Как я подстраиваюсь[\s\S]{0,160}/) || [''])[0]);
-  const s3 = spy();
-  await handleUpdate({ update: priv('/профиль  |  врач  | '), env: {}, ask: async () => ({ ok: true, reply: 'нет' }), post: s3.post, profile: api });
-  ok('G5: пустые куски не затирают то, что уже записано', /Как обращаться: Иван/.test(s3.texts[0]) && /Чем занимаешься: врач/.test(s3.texts[0]), s3.texts[0].slice(0, 220));
-  const s4 = spy();
-  await handleUpdate({ update: priv('/профиль очисть'), env: {}, ask: async () => ({ ok: true, reply: 'нет' }), post: s4.post, profile: api });
-  ok('G6: «очисть» стирает и не путает это с /forget', /Профиль забыт/.test(s4.texts[0]) && /\/forget/.test(s4.texts[0]), s4.texts[0]);
-  const s5 = spy();
-  await handleUpdate({ update: priv('/профиль'), env: {}, ask: async () => ({ ok: true, reply: 'нет' }), post: s5.post });
-  ok('G7: без хранилища бот говорит об этом, а не падает', /не подключены/.test(s5.texts[0]) && s5.texts.length === 1, s5.texts[0]);
-  const s6 = spy();
-  await handleUpdate({ update: priv('/профиль Иван', { id: null }), env: {}, ask: async () => ({ ok: true, reply: 'нет' }), post: s6.post, profile: api });
-  ok('G8: без id отправителя не пишем на чужое имя', /Не вижу id/.test(s6.texts[0]), s6.texts[0]);
-  const s7 = spy();
-  const r7 = await handleUpdate({ update: priv('привет'), env: {}, ask: async (pl) => { asked.push(pl); return { ok: true, reply: 'Привет, Иван!' }; }, post: s7.post, profile: api });
-  ok('G9: обычный ответ уносит userId в payload — память и профиль в боте тоже личные',
-    r7.answered === true && asked[asked.length - 1].userId === 'tg_4242' && asked[asked.length - 1].chatId === 'tg_1', JSON.stringify(asked[asked.length - 1]).slice(0, 160));
-  const line = await profileLine(api, 'tg_4242', 'a | b | c | d');
-  ok('G10: четыре куска — отказ с формой, а не запись лишнего в «о себе»', /Слишком много кусков/.test(line), line.slice(0, 120));
 }
 
 console.log('H — видимость состояния в диагностике');

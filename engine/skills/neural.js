@@ -23,6 +23,6 @@ export default [
   S('neural-toggle', 'style', 'Вкл/выкл Neural Typing', 'Управление эффектом печати',
     /(включи.*нейро|выключи.*нейро|вкл.*neural|выкл.*neural|отключи.*печать|включи.*печать)/i, {
       priority: 7,
-      prompt: 'вкл/выкл neural typing: в Mini App настройка settings.neuralTyping (true/false) в localStorage yama_settings_v1, toggle #t-neural. Если просят включить — объясни что уже включено по умолчанию, даёт человечную печать с паузами и опечатками, можно выключить в Персонализация → Neural Typing для мгновенной печати. Если просят выключить — скажи как выключить и что тогда typeOut будет мгновенным'
+      prompt: 'вкл/выкл neural typing: в приложении настройка settings.neuralTyping (true/false) в localStorage yama_settings_v1, toggle #t-neural. Если просят включить — объясни что уже включено по умолчанию, даёт человечную печать с паузами и опечатками, можно выключить в Персонализация → Neural Typing для мгновенной печати. Если просят выключить — скажи как выключить и что тогда typeOut будет мгновенным'
     }),
 ];

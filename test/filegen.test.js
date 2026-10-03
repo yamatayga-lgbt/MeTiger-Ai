@@ -1,6 +1,6 @@
 /**
  * Файлы (перенос engine/filegen.js из yama-ai) + упаковка блоков ответа +
- * врезка в движок, эндпоинт и Telegram.
+ * врезка в движок и эндпоинт /api/chat.
  *
  * Проверка идёт по-настоящему: ZIP разбирается своим читалкой в тесте (имена, CRC,
  * байты), а не «на глаз по длине». Сети нет — fetch подменён.
@@ -8,7 +8,6 @@
  */
 import { generate, packFiles, formatFromText, nameFromText, crc32, zipStore, sizeOf, FMT } from '../engine/filegen.js';
 import { createEngine } from '../engine/chat.js';
-import { handleUpdate } from '../engine/telegram.js';
 
 let pass = 0; let fail = 0;
 const ok = (name, cond, detail) => {
@@ -211,33 +210,6 @@ const run = (script, env, extra) => {
     userMsg.includes('[Инструмент: Поиск картинок]') && userMsg.includes('https://u/1-t.jpg') && userMsg.includes('cc/by'), userMsg.slice(0, 120));
   ok('C11: инструмент попал в подпись ответа', res.tools.includes('image-search'), res.tools.join());
 }
-
-console.log('D — Telegram: документ уходит multipart-ом');
-{
-  const sent = [];
-  const out = await handleUpdate({
-    update: { message: { chat: { id: 7, type: 'private' }, from: { id: 7, is_bot: false }, text: 'сделай файл' } },
-    env: {},
-    ask: async () => ({ ok: true, reply: 'готово', files: [{ name: 'отчёт.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 4397, b64: Buffer.from('a'.repeat(400)).toString('base64') }] }),
-    post: async (method, payload, file) => { sent.push({ method, payload, file }); return { status: 200 }; },
-  });
-  const doc = sent.find((s) => s.method === 'sendDocument');
-  ok('D1: после текста отправлен sendDocument с настоящим именем и типом',
-    !!doc && doc.file.filename === 'отчёт.docx' && doc.file.type.includes('wordprocessingml') && doc.file.bytes.length === 400, JSON.stringify(sent.map((s) => s.method)));
-  ok('D2: подпись к документу — имя, вес и метадвижка', /отчёт\.docx · 4,3 КБ/.test(doc.payload.caption), doc.payload.caption);
-  ok('D3: счётчик отправленных файлов виден снаружи', out.files.join() === 'отчёт.docx', JSON.stringify(out.files));
-
-  const bad = [];
-  const out2 = await handleUpdate({
-    update: { message: { chat: { id: 7, type: 'private' }, from: { id: 7, is_bot: false }, text: 'сделай файл' } },
-    env: {},
-    ask: async () => ({ ok: true, reply: 'готово', files: [{ name: 'x.docx', mime: 'x', size: 4, b64: Buffer.from('abcd').toString('base64') }] }),
-    post: async (method, payload, file) => { bad.push(method); if (method === 'sendDocument') throw new Error('Bot API отверг файл'); return { status: 200 }; },
-  });
-  ok('D4: не отправился файл — человек слышит причину, а не тишину',
-    out2.sent.some((t) => /не отправить не вышло|не вышло: Bot API отверг/.test(t)) && /Bot API/.test(out2.fileError || ''), out2.sent.join(' | ').slice(-90));
-}
-
 console.log('E — эндпоинты: человек видит файлы и навыки');
 {
   const real = globalThis.fetch;

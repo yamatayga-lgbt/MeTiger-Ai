@@ -161,11 +161,6 @@ import json,sys
 d=json.load(sys.stdin)
 print('  limits:', json.dumps(d.get('limits'),ensure_ascii=False))
 "
-  curl -s "$PROD/telegram/webhook" | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-print('  memory:', d.get('memory'), '| limits:', d.get('limits'))
-"
   printf '{"text":"запомни число 4242","chatId":"onboard-check"}' > /tmp/kv1.json
   printf '{"text":"какое число я просил запомнить?","chatId":"onboard-check"}' > /tmp/kv2.json
   curl -s -X POST "$PROD/api/chat" -H 'content-type: application/json' --data @/tmp/kv1.json >/dev/null

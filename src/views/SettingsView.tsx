@@ -337,7 +337,7 @@ export function SettingsView({
       <div className="app-foot">
         MeTiger Ai © 2026
         <br />
-        Универсальный ИИ-агент в Telegram
+        Универсальный ИИ-агент: тексты, код, картинки, файлы
       </div>
     </div>
   )
