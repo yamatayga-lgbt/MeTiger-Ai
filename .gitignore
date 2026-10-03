@@ -17,3 +17,6 @@ workers/stats/.wrangler
 # Папка для ключей: здесь живёт .secrets.env (CF/GitHub-доступы).
 # Значений в git попадать не должно ни при каких обстоятельствах.
 keys/
+
+# бинарники помощников (cloudflared для scripts/tunnel.sh — 39 МБ, в git не нужен)
+bin/

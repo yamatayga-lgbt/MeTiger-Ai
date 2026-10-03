@@ -18,5 +18,8 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4173,
     allowedHosts: true,
+    // Тот же прокси, что и в dev: иначе собранный фронт на `vite preview` ходит за /api
+    // на сам себя и молча получает 404 — расхождение dev/preview замечали не раз.
+    proxy: { '/api': { target: 'http://127.0.0.1:8788', changeOrigin: true } },
   },
 })
