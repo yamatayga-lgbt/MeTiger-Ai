@@ -77,6 +77,8 @@ export interface Attachment {
   kind: 'file' | 'voice' | 'image'
 }
 
+import { looksLikeImage } from './images'
+
 export const ATTACH_MAX = 3
 export const ATTACH_FILE_BYTES = 4 * 1024 * 1024
 /** Что пускаем в диалог выбора: картинки + читаемые форматы + любой аудиофайл. */
@@ -86,7 +88,9 @@ export const ATTACH_ACCEPT =
 export function attachmentKind(f: { name?: string; type?: string }): 'image' | 'voice' | 'file' {
   const mime = (f.type || '').toLowerCase()
   const name = (f.name || '').toLowerCase()
-  if (mime.startsWith('image/')) return 'image'
+  /* Правило картинки одно на весь клиент — из src/lib/images: телефонные фото приходят
+     с пустым type и по MIME не опознаются совсем. */
+  if (looksLikeImage({ name: f.name, type: f.type })) return 'image'
   if (mime.startsWith('audio/') || /\.(ogg|opus|webm|mp3|m4a|aac|wav|amr)$/.test(name)) return 'voice'
   return 'file'
 }

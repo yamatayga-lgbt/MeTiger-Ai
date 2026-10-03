@@ -18,6 +18,26 @@
 
 import { parse as parseDoc, describeLine, MAX_BYTES as DOC_MAX } from './docparse.js';
 
+/** Имя вместо MIME: галерея и Telegram частенько отдают `application/octet-stream`. */
+export const IMAGE_NAME = /\.(png|jpe?g|jpeg|webp|gif|bmp|avif|heic|heif|tif|tiff|jfif)$/i;
+
+/** Картинка по содержимому. Правило живёт здесь, а не продублировано в веб-слое:
+ *  два пути (Telegram и /api/chat) обязаны пускать и не пускать одно и то же. */
+export function sniffImageMime(bytes) {
+  if (!bytes || bytes.length < 12) return '';
+  const at = (i) => bytes[i];
+  const tag = (o) => String.fromCharCode(at(o), at(o + 1), at(o + 2), at(o + 3));
+  if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4e && at(3) === 0x47) return 'image/png';
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return 'image/jpeg';
+  if (tag(0) === 'RIFF' && tag(8) === 'WEBP') return 'image/webp';
+  if (tag(0) === 'GIF8') return 'image/gif';
+  if (at(0) === 0x42 && at(1) === 0x4d) return 'image/bmp';   /* 'BM' — два байта, не четыре */
+  if (tag(0) === 'II\u002a\u0000' || tag(0) === 'MM\u0000\u002a') return 'image/tiff';
+  if (tag(4) === 'ftyp' && /heic|heix|mif1|hevx|heim/.test(tag(8) + String.fromCharCode(at(12), at(13), at(14), at(15)))) return 'image/heic';
+  if (tag(4) === 'ftyp' && /^avif|^avis/.test(tag(8))) return 'image/avif';   /* ISO-BMFF: бренд в байтах 8..11 */
+  return '';
+}
+
 export const MAX_PHOTO = 5 * 1024 * 1024;
 export const MAX_AUDIO = 8 * 1024 * 1024;
 export const MAX_DOC_BYTES = DOC_MAX;              /* 8 МБ — тот же потолок, что у читалки */
@@ -49,7 +69,7 @@ export function parseMedia(update) {
     const name = String(d.file_name || 'файл');
     /* гифку и картинку в document Telegram носит как файл — читалка документов на
        них справедливо ругается, поэтому картинку отправляем зрению, а не парсеру */
-    if (/^image\//.test(mime) || /\.(png|jpe?g|webp|gif)$/i.test(name)) {
+    if (/^image\//.test(mime) || IMAGE_NAME.test(name)) {
       out.photos = out.photos.concat([{ id: d.file_id, size: d.file_size || 0, fromDocument: true, mime }]);
     } else out.document = { id: d.file_id, name, mime, size: d.file_size || 0 };
   }
@@ -171,7 +191,16 @@ export function createAttach(o) {
       const got = await pull(p.id, limits.photo, 'фото');
       out.tried++;
       if (!got.ok) { out.notes.push(got.why); continue; }
-      const mime = /\.png$/i.test(got.name) ? 'image/png' : /\.webp$/i.test(got.name) ? 'image/webp' : /\.gif$/i.test(got.name) ? 'image/gif' : 'image/jpeg';
+      /* Формат — по первым байтам, а не по имени: Telegram подписывает скачанный файл как
+             photos/file_12.jpg независимо от того, что внутри, и прежняя разметка «иначе
+             jpeg» отправляла HEIC под ярлыком image/jpeg. Модель отвечала «картинки не
+             вижу», и по логу было не понять, кто сломался. */
+      const mime = sniffImageMime(got.bytes)
+        || (/\.png$/i.test(got.name) ? 'image/png' : /\.webp$/i.test(got.name) ? 'image/webp' : /\.gif$/i.test(got.name) ? 'image/gif' : (p.mime || 'image/jpeg'));
+      if (/^image\/(heic|heif|tiff?|avif)$/i.test(mime)) {
+        out.notes.push('формат ' + mime.slice(6).toUpperCase() + ' модель не читает — пришлите JPEG или PNG');
+        continue;
+      }
       out.images.push('data:' + mime + ';base64,' + b64enc(got.bytes));
     }
     if ((media.photos || []).length > MAX_IMAGES) out.notes.push('фото ' + media.photos.length + ' штук — смотрю первые ' + MAX_IMAGES);

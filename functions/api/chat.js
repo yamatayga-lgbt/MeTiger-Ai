@@ -42,7 +42,7 @@ import * as modelreg from '../../engine/modelreg.js';
 import { lineOf as imgLineOf } from '../../engine/imggen.js';
 import { normalizeFields, stats as ctxStats } from '../../engine/ctxfit.js';
 import { createProfile, memoryKey, sanitizeUserId } from '../../engine/profile.js';
-import { compose as composeAttach, readDocBytes, readVoiceBytes, DOC_CHARS } from '../../engine/attach.js';
+import { compose as composeAttach, readDocBytes, readVoiceBytes, DOC_CHARS, IMAGE_NAME, sniffImageMime } from '../../engine/attach.js';
 import { createStt } from '../../engine/voicein.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
@@ -81,7 +81,7 @@ const mb = (n) => Math.round((n / 1048576) * 10) / 10;
  * голос — расшифровкой. Читалка и распознавание общие, разной может быть только
  * сеть, а её здесь нет: байты уже в теле запроса.
  */
-async function readAttachments(list, env, fetchImpl, log) {
+export async function readAttachments(list, env, fetchImpl, log) {
   const got = { images: [], docs: [], voiceText: '', notes: [], tried: 0 };
   const all = Array.isArray(list) ? list : [];
   if (!all.length) return got;
@@ -98,8 +98,21 @@ async function readAttachments(list, env, fetchImpl, log) {
     if (total + bytes.length > ATT_TOTAL_BYTES) { got.notes.push(name + ': вложений на ' + mb(total + bytes.length) + ' МБ — потолок запроса ' + mb(ATT_TOTAL_BYTES) + ' МБ'); continue; }
     total += bytes.length;
     got.tried++;
-    if (/^image\//.test(mime)) {
-      got.images.push('data:' + mime + ';base64,' + b64of(bytes));
+    /* Картинка — по MIME, по имени или по первым байтам. Правило имени живёт в
+       engine/attach.js и общее с Telegram: если слои разойдутся, фото начнёт работать
+       в боте и молча ломаться в веб-чате (или наоборот) — это уже чинили. */
+    const sniffed = sniffImageMime(bytes);
+    if (/^image\//.test(mime) || IMAGE_NAME.test(name) || sniffed) {
+      const real = /^image\//.test(mime) ? mime : sniffed;
+      if (!real) {
+        got.notes.push(name + ': не похоже на картинку, которую модель разглядит (нужны png/jpeg/webp/gif/bmp)');
+        continue;
+      }
+      if (/^image\/(heic|heif|tiff?|avif|svg\+xml)$/i.test(real)) {
+        got.notes.push(name + ': формат ' + real.slice(6).toUpperCase() + ' модель не читает — пришлите JPEG или PNG');
+        continue;
+      }
+      got.images.push('data:' + real + ';base64,' + b64of(bytes));
       continue;
     }
     const isVoice = a.kind === 'voice' || a.kind === 'audio' || /^audio\//.test(mime);

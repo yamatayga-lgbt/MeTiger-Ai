@@ -16,14 +16,21 @@ function ok(name, cond, extra) {
 const TXT = new TextEncoder().encode('отчёт за квартал\nвыручка,1200\nрасход,800\n');
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5]);
 const OGG = new Uint8Array(2048).fill(9);
+/** Байты по формату: имя файла в Telegram ничего не гарантирует, и проверка должна
+    видеть настоящую сигнатуру, а не совпадение букв в пути. */
+const JPG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0].concat(Array.from(new TextEncoder().encode('метки камеры'))));
+const WEBP = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0x20, 0, 0, 0, 0x57, 0x45, 0x42, 0x50].concat(Array.from(new TextEncoder().encode('кадр'))));
+const HEICB = Uint8Array.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63].concat(Array.from(new TextEncoder().encode('raw с айфона'))));
+
 const FILES = {
   'doc-1': { path: 'downloads/documents_report.txt', bytes: TXT },
   'doc-2': { path: 'downloads/documents_big.bin', bytes: new Uint8Array(4 * 1024 * 1024) },
-  'ph-1': { path: 'downloads/photos_pic1.jpg', bytes: PNG },
+  'ph-1': { path: 'downloads/photos_pic1.jpg', bytes: JPG },
   'ph-2': { path: 'downloads/photos_pic2.png', bytes: PNG },
-  'ph-3': { path: 'downloads/photos_pic3.webp', bytes: PNG },
+  'ph-3': { path: 'downloads/photos_pic3.webp', bytes: WEBP },
   'ph-4': { path: 'downloads/photos_pic4.jpg', bytes: PNG },
   'ph-5': { path: 'downloads/photos_pic5.jpg', bytes: PNG },
+  'ph-heic': { path: 'downloads/photos_pic6.jpg', bytes: HEICB },
   'voc-1': { path: 'downloads/audio_voice1.ogg', bytes: OGG },
   'vid-1': { path: 'downloads/video_clip1.mp4', bytes: new Uint8Array(12) },
   'doc-3': { path: 'downloads/documents_bad.docx', bytes: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) },
@@ -116,9 +123,18 @@ console.log('\nB — скачивание и разбор');
 {
   const a = createAttach({ env: { TELEGRAM_BOT_TOKEN: 'SEKRETNYTOKEN' }, fetch: tg().fetch, log: () => {} });
   const got = await a.take({ has: true, photos: ['ph-1', 'ph-2', 'ph-3', 'ph-4', 'ph-5'].map((id) => ({ id })), other: [] });
+{
+  /* Имя обещает .jpg, внутри HEIC: раньше байты уходили модели под ярлыком
+     image/jpeg, и «картинки не вижу» было неотличимо от настоящей поломки. */
+  const a = createAttach({ env: { TELEGRAM_BOT_TOKEN: 'SEKRETNYTOKEN' }, fetch: tg().fetch, log: () => {} });
+  const got = await a.take({ has: true, photos: [{ id: 'ph-heic', size: 12 }], other: [] });
+  ok('B17: HEIC под именем .jpg не притворяется jpeg — назван формат и сказано, что прислать',
+    got.images.length === 0 && /HEIC/.test(got.notes.join(' ')) && /JPEG или PNG/.test(got.notes.join(' ')),
+    JSON.stringify({ i: got.images.length, n: got.notes }));
+}
   ok('B13: фото больше трёх — смотрим три, и это сказано', got.images.length === MAX_IMAGES && /смотрю первые 3/.test(got.notes.join(' ')), JSON.stringify({ n: got.images.length, notes: got.notes }));
   const mimes = got.images.map((d) => d.slice(5, d.indexOf(';')));
-  ok('B14: mime картинки угадан по расширению файла (jpeg/png/webp)', mimes[0] === 'image/jpeg' && mimes[1] === 'image/png' && mimes[2] === 'image/webp', JSON.stringify(mimes));
+  ok('B14: mime картинки берётся из байт (имя файла не указ), jpeg/png/webp различаются', mimes[0] === 'image/jpeg' && mimes[1] === 'image/png' && mimes[2] === 'image/webp', JSON.stringify(mimes));
   const big = createAttach({ env: { TELEGRAM_BOT_TOKEN: 'SEKRETNYTOKEN', ATTACH_MAX_DOC: String(256 * 1024) }, fetch: tg().fetch, log: () => {} });
   const got2 = await big.take({ has: true, photos: [], document: { id: 'doc-2', name: 'big.bin', size: 4 * 1024 * 1024 }, other: [] });
   ok('B15: файл через потолок не читается, а отклоняется с цифрами', got2.docs.length === 1 && got2.docs[0].ok === false && /потолок 0\.25 МБ|потолок/.test(got2.docs[0].why), JSON.stringify(got2.docs[0]).slice(0, 200));

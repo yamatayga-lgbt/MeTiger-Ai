@@ -118,6 +118,35 @@ console.log('H — вложения: что уходит в движок и чт
   const nocanvas = await img.fileToDataUrl({ type: 'image/png', size: 2048, name: 'y.png' });
   ok('H5: где нет canvas — тоже честная ошибка, а не пустой пузырь', nocanvas.ok === false && !!nocanvas.error, JSON.stringify(nocanvas));
   ok('H6: сторона ограничена 1024 px — модель не читает пиксели, которые не различает', img.MAX_SIDE === 1024);
+  /* Фото из галереи приходят с пустым type, а iPhone — с image/heic. Прежний фильтр
+     «только по MIME» такие файлы выбрасывал молча: нажатие «прикрепить» не давало
+     ни превью, ни ошибки. */
+  ok('H7: фото без MIME, но с картиночным именем — берём; видео и текст — нет',
+    img.looksLikeImage({ name: 'IMG_1234.HEIC', type: '' }) === true
+      && img.looksLikeImage({ name: 'скрин.png', type: 'application/octet-stream' }) === true
+      && img.looksLikeImage({ name: 'clip.mp4', type: 'video/mp4' }) === false
+      && img.looksLikeImage({ name: 'note.txt', type: 'text/plain' }) === false,
+    'IMG_1234.HEIC/скрин.png/clip.mp4/note.txt');
+  ok('H8: pickImages берёт файл без type, а attachmentKind относит его к картинке, а не к документу',
+    img.pickImages([{ name: 'IMG_1.HEIC', type: '', size: 1024 }]).length === 1
+      && attachmentKind({ name: 'IMG_1.HEIC', type: '' }) === 'image'
+      && attachmentKind({ name: 'отчёт.pdf', type: '' }) === 'file',
+    [attachmentKind({ name: 'IMG_1.HEIC', type: '' }), attachmentKind({ name: 'отчёт.pdf', type: '' })].join('/'));
+  const heic = await img.fileToDataUrl({ name: 'IMG_1.HEIC', type: 'image/heic', size: 2048 });
+  ok('H9: HEIC — отдельная подсказка про камеру, а не «картинка не прочитана»',
+    heic.ok === false && /HEIC/.test(heic.error || '') && /Совместим[ыа]е форматы/.test(heic.error || ''), JSON.stringify(heic));
+  /* Главный анти-дрейф: фронт и движок решают «это картинка?» по одному правилу. Если
+     списки расширений разъедутся, фото начнёт работать в веб-чате и ломаться в Telegram. */
+  const eng = await import('../engine/attach.js');
+  const names = ['a.png', 'b.jpeg', 'c.jpg', 'd.webp', 'e.gif', 'f.bmp', 'g.avif', 'h.HEIC', 'i.heif', 'j.tif', 'k.tiff', 'l.jfif', 'm.txt', 'n.pdf', 'o.mp4'];
+  ok('H10: IMAGE_EXT фронта и IMAGE_NAME движка принимают ровно один и тот же список имён',
+    names.every((n) => img.IMAGE_EXT.test(n) === eng.IMAGE_NAME.test(n)),
+    names.filter((n) => img.IMAGE_EXT.test(n) !== eng.IMAGE_NAME.test(n)).join(','));
+  ok('H11: нюхатор по байтам отличает картинку от текста (веб-путь и Telegram пользуются им вместе)',
+    eng.sniffImageMime(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 1, 2, 3, 4])) === 'image/png'
+      && eng.sniffImageMime(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 6, 7, 8])) === 'image/jpeg'
+      && eng.sniffImageMime(new TextEncoder().encode('просто текст, не картинка')) === '',
+    String(eng.sniffImageMime(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 1, 2, 3, 4]))));
 }
 
 console.log('I — окно выбора модели: витрина, пулы и живой каталог');

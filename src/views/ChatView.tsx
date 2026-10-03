@@ -3,7 +3,7 @@ import { ArrowUp, ChevronDown, Mic, Paperclip, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic, type TgUser } from '../lib/telegram'
 import { timeGreeting, type ChatMessage } from '../lib/mock'
-import { fileToDataUrl, pickImages } from '../lib/images'
+import { fileToDataUrl, MAX_IMAGES, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
 import { modelOption } from '../lib/models'
 import { ModelPicker } from '../components/ModelPicker'
@@ -235,14 +235,20 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
   const addFiles = async (list: FileList | null) => {
     const all = list ? Array.from(list) : []
     if (!all.length) return
-    const picked = pickImages(all)
+    /* Сколько картинок ещё влезает: MAX_IMAGES = 2, и всё, что сверх, раньше молча
+       отрезалось — ни превью, ни ошибки, ни сообщения. Человек понимал это как «фото
+       не отправляются». */
+    const room = Math.max(0, MAX_IMAGES - shots.length)
+    const picked = pickImages(all).slice(0, room)
+    const tooManyImages = all.filter((f) => attachmentKind(f) === 'image').length - picked.length
     const next: string[] = []
     for (const f of picked) {
       const r = await fileToDataUrl(f)
       if (r.ok) next.push(r.dataUrl)
       else setShotError(r.error)
     }
-    if (next.length) setShots((prev) => prev.concat(next).slice(0, 2))
+    if (tooManyImages > 0) setShotError(`картинок приложено ${tooManyImages} сверх меры — беру столько, сколько помещается (${MAX_IMAGES})`)
+    if (next.length) setShots((prev) => prev.concat(next).slice(0, MAX_IMAGES))
     /* остальное — документы и аудио: их не превьюим, а читаем на сервере */
     const rest = all.filter((f) => attachmentKind(f) !== 'image')
     if (rest.length) {

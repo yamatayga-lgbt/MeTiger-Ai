@@ -5,7 +5,7 @@
  *
  *   node test/attachweb.test.js
  */
-import { onRequestPost, onRequestGet } from '../functions/api/chat.js';
+import { onRequestPost, onRequestGet, readAttachments } from '../functions/api/chat.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -194,6 +194,31 @@ console.log('\nW22 — советы голов не слепые: блок фа�
       res.status === 200 && j.ok === true && chats.length >= 2 && withFile.length === chats.length,
       JSON.stringify({ calls: chats.length, withFile: withFile.length, ens: String(j.ensemble || j.ensembleSkip || 'нет').slice(0, 80) }).slice(0, 240));
   });
+}
+
+/* Признак картинки на входе. Проверается сам `readAttachments`, а не модель за ним:
+   ломалось именно решение «картинка это или документ», и молча. */
+{
+  const b64bytes = (arr) => btoa(String.fromCharCode.apply(null, Array.from(arr)));
+  const pngBytes = b64bytes([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10].concat(Array.from(new TextEncoder().encode('данные'))));
+  const txt = b64of('обычный текст, а не картинка вовсе');
+  const run = async (att) => readAttachments([att], { ATTACH_DOC_CHARS: 0 }, async () => { throw new Error('сети нет'); }, () => {});
+  const a = await run({ name: 'IMG_1.HEIC', mime: '', size: 40, b64: pngBytes });
+  ok('W23: картинка без MIME, но с сигнатурой png уходит зрению, а не в читалку документов',
+    a.images.length === 1 && /^data:image\/png;base64,/.test(a.images[0]) && !a.docs.length,
+    JSON.stringify({ i: a.images.length, d: a.docs.length, n: a.notes }));
+  const b = await run({ name: 'кот.png', mime: 'application/octet-stream', size: 40, b64: txt });
+  ok('W24: имя «png», а внутри текст — говорим «не похоже на картинку», не кормим ни зрение, ни парсер',
+    !b.images.length && /не похоже на картинку/.test(b.notes.join(' ')), JSON.stringify(b.notes));
+  const c = await run({ name: 'IMG_9.HEIC', mime: 'image/heic', size: 40, b64: pngBytes });
+  ok('W25: HEIC не уезжает в документы и не притворяется jpeg — есть отдельная подсказка',
+    !c.images.length && !c.docs.length && /HEIC/.test(c.notes.join(' ')) && /JPEG/.test(c.notes.join(' ')),
+    JSON.stringify(c.notes));
+  const d = await run({ name: 'doc.txt', mime: 'text/plain', size: 40, b64: txt });
+  ok('W26: обычный текст по-прежнему читается как документ (картиночное правило его не сожрало)',
+    !d.images.length && d.docs.length === 1 && d.docs[0].ok === true, JSON.stringify(d.docs.map((x) => x.ok)));
+  ok('W27: правило имени общее со слоем Telegram — IMAGE_NAME импортирован, а не переписан',
+    (await import('../engine/attach.js')).IMAGE_NAME.test('x.heic') === true, 'IMAGE_NAME');
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

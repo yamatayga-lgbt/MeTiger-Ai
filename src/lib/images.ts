@@ -17,9 +17,23 @@ export const MAX_DATAURL_CHARS = Math.round((4 * 1024 * 1024) / 0.74)
 
 export type PickedFile = { ok: true; dataUrl: string } | { ok: false; error: string }
 
+/**
+ * Картинка — это то, что похоже на картинку типом ИЛИ именем. Проверка «только по
+ * MIME» была причиной того, что фото вообще не отправлялись: галерея на части
+ * телефонов отдаёт файл с пустым `type` (а iPhone отдаёт `image/heic`, которого нет
+ * в списке «что читает браузер»), и такой файл молча отсекался — человек нажимал
+ * «прикрепить» и не происходило ничего.
+ */
+export const IMAGE_EXT = /\.(png|jpe?g|jpeg|webp|gif|bmp|avif|heic|heif|tif|tiff|jfif)$/i
+
+export function looksLikeImage(f: { name?: string; type?: string }): boolean {
+  const mime = String(f && f.type || '').toLowerCase()
+  return mime.indexOf('image/') === 0 || IMAGE_EXT.test(String(f && f.name || ''))
+}
+
 /** Только картинки и не больше двух: всё остальное агент всё равно не увидит. */
 export function pickImages(files: Array<File | null | undefined> | null | undefined): File[] {
-  const list = (files || []).filter((f): f is File => !!f && typeof f.type === 'string' && f.type.indexOf('image/') === 0)
+  const list = (files || []).filter((f): f is File => !!f && typeof f.type === 'string' && looksLikeImage(f))
   return list.slice(0, MAX_IMAGES)
 }
 
@@ -38,7 +52,7 @@ function makeCanvas(w: number, h: number): { c: HTMLCanvasElement; ctx: CanvasRe
  * человеку «не прочитал», а не получить пустой пузырь.
  */
 export async function fileToDataUrl(file: File, maxSide = MAX_SIDE): Promise<PickedFile> {
-  if (!file || typeof file.type !== 'string' || file.type.indexOf('image/') !== 0) {
+  if (!file || !looksLikeImage({ name: file.name, type: file.type })) {
     return { ok: false, error: 'это не картинка' }
   }
   /* createObjectURL бросает на всём, что не Blob (а вызывающий может принести
@@ -62,7 +76,12 @@ export async function fileToDataUrl(file: File, maxSide = MAX_SIDE): Promise<Pic
     if (dataUrl.length > MAX_DATAURL_CHARS) return { ok: false, error: 'слишком тяжёлая картинка' }
     return { ok: true, dataUrl }
   } catch (e) {
-    return { ok: false, error: (e as Error)?.message || 'картинка не прочитана' }
+    /* HEIC — не «битая картинка», а формат, которого нет в браузере: без этой
+       подсказки человек будет перебирать снимки и решит, что сломан чат. */
+    const heic = /hei[cf]$/i.test(file.name || '') || /hei[cf]/.test(file.type || '')
+    return { ok: false, error: heic
+      ? 'HEIC (формат iPhone) браузер не открывает — включите «Совместимые форматы» в настройках камеры или пришлите JPEG'
+      : (e as Error)?.message || 'картинка не прочитана' }
   } finally {
     if (url && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(url)
   }
