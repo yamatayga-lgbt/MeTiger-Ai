@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode, SVGProps } from 'react'
-import { haptic } from '../lib/telegram'
+import { haptic } from '../lib/haptic'
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')

@@ -18,7 +18,8 @@ import {
   saveChats,
 } from './lib/persist'
 import { fetchRealRuns } from './lib/stats'
-import { getUser, haptic, isTelegram, type TgUser } from './lib/telegram'
+import { haptic } from './lib/haptic'
+import { siteUser, type Person } from './lib/user'
 import { usePersistentState } from './hooks/usePersistentState'
 import { isModelId } from './lib/models'
 
@@ -63,13 +64,13 @@ export default function App() {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
-  const [user, setUser] = useState<TgUser>(getUser())
+  const [user, setUser] = useState<Person>(siteUser())
   const [realRuns, setRealRuns] = useState<number | null>(null)
 
   const { pref, resolved, setPref, toggle } = useTheme()
 
   useEffect(() => {
-    setUser(getUser())
+    setUser(siteUser())
     void fetchRealRuns().then(setRealRuns)
   }, [])
 
@@ -306,7 +307,6 @@ export default function App() {
               user={user}
               themePref={pref}
               onThemePref={setPref}
-              isTelegram={isTelegram()}
               notify={notify}
             />
           ) : null}

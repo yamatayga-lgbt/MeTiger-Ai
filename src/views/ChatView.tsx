@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, ChevronDown, Mic, Paperclip, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
-import { haptic, type TgUser } from '../lib/telegram'
+import { haptic } from '../lib/haptic'
+import { type Person } from '../lib/user'
 import { timeGreeting, type ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
@@ -91,7 +92,7 @@ function RichText({ text }: { text: string }) {
 }
 
 interface ChatViewProps {
-  user: TgUser
+  user: Person
   messages: ChatMessage[]
   typing: boolean
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
@@ -302,7 +303,7 @@ export function ChatView({ user, messages, typing, onSend, model = '', onModelCh
         <div className="chat-hero">
           <img className="hero-mark" src={avatarUrl} alt="MeTiger Ai" />
           <h1 className="hero-title">
-            {timeGreeting()}, {user.first_name}.
+            {timeGreeting()}, {user.name}.
             <br />
             Чем <span className="accent">помочь</span>?
           </h1>

@@ -2,9 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './styles/index.css'
-import { loadTelegramSdk } from './lib/telegram'
 
-// Рендер сразу, данные Telegram подтянутся когда SDK загрузится
+// Рендер сразу: данных с сервера для первого кадра не нужно
 const root = createRoot(document.getElementById('root')!)
 root.render(
   <StrictMode>
@@ -12,4 +11,3 @@ root.render(
   </StrictMode>,
 )
 
-void loadTelegramSdk()

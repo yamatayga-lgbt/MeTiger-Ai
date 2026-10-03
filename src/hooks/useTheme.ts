@@ -19,11 +19,6 @@ function systemTheme(): ResolvedTheme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function telegramTheme(): ResolvedTheme | null {
-  const scheme = (window as unknown as { Telegram?: { WebApp?: { colorScheme?: string } } }).Telegram
-    ?.WebApp?.colorScheme
-  return scheme === 'dark' ? 'dark' : scheme === 'light' ? 'light' : null
-}
 
 export function useTheme() {
   const [pref, setPref] = useState<ThemePref>(readPref)
@@ -37,7 +32,7 @@ export function useTheme() {
   }, [])
 
   const resolved: ResolvedTheme =
-    pref === 'system' ? telegramTheme() ?? system : pref
+    pref === 'system' ? system : pref
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolved
@@ -50,7 +45,7 @@ export function useTheme() {
 
   const toggle = useCallback(() => {
     setPref((p) => {
-      const cur = p === 'system' ? (telegramTheme() ?? systemTheme()) : p
+      const cur = p === 'system' ? systemTheme() : p
       return cur === 'dark' ? 'light' : 'dark'
     })
   }, [])

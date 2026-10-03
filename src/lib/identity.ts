@@ -4,10 +4,8 @@
 
 /* Зачем. Продукт открытый, и у всех, кто зашёл браузером, была ОДНА память:
    агент помнил чужие факты про тебя. Ключ привязывает разговор к человеку.
-   Аккаунтов здесь нет сознательно — есть два источника устойчивого id:
-     • внутри Telegram — id аккаунта: тогда профиль и память общие с ботом, и
-       перезаход с другого телефона ничего не теряет;
-     • в браузере — ключ, заведённый один раз и лежащий в localStorage. Не sessionStorage
+   Аккаунтов здесь нет сознательно, и источник id один:
+     • ключ, заведённый один раз и лежащий в localStorage. Не sessionStorage
        (умирает со вкладкой) и не cookie (их читают чужие скрипты на том же домене).
    Чистка данных сайта или другое устройство = новый человек. Это цена отсутствия
    аккаунтов, и она честнее, чем тихая общая память на незнакомцев. */
@@ -25,16 +23,10 @@ export function newUserId(): string {
   return out
 }
 
-/** id аккаунта Telegram в форме, которую понимает бэкенд (`tg_…`). Гость (id 0) — не человек. */
-export function tgUserId(user?: { id?: number } | null): string {
-  const id = Number(user && user.id)
-  return Number.isFinite(id) && id > 0 ? 'tg_' + id : ''
-}
-
 /** Строка для подписи в настройках — человек должен видеть, где живёт его память. */
 export function identityLine(userId: string): string {
   if (!userId) return 'память не привязана — всё уйдёт в общий котёл'
-  if (userId.indexOf('tg_') === 0) return 'Telegram · id ' + userId.slice(3)
+  if (userId.indexOf('tg_') === 0) return 'старый ключ бота · id ' + userId.slice(3)   /* такие записи лежат в KV */
   return 'это устройство · ' + userId.slice(0, 4) + '…' + userId.slice(-4)
 }
 
@@ -66,26 +58,8 @@ export function ensureDeviceUserId(): string {
   return fresh
 }
 
-/**
- * Текущий идентификатор: Telegram важнее устройства (там id настоящий), иначе — ключ
- * браузера. Вызывается на каждый запрос, а не один раз при старте: WebApp может
- * доехать до окна позже, чем первый fetch.
- */
-/**
- * id аккаунта из окна Telegram. Читаем при каждом вызове и не кэшируем: скрипт WebApp
- * приезжает асинхронно, и первый запрос может случиться раньше, чем `window.Telegram`
- * появится. Закешированный «это браузер» лишил бы человека его же памяти и профиля
- * только потому, что он открыл приложение быстро.
- */
-function tgFromWindow(): string {
-  try {
-    const w = (globalThis as { window?: { Telegram?: { WebApp?: { initDataUnsafe?: { user?: { id?: number } } } } } }).window
-    return tgUserId(w?.Telegram?.WebApp?.initDataUnsafe?.user)
-  } catch {
-    return ''
-  }
-}
-
-export function currentUserId(tg?: { id?: number } | null): string {
-  return tgUserId(tg) || tgFromWindow() || ensureDeviceUserId()
+/* Единая точка «кто говорит». Вызов, а не константа: ключ устройства заводится при
+   первом обращении и обязан пережить чистку вкладки так же, как её переживает память. */
+export function currentUserId(): string {
+  return ensureDeviceUserId()
 }

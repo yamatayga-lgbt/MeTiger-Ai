@@ -26,7 +26,7 @@ import {
   type ModelAvatar,
   type ModelCatalog,
 } from '../lib/models'
-import { haptic } from '../lib/telegram'
+import { haptic } from '../lib/haptic'
 
 interface Row {
   id: string
@@ -44,7 +44,7 @@ interface Row {
 }
 
 /** Сколько строк одной группы показываем без поиска: каталог вырос до сотен id,
-    и молча рендерить 600 строк в Telegram-вебвью — способ подвесить панель. */
+    и молча рендерить 600 строк на слабом телефоне — способ подвесить панель. */
 const PER_GROUP = 120
 
 const AV_TOP: ModelAvatar = { bg: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)', mark: 'Me' }

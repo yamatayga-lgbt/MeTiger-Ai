@@ -381,8 +381,9 @@ console.log('K — Настройки: счётчик моделей, адрес
     ids.every((x) => id.memoryAddress(x) === backend.memoryKey(x, 'web')), ids.map((x) => id.memoryAddress(x) + '≠' + backend.memoryKey(x, 'web')).join(' '));
   ok('K2: без ключа фронт честно говорит про общий котёл, а не выдумывает id',
     id.memoryAddress('') === 'web' && id.memoryAddress('@@@') === 'web' && /общий котёл|общий ключ/.test(id.identityLine('')), id.identityLine(''));
-  ok('K3: id Telegram узнаётся, гость (id 0) — не человек',
-    id.tgUserId({ id: 4242 }) === 'tg_4242' && id.tgUserId({ id: 0 }) === '' && id.tgUserId(null) === '' && id.tgUserId({ id: '77' }) === 'tg_77');
+  ok('K3: ключ бота в подписи называется старым — канал закрыт и не выдаётся за текущий',
+    /старый ключ бота/.test(id.identityLine('tg_4242')) && !/Telegram/i.test(id.identityLine('tg_4242')),
+    id.identityLine('tg_4242'));
   ok('K4: ключ устройства — 16 hex и каждый раз новый', /^[0-9a-f]{16}$/.test(id.newUserId()) && id.newUserId() !== id.newUserId(), id.newUserId());
   /* localStorage подставляем: проверка в том, что ключ заводится один раз и переживает перезагрузку */
   const jar = new Map();
@@ -390,11 +391,28 @@ console.log('K — Настройки: счётчик моделей, адрес
   const a1 = id.ensureDeviceUserId();
   const a2 = id.ensureDeviceUserId();
   ok('K5: ключ переиспользуется из localStorage (память не обнуляется перезагрузкой)', a1 === a2 && jar.get('mt-uid') === a1, a1 + '/' + a2);
+  /* Источник идентификатора на сайте ровно один. Окно вебвью (если его кто-то
+     подложит) не должно снова становиться вторым ключом: два источника — это две
+     памяти у одного человека, ровно та ошибка, из-за которой ключи и путались. */
   globalThis.window = { Telegram: { WebApp: { initDataUnsafe: { user: { id: 99001 } } } } };
-  ok('K6: внутри Telegram ключ — id аккаунта: профиль и память общие с ботом', id.currentUserId() === 'tg_99001', id.currentUserId());
+  ok('K6: окно мессенджера больше не источник id — ключ один, устройства',
+    id.currentUserId() === a1 && id.currentUserId() !== 'tg_99001', id.currentUserId());
   delete globalThis.window;
-  ok('K7: подпись человека понятна и не светит весь ключ', /устройство · ab12…ef56$/.test(id.identityLine('ab12cd34ef56')) && /Telegram · id 4242/.test(id.identityLine('tg_4242')), id.identityLine('ab12cd34ef56') + ' / ' + id.identityLine('tg_4242'));
-  globalThis.localStorage = undefined;
+  const userOut = join(dir, 'user.mjs');
+  execFileSync(bin, ['src/lib/user.ts', '--bundle', '--platform=node', '--packages=external', '--format=esm', '--outfile=' + userOut, '--log-level=error'], { stdio: 'inherit' });
+  const person = await import(userOut);
+  ok('K6a: без записанного имени человек — «Гость», а не выдуманное имя',
+    person.siteUser().name === 'Гость' && person.initials(person.siteUser()) === 'Г', person.siteUser().name);
+  person.savePersonName('Иван Петров');
+  ok('K6b: имя из профиля доезжает до карточки и до инициалов',
+    person.siteUser().name === 'Иван Петров' && person.initials(person.siteUser()) === 'ИП', person.initials(person.siteUser()));
+  ok('K6c: язык берётся у браузера и не бывает пустым (подсказка распознавания голоса)',
+    /^[a-zA-Z-]{2,35}$/.test(person.siteUser().language_code), person.siteUser().language_code);
+  ok('K6d: очистка имени убирает запись, а не оставляет «undefined»',
+    (person.savePersonName(''), person.siteUser().name === 'Гость'), person.siteUser().name);
+    ok('K7: подпись человека понятна и не светит весь ключ (ни новый ключ, ни старый чужой id целиком)',
+    /устройство · ab12…ef56$/.test(id.identityLine('ab12cd34ef56')) && /^старый ключ бота · id 4242$/.test(id.identityLine('tg_4242')),
+    [id.identityLine('ab12cd34ef56'), id.identityLine('tg_4242')].join(' / '));  globalThis.localStorage = undefined;
 }
 {
   /* Счётчик моделей: числа придумываются не фронтом, а сервером — здесь ровно то,

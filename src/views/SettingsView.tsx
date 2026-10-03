@@ -29,15 +29,14 @@ import {
 import { currentUserId, identityLine } from '../lib/identity'
 import { GENDER_CHOICES, isGender, type Gender } from '../lib/gender'
 import { usePersistentState } from '../hooks/usePersistentState'
-import { displayName, initials, type TgUser } from '../lib/telegram'
+import { displayName, initials, savePersonName, type Person } from '../lib/user'
 import { APP_VERSION } from '../lib/version'
 import type { ThemePref } from '../hooks/useTheme'
 
 interface SettingsViewProps {
-  user: TgUser
+  user: Person
   themePref: ThemePref
   onThemePref: (p: ThemePref) => void
-  isTelegram: boolean
   notify: (msg: string) => void
 }
 
@@ -45,7 +44,6 @@ export function SettingsView({
   user,
   themePref,
   onThemePref,
-  isTelegram,
   notify,
 }: SettingsViewProps) {
   const [prefs, setPrefs] = usePersistentState('mt-settings', {
@@ -95,6 +93,9 @@ export function SettingsView({
     if (r.ok) {
       setProfStatus(r.unchanged ? 'ничего не изменилось — сохранилось как было' : profileStatusLine(r))
       setProfSignals(signalsLine(r))
+      /* Имя нужно не только этому экрану: с ним приветствие в чате и сидбар
+         называют человека, а не «Гость». Пишем рядом с серверной копией. */
+      savePersonName(prof.name)
       notify(r.unchanged ? 'Менять нечего' : 'Записал: учту в следующих ответах')
     } else {
       /* сохрание прилетело отказом — человек должен видеть причину, а не крутящийся
@@ -135,18 +136,17 @@ export function SettingsView({
 
       <div className="profile-card">
         <div className="avatar" style={{ width: 54, height: 54, fontSize: 18 }}>
-          {user.photo_url ? <img src={user.photo_url} alt="" /> : initials(user)}
+          {initials(user)}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="name">{displayName(user)}</div>
           <div className="handle">
-            {user.username ? `@${user.username}` : 'Гость'} ·{' '}
-            {isTelegram ? 'Telegram подключён' : 'Демо-режим'}
+            {user.handle}
           </div>
         </div>
-        <Badge tone={isTelegram ? 'green' : 'amber'}>
+        <Badge tone="gray">
           <span className="dot" />
-          {isTelegram ? 'Online' : 'Preview'}
+          без аккаунта
         </Badge>
       </div>
 
@@ -232,11 +232,11 @@ export function SettingsView({
             <div className="grow">
               <div className="n">Чья это память</div>
               <div className="d">
-                {identityLine(currentUserId(user))} — у каждого человека своя, память
+                {identityLine(currentUserId())} — у каждого человека своя, память
                 необщая. Сменить ключ = начать с чистого листа
               </div>
             </div>
-            <Badge tone={isTelegram ? 'green' : 'gray'}>{isTelegram ? 'Telegram' : 'Браузер'}</Badge>
+            <Badge tone="gray">Браузер</Badge>
           </div>
           <div className="settings-form">
             <label>

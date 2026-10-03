@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { IconButton } from './ui'
-import { displayName, initials, type TgUser } from '../lib/telegram'
+import { displayName, initials, type Person } from '../lib/user'
 import type { Chat, ViewId } from '../App'
 
 interface SidebarProps {
@@ -27,7 +27,7 @@ interface SidebarProps {
   onNewChat: () => void
   onRenameChat: (id: string, title: string) => void
   onDeleteChat: (id: string) => void
-  user: TgUser
+  user: Person
   resolvedTheme: 'light' | 'dark'
   onToggleTheme: () => void
   onOpenPalette: () => void
@@ -252,11 +252,11 @@ export function Sidebar({
         <div className="side-foot-row">
           <button type="button" className="user-row" onClick={() => onNavigate('settings')}>
             <div className="avatar" style={{ width: 30, height: 30, fontSize: 11.5 }}>
-              {user.photo_url ? <img src={user.photo_url} alt="" /> : initials(user)}
+              {initials(user)}
             </div>
             <div className="user-meta">
               <div className="n">{displayName(user)}</div>
-              <div className="u">{user.username ? `@${user.username}` : 'Telegram'}</div>
+              <div className="u">{user.handle}</div>
             </div>
           </button>
           <IconButton
