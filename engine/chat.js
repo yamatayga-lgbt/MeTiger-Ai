@@ -418,6 +418,16 @@ export function createEngine(opts) {
       if (sensitive && !pin) models = preferUncensored(models, modelreg.cached());
       if (brave && !pin) models = brave.order(models, id);
       if (!models.length) { tried.push({ provider: id, why: 'нет моделей в пуле' }); continue; }
+      /* Картинка есть, а смотреть некому. Отвечать всё равно что гадать: модель
+         получила бы текст без изображения и придумала бы содержимое (на проде на
+         красном квадрате вышло «Фон белый», а на другом прогоне — «изображение мне
+         не передали»). Пул без зрячей модели пропускаем и идём дальше; пин человека
+         не переспориваем — он выбрал модель руками, ему и отвечать, но мы скажем
+         об этом вслух (imageNote). */
+      if (images.length && !models.some((m) => isVision(m))) {
+        tried.push({ provider: id, why: 'в пуле нет модели, которая читает картинки' });
+        continue;
+      }
       const n = Math.max(1, Number(input.modelsPerProvider) || 2);
       for (const model of models.slice(0, n)) {
         const left = deadline - Date.now();

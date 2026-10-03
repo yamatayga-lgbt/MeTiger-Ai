@@ -129,9 +129,9 @@ console.log('W — файл из браузера доезжает до моде
     ok('W14: STT=off — голос не слушаем и говорим это прямо',
       /выключено|слоя STT нет/.test((j.attachNotes || []).join(' ')) && /послушай/.test(userText(c)), JSON.stringify({ n: j.attachNotes, t: userText(c).slice(0, 40) }));
     const before = c.length;
-    const pic = await onRequestPost({ request: req({ text: 'что на картинке', attachments: [{ name: 'кот.png', mime: 'image/png', size: 12, b64: b64of('\u0089PNG\r\n\u001axx') }] }), env: ENV });
+    const pic = await onRequestPost({ request: req({ text: 'что на картинке', attachments: [{ name: 'кот.png', mime: 'image/png', size: 12, b64: b64of('\u0089PNG\r\n\u001axx') }] }), env: Object.assign({}, ENV, { ODIROUTER_KEYS: 'o1' }) });
     const pj = await pic.json();
-    ok('W15: картинка, присланная как файл, уходит зрению, а не читалке документов',
+    ok('W15: картинка, присланная как файл, уходит зрению, а не читалке документов (и не слепой модели)',
       pj.ok === true && JSON.stringify(sent(c)).indexOf('data:image/png;base64,') >= 0 && c.length > before, JSON.stringify(sent(c)).slice(-200));
   });
 }

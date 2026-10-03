@@ -334,7 +334,20 @@ export async function onRequestPost(context) {
   ]).then(() => null);
   if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 
-  if (!r.ok) return json({ ok: false, error: r.error, intent: r.intent, tier: r.tier, ms: r.ms, tried: r.tried.slice(0, 10) }, 503);
+  if (!r.ok) {
+    /* «провайдеры легли» и «картинку некому разглядеть» — разные беды: во втором
+       случае повторять запрос бессмысленно, надо менять вложение или снимает пин. */
+    const blind = allImages.length > 0 && r.tried.length > 0
+      && r.tried.every((t) => /читает картинки/.test(String((t && t.why) || '')));
+    return json({
+      ok: false,
+      error: blind
+        ? 'ни одна доступная модель не читает картинки: в пулах нет зрячей — попробуйте позже, снимите пин модели или задайте вопрос текстом'
+        : r.error,
+      intent: r.intent, tier: r.tier, ms: r.ms, tried: r.tried.slice(0, 10),
+      blindVision: blind ? true : undefined,
+    }, blind ? 422 : 503);
+  }
   return json({
     /* заметки нормализации входа и то, что движок подогнал под окно модели:
        «я тебе ответил иначе, потому что ты прислал» должно быть видно, а не молчать */

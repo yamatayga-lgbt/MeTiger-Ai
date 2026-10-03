@@ -397,3 +397,44 @@ console.log('K2 — картинки сквозь движок (engine/imggen.js
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
+
+console.log('V — картинка не должна доставаться слепой модели');
+{
+  /* Прод на красном квадрате отвечал «Фон белый»: провайдер, у которого в пуле нет
+     зрячей модели, съедал запрос первым, а картинка до модели не доезжала. Пулы
+     берём настоящие: cerebras (gpt-oss-120b, qwen-3.8-27b — зрения нет), odirouter
+     (в пуле есть gemini-…-flash — зрит). */
+  const f = fakeFetch(() => ({ body: chat('Красный') }));
+  const e = createEngine({ env: { CEREBRAS_KEYS: 'c1', ODIROUTER_KEYS: 'o1' }, fetch: f, sleep: async () => {} });
+  const r = await e.run({ text: 'какого цвета фон? одно слово', images: ['data:image/png;base64,iVBORw0KGgo='], useTools: false, skills: false });
+  /* Зрячая голова находится внутри того же обхода, поэтому tried может остаться
+     пустым: провайдер-то отвечал первым. Требование здесь — кто именно ответил. */
+  ok('V1: ответ по картинке отдаёт зрячая модель, а не первая в пуле',
+    r.ok === true && /(gemini|vl|omni|vision)/i.test(r.model) && r.intent === 'vision',
+    JSON.stringify({ p: r.provider, m: r.model, i: r.intent }));
+  ok('V2: в cerebras с картинкой не ходим вообще', !f.calls.some((c) => /cerebras/.test(String(c.url))),
+    f.calls.map((c) => String(c.url).slice(0, 30)).join(' '));
+  const e3 = createEngine({ env: { CEREBRAS_KEYS: 'c1' }, fetch: fakeFetch(() => ({ body: chat('белый') })), sleep: async () => {} });
+  const r3 = await e3.run({ text: 'что на картинке?', images: ['data:image/png;base64,iVBORw0KGgo='], useTools: false, skills: false });
+  ok('V3: если зрячих нет нигде — ответа нет, а причина названа (тихое вранье дороже)',
+    r3.ok === false && /нет модели, которая читает картинки/.test(JSON.stringify(r3.tried)), JSON.stringify({ ok: r3.ok, t: r3.tried }));
+  const rq = (o) => new Request('http://x/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });
+  const gs = globalThis.fetch;
+  globalThis.fetch = fakeFetch(() => ({ body: chat('Красный') }));
+  const res4 = await onRequestPost({
+    request: rq({ text: 'что на картинке?', images: ['data:image/png;base64,iVBORw0KGgo='], provider: 'cerebras', model: 'qwen-3.8-27b' }),
+    env: { CEREBRAS_KEYS: 'c1', RATE_LIMIT: '0' },
+  });
+  const j4 = await res4.json();
+  ok('V4: пин на слепую модель с картинкой — отказ словами (422), а не 503 «провайдеры легли»',
+    res4.status === 422 && j4.blindVision === true && /не читает картинки/.test(j4.error || ''),
+    JSON.stringify({ s: res4.status, e: j4.error }));
+  const res5 = await onRequestPost({ request: rq({ text: 'привет', provider: 'cerebras', model: 'qwen-3.8-27b' }), env: { CEREBRAS_KEYS: 'c1', RATE_LIMIT: '0' } });
+  const j5 = await res5.json();
+  ok('V5: тот же пин без картинки работает как работал — отказа про зрение нет',
+    res5.status === 200 && !j5.blindVision, JSON.stringify({ s: res5.status, e: j5.error }));
+  globalThis.fetch = gs;
+}
+
+console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
+if (fail) process.exit(1);
