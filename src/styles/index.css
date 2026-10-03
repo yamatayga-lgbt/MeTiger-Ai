@@ -1587,9 +1587,11 @@ kbd {
   color: var(--accent);
 }
 
-.composer:focus-within {
-  border-color: var(--accent-border);
-  box-shadow: var(--shadow-md), 0 0 0 3px var(--accent-soft);
+/* Обводка при клике в поле ввода убрана по просьбе владельца: кольцо из --accent-soft
+   выглядело как «поле горит». Подсказка фокуса остаётся для клавиатуры (глобальный
+   :focus-visible) и для кнопок — здесь только мышиный клик по тексту. */
+.composer textarea:focus-visible {
+  outline: none;
 }
 
 .composer textarea {

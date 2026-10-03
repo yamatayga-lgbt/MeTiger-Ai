@@ -38,6 +38,7 @@ const MEMO_MS = 60 * 1000;
 
 /** Разумный потолок на число моделей в байте KV: значение должно оставаться маленьким. */
 import { envKeys } from './providers.js';
+import { VERIFIED as CHECKED } from './models-verified.js'
 const MAX_ENTRIES = 900;
 /* Сколько строк берём у одного провайдера: odirouter выдаёт 232 id разом, и
    если их не порезать, один говорливый агрегатор вытеснит всех остальных. */
@@ -583,11 +584,22 @@ export function showcase(cat, opts = {}) {
   const curatedIds = Array.isArray(opts.curatedIds) ? opts.curatedIds : [];
   const pickIds = Array.isArray(opts.pickIds) ? opts.pickIds : [];
   const pool = new Set(curatedIds);
+  /* Снимок живой проверки (engine/models-verified.js). Два правила, оба — про то, что
+     человек видит в списке, а не про то, куда движок пошлёт запрос:
+       · имя, на котором провайдер отвечает другой моделью, в списке быть не должно;
+       · имя с неизвестной ценой (алиасы агрегаторов) оставляем, только если оно
+         проверено живым; «бесплатно» для них никто не подтверждал.
+     Если снимка нет (проверку ещё не повторяли) — не режем ничего. */
+  const ver = opts.verified || CHECKED || {};
+  const alive = new Set(ver.alive || []);
+  const dead = new Set(ver.dead || []);
+  const audited = !!(ver.alive || []).length || !!(ver.dead || []).length;
   const tiers = opts.tierOf || (() => 'fast');
   const out = [];
   const seen = new Set();
   for (const id of pickIds) {
     if (seen.has(id)) continue;
+    if (audited && dead.has(id)) continue;
     seen.add(id);
     const m = cat && cat.byId ? cat.byId[id] : null;
     out.push({
@@ -601,6 +613,8 @@ export function showcase(cat, opts = {}) {
   }
   const rest = ((cat && cat.models) || [])
     .filter((m) => m.free && m.chat !== false && !seen.has(m.id))
+    .filter((m) => !audited || !dead.has(m.id))
+    .filter((m) => !audited || m.priceKnown || alive.has(m.id))
     .sort((a, b) => (String(a.vendor).localeCompare(String(b.vendor))) || String(a.name).localeCompare(String(b.name)))
     .slice(0, MAX_ENTRIES - out.length);
   for (const m of rest) {

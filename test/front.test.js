@@ -214,7 +214,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
 
   const html = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'wide/model-b', onPick() {} }));
   ok('I4: группы видны — витрина, пулы движка, каталог провайдеров',
-    /Витрина/.test(html) && /Пулы движка · 1/.test(html) && /Каталог провайдеров · 2/.test(html), (html.match(/model-section-title">[^<]*/g) || []).join('|'));
+    /Витрина/.test(html) && /Пулы движка · 2/.test(html) && /Каталог провайдеров · 2/.test(html), (html.match(/model-section-title">[^<]*/g) || []).join('|'));
   ok('I5: каталожная модель в разметке, с потолками вместо выдуманного описания',
     /Wide Model/.test(html) && /контекст 195К · ответ до 31К/.test(html), (html.match(/контекст [^<]*/) || ['нет'])[0]);
   ok('I6: выбрана ровно одна строка — та, что человек уже выбрал',
@@ -232,7 +232,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   await models.refreshCatalog();
   const offline = renderToStaticMarkup(React.createElement(ModelPicker, { model: '', onPick() {} }));
   ok('I10: без каталога панель остаётся рабочей (витрина целая), а не пустой дырой',
-    /Витрина/.test(offline) && /каталог недоступен/.test(offline) && /Gemini 3\.8 Flash/.test(offline), (offline.match(/каталог недоступен[^<]*/) || [''])[0]);
+    /Витрина/.test(offline) && /каталог недоступен/.test(offline) && /Gemini 2\.5 Flash/.test(offline), (offline.match(/каталог недоступен[^<]*/) || [''])[0]);
   ok('I11: неизвестный id по-прежнему значит Авто — молчаливый обход сохранён',
     models.modelOption('voobshe-ne-model').id === '', JSON.stringify(models.modelOption('voobshe-ne-model')).slice(0, 60));
   /* Собственные списки провайдеров: строка обязана говорить, ЧЬЯ она модель,

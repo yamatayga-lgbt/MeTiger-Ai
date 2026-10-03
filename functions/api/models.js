@@ -14,6 +14,7 @@
 import { buildTable } from '../../engine/providers.js';
 import { createBrave, lineOf as braveLine } from '../../engine/brave.js';
 import * as modelreg from '../../engine/modelreg.js';
+import { VERIFIED } from '../../engine/models-verified.js';
 import { memoryStore } from './chat.js';
 
 const CORS = {
@@ -99,6 +100,9 @@ export async function onRequestGet(context) {
     count: list.length,
     catalogCount: (cat.models || []).length,
     catalogTotal: Number(cat.total || 0) || null,
+    /* Когда список меряли живьём и сколько имён отбраковано: по этим числам видно,
+       что пора `node scripts/models-probe.mjs --all` (поле для диагностики, фронт его не читает). */
+    verified: { at: VERIFIED.at || null, alive: VERIFIED.alive.length, dead: VERIFIED.dead.length },
     errors: cat.errors || null,
     pools: pools.map((p) => ({ provider: p.provider, label: p.label, count: p.fast.length + p.smart.length })),
     /* чьи собственные списки реально прочитаны в этом обновлении — чтобы «в

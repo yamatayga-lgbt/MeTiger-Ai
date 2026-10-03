@@ -211,7 +211,6 @@ export function SettingsView({
             </div>
             <div className="grow">
               <div className="n">Род агента</div>
-              <div className="d">Как он пишет о себе: «я рад» или «я рада». Обращение к тебе агент выбирает сам по разговору</div>
             </div>
             <Segmented
               value={gender}

@@ -13,6 +13,7 @@ import * as M from '../engine/modelreg.js';
 import { buildRequest } from '../engine/shape.js';
 import { createEngine } from '../engine/chat.js';
 import { onRequestGet, onRequestPost, onRequestOptions } from '../functions/api/models.js';
+import { readFileSync } from 'node:fs';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -201,7 +202,11 @@ M.forgetMemo();
 
 console.log('── G · витрина для выбора ───');
 const pick = ['glm-4.7-flash', 'qwen3.8-27b', 'чего-нет-в-природе'];
-const list = M.showcase(CAT, { pickIds: pick, curatedIds: ['glm-4.7-flash'], tierOf: () => 'smart' });
+const list = M.showcase(CAT, {
+    // Снимок проверки здесь намеренно выключен: G1/G2 меряют порядок выбора и терпимость к
+    // незнакомым id, а не фильтр по живости (у фильтра своя секция V).
+    pickIds: pick, curatedIds: ['glm-4.7-flash'], tierOf: () => 'smart', verified: { alive: [], dead: [] },
+  });
 ok('G1 выбранное человеком идёт первым и по его порядку', list[0].id === 'glm-4.7-flash' && list[1].id === 'qwen3.8-27b', list.slice(0, 2).map((x) => x.id).join(','));
 ok('G2 неизвестный id не теряется — он останется в списке', list[2].id === 'чего-нет-в-природе' && list[2].src === 'pool');
 ok('G3 витрина помечена curated, каталог — нет', list[0].curated === true && list.some((x) => x.id === 'nex-agi/nex-n2.5-mini:free' && x.curated === false));
@@ -346,8 +351,10 @@ console.log('── I · потолок модели доходит до тел�
       async put(k, v) { this._m.set(k, typeof v === 'string' ? JSON.parse(v) : v); },
     };
     store._m.set(M.CATALOG_KEY, { updatedAt: Date.now(), count: 2, models: [
-      { id: 'tiny/model-a', name: 'Tiny', vendor: 'T', src: 'xkiro', free: true, chat: true, ctx: 4096, maxOut: 512, vision: false, visionKnown: true, tools: true },
-      { id: 'wide/model-b', name: 'Wide', vendor: 'W', src: 'xkiro', free: true, chat: true, ctx: 200000, maxOut: 32000, vision: true, visionKnown: true, tools: true },
+      /* priceKnown: true — провайдер сам сказал, что это бесплатно; без этого флага строка
+         считается непроверенной и из списка выбора убирается (см. секцию V). */
+      { id: 'tiny/model-a', name: 'Tiny', vendor: 'T', src: 'xkiro', free: true, chat: true, ctx: 4096, maxOut: 512, vision: false, visionKnown: true, tools: true, priceKnown: true },
+      { id: 'wide/model-b', name: 'Wide', vendor: 'W', src: 'xkiro', free: true, chat: true, ctx: 200000, maxOut: 32000, vision: true, visionKnown: true, tools: true, priceKnown: true },
     ] });
     M.forgetMemo();
     let net = 0;
@@ -359,7 +366,8 @@ console.log('── I · потолок модели доходит до тел�
     globalThis.fetch = g;
     ok('K1: 200 и ok', res.status === 200 && d.ok === true, res.status);
     ok('K2: каталог взят из KV, сеть не дёрнута', net === 0 && d.catalogCount === 2 && d.stale === false, net + '/' + d.catalogCount);
-    ok('K3: models — это пулы движка + каталог, а не 19 вручную вписанных', d.count > 100 && d.models.some((m) => m.id === 'tiny/model-a'), d.count);
+    ok('K3: models — пулы движка + каталог, а не 19 вручную (мёртвые и непроверенные по цене имена фильтром убраны)',
+    d.count > 40 && d.models.some((m) => m.id === 'tiny/model-a'), d.count);
     ok('K4: у строк есть name/vendor и потолки', (() => { const e = d.models.find((m) => m.id === 'wide/model-b'); return e.vendor === 'W' && e.ctx === 200000 && e.maxOut === 32000 && e.vision === true; })(), JSON.stringify(d.models.find((m) => m.id === 'wide/model-b')));
     ok('K5: пулы посчитаны по провайдерам', d.pools.some((pp) => pp.provider === 'openrouter' && pp.count > 0) && d.pools.some((pp) => pp.provider === 'groq'), JSON.stringify(d.pools.map((pp) => pp.provider + ':' + pp.count)));
     ok('K6: KV есть — кэш есть', d.cached === true);
@@ -373,7 +381,7 @@ console.log('── I · потолок модели доходит до тел�
     const res2 = await onRequestGet({ request: new Request('https://metiger.example/api/models'), env: { GROQ_KEYS: 'g1' } });
     const d2 = await res2.json();
     globalThis.fetch = g;
-    ok('K9: без каталога и без сети человек видит пулы, а не пустоту', d2.ok === true && d2.count > 100 && d2.catalogCount === 0 && d2.stale === false, d2.count);
+    ok('K9: без каталога и без сети человек видит проверенные пулы, а не пустоту (фильтр по живой проверке снял мёртвые имена)', d2.ok === true && d2.count > 30 && d2.catalogCount === 0 && d2.stale === false, d2.count);
     ok('K10: cached=false честно говорит, что кэша нет', d2.cached === false);
 
       /* ?refresh=1 обязан перечитать провайдеров, а не вернуть свежий по таймеру кэш.
@@ -565,6 +573,43 @@ console.log('── N · один id у двух провайдеров: пот�
     JSON.stringify(M.ceilings(cat, 'gemini-3.5-flash', 'odirouter')));
   M.forgetMemo();
 }
+
+  console.log('── V · витрина только из проверенно живых имён ───');
+  {
+    /* Зачем: провайдеры объявляют в /models то, чего не отдают (или отдают чужой моделью),
+       плюс алиасы агрегаторов с неизвестной ценой. Правила сняты замером
+       `node scripts/models-probe.mjs`: имя, на котором провайдер врёт, в списке выбора
+       недопустимо; имя с неизвестной ценой остаётся, только если проверено живым;
+       пустой снимок резать ничего не должен. */
+    const row = (id, extra = {}) => Object.assign({
+      id, name: id, vendor: 'V', free: true, chat: true, ctx: 8192, maxOut: 1024,
+      vision: false, visionKnown: true, priceKnown: true, src: 'pool', desc: '',
+    }, extra);
+    const rows = [row('live-a'), row('ghost-b'), row('relay-c', { priceKnown: false, src: 'odirouter' }), row('relay-d', { priceKnown: false, src: 'odirouter' })];
+    const catV = { models: rows, byId: Object.fromEntries(rows.map((m) => [m.id, m])) };
+    const V = { alive: ['live-a', 'relay-d'], dead: ['ghost-b'] };
+    const ids = M.showcase(catV, { pickIds: ['live-a', 'ghost-b'], curatedIds: ['live-a', 'ghost-b'], verified: V }).map((x) => x.id);
+    ok('V1: имя, на котором провайдер отвечает другой моделью, из витрины убрано',
+      ids.includes('live-a') && !ids.includes('ghost-b'), ids.join(','));
+    ok('V2: алиас с неизвестной ценой остаётся только проверенно живым',
+      ids.includes('relay-d') && !ids.includes('relay-c'), ids.join(','));
+    const bare = M.showcase(catV, { pickIds: ['live-a', 'ghost-b'], curatedIds: ['live-a', 'ghost-b'], verified: { alive: [], dead: [] } }).map((x) => x.id);
+    ok('V3: пустой снимок ничего не режет — список не гаснет из-за отсутствующей проверки',
+      bare.includes('ghost-b') && bare.includes('relay-c'), bare.join(','));
+
+    const { VERIFIED } = await import('../engine/models-verified.js');
+    const both = VERIFIED.alive.filter((id) => VERIFIED.dead.includes(id));
+    ok('V4: снимок проверки не противоречит себе и не пуст',
+      VERIFIED.alive.length > 20 && both.length === 0, `живых ${VERIFIED.alive.length}, противоречий ${both.length}`);
+    const srcM = readFileSync(new URL('../src/lib/models.ts', import.meta.url), 'utf8');
+    const showcase = [...srcM.matchAll(/^    id: '([^']+)'/gm)].map((m) => m[1]);
+    const stale = showcase.filter((id) => VERIFIED.dead.includes(id));
+    ok('V5: ни одна модель витрины не стоит в списке мёртвых',
+      showcase.length > 3 && stale.length === 0, `витрина ${showcase.length}, спорных ${stale.length}: ${stale.join(', ')}`);
+    const age = (Date.now() - Date.parse(VERIFIED.at || '1970-01-01')) / 86400000;
+    ok('V6: снимок проверки не старше полугода — иначе список пора перемерить',
+      age >= 0 && age < 180, `дата ${VERIFIED.at}, прошло ${Math.round(age)} дн (перемерить: node scripts/models-probe.mjs --all)`);
+  }
 
 console.log('\n' + (fail ? 'ПРОВАЛЫ: ' + fail : 'готово') + ` · пройдено ${pass}, провалено ${fail}`);
 process.exit(fail ? 1 : 0);
