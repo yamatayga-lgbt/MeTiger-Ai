@@ -930,6 +930,32 @@ console.log('L — песочница: запуск кода в браузере
         && /used web-search/.test(htmlAutoCollapsed)
         && cssSrc.includes('@keyframes thinkingShimmer')
         && cssSrc.includes('mask-image: linear-gradient'));
+
+    const htmlWebSteps = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{
+          id: 'w1',
+          role: 'assistant',
+          text: 'Найдено на GitHub.',
+          tools: ['calc'],
+          ms: 820,
+          webSteps: [
+            { kind: 'search', query: 'site:github.com/yamatayga-lgbt', results: [{ title: 'MeTiger-Ai', url: 'https://github.com/yamatayga-lgbt/MeTiger-Ai' }] },
+            { kind: 'search', query: '"metiger-ai.pages.dev" GitHub', results: [] },
+            { kind: 'fetch', url: 'https://github.com/yamatayga-lgbt/MeTiger-Ai', title: 'MeTiger-Ai' },
+          ],
+        }],
+        typing: false,
+        onSend() {},
+      }),
+    );
+    ok('M33: блок «Searching the web» рендерит лупу, глобус «Searched for "..."» и окно браузера «Fetched https://...»',
+      /Searching the web/.test(htmlWebSteps)
+        && /Searched for &quot;site:github\.com\/yamatayga-lgbt&quot;/.test(htmlWebSteps)
+        && /Searched for &quot;&quot;metiger-ai\.pages\.dev&quot; GitHub&quot;/.test(htmlWebSteps)
+        && /Fetched <a[^>]*href="https:\/\/github\.com\/yamatayga-lgbt\/MeTiger-Ai"[^>]*class="web-fetched-url"/.test(htmlWebSteps)
+        && /class="web-search-icon"/.test(htmlWebSteps));
   }
 }
 

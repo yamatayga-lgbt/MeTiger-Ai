@@ -1477,6 +1477,143 @@ kbd {
   color: color-mix(in srgb, var(--text) 50%, transparent);
 }
 
+/* ── Блок «Searching the web» (Лупа + Searched for + Fetched) ── */
+.msg-web-search {
+  margin: 4px 0 10px;
+}
+
+.web-search-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 14px;
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+}
+
+.web-search-head::-webkit-details-marker {
+  display: none;
+}
+
+.web-search-chev {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 48%, transparent);
+  transition: transform 0.18s ease;
+}
+
+.msg-web-search:not([open]) .web-search-chev {
+  transform: rotate(-90deg);
+}
+
+.web-search-icon {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 64%, transparent);
+}
+
+.web-search-icon.is-pulsing {
+  animation: brainBreath 1.8s ease-in-out infinite;
+}
+
+.web-search-title.is-shimmer {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text) 42%, transparent) 0%,
+    color-mix(in srgb, var(--text) 95%, transparent) 48%,
+    color-mix(in srgb, var(--text) 42%, transparent) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinkingShimmer 1.75s linear infinite;
+}
+
+.web-search-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 6px;
+  padding-left: 22px;
+}
+
+.web-step {
+  min-width: 0;
+}
+
+.web-step-row,
+.web-step-fetch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text) 60%, transparent);
+}
+
+.web-step-row {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.web-step-row::-webkit-details-marker {
+  display: none;
+}
+
+.web-step-icon {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+}
+
+.web-step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-step-chev {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+  transition: transform 0.18s ease;
+}
+
+.web-step-search[open] .web-step-chev {
+  transform: rotate(180deg);
+}
+
+.web-step-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 5px 0 3px 25px;
+  padding-left: 10px;
+  border-left: 1.5px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.web-step-res-link {
+  font-size: 12.5px;
+  color: #3b82f6;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-step-res-link:hover,
+.web-fetched-url:hover {
+  text-decoration: underline;
+}
+
+.web-fetched-url {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
 .reason-toggle,
 .search-toggle {
   display: inline-flex;

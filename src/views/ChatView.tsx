@@ -18,7 +18,7 @@ import { ModelPicker } from '../components/ModelPicker'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { CodeRunner } from '../components/CodeRunner'
 import { runnable } from '../lib/sandbox'
-import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
 
 /** Картинки из ответа: превью прямо в пузыре, файл — рядом чипом, чтобы его
     можно было забрать. Ссылка (data-URI) считается один раз на файл: генерация
@@ -171,7 +171,7 @@ function CollapsedThought({ reasoning, sec }: { reasoning: string; sec?: number 
 
 function ToolUsedBadge({ tools, ms }: { tools: string[]; ms?: number }) {
   if (!tools.length) return null
-  const toolMs = ms ? Math.max(80, Math.min(950, Math.round(ms * 0.18))) : 308
+  const toolMs = ms ? Math.max(80, Math.min(950, Math.round(ms * 0.18))) : 147
   return (
     <details className="msg-tool-used">
       <summary>
@@ -183,6 +183,133 @@ function ToolUsedBadge({ tools, ms }: { tools: string[]; ms?: number }) {
       </summary>
       <div className="msg-tool-details">
         Инструменты агента: {tools.join(' · ')}
+      </div>
+    </details>
+  )
+}
+
+function SearchMagnifierGlyph({ className = 'web-search-icon' }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7.5" />
+      <path d="m20 20-3.8-3.8" />
+    </svg>
+  )
+}
+
+function GlobeWireframeGlyph() {
+  return (
+    <svg
+      className="web-step-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <ellipse cx="12" cy="12" rx="4" ry="9" />
+      <path d="M3.6 9h16.8" />
+      <path d="M3.6 15h16.8" />
+    </svg>
+  )
+}
+
+function FetchedPageGlyph() {
+  return (
+    <svg
+      className="web-step-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5" />
+      <path d="M3 9h18" />
+      <circle cx="6.5" cy="6.5" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="9.5" cy="6.5" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="17.2" cy="17.2" r="2.8" />
+      <path d="m19.4 19.4 2.1 2.1" />
+    </svg>
+  )
+}
+
+function WebSearchBlock({ steps, live = false }: { steps: WebStep[]; live?: boolean }) {
+  if (!steps.length) return null
+  return (
+    <details className="msg-web-search" open>
+      <summary className="web-search-head">
+        <ChevronDown size={14} className="web-search-chev" />
+        <SearchMagnifierGlyph className={live ? 'web-search-icon is-pulsing' : 'web-search-icon'} />
+        <span className={live ? 'web-search-title is-shimmer' : 'web-search-title'}>
+          Searching the web
+        </span>
+      </summary>
+      <div className="web-search-steps">
+        {steps.map((st, idx) =>
+          st.kind === 'search' ? (
+            <details key={`s-${idx}`} className="web-step web-step-search">
+              <summary className="web-step-row">
+                <GlobeWireframeGlyph />
+                <span className="web-step-label">
+                  Searched for &quot;{st.query || ''}&quot;
+                </span>
+                <ChevronDown size={13} className="web-step-chev" />
+              </summary>
+              {Array.isArray(st.results) && st.results.length ? (
+                <div className="web-step-results">
+                  {st.results.map((r, ri) => (
+                    <a
+                      key={ri}
+                      className="web-step-res-link"
+                      href={r.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {r.title || r.url}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+            </details>
+          ) : (
+            <div key={`f-${idx}`} className="web-step web-step-fetch">
+              <FetchedPageGlyph />
+              <span className="web-step-label">
+                Fetched{' '}
+                <a
+                  href={st.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="web-fetched-url"
+                  title={st.title || st.url}
+                >
+                  {st.url}
+                </a>
+              </span>
+            </div>
+          ),
+        )}
       </div>
     </details>
   )
@@ -232,6 +359,8 @@ interface ChatViewProps {
   draftReasoning?: string | null
   /** Сколько секунд модель думала над текущим черновиком */
   draftThinkingSec?: number
+  /** Живые шаги поиска в интернете (Searching the web -> Searched for / Fetched) */
+  draftWebSteps?: WebStep[]
   /** Переключатель «думать вслух» в панели ввода */
   reasoningOn?: boolean
   onToggleReasoning?: () => void
@@ -257,6 +386,7 @@ export function ChatView({
   draft,
   draftReasoning,
   draftThinkingSec = 1,
+  draftWebSteps = [],
   reasoningOn = true,
   onToggleReasoning,
   onSend,
@@ -516,6 +646,9 @@ export function ChatView({
                   {Array.isArray(m.tools) && m.tools.length ? (
                     <ToolUsedBadge tools={m.tools} ms={m.ms} />
                   ) : null}
+                  {Array.isArray(m.webSteps) && m.webSteps.length ? (
+                    <WebSearchBlock steps={m.webSteps} />
+                  ) : null}
                   <div className="bubble">
                     <RichText text={m.text} onRunOutput={(t) => onSend(t)} />
                   </div>
@@ -573,6 +706,9 @@ export function ChatView({
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ai-name">MeTiger Ai</div>
+                {Array.isArray(draftWebSteps) && draftWebSteps.length ? (
+                  <WebSearchBlock steps={draftWebSteps} live={!draft} />
+                ) : null}
                 {draft && draftReasoning ? (
                   /* Как только модель закончила думать и начала писать ответ (draft),
                      блок мыслей в реальном времени автоматически сворачивается в

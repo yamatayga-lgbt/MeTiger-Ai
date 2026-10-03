@@ -671,11 +671,12 @@ const SOURCE_TOOLS = new Set(['web-search', 'wikipedia', 'news', 'url']);
 
 /**
  * Собрать данные всех сработавших инструментов.
- * Возвращает { used: string[], block: string, directive: string, sources: {title,url}[] }.
+ * Возвращает { used: string[], block: string, directive: string, sources: {title,url}[], webSteps: object[] }.
  */
 export async function gatherTools(text, env, fetchImpl, o) {
   const fi = fetchImpl || ((...a) => fetch(...a));
   const opts = o || {};
+  const onStep = typeof opts.onStep === 'function' ? opts.onStep : null;
   const force = new Set(opts.force || []);
   if (opts.deep) force.add('web-search');
   const off = new Set(String((env && env.TOOLS_OFF) || '').split(',').map((s) => s.trim()).filter(Boolean));
@@ -683,6 +684,11 @@ export async function gatherTools(text, env, fetchImpl, o) {
   const parts = [];
   const directives = [];
   const srcParts = [];
+  const webSteps = [];
+  const emitStep = (step) => {
+    webSteps.push(step);
+    if (onStep) { try { onStep(step); } catch { /* ignore */ } }
+  };
   for (const t of TOOLS) {
     if (off.has(t.id)) continue;
     let hit = force.has(t.id);
@@ -694,14 +700,39 @@ export async function gatherTools(text, env, fetchImpl, o) {
       const data = await t.run({ text, env, fetch: fi, force: force.has(t.id), deep: !!opts.deep, img: opts.img });
       if (!data) continue;
       used.push(t.id);
-      if (SOURCE_TOOLS.has(t.id)) srcParts.push(data);
+      if (SOURCE_TOOLS.has(t.id)) {
+        srcParts.push(data);
+        const toolSources = extractSources(data);
+        if (t.id === 'url') {
+          const uMatch = /URL:\s*(https?:\/\/\S+)/i.exec(data);
+          const tMatch = /Страница:\s*([^\n]+)/i.exec(data);
+          const fetchedUrl = (uMatch && uMatch[1]) || (toolSources[0] && toolSources[0].url) || '';
+          if (fetchedUrl) {
+            emitStep({ kind: 'fetch', url: fetchedUrl, title: (tMatch && tMatch[1]) || fetchedUrl });
+          }
+        } else {
+          const qMatch = /по запросу «([^»]+)»/.exec(data);
+          const q = (qMatch && qMatch[1]) || queryOf(text) || clean(String(text || '')).slice(0, 90);
+          if (q) {
+            emitStep({ kind: 'search', query: q, results: toolSources.slice(0, 5) });
+          }
+          const excerptUrl = (/Выжимка из источника \((https?:\/\/[^)\s]+)\)/.exec(data) || [])[1]
+            || (/Источник:\s*(https?:\/\/\S+)/.exec(data) || [])[1]
+            || (toolSources[0] && toolSources[0].url)
+            || '';
+          if (excerptUrl) {
+            const found = toolSources.find((s) => s.url === excerptUrl);
+            emitStep({ kind: 'fetch', url: excerptUrl, title: (found && found.title) || excerptUrl });
+          }
+        }
+      }
       /* kind: 'directive' — правило для модели, а не внешние данные. */
       (t.kind === 'directive' ? directives : parts).push(
         t.kind === 'directive' ? `【${t.title}】\n${data}` : `[Инструмент: ${t.title}]\n${data}`);
     } catch { /* ошибка инструмента — не ошибка чата */ }
   }
   const sources = srcParts.length ? extractSources(srcParts.join('\n')) : [];
-  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources };
+  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources, webSteps };
 }
 
 export const TOOL_IDS = () => TOOLS.map((t) => t.id);

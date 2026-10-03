@@ -10,7 +10,7 @@ import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
-import { sendChat, sourceLine, adviceLine, attachLine, notesLine, type Attachment } from './lib/api'
+import { sendChat, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep } from './lib/api'
 import {
   loadActiveChatId,
   loadChats,
@@ -73,6 +73,8 @@ export default function App() {
   const [draftReasoning, setDraftReasoning] = useState<string | null>(null)
   /* сколько секунд шло рассуждение текущего черновика (для «Thought for N seconds») */
   const [draftThinkingSec, setDraftThinkingSec] = useState<number>(1)
+  /* живые шаги веб-поиска и чтения страниц (Searching the web -> Searched for / Fetched) */
+  const [draftWebSteps, setDraftWebSteps] = useState<WebStep[]>([])
   /* показывать ли, как модель думала: выбор живёт между сессиями, как и модель */
   const [reasoningOn, setReasoningOn] = usePersistentState<boolean>(
     'mt-reasoning',
@@ -224,6 +226,7 @@ export default function App() {
       setDraft('')
       setDraftReasoning(allowThink ? '' : null)
       setDraftThinkingSec(1)
+      setDraftWebSteps([])
       void (async () => {
         const r = await sendChat(text, history, {
           ...(images && images.length ? { images } : {}),
@@ -233,6 +236,7 @@ export default function App() {
           /* ответ показывается по мере чтения провайдера; null — попытка ушла в запасной
              пул, обрывки с экрана убираем */
           onDraft: (t) => setDraft(t),
+          onWebSteps: (steps) => setDraftWebSteps(steps),
           ...(allowThink
             ? {
                 onReasoning: (t: string | null) => {
@@ -290,6 +294,8 @@ export default function App() {
               thinkingSec: r.ok && allowThink && r.reasoning ? finalThinkSec : undefined,
               /* проверенные ссылки из поиска/вики/новостей — кликабельны под ответом */
               sources: r.ok && Array.isArray(r.sources) && r.sources.length ? r.sources.slice(0, 8) : undefined,
+              /* шаги веб-поиска (Searched for / Fetched) для блока Searching the web */
+              webSteps: r.ok && Array.isArray(r.webSteps) && r.webSteps.length ? r.webSteps : undefined,
             }
           : ({} as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet' })
         setChats((prev) =>
@@ -306,6 +312,7 @@ export default function App() {
         setTyping(false)
         setDraft(null)
         setDraftReasoning(null)
+        setDraftWebSteps([])
         /* поток мог оборваться в самом конце: текст на экране, хвоста нет — это
            не причина звать ответ неудачным, но сказать про него надо */
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
@@ -381,6 +388,7 @@ export default function App() {
                 draft={draft}
                 draftReasoning={draftReasoning}
                 draftThinkingSec={draftThinkingSec}
+                draftWebSteps={draftWebSteps}
                 reasoningOn={reasoningOn}
                 onToggleReasoning={() => setReasoningOn((v) => !v)}
                 onSend={sendMessage}

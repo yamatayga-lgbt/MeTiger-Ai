@@ -222,8 +222,13 @@ export function createEngine(opts) {
     const skills = useSkills ? detectSkills(text, { images, env, imgToolReady }) : [];
     const wantWeb = input.webSearch === true;
     const toolsRes = input.useTools === false
-      ? { used: [], block: '', directive: '', sources: [] }
-      : await gatherTools(text, env, fetchImpl, { force: skillTools(skills), deep: wantWeb, img: imggen });
+      ? { used: [], block: '', directive: '', sources: [], webSteps: [] }
+      : await gatherTools(text, env, fetchImpl, {
+          force: skillTools(skills),
+          deep: wantWeb,
+          img: imggen,
+          onStep: onDelta ? (step) => onDelta({ kind: 'web', step }) : undefined,
+        });
     /* Картинок человек просит — по формулировке или по block-у в ответе. Флаг
        нужен постобработке: без него движок не тратит вызовы на генерацию. */
     const imgRequested = input.useTools !== false && wantsImage(text, images);
@@ -521,7 +526,7 @@ export function createEngine(opts) {
                подменяем: подпись «xkiro · wide/model-b» скрывала бы подмену */
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
-            tools: toolsRes.used, sources: toolsRes.sources || [],
+            tools: toolsRes.used, sources: toolsRes.sources || [], webSteps: toolsRes.webSteps || [],
             reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
           };
           /* Советы голов (Этап 2): факт может поправить большинство, манеру не трогаем.
@@ -574,7 +579,7 @@ export function createEngine(opts) {
         if (r.ok) {
           const hit = {
             reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
-            tools: toolsRes.used, sources: toolsRes.sources || [],
+            tools: toolsRes.used, sources: toolsRes.sources || [], webSteps: toolsRes.webSteps || [],
             reframed: true, freedomCleaned: !!r.freedomCleaned,
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),

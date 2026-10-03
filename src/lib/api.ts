@@ -23,6 +23,14 @@ export interface SourceLink {
   url: string
 }
 
+export interface WebStep {
+  kind: 'search' | 'fetch'
+  query?: string
+  url?: string
+  title?: string
+  results?: SourceLink[]
+}
+
 export interface ChatResult {
   ok: boolean
   reply: string
@@ -47,6 +55,8 @@ export interface ChatResult {
   tools?: string[]
   /** Проверенные ссылки из поиска, вики, новостей или прочитанной страницы. */
   sources?: SourceLink[]
+  /** Шаги поиска в интернете и чтения сайтов (Searched for / Fetched). */
+  webSteps?: WebStep[]
   /** Навыки, которые включились по смыслу вопроса (engine/skills.js). */
   skills?: string[]
   /** Документы, которые модель оформила файлом: имя, mime, вес и base64 целиком. */
@@ -81,6 +91,7 @@ export interface SseEvent {
   provider?: string
   model?: string
   text?: string
+  step?: WebStep
   status?: number
   payload?: unknown
 }
@@ -119,6 +130,7 @@ async function readDraftStream(
   res: Response,
   onDraft?: (text: string | null) => void,
   onReasoning?: (text: string | null) => void,
+  onWebSteps?: (steps: WebStep[]) => void,
 ): Promise<Partial<ChatResult> | null> {
   const rd = res.body && typeof res.body.getReader === 'function' ? res.body.getReader() : null
   if (!rd) return null
@@ -126,7 +138,8 @@ async function readDraftStream(
   let buf = ''
   let draft: string | null = null
   let final: Partial<ChatResult> | null = null
-  let reason: string | null = null;
+  let reason: string | null = null
+  const webSteps: WebStep[] = []
   for (;;) {
     const r = await rd.read()
     if (r.done) break
@@ -134,7 +147,10 @@ async function readDraftStream(
     const got = parseSse(buf)
     buf = got.rest
     for (const ev of got.events) {
-      if (ev.kind === 'draft' && ev.channel === 'reasoning') {
+      if (ev.kind === 'web' && ev.step) {
+        webSteps.push(ev.step)
+        if (onWebSteps) onWebSteps(webSteps.slice())
+      } else if (ev.kind === 'draft' && ev.channel === 'reasoning') {
         reason = (reason || '') + String(ev.text || '')
         if (onReasoning) onReasoning(reason)
       } else if (ev.kind === 'draft') {
@@ -417,6 +433,8 @@ export async function sendChat(
      * Просим их только когда переключатель включён — сервер без просьбы их не шлёт.
      */
     onReasoning?: (text: string | null) => void
+    /** Живые шаги поиска в интернете (Searched for / Fetched) по мере работы инструментов. */
+    onWebSteps?: (steps: WebStep[]) => void
     /**
      * Явный запрос глубокого поиска («поиск» в панели ввода): принудительно зовёт
      * web-search и читает первую найденную страницу, даже без слова «погугли».
@@ -463,7 +481,7 @@ export async function sendChat(
     if ((opts.onDraft || opts.onReasoning) && (res.headers.get('content-type') || '').indexOf('text/event-stream') >= 0) {
       // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
       // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
-      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning)) as Partial<ChatResult> | null
+      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps)) as Partial<ChatResult> | null
       if (!fin) {
         // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
         // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост

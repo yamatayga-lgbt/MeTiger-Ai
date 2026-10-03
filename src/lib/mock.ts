@@ -83,6 +83,14 @@ export interface ChatMessage {
   ms?: number
   /** Проверенные источники ответа (заголовок + ссылка) — кликабельны под пузырём. */
   sources?: { title: string; url: string }[]
+  /** Шаги поиска в интернете и чтения сайтов (Searched for / Fetched). */
+  webSteps?: {
+    kind: 'search' | 'fetch'
+    query?: string
+    url?: string
+    title?: string
+    results?: { title: string; url: string }[]
+  }[]
 }
 
 const REPLIES: { match: RegExp; text: string }[] = [

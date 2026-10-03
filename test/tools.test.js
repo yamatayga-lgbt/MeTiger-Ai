@@ -195,5 +195,11 @@ const deepOff = await gatherTools('сверхпроводники', { TOOLS_OFF:
 ok('T34: TOOLS_OFF запрещает web-search даже при deep=true',
   deepOff.used.length === 0 && deepOff.block === '' && deepOff.sources.length === 0);
 
+ok('T35: gatherTools собирает webSteps (search + fetch) для блока «Searching the web»',
+  Array.isArray(deepRes.webSteps)
+    && deepRes.webSteps.some((s) => s.kind === 'search' && /сверхпроводники/.test(s.query || ''))
+    && deepRes.webSteps.some((s) => s.kind === 'fetch' && s.url === 'https://phys.example/lk99'),
+  JSON.stringify(deepRes.webSteps));
+
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

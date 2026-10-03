@@ -375,6 +375,10 @@ async function handlePost(context) {
             context.__send({ kind: 'drop', provider: ev.provider, model: ev.model });
             return;
           }
+          if (ev.kind === 'web' && ev.step) {
+            context.__send({ kind: 'web', step: ev.step });
+            return;
+          }
           if (ev.kind === 'reason') {
             if (!wantReasoning) return;
             context.__send({ kind: 'draft', channel: 'reasoning', provider: ev.provider, model: ev.model, text: ev.text || '' });
@@ -486,6 +490,8 @@ async function handlePost(context) {
     tools: r.tools || [],
     /* Проверенные ссылки из поиска, вики, новостей или прочитанной страницы — кликабельно под ответом. */
     sources: r.sources && r.sources.length ? r.sources : undefined,
+    /* Шаги веб-поиска и чтения страниц (Searched for / Fetched) для блока Searching the web. */
+    webSteps: r.webSteps && r.webSteps.length ? r.webSteps : undefined,
     /* навыки (engine/skills.js): чем именно модель себя правила на этом вопросе, и
        что человек может проверить сам — тот же curl покажет список, а не догадку */
     skills: (r.skills || []).map((s) => s.title),
