@@ -50,6 +50,7 @@ const OURS = [
   'l10-ui', 'l10-units', 'l10-term', 'l10-audit', 'l10-source', 'l10-mt', 'l10-fit',
   'ed-example', 'ed-task', 'ed-quiz', 'ed-gap', 'ed-feedback',
   'tc-args', 'tc-input', 'tc-result', 'tc-effect',
+  'pf-workflow', 'pf-scenario', 'pf-event', 'pf-queue', 'pf-retry', 'pf-idem', 'pf-partial', 'pf-state',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -61,8 +62,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 44 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc/i18n/learning/toolcraft), и каждая непустая',
-  CATS.length === 44 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc', 'i18n', 'learning', 'toolcraft'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 45 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc/i18n/learning/toolcraft/process), и каждая непустая',
+  CATS.length === 45 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc', 'i18n', 'learning', 'toolcraft', 'process'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -793,8 +794,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 98 — 407 → 505 (13–17, 18–21, 22–28), выключенных не прибавилось',
-    st1.total === 505 && st1.on === 481 && st1.off === 24 && st1.groups.length === 44, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 106 — 407 → 513 (13–17, 18–21, 22–29), выключенных не прибавилось',
+    st1.total === 513 && st1.on === 489 && st1.off === 24 && st1.groups.length === 45, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -1306,6 +1307,87 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('CC14: тул-префикс не отобран — tool-use остался всегдашним и нет ни одного tool-* у нас',
     !!skillById('tool-use') && skillById('tool-use').always === true
       && !OURS.some((id) => /^tool-/.test(id)) && tc.every((x) => /^tc-/.test(x.id)));
+}
+
+/* ═══════════ DD — группа 29 «Автоматизация процессов» (поставка 0.039) ═══════════ */
+console.log('\nDD — группа 29: процесс, сценарий, события, очередь, повторы, состояние');
+{
+  const IDS = ['pf-workflow', 'pf-scenario', 'pf-event', 'pf-queue', 'pf-retry', 'pf-idem', 'pf-partial', 'pf-state'];
+  const get = (id) => skillById(id);
+  const pf = SKILLS.filter((x) => x.cat === 'process');
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  ok('DD1: все восемь навыков группы в реестре, активны и в своей категории',
+    pf.length === 8 && IDS.every((id) => get(id) && get(id).cat === 'process')
+      && IDS.every((id) => ON_SKILLS.some((x) => x.id === id)),
+    IDS.filter((id) => !ON_SKILLS.some((x) => x.id === id)).join(','));
+  ok('DD2: ни один не зовёт инструмент — у движка нет ни планировщика, ни очереди',
+    pf.every((x) => !(x.tools || []).length && !(x.need || []).length),
+    pf.filter((x) => (x.tools || []).length || (x.need || []).length).map((x) => x.id).join(','));
+  ok('DD3: рамка «исполнителя нет» приклеена ко всем восьмерым и стоит в конце',
+    pf.every((x) => /Исполнителя нет/.test(x.text) && x.text.trim().endsWith('не выдумывай.')),
+    pf.filter((x) => !/Исполнителя нет/.test(x.text)).map((x) => x.id).join(','));
+  ok('DD4: pf-workflow требует исполнителя и исход шага и не обещает рисунок схемы',
+    /кто начинает, какие шаги/.test(get('pf-workflow').text)
+      && /без исполнителя или без исхода — не шаг/.test(get('pf-workflow').text)
+      && /Рисунка схемы не обещаем/.test(get('pf-workflow').text));
+  ok('DD5: pf-scenario без «иначе» называет список пожеланий и требует подтверждения шага',
+    /без «иначе» это список пожеланий/.test(get('pf-scenario').text)
+      && /чем подтверждается выполненное/.test(get('pf-scenario').text)
+      && /Куда ставить сценарий, решает человек/.test(get('pf-scenario').text));
+  ok('DD6: pf-event различает дубль, позднюю доставку и тишину',
+    /Дубль и поздняя доставка — разные случаи/.test(get('pf-event').text)
+      && /проверкой версии или метки времени/.test(get('pf-event').text)
+      && /«ничего не пришло» и «пришло и проигнорировано»/.test(get('pf-event').text));
+  ok('DD7: pf-queue требует потолок, число попыток и место, куда падает застрявшая',
+    /где потолок/.test(get('pf-queue').text)
+      && /число попыток и место, куда она падает/.test(get('pf-queue').text)
+      && /Приоритет без границ заморит голодом низ/.test(get('pf-queue').text));
+  ok('DD8: pf-retry повторяет таймаут/429/5xx, не трогает 4xx и смотрит, не создалось ли',
+    /таймаут, обрыв, 429, 5xx/.test(get('pf-retry').text)
+      && /Ошибку 4xx «данные не подходят» не повторяем/.test(get('pf-retry').text)
+      && /не создался ли результат в первый раз/.test(get('pf-retry').text));
+  ok('DD9: pf-idem строит защиту на ключе по смыслу и не обещает своё хранилище',
+    /один ключ — один результат/.test(get('pf-idem').text)
+      && /по смыслу \(id запроса, номер операции\)/.test(get('pf-idem').text)
+      && /Хранилище ключа — вопрос к человеку/.test(get('pf-idem').text));
+  ok('DD10: pf-partial продолжает с места останова только где шаг переживает повтор',
+    /разбираем по сделанному/.test(get('pf-partial').text)
+      && /с места останова только там, где шаг переживает повтор/.test(get('pf-partial').text)
+      && /Компенсацию описывают до запуска/.test(get('pf-partial').text));
+  ok('DD11: pf-state меряет прогресс числом и не показывает того, чего нет в плане',
+    /числом сделанного из общего/.test(get('pf-state').text)
+      && /«почти готово» без чисел — не состояние/.test(get('pf-state').text)
+      && /чего нет в плане, того нет и в отчёте/.test(get('pf-state').text));
+  const hits29 = {};
+  for (const id of IDS) hits29[id] = CANON.filter((x) => x[2] === 'AC' && x[1] === id).length;
+  ok('DD12: у каждого пункта группы — минимум две живые фразы, и все ведут к нему',
+    IDS.every((id) => hits29[id] >= 2) && IDS.every((id) => CANON.filter((x) => x[1] === id).every((x) => fired(x[0]).includes(id))),
+    JSON.stringify(hits29));
+  ok('DD13: донорская automation не разоружена — расписание, мониторинг и n8n остались у неё',
+    ['auto-schedule', 'auto-monitor', 'auto-event', 'auto-n8n'].every((id) => !!get(id))
+      && ['auto-schedule', 'auto-monitor', 'auto-event'].every((id) => ON_SKILLS.some((x) => x.id === id))
+      && pf.every((x) => !x.supersedes) && !pf.some((x) => /^auto-/.test(x.id)),
+    'донор снят с дежурства, или наши навыки присвоили его id');
+  const byt29 = ['войти в состояние потока на работе', 'напиши сценарий утренника для начальной школы',
+    'очередь в магазине за хлебом', 'откат машины на парковке', 'повтори песню с припева',
+    'событие в календаре на пятницу', 'повторный брак в партии посуды', 'поставь будильник на семь утра',
+    'состояние здоровья после болезни', 'ночная смена на заводе'];
+  ok('DD14: бытовые «очередь», «откат», «событие», «повтор», «состояние», «сценарий» группу не будят',
+    byt29.every((q) => !fired(q).some((id) => /^pf-/.test(id))),
+    byt29.filter((q) => fired(q).some((id) => /^pf-/.test(id))).join(' ;; '));
+  const leak29 = MUNDANE_CORP.filter((q) => fired(q).some((id) => /^pf-/.test(id)));
+  ok('DD15: весь бытовой корпус (' + MUNDANE_CORP.length + ' фраз) не будит навыки группы 29',
+    leak29.length === 0, leak29.slice(0, 4).map((q) => q + ' → ' + fired(q).filter((id) => /^pf-/.test(id)).join(',')).join(' ;; '));
+  ok('DD16: тексты не обещают запустить, поставить на расписание и держать в очереди',
+    !pf.some((x) => /я (?:поставлю|запущу|держу|слежу|настрою|добавлю в очередь)|уже (?:поставлен|в очереди|запущено)/i.test(x.text)),
+    pf.filter((x) => /я (?:поставлю|запущу|держу|слежу|настрою)/i.test(x.text)).map((x) => x.id).join(','));
+  ok('DD17: тексты в потолке 500 и не короче 120, desc читаем целиком',
+    pf.every((x) => x.text.length <= 500 && x.text.length > 120)
+      && pf.every((x) => x.desc.length >= 8 && x.desc.length <= 64),
+    pf.map((x) => x.text.length + '/' + x.desc.length).join(' '));
+  ok('DD18: префикс группы — pf-, ни один донорский id не перетёрт',
+    pf.every((x) => /^pf-/.test(x.id)) && !OURS.some((id) => /^auto-/.test(id)),
+    pf.map((x) => x.id).join(','));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);

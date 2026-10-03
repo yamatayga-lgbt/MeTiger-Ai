@@ -60,6 +60,7 @@ import s_docs2 from './skills/docs2.js';
 import s_i18n from './skills/i18n.js';
 import s_edu from './skills/edu.js';
 import s_toolcraft from './skills/toolcraft.js';
+import s_process from './skills/process.js';
 import s_data from './skills/data.js';
 import s_automation from './skills/automation.js';
 import s_safety from './skills/safety.js';
@@ -81,7 +82,7 @@ const RAW = [
   ...s_reading, ...s_stats,
   /* наше дополнение: группы 13–17 — программирование, архитектура, отладка, тесты, DevOps */
   ...s_programming, ...s_architecture, ...s_debugging, ...s_testing, ...s_devops,
-  ...s_webapi, ...s_database, ...s_tooling, ...s_writing, ...s_media, ...s_ux, ...s_visual, ...s_docs2, ...s_i18n, ...s_edu, ...s_toolcraft,
+  ...s_webapi, ...s_database, ...s_tooling, ...s_writing, ...s_media, ...s_ux, ...s_visual, ...s_docs2, ...s_i18n, ...s_edu, ...s_toolcraft, ...s_process,
 ];
 
 /* ============================== соответствие имён ============================== */
@@ -171,6 +172,9 @@ export const FRAMES = {
   /* Вызов исполняет движок, навык — нет: без рамки он начал бы докладывать о
      «проверенном повтором» и «отправленном». */
   toolcraft: ' ' + ('Вызов исполняет движок: мы готовим строки и читаем его блоки, сами не запускаем.'),
+  /* Исполнителя процессов у движка нет: ни планировщика, ни очереди, ни своих повторов.
+     Без рамки навык отрапортовал бы «поставил на расписание» и «задача в очереди». */
+  process: ' ' + ('Исполнителя нет: ни планировщика, ни очереди, ни повторов у движка нет — схема, тексты проверок и план отката — напиши; «поставил на расписание» и «задача в очереди» не выдумывай.'),
 };
 
 /** У навыков со слишком широких триггеров — второе условие: без него навык лезет в спокойный разговор.
@@ -208,6 +212,8 @@ for (const s of RAW) {
   /* Инструменты группы 28 описывают подготовку вызова: рамка нужна каждому, иначе
      навык присвоит себе исполнение. */
   else if (s.cat === 'toolcraft') FRAME_BY_ID[s.id] = FRAMES.toolcraft;
+  /* Группа 29 описывает процесс, а не запускает его: рамка нужна каждому из восьмерых. */
+  else if (s.cat === 'process') FRAME_BY_ID[s.id] = FRAMES.process;
   else if (s.cat === 'memory') FRAME_BY_ID[s.id] = FRAMES.memory;
   else if (s.cat === 'data' && /chart|report/.test(s.id)) FRAME_BY_ID[s.id] = FRAMES.data_visual;
 }

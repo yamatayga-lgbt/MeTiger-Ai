@@ -41,6 +41,7 @@ const CATS = [
   { id: 'i18n', title: '🌍 Перевод и локализация' },
   { id: 'learning', title: '🎓 Обучение и объяснение' },
   { id: 'toolcraft', title: '🧰 Использование инструментов' },
+  { id: 'process', title: '⚙️ Автоматизация процессов' },
   { id: 'life', title: 'Быт и развлечения' },
   { id: 'data', title: 'Data & Analytics' },
   { id: 'automation', title: 'Automation' },
