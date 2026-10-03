@@ -148,15 +148,29 @@ export function headsFor(intent, env) {
   return list.map((s) => String(s).trim()).filter(Boolean).slice(0, 6);
 }
 
+/**
+ * Зрение — поверх любого ранжирования. Возвращает список, в котором сначала те,
+ * кто читает картинки; пустой список картинок — список как есть.
+ *
+ * Отдельная функция потому, что порядок пула правят несколько слоёв (рейтинг смелых,
+ * «без купюр», головы интента), и каждый из них законно ставит свою модель первым.
+ * На картинке это значит, что запрос уйдёт модели без зрения — она не признается, а
+ * выдумает содержимое (замер на проде: «Фон белый» на красном квадрате).
+ */
+export function visionFirst(list, images) {
+  const arr = Array.isArray(list) ? list : [];
+  if (!images || !images.length || !arr.length) return arr;
+  const see = arr.filter((m) => isVision(m));
+  if (!see.length) return arr;
+  return see.concat(arr.filter((m) => see.indexOf(m) < 0));
+}
+
 export function modelsFor(cfg, tier, intent, images, env) {
   let list = (cfg.modelsLocal || (cfg.models && cfg.models[tier]) || (cfg.models && cfg.models.fast) || []).slice();
   if (!list.length) return list;
   /* Порядок важнее состава: сначала зрение, потом «не сжигай бюджет на размышления».
      Переставить местами — и картинка уйдёт слепой модели (проверено на Yama). */
-  if (images && images.length) {
-    const see = list.filter((m) => isVision(m));
-    if (see.length) list = see.concat(list.filter((m) => see.indexOf(m) < 0));
-  }
+  list = visionFirst(list, images);
   const keepThinkers = intent === 'code' || intent === 'math' || intent === 'reasoning' || intent === 'vision';
   if (!keepThinkers) {
     const calm = list.filter((m) => !isReasoning(m));

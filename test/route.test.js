@@ -4,7 +4,7 @@
  * Запуск: node test/route.test.js
  */
 import assert from 'node:assert';
-import { classifyTask, tierFor, isVision, modelsFor, headsFor, preferHeads, INTENT_HEADS } from '../engine/route.js';
+import { INTENT_HEADS, classifyTask, headsFor, isVision, modelsFor, preferHeads, tierFor, visionFirst } from '../engine/route.js';
 import { buildRequest, isProviderError, isRefusal, stripThinkTags } from '../engine/shape.js';
 import { buildTable } from '../engine/providers.js';
 
@@ -177,6 +177,22 @@ console.log('R — головы интента: кому считать мате
   ok('R8: головы пула применяются только без картинок — зрение важнее марки модели',
     modelsFor({ models: { smart: ['claude-x', 'deepseek-v4-flash'] } }, 'smart', 'math', []).join() === 'deepseek-v4-flash,claude-x'
     && modelsFor({ models: { smart: ['claude-x', 'deepseek-v4-flash'] } }, 'smart', 'math', [{}]).join() !== 'deepseek-v4-flash,claude-x', '');
+}
+
+console.log('Z — зрение как последнее слово в порядке пула');
+{
+  const blind = 'deepseek-v4-flash', see = 'gemini-3.8-flash', other = 'qwen-3.8-27b', omni = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
+  const l = [blind, see, other, omni];
+  const z = visionFirst(l, ['data:image/png;base64,AAA']);
+  ok('Z1: с картинкой зрячие идут первыми, порядок внутри их не трогается',
+    z[0] === see && z[1] === omni && z.slice(2).join() === [blind, other].join(), z.join(','));
+  ok('Z2: без картинки список не трогаем (не за что переставлять)', visionFirst(l, []).join() === l.join());
+  ok('Z3: слепой пул остаётся как есть — это сигнал пропускать провайдер, а не таскать вслепую',
+    visionFirst([blind, other], ['x']).join() === [blind, other].join(), visionFirst([blind, other], ['x']).join(','));
+  ok('Z4: повторный вызов ничего не меняет (порядок идемпотентен)',
+    visionFirst(z, ['x']).join() === z.join(), visionFirst(z, ['x']).join(','));
+  ok('Z5: мусор на входе не роняет (undefined, не-массив)',
+    visionFirst(undefined, ['x']).length === 0 && visionFirst('не список', ['x']).length === 0);
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

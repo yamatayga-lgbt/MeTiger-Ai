@@ -13,7 +13,7 @@
 import {
   buildTable, providerAlive, pickKey, orderFor, ORDER, MIN_INTERVAL, TIMEOUT, MAX_IMAGES,
 } from './providers.js';
-import { classifyTask, tierFor, modelsFor, isVision, preferHeads } from './route.js';
+import { classifyTask, tierFor, modelsFor, isVision, visionFirst, preferHeads } from './route.js';
 import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
@@ -417,6 +417,10 @@ export function createEngine(opts) {
          ответить второй моделью. */
       if (sensitive && !pin) models = preferUncensored(models, modelreg.cached());
       if (brave && !pin) models = brave.order(models, id);
+      /* Позже любого ранжирования: смелые головы и «без купюр» переставляют пул по
+         своим основаниям, и на картинке такая перестановка отправляет запрос слепой
+         модели. Зрение — последнее слово, иначе весь смысл теряется. */
+      models = visionFirst(models, images);
       if (!models.length) { tried.push({ provider: id, why: 'нет моделей в пуле' }); continue; }
       /* Картинка есть, а смотреть некому. Отвечать всё равно что гадать: модель
          получила бы текст без изображения и придумала бы содержимое (на проде на
