@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Brain, ChevronDown, Globe, Mic, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Brain, ChevronDown, Globe, Mic, Paperclip, SlidersHorizontal, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import { timeGreeting, type ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
-import { modelOption } from '../lib/models'
+import {
+  DEFAULT_GEN_PARAMS,
+  EFFORT_LABELS,
+  modelOption,
+  type GenParams,
+  type ReasoningEffort,
+} from '../lib/models'
+import { ModelIcon } from '../components/ModelIcon'
 import { ModelPicker } from '../components/ModelPicker'
+import { ParamsPopover } from '../components/ParamsPopover'
 import { CodeRunner } from '../components/CodeRunner'
 import { runnable } from '../lib/sandbox'
 import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment } from '../lib/api'
@@ -114,6 +122,12 @@ interface ChatViewProps {
   /** Выбранная модель ('' = Авто) и смена — живут в App и сохраняются. */
   model?: string
   onModelChange?: (id: string) => void
+  /** Усилие рассуждения: Низкое / Среднее / Высокое */
+  effort?: ReasoningEffort
+  onEffortChange?: (effort: ReasoningEffort) => void
+  /** Параметры генерации (temperature, max_tokens, top_p) */
+  genParams?: GenParams
+  onGenParamsChange?: (next: GenParams) => void
 }
 
 export function ChatView({
@@ -129,6 +143,10 @@ export function ChatView({
   onSend,
   model = '',
   onModelChange,
+  effort = 'medium',
+  onEffortChange,
+  genParams = DEFAULT_GEN_PARAMS,
+  onGenParamsChange,
 }: ChatViewProps) {
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
@@ -140,6 +158,7 @@ export function ChatView({
   const [docs, setDocs] = useState<Attachment[]>([])
   const [docError, setDocError] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [paramsOpen, setParamsOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const empty = messages.length === 0
@@ -522,138 +541,189 @@ export function ChatView({
             submit()
           }}
         >
-          <div className="model-bar">
-            <button
-              type="button"
-              className={`model-chip${pickerOpen ? ' is-open' : ''}`}
-              aria-haspopup="listbox"
-              aria-expanded={pickerOpen}
-              title="Выбрать модель"
-              onClick={() => {
-                haptic('light')
-                setPickerOpen((v) => !v)
-              }}
-            >
-              <span className="m-av" style={{ background: modelOpt.avatar.bg }}>
-                {modelOpt.id === '' ? <img src={avatarUrl} alt="" className="m-av-img" /> : modelOpt.avatar.mark}
-              </span>
-              <span className="model-chip-name">{modelOpt.name}</span>
-              <ChevronDown size={13} className="model-chip-caret" />
-            </button>
-            <button
-              type="button"
-              className={`reason-toggle${reasoningOn ? ' is-on' : ''}`}
-              aria-pressed={!!reasoningOn}
-              title="Показывать рассуждения модели, пока ответ пишется (и сворачивать их под ответом)"
-              onClick={() => {
-                haptic('light')
-                onToggleReasoning?.()
-              }}
-            >
-              <Brain size={13} />
-              вслух
-            </button>
-            <button
-              type="button"
-              className={`search-toggle${searchOn ? ' is-on' : ''}`}
-              aria-pressed={!!searchOn}
-              title="Глубокий поиск в сети: сверять ответ со свежими источниками и показывать ссылки"
-              onClick={() => {
-                haptic('light')
-                onToggleSearch?.()
-              }}
-            >
-              <Globe size={13} />
-              поиск
-            </button>
-          </div>
           <div className="composer-main">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Прикрепить файл, документ или запись"
-            onClick={() => {
-              haptic('light')
-              /* Спрятанный input сам диалог не открывает — только по клику. */
-              fileRef.current?.click()
-            }}
-          >
-            <Paperclip size={17} />
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept={ATTACH_ACCEPT}
-            multiple
-            hidden
-            data-role="attach"
-            onChange={(e) => void addFiles(e.target.files)}
-          />
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={value}
-            placeholder="Спросите что угодно…"
-            onChange={(e) => {
-              const el = e.target
-              if (!listening) baseRef.current = el.value
-              setValue(el.value)
-              el.style.height = 'auto'
-              el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-            }}
-            onPaste={(e) => {
-              /* Вставка из буфера — второй способ, которым фото реально шлют: скриншот
-                 или копия из галереи. Файлов в буфере нет → событие не трогаем, текст
-                 вставляется как вставлялся. */
-              const fs = filesFromTransfer(e.clipboardData)
-              if (fs.length) { e.preventDefault(); void addFiles(fs) }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                submit()
-              }
-              if (e.key === 'Escape' && listening) {
-                e.preventDefault()
-                stopVoiceInput()
-              }
-            }}
-          />
-          {voiceSupported ? (
-            <button
-              type="button"
-              className={`icon-btn voice-btn${listening ? ' is-on' : ''}`}
-              aria-label={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-              title={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-              onClick={() => (listening ? stopVoiceInput() : startVoiceInput())}
-            >
-              {listening ? <Square size={13} /> : <Mic size={17} />}
-            </button>
-          ) : null}
-          <button
-            type="submit"
-            className="send-btn"
-            disabled={!value.trim() && shots.length === 0 && docs.length === 0}
-            aria-label="Отправить"
-          >
-            <ArrowUp size={18} />
-          </button>
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={value}
+              placeholder="Сообщение (Shift+Enter — новая строка)…"
+              onChange={(e) => {
+                const el = e.target
+                if (!listening) baseRef.current = el.value
+                setValue(el.value)
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+              }}
+              onPaste={(e) => {
+                /* Вставка из буфера — второй способ, которым фото реально шлют: скриншот
+                   или копия из галереи. Файлов в буфере нет → событие не трогаем, текст
+                   вставляется как вставлялся. */
+                const fs = filesFromTransfer(e.clipboardData)
+                if (fs.length) { e.preventDefault(); void addFiles(fs) }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  submit()
+                }
+                if (e.key === 'Escape' && listening) {
+                  e.preventDefault()
+                  stopVoiceInput()
+                }
+              }}
+            />
           </div>
+
+          <div className="model-bar composer-foot">
+            <div className="composer-foot-left">
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Прикрепить файл, документ или запись"
+                onClick={() => {
+                  haptic('light')
+                  fileRef.current?.click()
+                }}
+              >
+                <Paperclip size={17} />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept={ATTACH_ACCEPT}
+                multiple
+                hidden
+                data-role="attach"
+                onChange={(e) => void addFiles(e.target.files)}
+              />
+              <button
+                type="button"
+                className={`search-toggle${searchOn ? ' is-on' : ''}`}
+                aria-pressed={!!searchOn}
+                title="Глубокий поиск в сети: сверять ответ со свежими источниками и показывать ссылки"
+                onClick={() => {
+                  haptic('light')
+                  onToggleSearch?.()
+                }}
+              >
+                <Globe size={14} />
+                поиск
+              </button>
+              {modelOpt.canThink !== false ? (
+                <button
+                  type="button"
+                  className={`reason-toggle${reasoningOn ? ' is-on' : ''}`}
+                  aria-pressed={!!reasoningOn}
+                  title="Показывать рассуждения модели, пока ответ пишется (и сворачивать их под ответом)"
+                  onClick={() => {
+                    haptic('light')
+                    onToggleReasoning?.()
+                  }}
+                >
+                  <Brain size={13} />
+                  вслух
+                </button>
+              ) : null}
+            </div>
+
+            <div className="composer-foot-right">
+              <button
+                type="button"
+                className={`model-chip${pickerOpen ? ' is-open' : ''}`}
+                aria-haspopup="listbox"
+                aria-expanded={pickerOpen}
+                title="Выбрать модель и режим мышления"
+                onClick={() => {
+                  haptic('light')
+                  setParamsOpen(false)
+                  setPickerOpen((v) => !v)
+                }}
+              >
+                <ModelIcon
+                  id={modelOpt.id}
+                  vendor={modelOpt.vendor}
+                  name={modelOpt.name}
+                  avatar={modelOpt.avatar}
+                />
+                <span className="model-chip-name">{modelOpt.name}</span>
+                {modelOpt.canThink !== false ? (
+                  <span className="model-chip-mode">
+                    {!reasoningOn ? 'Выкл.' : modelOpt.supportsEffort ? EFFORT_LABELS[effort] : 'Думает'}
+                  </span>
+                ) : null}
+                <ChevronDown size={13} className="model-chip-caret" />
+              </button>
+
+              <button
+                type="button"
+                className={`params-btn${paramsOpen ? ' is-open' : ''}`}
+                aria-label="Параметры генерации"
+                aria-expanded={paramsOpen}
+                title="Параметры: temperature, max_tokens, top_p"
+                onClick={() => {
+                  haptic('light')
+                  setPickerOpen(false)
+                  setParamsOpen((v) => !v)
+                }}
+              >
+                <SlidersHorizontal size={15} />
+                <span className="params-dot" aria-hidden="true" />
+              </button>
+
+              {voiceSupported ? (
+                <button
+                  type="button"
+                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}`}
+                  aria-label={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  title={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  onClick={() => (listening ? stopVoiceInput() : startVoiceInput())}
+                >
+                  {listening ? <Square size={13} /> : <Mic size={17} />}
+                </button>
+              ) : null}
+
+              <button
+                type="submit"
+                className="send-btn"
+                disabled={!value.trim() && shots.length === 0 && docs.length === 0}
+                aria-label="Отправить"
+              >
+                <ArrowUp size={18} />
+              </button>
+            </div>
+          </div>
+
           {pickerOpen ? (
             <>
               <div className="model-backdrop" onClick={() => setPickerOpen(false)} />
               <ModelPicker
                 model={model}
+                reasoningOn={reasoningOn}
+                onToggleReasoning={onToggleReasoning}
+                effort={effort}
+                onEffortChange={onEffortChange}
                 onPick={(id) => {
                   onModelChange?.(id)
-                  setPickerOpen(false)
+                  if (id === model) setPickerOpen(false)
                 }}
+              />
+            </>
+          ) : null}
+
+          {paramsOpen ? (
+            <>
+              <div className="model-backdrop" onClick={() => setParamsOpen(false)} />
+              <ParamsPopover
+                params={genParams}
+                onChange={(next) => onGenParamsChange?.(next)}
               />
             </>
           ) : null}
         </form>
         {voiceError ? <div className="voice-error">{voiceError}</div> : null}
-        <p className="composer-hint">Может ошибаться — проверяйте важную информацию.</p>
+        <p className="composer-hint">
+          <span className="composer-hint-model">{modelOpt.name}</span> · ИИ может ошибаться. Проверяйте важную информацию.
+        </p>
       </div>
     </div>
   )

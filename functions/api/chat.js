@@ -338,6 +338,9 @@ async function handlePost(context) {
     model: norm.model || undefined,
     noCouncils: !!norm.model,
     temperature: norm.temperature,
+    maxTokens: norm.maxTokens,
+    topP: norm.topP,
+    reasoningEffort: norm.reasoningEffort,
     system: norm.system || PERSONA_SYSTEM,
     /* Род агента — настройка человека из приложения (Авто/М/Ж). Сюда идёт pick(), а
        не normalize(): распознанное значение едет в движок, пустое и мусорное — не

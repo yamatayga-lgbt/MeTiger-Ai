@@ -808,7 +808,78 @@ console.log('L — песочница: запуск кода в браузере
         && !logoSrc.includes('M8.5 23V9.8')
         && !favSvg.includes('M8.5 23V9.8')
         && existsSync('public/favicon.png')
-        && /class="m-av-img"/.test(htmlOn));
+        && /class="m-av[^"]*"[^>]*><img[^>]*class="m-av-img"/.test(htmlOn));
+
+    const out5 = join(dir, 'picker-pro.mjs');
+    const entry5 = join(dir, 'picker-pro-entry.tsx');
+    writeFileSync(entry5, [
+      "export { ModelPicker } from '../../../src/components/ModelPicker'",
+      "export { ParamsPopover } from '../../../src/components/ParamsPopover'",
+      "export { ModelIcon, detectBrand } from '../../../src/components/ModelIcon'",
+      "export { canModelThink, DEFAULT_GEN_PARAMS } from '../../../src/lib/models'",
+      '',
+    ].join('\n'), 'utf8');
+    execFileSync(bin, [
+      entry5, '--bundle', '--platform=node', '--format=esm',
+      '--packages=external', '--loader:.png=dataurl', '--outfile=' + out5, '--log-level=error',
+    ], { stdio: 'inherit' });
+    const { ModelPicker: MP5, ParamsPopover, detectBrand, canModelThink, DEFAULT_GEN_PARAMS } = await import(out5);
+
+    ok('M27: оригинальные бренд-иконки определяются по семейству ИИ (Google, Qwen, DeepSeek, Mistral, OpenAI, MeTiger)',
+      detectBrand('') === 'metiger'
+        && detectBrand('gemini-2.5-flash') === 'google'
+        && detectBrand('qwen/qwen3.5-plus:free') === 'qwen'
+        && detectBrand('deepseek-v4-flash') === 'deepseek'
+        && detectBrand('codestral-latest') === 'mistral'
+        && detectBrand('openai/gpt-oss-20b') === 'openai');
+
+    const htmlThink = renderToStaticMarkup(
+      React.createElement(MP5, {
+        model: 'gemini-3.6-flash',
+        reasoningOn: true,
+        effort: 'medium',
+        onPick() {},
+      }),
+    );
+    const htmlNoThink = renderToStaticMarkup(
+      React.createElement(MP5, {
+        model: 'codestral-latest',
+        reasoningOn: true,
+        effort: 'medium',
+        onPick() {},
+      }),
+    );
+    ok('M28: двухколоночный пикер показывает категории ИИ, контекст (1M Контекст), ток/с и счётчик запросов',
+      /Google/.test(htmlThink)
+        && /Qwen/.test(htmlThink)
+        && /Mistral/.test(htmlThink)
+        && /OpenAI/.test(htmlThink)
+        && /1M Контекст/.test(htmlThink)
+        && /ток\/с/.test(htmlThink)
+        && /Запросов:/.test(htmlThink));
+
+    ok('M29: у думающей модели есть переключатель «Думает» и «УСИЛИЕ» (Низкое/Среднее/Высокое), а у не-думающей переключатель «Думает» пропадает',
+      canModelThink('gemini-3.6-flash') === true
+        && canModelThink('codestral-latest') === false
+        && /aria-label="Режим Думает"/.test(htmlThink)
+        && /УСИЛИЕ/.test(htmlThink)
+        && /Низкое/.test(htmlThink) && /Среднее/.test(htmlThink) && /Высокое/.test(htmlThink)
+        && !/aria-label="Режим Думает"/.test(htmlNoThink)
+        && !/УСИЛИЕ/.test(htmlNoThink));
+
+    const htmlParams = renderToStaticMarkup(
+      React.createElement(ParamsPopover, {
+        params: DEFAULT_GEN_PARAMS,
+        onChange() {},
+      }),
+    );
+    ok('M30: кнопка параметров и карточка ПАРАМЕТРЫ содержат temperature, max_tokens (Макс.), top_p и Сброс',
+      /class="params-btn/.test(htmlOn)
+        && /ПАРАМЕТРЫ/.test(htmlParams)
+        && /Сброс/.test(htmlParams)
+        && /temperature/.test(htmlParams)
+        && /max_tokens/.test(htmlParams) && /Макс\./.test(htmlParams)
+        && /top_p/.test(htmlParams));
   }
 }
 

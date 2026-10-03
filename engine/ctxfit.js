@@ -97,11 +97,27 @@ export function normalizeFields(body, env) {
     if (Number(o.temperature) !== t) notes.push('температуру ' + o.temperature + ' вернул в диапазон 0…2');
   }
 
+  let maxTokens;
+  const rawMax = o.maxTokens != null ? o.maxTokens : o.max_tokens;
+  if (rawMax != null && Number.isFinite(Number(rawMax)) && Number(rawMax) > 0) {
+    maxTokens = Math.round(clampNumber(rawMax, 64, 32768, 2048));
+  }
+
+  let topP;
+  const rawTopP = o.topP != null ? o.topP : o.top_p;
+  if (rawTopP != null && Number.isFinite(Number(rawTopP))) {
+    topP = clampNumber(rawTopP, 0.05, 1, 0.95);
+  }
+
+  const reasoningEffort = o.reasoningEffort === 'low' || o.reasoningEffort === 'medium' || o.reasoningEffort === 'high'
+    ? o.reasoningEffort
+    : undefined;
+
   const model = typeof o.model === 'string' ? o.model.trim().replace(/[\u0000-\u001f\s]+/g, ' ').slice(0, 160) : undefined;
   const provider = typeof o.provider === 'string' && /^[a-z0-9_-]{1,40}$/i.test(o.provider.trim()) ? o.provider.trim() : undefined;
   const chatId = String(o.chatId || 'web').replace(/[\u0000-\u001f]/g, '').slice(0, 80);
 
-  return { text, system, history, temperature, model, provider, chatId, notes, caps: cap };
+  return { text, system, history, temperature, maxTokens, topP, reasoningEffort, model, provider, chatId, notes, caps: cap };
 }
 
 /** Выжимка из отрезанной истории — одна строка, чтобы модель знала, что было раньше. */

@@ -422,6 +422,11 @@ export async function sendChat(
      * web-search и читает первую найденную страницу, даже без слова «погугли».
      */
     webSearch?: boolean
+    /** Параметры генерации (temperature, max_tokens, top_p) и усилие рассуждения */
+    temperature?: number
+    maxTokens?: number
+    topP?: number
+    reasoningEffort?: 'low' | 'medium' | 'high'
   } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
@@ -445,6 +450,10 @@ export async function sendChat(
         showReasoning: opts.onReasoning ? true : undefined,
         /* явная просьба глубокого поиска в сети; без неё работают только собственные триггеры */
         webSearch: opts.webSearch ? true : undefined,
+        temperature: typeof opts.temperature === 'number' ? opts.temperature : undefined,
+        maxTokens: typeof opts.maxTokens === 'number' && opts.maxTokens > 0 ? opts.maxTokens : undefined,
+        topP: typeof opts.topP === 'number' ? opts.topP : undefined,
+        reasoningEffort: opts.reasoningEffort || undefined,
         /* кто пишет: по этому ключу бэкенд держит память и профиль. Без него весь
            веб делил одну память на всех незнакомцев */
         userId: currentUserId(),

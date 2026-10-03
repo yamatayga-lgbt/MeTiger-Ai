@@ -1,13 +1,10 @@
 /**
  * Каталог моделей для выбора в окне ввода.
  *
- * Список — не все 100+ строк из пулов движка, а витрина: те имена, которые
- * человек узнаёт. Каждый id — настоящий id из TABLE движка (engine/providers.js):
- * пин в engine/chat.js ищет провайдера, у которого такой id есть в пуле, и ведёт
- * запрос именно к нему. Незнакомый/устаревший id молча снимается — работает авто-режим.
- *
- * Аватарки — CSS-градиент + монограмма: без картинок, чтобы список грузился
- * мгновенно и одинаково выглядел и в Telegram-вебвью, и в браузере.
+ * Список — витрина проверенных моделей по семействам ИИ (Google, Qwen, DeepSeek,
+ * Mistral, OpenAI, Z.AI, Meta, Cohere) + живой каталог провайдеров (/api/models).
+ * Каждый id — настоящий id из TABLE движка (engine/providers.js): пин в engine/chat.js
+ * ищет провайдера, у которого такой id есть в пуле, и ведёт запрос именно к нему.
  */
 
 export interface ModelAvatar {
@@ -15,6 +12,45 @@ export interface ModelAvatar {
   bg: string
   /** Монограмма (1–2 символа). */
   mark: string
+}
+
+export type ReasoningEffort = 'low' | 'medium' | 'high'
+
+export const EFFORT_LABELS: Record<ReasoningEffort, string> = {
+  low: 'Низкое',
+  medium: 'Среднее',
+  high: 'Высокое',
+}
+
+export interface GenParams {
+  temperature: number
+  /** 0 = Макс. (потолок самой модели), иначе 256..8192 */
+  maxTokens: number
+  topP: number
+}
+
+export const DEFAULT_GEN_PARAMS: GenParams = {
+  temperature: 1.0,
+  maxTokens: 0,
+  topP: 0.95,
+}
+
+export function isGenParams(v: unknown): v is GenParams {
+  if (!v || typeof v !== 'object') return false
+  const o = v as Record<string, unknown>
+  return (
+    typeof o.temperature === 'number' &&
+    typeof o.maxTokens === 'number' &&
+    typeof o.topP === 'number'
+  )
+}
+
+export function isDefaultGenParams(p: GenParams): boolean {
+  return (
+    Math.abs(p.temperature - DEFAULT_GEN_PARAMS.temperature) < 0.01 &&
+    p.maxTokens === DEFAULT_GEN_PARAMS.maxTokens &&
+    Math.abs(p.topP - DEFAULT_GEN_PARAMS.topP) < 0.01
+  )
 }
 
 export interface ModelOption {
@@ -28,6 +64,16 @@ export interface ModelOption {
   tier: 'fast' | 'smart'
   /** Модель видит картинки — для значка «глаз» в списке. */
   vision?: boolean
+  /** Размер контекстного окна в токенах. */
+  ctx?: number
+  /** Ориентировочная скорость генерации (токенов/сек). */
+  tokPerSec?: number
+  /** Поддерживает ли модель режим рассуждений («Думает»). */
+  canThink?: boolean
+  /** Поддерживает ли модель выбор усилия («Низкое / Среднее / Высокое»). */
+  supportsEffort?: boolean
+  /** Категория вендора для группировки в списке. */
+  category?: string
 }
 
 const AV = (a: string, b: string, mark: string): ModelAvatar => ({
@@ -39,99 +85,427 @@ export const MODEL_AUTO: ModelOption = {
   id: '',
   name: 'Авто',
   vendor: 'Ядро MeTiger',
-  desc: 'Сам выберу модель под задачу: код, анализ, картинки',
+  desc: 'Сам выберу лучшую модель под задачу: код, анализ, математика, картинки',
   avatar: AV('#F59E0B', '#EA580C', 'Me'),
   tier: 'fast',
+  vision: true,
+  ctx: 1048576,
+  tokPerSec: 185,
+  canThink: true,
+  supportsEffort: true,
+  category: 'MeTiger Ai',
 }
 
-/* Витрина в окне выбора: только те имена, которые движок отдаёт под своим именем.
-   Это измеряется, а не угадывается — `node scripts/models-probe.mjs --all`, снимок в
-   `engine/models-verified.js`. Сюда попадают бесплатные пулы gemini/groq/mistral и реле с
-   бесплатной маркировкой `:free`; всё, что провайдер объявляет у себя в `/models`, но на
-   запрос отвечает другой моделью («Claude Opus 4.8», «GLM 5.3», «GPT 6 Astra» и ещё около
-   150 имён), с витрины снято: выбор модели не должен быть лотереей. */
 export const MODELS: ModelOption[] = [
-  /* ---------- Быстрые: ответ в секунды, короткие задачи ---------- */
+  /* ---------- Google Gemini ---------- */
+  {
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    vendor: 'Google',
+    desc: 'Быстрая мультимодальная модель Google с окном 1M токенов и управляемым размышлением',
+    avatar: AV('#4285F4', '#EA4335', '✦'),
+    tier: 'fast',
+    vision: true,
+    ctx: 1048576,
+    tokPerSec: 165,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Google',
+  },
+  {
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
+    vendor: 'Google',
+    desc: 'Сбалансированная модель Gemini для глубокого анализа, кода и работы с изображениями',
+    avatar: AV('#4285F4', '#FBBC04', '✦'),
+    tier: 'smart',
+    vision: true,
+    ctx: 1048576,
+    tokPerSec: 155,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Google',
+  },
   {
     id: 'gemini-2.5-flash',
     name: 'Gemini 2.5 Flash',
     vendor: 'Google',
-    desc: 'Мгновенный ответ, контекст в миллион токенов',
+    desc: 'Мгновенный ответ, контекст в миллион токенов и зрение',
     avatar: AV('#4285F4', '#9B72CB', '✦'),
     tier: 'fast',
-  },
-  {
-    id: 'qwen/qwen3.8-27b',
-    name: 'Qwen 3.8 27B',
-    vendor: 'Alibaba · Groq',
-    desc: 'Самый быстрый из умеющих смотреть на картинку',
-    avatar: AV('#615CED', '#8E86FF', 'Q'),
-    tier: 'fast',
     vision: true,
-  },
-  {
-    id: 'openai/gpt-oss-20b',
-    name: 'GPT-OSS 20B',
-    vendor: 'OpenAI · Groq',
-    desc: 'Открытая модель OpenAI: факты и короткие задачи',
-    avatar: AV('#10A37F', '#0E8C6C', '○'),
-    tier: 'fast',
-  },
-  {
-    id: 'ministral-8b-2512',
-    name: 'Ministral 8B',
-    vendor: 'Mistral AI',
-    desc: 'Коротко, по делу, зовёт инструменты',
-    avatar: AV('#FAF0DD', '#FF7000', 'M'),
-    tier: 'fast',
+    ctx: 1048576,
+    tokPerSec: 170,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Google',
   },
   {
     id: 'gemini-flash-lite-latest',
     name: 'Gemini Flash Lite',
     vendor: 'Google',
-    desc: 'Когда нужен ответ, а не разбор',
+    desc: 'Ультра-быстрый режим без задержки на размышления: когда нужен мгновенный ответ',
     avatar: AV('#4285F4', '#34A853', 'L'),
     tier: 'fast',
+    vision: true,
+    ctx: 1048576,
+    tokPerSec: 220,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Google',
   },
 
-  /* ---------- Умные: глубокий разбор, сложные задачи ---------- */
+  /* ---------- Qwen (Alibaba) ---------- */
   {
-    id: 'codestral-latest',
-    name: 'Codestral',
-    vendor: 'Mistral AI',
-    desc: 'Код: правки, объяснение чужого, ревью',
-    avatar: AV('#FF7000', '#F2A93B', '</>'),
+    id: 'qwen/qwen3.8-max:free',
+    name: 'Qwen3.8 Max (Free)',
+    vendor: 'Qwen',
+    desc: 'Флагманская модель Alibaba Qwen с глубоким рассуждением и контекстом 1M токенов',
+    avatar: AV('#615CED', '#8E86FF', 'Q'),
     tier: 'smart',
+    ctx: 1048576,
+    tokPerSec: 95,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Qwen',
   },
   {
-    id: 'mistralai/mistral-large-2512',
-    name: 'Mistral Large',
-    vendor: 'Mistral · реле Xkiro',
-    desc: 'Тяжёлый разбор и картинки; идёт через реле',
-    avatar: AV('#FF7000', '#C43E00', 'M'),
-    tier: 'smart',
+    id: 'qwen/qwen3.8-omni-flash:free',
+    name: 'Qwen3.8 Omni Flash (Free)',
+    vendor: 'Qwen',
+    desc: 'Мультимодальная модель Qwen3.8: видит картинки, быстро думает и пишет чистый код',
+    avatar: AV('#615CED', '#8E86FF', 'Q'),
+    tier: 'fast',
     vision: true,
+    ctx: 262144,
+    tokPerSec: 145,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Qwen',
   },
   {
-    id: 'meituan/longcat-2.5-preview:free',
-    name: 'LongCat 2.5',
-    vendor: 'Meituan · реле Xkiro',
-    desc: 'Миллион токенов контекста, инструменты',
-    avatar: AV('#2E90FA', '#12B5A5', 'C'),
+    id: 'qwen/qwen3.7-max:free',
+    name: 'Qwen3.7 Max (Free)',
+    vendor: 'Qwen',
+    desc: 'Старшая модель линейки Qwen 3.7 для сложной логики, архитектуры и длинных текстов',
+    avatar: AV('#615CED', '#8E86FF', 'Q'),
     tier: 'smart',
+    ctx: 262144,
+    tokPerSec: 100,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Qwen',
+  },
+  {
+    id: 'qwen/qwen3.5-plus:free',
+    name: 'Qwen3.5 Plus (Free)',
+    vendor: 'Qwen',
+    desc: 'Надёжная универсальная модель Qwen с цепочкой рассуждений на русском и английском',
+    avatar: AV('#615CED', '#8E86FF', 'Q'),
+    tier: 'smart',
+    ctx: 262144,
+    tokPerSec: 135,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Qwen',
+  },
+  {
+    id: 'qwen/qwen3.8-27b',
+    name: 'Qwen 3.8 27B',
+    vendor: 'Qwen · Groq',
+    desc: 'Самый быстрый Qwen на ускорителях Groq: зрение и рассуждение за доли секунды',
+    avatar: AV('#615CED', '#8E86FF', 'Q'),
+    tier: 'fast',
+    vision: true,
+    ctx: 131072,
+    tokPerSec: 240,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Qwen',
+  },
+
+  /* ---------- Cohere ---------- */
+  {
+    id: 'cohere/command-a-reasoning',
+    name: 'Command A Reasoning',
+    vendor: 'Cohere',
+    desc: 'Флагман Cohere с глубоким пошаговым рассуждением, аналитикой и работой по источникам',
+    avatar: AV('#3959CC', '#D97757', 'R'),
+    tier: 'smart',
+    ctx: 262144,
+    tokPerSec: 110,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Cohere',
   },
   {
     id: 'cohere/command-r-plus-08-2024',
     name: 'Command R+',
     vendor: 'Cohere · реле Xkiro',
-    desc: 'Длинные тексты, выжимки, цитаты из них',
+    desc: 'Длинные тексты, точные выжимки и работа по источникам',
     avatar: AV('#3959CC', '#0E0E0E', 'R'),
     tier: 'smart',
+    ctx: 131072,
+    tokPerSec: 95,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Cohere',
+  },
+
+  /* ---------- Mistral AI ---------- */
+  {
+    id: 'mistralai/mistral-large-2512',
+    name: 'Mistral Large 3',
+    vendor: 'Mistral',
+    desc: 'Флагман Mistral AI: глубокий разбор документов, работа с изображениями и стилем',
+    avatar: AV('#FF7000', '#C43E00', 'M'),
+    tier: 'smart',
+    vision: true,
+    ctx: 131072,
+    tokPerSec: 95,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Mistral',
+  },
+  {
+    id: 'mistralai/mistral-medium-3.5',
+    name: 'Mistral Medium 3.5',
+    vendor: 'Mistral',
+    desc: 'Универсальная модель Mistral с поддержкой режима рассуждений',
+    avatar: AV('#FF7000', '#EA580C', 'M'),
+    tier: 'smart',
+    ctx: 131072,
+    tokPerSec: 120,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Mistral',
+  },
+  {
+    id: 'mistralai/mistral-small-2603',
+    name: 'Mistral Small 4',
+    vendor: 'Mistral',
+    desc: 'Быстрая сбалансированная модель Mistral 4-го поколения с режимом рассуждений',
+    avatar: AV('#FF7000', '#F59E0B', 'M'),
+    tier: 'fast',
+    ctx: 131072,
+    tokPerSec: 150,
+    canThink: true,
+    supportsEffort: true,
+    category: 'Mistral',
+  },
+  {
+    id: 'codestral-latest',
+    name: 'Codestral',
+    vendor: 'Mistral',
+    desc: 'Специализированная модель для кода: генерация, рефакторинг, тесты и ревью',
+    avatar: AV('#FF7000', '#F2A93B', '</>'),
+    tier: 'smart',
+    ctx: 262144,
+    tokPerSec: 160,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Mistral',
+  },
+  {
+    id: 'mistralai/devstral-medium',
+    name: 'Devstral 2',
+    vendor: 'Mistral',
+    desc: 'Инженерная модель Mistral для архитектуры проектов и отладки сложных багов',
+    avatar: AV('#FF7000', '#D97706', 'D'),
+    tier: 'smart',
+    ctx: 131072,
+    tokPerSec: 135,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Mistral',
+  },
+  {
+    id: 'ministral-14b-2512',
+    name: 'Ministral 3 14B',
+    vendor: 'Mistral',
+    desc: 'Старшая модель линейки Ministral 3: быстрый точный ответ без воды',
+    avatar: AV('#FAF0DD', '#FF7000', 'M'),
+    tier: 'fast',
+    ctx: 131072,
+    tokPerSec: 165,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Mistral',
+  },
+  {
+    id: 'ministral-8b-2512',
+    name: 'Ministral 3 8B',
+    vendor: 'Mistral',
+    desc: 'Компактная быстрая модель Mistral: коротко, по делу, без лишней воды',
+    avatar: AV('#FAF0DD', '#FF7000', 'M'),
+    tier: 'fast',
+    ctx: 131072,
+    tokPerSec: 185,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Mistral',
+  },
+  {
+    id: 'ministral-3b-2512',
+    name: 'Ministral 3 3B',
+    vendor: 'Mistral',
+    desc: 'Сверхлёгкая модель Mistral 3B для мгновенных ответов',
+    avatar: AV('#FAF0DD', '#FF7000', 'M'),
+    tier: 'fast',
+    ctx: 131072,
+    tokPerSec: 220,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Mistral',
+  },
+
+  /* ---------- OpenAI / Другие ---------- */
+  {
+    id: 'openai/gpt-oss-20b',
+    name: 'GPT-OSS 20B',
+    vendor: 'OpenAI · Groq',
+    desc: 'Открытая модель OpenAI на ускорителях Groq с настраиваемым усилием рассуждения',
+    avatar: AV('#10A37F', '#0E8C6C', '○'),
+    tier: 'fast',
+    ctx: 131072,
+    tokPerSec: 260,
+    canThink: true,
+    supportsEffort: true,
+    category: 'OpenAI',
+  },
+  {
+    id: 'meituan/longcat-2.5-preview:free',
+    name: 'LongCat 2.5',
+    vendor: 'Meituan · реле Xkiro',
+    desc: 'Миллион токенов контекста и вызов инструментов',
+    avatar: AV('#2E90FA', '#12B5A5', 'C'),
+    tier: 'smart',
+    ctx: 1048576,
+    tokPerSec: 120,
+    canThink: false,
+    supportsEffort: false,
+    category: 'Другие',
   },
 ]
 
 const ALL: ModelOption[] = [MODEL_AUTO, ...MODELS]
 
+/**
+ * Умеет ли модель думать («Думает»).
+ * Если модель думать не умеет (например, Codestral, Ministral, Mistral Large 3,
+ * Gemini Flash Lite, Command R+), переключатель «Думает» и выбор «Усилие» скрываются.
+ */
+export function canModelThink(
+  id?: string,
+  meta?: { canThink?: boolean; reasoning?: boolean; canExcludeReasoning?: boolean },
+): boolean {
+  if (!id) return true // Авто (Ядро MeTiger) умеет думать
+  if (meta && typeof meta.canThink === 'boolean') return meta.canThink
+  if (meta && (meta.reasoning === true || meta.canExcludeReasoning === true)) return true
+  const s = id.toLowerCase()
+  if (/flash-lite|codestral|devstral|ministral|mistral-large|command-r|longcat|llama-3\.[12]|granite/.test(s)) {
+    return false
+  }
+  return /(gemini-(?:2\.5|3)|qwen3|qwen-3|qwq|deepseek|gpt-oss|\bo1\b|\bo3\b|\bo4\b|glm-(?:4\.7|5)|mistral-medium|mistral-small-(?:4|26)|magistral|reasoning|thinking|think|r1-|nex-n2\.5-pro|dots-3)/.test(
+    s,
+  )
+}
+
+/** Поддерживает ли модель выбор усилия рассуждения (Низкое / Среднее / Высокое). */
+export function canModelEffort(
+  id?: string,
+  meta?: { canThink?: boolean; supportsEffort?: boolean; reasoning?: boolean; canExcludeReasoning?: boolean },
+): boolean {
+  if (!canModelThink(id, meta)) return false
+  if (meta && typeof meta.supportsEffort === 'boolean') return meta.supportsEffort
+  return true
+}
+
+/** Определяет категорию ИИ-семейства для группировки моделей. */
+export function vendorCategory(id?: string, vendor?: string, name?: string): string {
+  if (!id) return 'MeTiger Ai'
+  const s = `${id} ${vendor || ''} ${name || ''}`.toLowerCase()
+  if (/gemini|gemma|\bgoogle\b/.test(s)) return 'Google'
+  if (/qwen|qwq|alibaba|tongyi/.test(s)) return 'Qwen'
+  if (/deepseek/.test(s)) return 'DeepSeek'
+  if (/mistral|ministral|codestral|devstral|pixtral|magistral/.test(s)) return 'Mistral'
+  if (/openai|gpt-oss|\bgpt\b|\bo1\b|\bo3\b|\bo4\b/.test(s)) return 'OpenAI'
+  if (/claude|anthropic/.test(s)) return 'Anthropic'
+  if (/grok|\bxai\b|x\.ai/.test(s)) return 'xAI'
+  if (/\bglm\b|\bzai\b|z\.ai|z-ai|zhipu/.test(s)) return 'Z.AI'
+  if (/llama|\bmeta\b/.test(s)) return 'Meta'
+  if (/cohere|command-r|\bnorth\b/.test(s)) return 'Cohere'
+  if (/nemotron|nvidia/.test(s)) return 'Nvidia'
+  const clean = String(vendor || '').split('·')[0].trim()
+  return clean || 'Другие'
+}
+
+/** Форматирует контекстное окно в виде «1M Контекст», «128K Контекст». */
+export function formatContextBadge(ctx?: number): string {
+  const n = Number(ctx) || 131072
+  if (n >= 1000000) {
+    const m = Math.round((n / 1000000) * 10) / 10
+    return `${m >= 1 && n >= 1000000 ? Math.round(n / 1000000) || 1 : m}M Контекст`
+  }
+  if (n >= 1024) {
+    return `${Math.round(n / 1024)}K Контекст`
+  }
+  return `${n} Контекст`
+}
+
+/* ==================== Счётчик запросов и скорость (ток/с) ==================== */
+
+export interface ModelTelemetryEntry {
+  requests: number
+  tokPerSec?: number
+}
+
+const TELEMETRY_KEY = 'mt-model-telemetry'
+
+function readTelemetryMap(): Record<string, ModelTelemetryEntry> {
+  try {
+    if (typeof localStorage === 'undefined') return {}
+    const raw = localStorage.getItem(TELEMETRY_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+export function getModelTelemetry(id: string, fallbackTps?: number): { requests: number; totalRequests: number; tokPerSec: number } {
+  const map = readTelemetryMap()
+  const key = id || '_auto'
+  const entry = map[key]
+  const total = map._total?.requests || 0
+  return {
+    requests: entry?.requests || 0,
+    totalRequests: total,
+    tokPerSec: entry?.tokPerSec || fallbackTps || 135,
+  }
+}
+
+export function recordModelTelemetry(id: string | undefined, ms?: number, chars?: number): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const map = readTelemetryMap()
+    const key = id || '_auto'
+    const prev = map[key] || { requests: 0 }
+    let tps = prev.tokPerSec
+    if (ms && ms > 100 && chars && chars > 12) {
+      const estTokens = Math.max(4, Math.round(chars / 3.3))
+      const measured = Math.min(450, Math.max(15, Math.round((estTokens * 1000) / ms)))
+      tps = prev.tokPerSec ? Math.round(prev.tokPerSec * 0.6 + measured * 0.4) : measured
+    }
+    map[key] = { requests: (prev.requests || 0) + 1, ...(tps ? { tokPerSec: tps } : {}) }
+    const totalPrev = map._total?.requests || 0
+    map._total = { requests: totalPrev + 1, ...(tps ? { tokPerSec: tps } : {}) }
+    localStorage.setItem(TELEMETRY_KEY, JSON.stringify(map))
+  } catch {
+    // ignore quota/SSR errors
+  }
+}
 
 /* ==================== живой каталог (GET /api/models) ==================== */
 
@@ -155,6 +529,7 @@ export interface CatalogEntry {
   priceKnown?: boolean
   /** умеет рассуждать / принимать инструменты — по данным самого провайдера */
   reasoning?: boolean
+  canExcludeReasoning?: boolean
   tools?: boolean
   /** чем провайдер предлагает заменить снятую модель */
   replaces?: string
@@ -222,7 +597,7 @@ export function catalogCache(): ModelCatalog | null {
 
 /**
  * Список моделей для окна выбора. Ошибка сети не показывается человеку:
- * тогда остаются вручную проверенные 19 строк, и выбор работает как раньше.
+ * тогда остаются вручную проверенные строки витрины, и выбор работает как раньше.
  */
 export async function loadCatalog(opts: { force?: boolean } = {}): Promise<ModelCatalog | null> {
   if (LAST && !opts.force) return LAST
@@ -279,9 +654,7 @@ const PALETTE = [
 ]
 
 /**
- * Аватарка каталожной модели: цвет по вендору (у одного вендора всегда один
- * градиент), монограмма из имени. Картинок не заводим — список из 180 строк
- * должен открываться мгновенно.
+ * Аватарка каталожной модели: цвет по вендору, монограмма из имени.
  */
 export function avatarFor(m: CatalogEntry): ModelAvatar {
   const v = String(m.vendor || m.id)
@@ -306,8 +679,7 @@ export function ceilingsLine(m: CatalogEntry): string {
 /**
  * Найти опцию по id. Неизвестный витрине id больше не «Авто»: если он есть в
  * живом каталоге, показываем его имя — иначе человек выбрал модель, а чип
- * врал бы, что выбор не сработал. Совсем незнакомого id не бывает: движок
- * сам снимает пин, и чип честно остаётся «Авто».
+ * врал бы, что выбор не сработал.
  */
 export function modelOption(id: string | undefined | null): ModelOption {
   const key = id || ''
@@ -317,14 +689,20 @@ export function modelOption(id: string | undefined | null): ModelOption {
   if (!c) return MODEL_AUTO
   const av = avatarFor(c)
   const ceil = ceilingsLine(c)
+  const think = canModelThink(c.id, c)
   return {
     id: c.id,
     name: c.name || c.id,
     vendor: c.vendor || '',
-    desc: ceil || 'из каталога',
+    desc: c.desc || ceil || 'из каталога',
     avatar: av,
     tier: c.tier === 'smart' ? 'smart' : 'fast',
     vision: c.vision === true,
+    ctx: c.ctx || 131072,
+    tokPerSec: c.src === 'groq' || c.src === 'cerebras' ? 240 : c.tier === 'smart' ? 105 : 150,
+    canThink: think,
+    supportsEffort: canModelEffort(c.id, c),
+    category: vendorCategory(c.id, c.vendor, c.name),
   }
 }
 
@@ -333,7 +711,5 @@ export function isModelId(value: unknown): value is string {
   if (typeof value !== 'string') return false
   if (ALL.some((m) => m.id === value)) return true
   if (catalogEntry(value)) return true
-  /* id мог прийти из каталога в прошлый раз, а кэш ещё пуст — терять выбор из-за
-     этого нельзя: движок сам решит, снимать пин или нет. */
   return looksLikeModelId(value)
 }

@@ -21,7 +21,15 @@ import { fetchRealRuns } from './lib/stats'
 import { haptic } from './lib/haptic'
 import { siteUser, type Person } from './lib/user'
 import { usePersistentState } from './hooks/usePersistentState'
-import { isModelId } from './lib/models'
+import {
+  DEFAULT_GEN_PARAMS,
+  canModelThink,
+  isGenParams,
+  isModelId,
+  recordModelTelemetry,
+  type GenParams,
+  type ReasoningEffort,
+} from './lib/models'
 
 export type ViewId = 'chat' | 'agent' | 'settings'
 
@@ -66,8 +74,20 @@ export default function App() {
   /* показывать ли, как модель думала: выбор живёт между сессиями, как и модель */
   const [reasoningOn, setReasoningOn] = usePersistentState<boolean>(
     'mt-reasoning',
-    false,
+    true,
     (v): v is boolean => typeof v === 'boolean',
+  )
+  /* усилие рассуждения: Низкое / Среднее / Высокое */
+  const [effort, setEffort] = usePersistentState<ReasoningEffort>(
+    'mt-effort',
+    'medium',
+    (v): v is ReasoningEffort => v === 'low' || v === 'medium' || v === 'high',
+  )
+  /* параметры генерации: temperature, max_tokens, top_p */
+  const [genParams, setGenParams] = usePersistentState<GenParams>(
+    'mt-params',
+    DEFAULT_GEN_PARAMS,
+    isGenParams,
   )
   /* глубокий поиск в сети («поиск» рядом с «вслух»): выбор тоже живёт между сессиями */
   const [searchOn, setSearchOn] = usePersistentState<boolean>(
@@ -201,9 +221,10 @@ export default function App() {
             : c,
         ),
       )
+      const allowThink = reasoningOn && canModelThink(model)
       setTyping(true)
       setDraft('')
-      setDraftReasoning(reasoningOn ? '' : null)
+      setDraftReasoning(allowThink ? '' : null)
       void (async () => {
         const r = await sendChat(text, history, {
           ...(images && images.length ? { images } : {}),
@@ -213,9 +234,19 @@ export default function App() {
           /* ответ показывается по мере чтения провайдера; null — попытка ушла в запасной
              пул, обрывки с экрана убираем */
           onDraft: (t) => setDraft(t),
-          ...(reasoningOn ? { onReasoning: (t: string | null) => setDraftReasoning(t) } : {}),
+          ...(allowThink ? { onReasoning: (t: string | null) => setDraftReasoning(t), reasoningEffort: effort } : {}),
           ...(searchOn ? { webSearch: true } : {}),
+          temperature: genParams.temperature,
+          ...(genParams.maxTokens > 0 ? { maxTokens: genParams.maxTokens } : {}),
+          topP: genParams.topP,
         })
+        if (r.ok) {
+          recordModelTelemetry(
+            model || r.model,
+            r.ms,
+            (r.reply ? r.reply.length : 0) + (r.reasoning ? r.reasoning.length : 0),
+          )
+        }
         const reply =
           r.ok && r.reply
             ? r.reply
@@ -262,7 +293,7 @@ export default function App() {
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
       })()
     },
-    [activeChatId, chats, model],
+    [activeChatId, chats, model, reasoningOn, effort, searchOn, genParams],
   )
   // ⌘K — палитра, ⌘N — новый чат, Esc — закрыть оверлеи
   useEffect(() => {
@@ -338,6 +369,10 @@ export default function App() {
                 onSend={sendMessage}
                 model={model}
                 onModelChange={setModel}
+                effort={effort}
+                onEffortChange={setEffort}
+                genParams={genParams}
+                onGenParamsChange={setGenParams}
               />
             </div>
           ) : null}

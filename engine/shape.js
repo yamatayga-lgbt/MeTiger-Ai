@@ -73,6 +73,7 @@ export function buildRequest(o) {
   const ceil = catalogCeilings(catalogCached(), model, o.provider);
   if (ceil) maxTokens = Math.max(64, Math.min(maxTokens, ceil.maxOut));
   const temp = typeof o.temperature === 'number' ? o.temperature : 0.8;
+  const topP = typeof o.topP === 'number' && Number.isFinite(o.topP) ? o.topP : undefined;
   const pics = (Array.isArray(o.images) ? o.images : [])
     .map(parseDataUrl).filter(Boolean).slice(0, o.maxImages || 2);
 
@@ -116,7 +117,7 @@ export function buildRequest(o) {
       } : {}),
       body: {
         contents: sys.concat(contents),
-        generationConfig: { maxOutputTokens: maxTokens, temperature: temp },
+        generationConfig: Object.assign({ maxOutputTokens: maxTokens, temperature: temp }, topP != null ? { topP } : {}),
       },
       parse: (d) => {
         const cand = (d.candidates && d.candidates[0]) || {};
@@ -151,7 +152,7 @@ export function buildRequest(o) {
   return {
     url: url(cfg.base) + '/chat/completions',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
-    body: Object.assign({ model, messages, max_tokens: maxTokens, temperature: temp }, o.stream ? { stream: true } : {}, cfg.id === 'openrouter' ? { models: [model] } : {}),
+    body: Object.assign({ model, messages, max_tokens: maxTokens, temperature: temp }, topP != null ? { top_p: topP } : {}, o.stream ? { stream: true } : {}, cfg.id === 'openrouter' ? { models: [model] } : {}),
     parse: (d) => {
       const err = d.error && (d.error.message || d.error.code);
       const ch = (d.choices && d.choices[0]) || {};

@@ -471,7 +471,7 @@ export function createEngine(opts) {
         if (useReframe) reframedCalls++;
         const req = buildRequest({
           cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
-          maxTokens: input.maxTokens, temperature: input.temperature,
+          maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
         const r = await attemptOne(id, model, req, left);
