@@ -535,7 +535,7 @@ export function ChatView({
               }}
             >
               <span className="m-av" style={{ background: modelOpt.avatar.bg }}>
-                {modelOpt.avatar.mark}
+                {modelOpt.id === '' ? <img src={avatarUrl} alt="" className="m-av-img" /> : modelOpt.avatar.mark}
               </span>
               <span className="model-chip-name">{modelOpt.name}</span>
               <ChevronDown size={13} className="model-chip-caret" />

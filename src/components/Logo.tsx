@@ -1,34 +1,30 @@
+import avatarUrl from '../assets/agent-avatar.png'
+
 interface LogoMarkProps {
   size?: number
   className?: string
 }
 
-/** Фирменный знак MeTiger Ai — «M» в тигровом градиенте. */
+/** Фирменный знак MeTiger Ai — аватар тигра (вместо прежней буквы «M»). */
 export function LogoMark({ size = 28, className }: LogoMarkProps) {
+  const radius = Math.max(4, Math.round(size * 0.28))
   return (
-    <svg
+    <img
+      src={avatarUrl}
       width={size}
       height={size}
-      viewBox="0 0 32 32"
-      fill="none"
-      className={className}
+      alt=""
       aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id="mt-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FFB13D" />
-          <stop offset="1" stopColor="#F07A1A" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="8" fill="url(#mt-g)" />
-      <path
-        d="M8.5 23V9.8L16 17.6L23.5 9.8V23"
-        stroke="white"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      className={className ? `logo-mark ${className}` : 'logo-mark'}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        objectFit: 'cover',
+        flexShrink: 0,
+        display: 'block',
+      }}
+    />
   )
 }
 

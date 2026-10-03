@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Eye, RefreshCw } from 'lucide-react'
+import avatarUrl from '../assets/agent-avatar.png'
 import {
   MODEL_AUTO,
   MODELS,
@@ -201,7 +202,7 @@ export function ModelPicker({ model, onPick }: { model: string; onPick: (id: str
               }}
             >
               <span className="m-av m-av-row" style={{ background: r.avatar.bg }}>
-                {r.avatar.mark}
+                {r.id === '' ? <img src={avatarUrl} alt="" className="m-av-img" /> : r.avatar.mark}
               </span>
               <span className="model-row-text">
                 <span className="model-row-name">

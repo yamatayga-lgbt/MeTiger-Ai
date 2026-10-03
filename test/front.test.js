@@ -800,6 +800,15 @@ console.log('L — песочница: запуск кода в браузере
         && /href="https:\/\/ru\.wikipedia\.org\/wiki\/Квантовый_компьютер"/.test(htmlOn)
         && /\[1\]/.test(htmlOn)
         && !/msg-sources/.test(htmlOff));
+
+    const logoSrc = readFileSync('src/components/Logo.tsx', 'utf8');
+    const favSvg = readFileSync('public/favicon.svg', 'utf8');
+    ok('M26: везде вместо старой буквы «M» стоит аватарка тигра (LogoMark, favicon и чип «Авто»)',
+      logoSrc.includes('agent-avatar.png')
+        && !logoSrc.includes('M8.5 23V9.8')
+        && !favSvg.includes('M8.5 23V9.8')
+        && existsSync('public/favicon.png')
+        && /class="m-av-img"/.test(htmlOn));
   }
 }
 
