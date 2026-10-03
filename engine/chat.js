@@ -137,7 +137,15 @@ export function createEngine(opts) {
        нести. Провайдер, проигнорировавший stream:true, вернёт json — streamCall это
        видит и ведёт себя как rawCall, то есть ничего не ломается. */
     const res = (req.sse && onDelta)
-      ? await streamCall(fetchImpl, req, budget, (t) => onDelta({ kind: 'delta', provider: id, model, text: t }))
+      ? await streamCall(
+          fetchImpl,
+          req,
+          budget,
+          (t) => onDelta({ kind: 'delta', provider: id, model, text: t }),
+          /* рассуждения идут тем же потоком событий, но другим видом: кому их показывать,
+             решает дверь (фронт просит `showReasoning`), а не движок */
+          (t) => onDelta({ kind: 'reason', provider: id, model, text: t }),
+        )
       : await rawCall(fetchImpl, req, budget);
     if (res.error === 'timeout' || res.status === 0 && !res.text) {
       return { ok: false, why: 'timeout', status: res.status };

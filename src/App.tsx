@@ -60,6 +60,15 @@ export default function App() {
   const [typing, setTyping] = useState(false)
   /* черновик текущего ответа: приходит кусками из /api/chat, пока он идёт */
   const [draft, setDraft] = useState<string | null>(null)
+  /* черновик рассуждений той же головы — отдельная строка над ответом, только когда
+     человек сам попросил «думать вслух» */
+  const [draftReasoning, setDraftReasoning] = useState<string | null>(null)
+  /* показывать ли, как модель думала: выбор живёт между сессиями, как и модель */
+  const [reasoningOn, setReasoningOn] = usePersistentState<boolean>(
+    'mt-reasoning',
+    false,
+    (v): v is boolean => typeof v === 'boolean',
+  )
   /* Выбранная модель ответа — между сессиями (как и все настройки). '' = Авто. */
   const [model, setModel] = usePersistentState<string>('mt-model', '', isModelId)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -188,6 +197,7 @@ export default function App() {
       )
       setTyping(true)
       setDraft('')
+      setDraftReasoning(reasoningOn ? '' : null)
       void (async () => {
         const r = await sendChat(text, history, {
           ...(images && images.length ? { images } : {}),
@@ -197,6 +207,7 @@ export default function App() {
           /* ответ показывается по мере чтения провайдера; null — попытка ушла в запасной
              пул, обрывки с экрана убираем */
           onDraft: (t) => setDraft(t),
+          ...(reasoningOn ? { onReasoning: (t: string | null) => setDraftReasoning(t) } : {}),
         })
         const reply =
           r.ok && r.reply
@@ -218,6 +229,9 @@ export default function App() {
               /* что прочитали из вложений и чем оплатили окно — две строки под ответом */
               attach: r.ok ? attachLine(r) || undefined : undefined,
               notes: r.ok ? notesLine(r) || undefined : undefined,
+              /* что модель передумала по дороге — под ответом, раскрытым не будет:
+                 это справочная строка для тех, кто включил «думать вслух» */
+              reasoning: r.ok && reasoningOn && r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
             }
           : ({} as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet' })
         setChats((prev) =>
@@ -233,6 +247,7 @@ export default function App() {
         )
         setTyping(false)
         setDraft(null)
+        setDraftReasoning(null)
         /* поток мог оборваться в самом конце: текст на экране, хвоста нет — это
            не причина звать ответ неудачным, но сказать про него надо */
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
@@ -306,6 +321,9 @@ export default function App() {
                 messages={activeChat?.messages ?? []}
                 typing={typing}
                 draft={draft}
+                draftReasoning={draftReasoning}
+                reasoningOn={reasoningOn}
+                onToggleReasoning={() => setReasoningOn((v) => !v)}
                 onSend={sendMessage}
                 model={model}
                 onModelChange={setModel}

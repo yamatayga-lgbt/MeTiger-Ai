@@ -652,6 +652,90 @@ console.log('L — песочница: запуск кода в браузере
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   M2 · «думать вслух». Рассуждения идут тем же потоком, но другим каналом,
+   и фронт обязан держать их раздельно: иначе текст модели попадёт в ответ.
+   ────────────────────────────────────────────────────────────────────────── */
+{
+  const enc = new TextEncoder();
+  const sseRows = (rows) => new Response(new ReadableStream({
+    start(c) { for (const x of rows) c.enqueue(enc.encode(x)); c.close(); },
+  }), { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } });
+  const ev = (o) => 'data: ' + JSON.stringify(o) + '\n\n';
+  const reason = (t) => ev({ kind: 'draft', channel: 'reasoning', provider: 'groq', text: t });
+  const answer = (t) => ev({ kind: 'draft', provider: 'groq', text: t });
+  const drop = () => ev({ kind: 'drop', provider: 'groq' });
+  const fin = (payload) => ev({ kind: 'final', status: 200, payload });
+  const saved = globalThis.fetch;
+  const seen = [];
+  try {
+    globalThis.fetch = async (url, init) => {
+      seen.push(init && init.body);
+      return sseRows([
+        reason('Думаю '), reason('вслух'), answer('От'), answer('вет'),
+        fin({ ok: true, reply: 'Ответ', reasoning: 'Думаю вслух', model: 'groq/x' }),
+      ]);
+    };
+    const gotA = [], gotR = [];
+    const r = await sendChat('текст', [], { onDraft: (t) => gotA.push(t), onReasoning: (t) => gotR.push(t) });
+    ok('M15: рассуждения копятся отдельно от ответа и не пересекаются с ним',
+      gotA.join('|') === 'От|Ответ' && gotR.join('|') === 'Думаю |Думаю вслух',
+      JSON.stringify({ gotA, gotR }));
+    ok('M16: просьба о рассуждениях ушла в теле запроса, ответ собран как обычно',
+      JSON.parse(seen[0]).showReasoning === true && r.ok === true && r.reply === 'Ответ' && r.reasoning === 'Думаю вслух',
+      seen[0]);
+  } finally { globalThis.fetch = saved; seen.length = 0 }
+
+  {
+    const saved2 = globalThis.fetch;
+    try {
+      globalThis.fetch = async (url, init) => {
+        seen.push(init && init.body);
+        return sseRows([reason('не то'), answer('не то'), drop(), reason('то'), answer('ок'),
+          fin({ ok: true, reply: 'ок', reasoning: 'то', model: 'x/y' })]);
+      };
+      const gotA = [], gotR = [];
+      const r = await sendChat('текст', [], { onDraft: (t) => gotA.push(t), onReasoning: (t) => gotR.push(t) });
+      ok('M17: сброс попытки чистит ОБА канала — обрывки прошлой головы не остаются на экране',
+        gotA[1] === null && gotR[1] === null && gotR.join('|') === 'не то||то',
+        JSON.stringify({ gotA, gotR }));
+      ok('M18: ответ при этом обычный (провал головы не виден человеку как ошибка)',
+        r.ok === true && r.reply === 'ок', JSON.stringify(r).slice(0, 120));
+    } finally { globalThis.fetch = saved2 }
+  }
+
+  {
+    /* отдельный вызов: без onReasoning в теле не должно быть ни ключа, ни следа —
+       иначе прежние клиенты (бот, curl) начали бы получать то, чего не просили */
+    const saved3 = globalThis.fetch;
+    const body = [];
+    try {
+      globalThis.fetch = async (url, init) => {
+        body.push(init && init.body);
+        return new Response(JSON.stringify({ ok: true, reply: 'ок' }),
+          { status: 200, headers: { 'content-type': 'application/json' } });
+      };
+      await sendChat('текст', [], { onDraft: () => {} });
+      ok('M19: без onReasoning сервер про рассуждения не спрашивается (тело прежнее)',
+        body.length === 1 && !/showReasoning/.test(body[0]), body[0]);
+    } finally { globalThis.fetch = saved3 }
+  }
+
+  {
+    const api = readFileSync('src/lib/api.ts', 'utf8');
+    const chat = readFileSync('src/views/ChatView.tsx', 'utf8');
+    const app = readFileSync('src/App.tsx', 'utf8');
+    ok('M20: живой канал рассуждений доехал до экрана и выглядит не как ответ',
+      chat.includes('msg-reason-live') && chat.includes('aria-label="Модель думает вслух"')
+        && api.includes("ev.channel === 'reasoning'"));
+    ok('M21: переключатель помнит выбор между сессиями и стоит рядом с выбором модели',
+      app.includes("'mt-reasoning'") && chat.includes('reason-toggle') && chat.includes('aria-pressed'));
+    ok('M22: сказанное под ответом свёрнуто, а не вывалено в пузырь (рассуждения — не текст ответа)',
+      chat.includes('<details className="msg-reason">') && chat.includes('думал вслух')
+        && app.includes('slice(0, 4000)'));
+  }
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
 

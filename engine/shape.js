@@ -221,10 +221,13 @@ export async function rawCall(impl, req, timeoutMs) {
  *     тихо продолжаем как обычно (значит, stream:true он не поддерживает);
  *   · поток обрывается на середине: если текст уже есть — считаем его (модель ответила,
  *     хвост доесть нечем), если нет — это ошибка, и вызывающий уйдёт к следующему;
+ *   · `onReasoning` (если задан) получает куски РАССУЖДЕНИЙ отдельно от ответа: думать
+ *     вслух — это про показ, а не про то, чем модель ответила, поэтому в текст они
+ *     не подмешиваются и счётчик `chunks` их не считает;
  *   · битую строку не считаем провайдерской ошибкой: режем её и идём дальше, но
  *     количество `bad` отдаём — по нему видно, что формат у провайдера свой.
  */
-export async function streamCall(impl, req, timeoutMs, onDelta) {
+export async function streamCall(impl, req, timeoutMs, onDelta, onReasoning) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), Math.max(2000, timeoutMs || 30000));
   let res = null;
@@ -264,7 +267,10 @@ export async function streamCall(impl, req, timeoutMs, onDelta) {
       try { d = JSON.parse(payload); } catch (e) { bad++; continue; }
       const got = req.sse(d) || {};
       if (got.error) err = String(got.error);
-      if (got.reasoning) reason += got.reasoning;
+      if (got.reasoning) {
+        reason += got.reasoning;
+        if (onReasoning) { try { onReasoning(got.reasoning); } catch (e) { /* наблюдатель упал — поток не его вина */ } }
+      }
       if (got.finish) finish = got.finish;
       if (got.text) {
         reply += got.text;

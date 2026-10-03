@@ -146,5 +146,26 @@ console.log('── S · когда потока нет и когда он рв�
     dt < 3000 && req.parse(r5.data).reply === 'х', JSON.stringify({ dt, err: r5.error || '', st: r5.streamed }));
 }
 
+console.log('── S · рассуждения идут отдельным каналом ───');
+{
+  const req = buildRequest({ cfg: OPENAI, keyIdx: 0, model: 'm1', messages: msgs, system: 'с', tier: 'fast', stream: true });
+  const parts = [
+    delta('', { reasoning_content: 'Считаю ' }),
+    delta('', { reasoning_content: 'в уме' }),
+    delta('два'),
+  ];
+  const text = [], reason = [];
+  const r = await streamCall(async () => resp(parts), req, 5000, (t) => text.push(t), (t) => reason.push(t));
+  const parsed = req.parse(r.data);
+  ok('S14: куски рассуждений уходят в onReasoning и ни буквой не попадают в ответ',
+    reason.join('') === 'Считаю в уме' && text.join('') === 'два' && r.chunks === 1,
+    JSON.stringify({ text, reason, chunks: r.chunks }));
+  ok('S15: собранный ответ несёт то же reasoning, что и обычный путь (wrap + тот же parse)',
+    parsed.reply === 'два' && parsed.reasoning === 'Считаю в уме', JSON.stringify(parsed));
+  const r2 = await streamCall(async () => resp(parts), req, 5000, () => {});
+  ok('S16: без слушателя рассуждений поток не падает и ответ не меняется',
+    r2.chunks === 1 && req.parse(r2.data).reply === 'два', JSON.stringify({ st: r2.status, ch: r2.chunks }));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

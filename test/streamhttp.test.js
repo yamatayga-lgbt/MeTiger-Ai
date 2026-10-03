@@ -148,6 +148,57 @@ console.log('── H · SSE-обёртка двери /api/chat ───');
       JSON.stringify({ kinds, err: fin && fin.payload.error }));
   });
 }
+  /* ── «думать вслух»: отдельный канал того же потока ── */
+  await withFetch(async () => {
+    globalThis.fetch = async (_u, init) => {
+      const b = JSON.parse(String(init && init.body));
+      void b;
+      const rows = [
+        { choices: [{ delta: { reasoning_content: 'Взвешиваю ' }, finish_reason: '' }] },
+        { choices: [{ delta: { reasoning_content: 'слова' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'Готово' }, finish_reason: '' }] },
+      ];
+      const rs = new ReadableStream({
+        start(c) {
+          for (const x of rows) c.enqueue(enc.encode('data: ' + JSON.stringify(x) + '\n\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      });
+      return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+    };
+    const res = await post({ text: 'скажи что-нибудь', chatId: 'sse6', showReasoning: true }, SSE);
+    const { events: ev } = await drain(res);
+    const reason = ev.filter((e) => e.kind === 'draft' && e.channel === 'reasoning');
+    const answer = ev.filter((e) => e.kind === 'draft' && !e.channel);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H10: по просьбе рассуждения летят отдельным каналом и не смешиваются с ответом',
+      reason.map((e) => e.text).join('') === 'Взвешиваю слова' && answer.length === 1 && answer[0].text === 'Готово',
+      JSON.stringify({ reason: reason.map((e) => e.text), answer: answer.map((e) => e.text) }));
+    ok('H11: в финале рассуждения те же, что были бы и без потока (данные не прячутся)',
+      fin.payload.reasoning === 'Взвешиваю слова' && fin.payload.reply === 'Готово',
+      JSON.stringify({ r: fin.payload.reasoning, rep: fin.payload.reply }));
+  });
+
+  await withFetch(async () => {
+    globalThis.fetch = async () => {
+      const rs = new ReadableStream({
+        start(c) {
+          c.enqueue(enc.encode('data: ' + JSON.stringify({ choices: [{ delta: { reasoning_content: 'лишнее' }, finish_reason: '' }] }) + '\n\n'));
+          c.enqueue(enc.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: 'ок' }, finish_reason: '' }] }) + '\n\n'));
+          c.close();
+        },
+      });
+      return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+    };
+    const res = await post({ text: 'скажи что-нибудь', chatId: 'sse7' }, SSE);
+    const { events: ev } = await drain(res);
+    ok('H12: без просьбы лишние килобайты не льются — канал reasoning молчит, ответ тот же',
+      ev.filter((e) => e.channel === 'reasoning').length === 0 && ev.filter((e) => e.kind === 'draft').length === 1
+        && ev.filter((e) => e.kind === 'final').pop().payload.reply === 'ок',
+      JSON.stringify(ev.map((e) => e.kind + (e.channel ? ':' + e.channel : ''))));
+  });
+
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

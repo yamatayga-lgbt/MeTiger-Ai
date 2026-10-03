@@ -63,10 +63,14 @@ export interface ChatResult {
 
   /** Поток оборвался в самом конце: текст есть, хвоста нет. Отдельная строка, не ошибка. */
   streamError?: string
+  /** Что модель написала себе перед ответом (у упрямых провайдеров — в отдельном поле). */
+  reasoning?: string
 }
 
 export interface SseEvent {
   kind: string
+  /** `reasoning` — кусок рассуждений; пусто — это кусок самого ответа. */
+  channel?: string
   provider?: string
   model?: string
   text?: string
@@ -104,13 +108,18 @@ export function parseSse(buf: string): { events: SseEvent[]; rest: string } {
 }
 
 /** Читает поток ответа, показывает черновик и возвращает финальный payload (или null). */
-async function readDraftStream(res: Response, onDraft: (text: string | null) => void): Promise<Partial<ChatResult> | null> {
+async function readDraftStream(
+  res: Response,
+  onDraft?: (text: string | null) => void,
+  onReasoning?: (text: string | null) => void,
+): Promise<Partial<ChatResult> | null> {
   const rd = res.body && typeof res.body.getReader === 'function' ? res.body.getReader() : null
   if (!rd) return null
   const dec = new TextDecoder()
   let buf = ''
   let draft: string | null = null
   let final: Partial<ChatResult> | null = null
+  let reason: string | null = null;
   for (;;) {
     const r = await rd.read()
     if (r.done) break
@@ -118,13 +127,19 @@ async function readDraftStream(res: Response, onDraft: (text: string | null) => 
     const got = parseSse(buf)
     buf = got.rest
     for (const ev of got.events) {
-      if (ev.kind === 'draft') {
+      if (ev.kind === 'draft' && ev.channel === 'reasoning') {
+        reason = (reason || '') + String(ev.text || '')
+        if (onReasoning) onReasoning(reason)
+      } else if (ev.kind === 'draft') {
         draft = (draft || '') + String(ev.text || '')
-        onDraft(draft)
+        if (onDraft) onDraft(draft)
       } else if (ev.kind === 'drop') {
-        // попытка ушла в запасной пул: на экране не должно остаться её обрывков
+        // попытка ушла в запасной пул: обрывки нельзя оставлять ни в одном канале,
+        // иначе половина текста предыдущей головы висит под новой
         draft = null
-        onDraft(null)
+        reason = null
+        if (onDraft) onDraft(null)
+        if (onReasoning) onReasoning(null)
       } else if (ev.kind === 'final' && ev.payload && typeof ev.payload === 'object') {
         final = ev.payload as Partial<ChatResult>
       }
@@ -390,6 +405,11 @@ export async function sendChat(
      * эта попытка не пойдёт в ответ». Без колбэка запрос и ответ остаются ровно прежними.
      */
     onDraft?: (text: string | null) => void
+    /**
+     * То же, но про рассуждения: у них отдельный канал потока, и приходят они ДО ответа.
+     * Просим их только когда переключатель включён — сервер без просьбы их не шлёт.
+     */
+    onReasoning?: (text: string | null) => void
   } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
@@ -409,16 +429,18 @@ export async function sendChat(
         attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
         model: opts.model || undefined,
         gender: opts.gender || undefined,
+        /* явная просьба показать, как модель думала; без неё сервер в этом канале молчит */
+        showReasoning: opts.onReasoning ? true : undefined,
         /* кто пишет: по этому ключу бэкенд держит память и профиль. Без него весь
            веб делил одну память на всех незнакомцев */
         userId: currentUserId(),
       }),
     })
     let data: Partial<ChatResult> | null
-    if (opts.onDraft && (res.headers.get('content-type') || '').indexOf('text/event-stream') >= 0) {
+    if ((opts.onDraft || opts.onReasoning) && (res.headers.get('content-type') || '').indexOf('text/event-stream') >= 0) {
       // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
       // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
-      const fin = (await readDraftStream(res, opts.onDraft)) as Partial<ChatResult> | null
+      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning)) as Partial<ChatResult> | null
       if (!fin) {
         // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
         // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост

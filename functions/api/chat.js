@@ -282,15 +282,30 @@ async function handlePost(context) {
      нужен на этом же запросе), пишем после ответа и не чаще раза в минуту. */
   const brave = createBrave({ env, store });
   await brave.pull();
+  /* «Думать вслух» просит только фронт с включённым переключателем. Остальным
+     рассуждения в потоке не нужны: это килобайты текста, которые никто не увидит,
+     а лимиты и тариф провайдера считаются по нему так же, как по ответу. */
+  const wantReasoning = !!(body && body.showReasoning === true);
   const engine = createEngine({
     env, fetch: (u, i) => fetch(u, i), quarantine, memory, brave,
     /* Куски ответа летят в браузер по мере чтения провайдера. Без
        `accept: text/event-stream` колбэка нет — движок идёт ровно прежним путём,
        поэтому curl, бот и дымовой тест публикации ничего не замечают. */
     onDelta: typeof context.__send === 'function'
-      ? (ev) => context.__send(ev && ev.kind === 'drop'
-        ? { kind: 'drop', provider: ev.provider, model: ev.model }
-        : { kind: 'draft', provider: ev.provider, model: ev.model, text: ev.text || '' })
+      ? (ev) => {
+          if (!ev) return;
+          if (ev.kind === 'drop') {
+            // одна команда сбрасывает оба канала: и ответ, и рассуждения неудачной головы
+            context.__send({ kind: 'drop', provider: ev.provider, model: ev.model });
+            return;
+          }
+          if (ev.kind === 'reason') {
+            if (!wantReasoning) return;
+            context.__send({ kind: 'draft', channel: 'reasoning', provider: ev.provider, model: ev.model, text: ev.text || '' });
+            return;
+          }
+          context.__send({ kind: 'draft', provider: ev.provider, model: ev.model, text: ev.text || '' });
+        }
       : undefined,
   });
   const history = norm.history;

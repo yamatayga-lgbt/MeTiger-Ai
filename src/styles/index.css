@@ -1252,6 +1252,65 @@ kbd {
   color: #ecd9b4;
 }
 
+/* ── «думать вслух»: рассуждения модели ───────────────────────────────
+   Живой кусок и архивный выглядят одинаково (тихий, моноширинный не надо —
+   это обычная речь), но никогда не выглядят частью ответа: отсюда приглушение
+   и левая граница вместо пузыря. */
+.msg-reason {
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.msg-reason summary {
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 12px;
+  list-style: none;
+}
+
+.msg-reason summary::-webkit-details-marker {
+  display: none;
+}
+
+.msg-reason-text {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg-reason-live {
+  font-style: italic;
+}
+
+.reason-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reason-toggle.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .msg-draft {
   opacity: 0.88;
 }

@@ -73,6 +73,8 @@ export interface ChatMessage {
   /** Вердикт совета голов словами. Пока его нет — значит совет молчал, и это тоже честно. */
   advice?: string
   adviceTone?: 'ok' | 'warn' | 'quiet'
+  /** Кусок того, как модель рассуждала (только если «думать вслух» было включено). */
+  reasoning?: string
 }
 
 const REPLIES: { match: RegExp; text: string }[] = [

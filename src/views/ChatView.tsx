@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, Mic, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Brain, ChevronDown, Mic, Paperclip, Square, X } from 'lucide-react'
 import avatarUrl from '../assets/agent-avatar.png'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
@@ -102,13 +102,29 @@ interface ChatViewProps {
   typing: boolean
   /** Живой черновик ответа (пустая строка = ждём первый кусок, null = его нет) */
   draft?: string | null
+  /** Черновик рассуждений — той же головы, но над ответом и другим стилем */
+  draftReasoning?: string | null
+  /** Переключатель «думать вслух» в панели ввода */
+  reasoningOn?: boolean
+  onToggleReasoning?: () => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Выбранная модель ('' = Авто) и смена — живут в App и сохраняются. */
   model?: string
   onModelChange?: (id: string) => void
 }
 
-export function ChatView({ user, messages, typing, draft, onSend, model = '', onModelChange }: ChatViewProps) {
+export function ChatView({
+  user,
+  messages,
+  typing,
+  draft,
+  draftReasoning,
+  reasoningOn,
+  onToggleReasoning,
+  onSend,
+  model = '',
+  onModelChange,
+}: ChatViewProps) {
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
@@ -371,6 +387,12 @@ export function ChatView({ user, messages, typing, draft, onSend, model = '', on
                   {Array.isArray(m.skills) && m.skills.length ? (
                     <div className="msg-skills">по навыкам: {m.skills.join(' · ')}</div>
                   ) : null}
+                  {m.reasoning ? (
+                    <details className="msg-reason">
+                      <summary>думал вслух</summary>
+                      <div className="msg-reason-text">{m.reasoning}</div>
+                    </details>
+                  ) : null}
                   {m.advice || m.src ? (
                     <div className={`msg-meta${m.adviceTone ? ' is-' + m.adviceTone : ''}`}>
                       {m.advice ? <span className="msg-advice">{m.advice}</span> : null}
@@ -389,6 +411,13 @@ export function ChatView({ user, messages, typing, draft, onSend, model = '', on
               </div>
               <div>
                 <div className="ai-name">MeTiger Ai</div>
+                {draftReasoning ? (
+                  /* рассуждения идут ПЕРЕД ответом и гаснут: это не часть ответа, это то,
+                     как модель к нему шла — показывать её так, будто это текст, нельзя */
+                  <div className="msg-reason msg-reason-live" aria-live="polite" aria-label="Модель думает вслух">
+                    {draftReasoning}
+                  </div>
+                ) : null}
                 {draft ? (
                   /* текст летит с сервера кусками: показываем его живьём вместо «печатаю»,
                      иначе человек смотрит на три точки там, где ответ уже пишется */
@@ -488,6 +517,19 @@ export function ChatView({ user, messages, typing, draft, onSend, model = '', on
               </span>
               <span className="model-chip-name">{modelOpt.name}</span>
               <ChevronDown size={13} className="model-chip-caret" />
+            </button>
+            <button
+              type="button"
+              className={`reason-toggle${reasoningOn ? ' is-on' : ''}`}
+              aria-pressed={!!reasoningOn}
+              title="Показывать рассуждения модели, пока ответ пишется (и сворачивать их под ответом)"
+              onClick={() => {
+                haptic('light')
+                onToggleReasoning?.()
+              }}
+            >
+              <Brain size={13} />
+              вслух
             </button>
           </div>
           <div className="composer-main">
