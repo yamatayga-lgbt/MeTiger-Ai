@@ -58,6 +58,7 @@ import s_ux from './skills/ux.js';
 import s_visual from './skills/visual.js';
 import s_docs2 from './skills/docs2.js';
 import s_i18n from './skills/i18n.js';
+import s_edu from './skills/edu.js';
 import s_data from './skills/data.js';
 import s_automation from './skills/automation.js';
 import s_safety from './skills/safety.js';
@@ -79,7 +80,7 @@ const RAW = [
   ...s_reading, ...s_stats,
   /* наше дополнение: группы 13–17 — программирование, архитектура, отладка, тесты, DevOps */
   ...s_programming, ...s_architecture, ...s_debugging, ...s_testing, ...s_devops,
-  ...s_webapi, ...s_database, ...s_tooling, ...s_writing, ...s_media, ...s_ux, ...s_visual, ...s_docs2, ...s_i18n,
+  ...s_webapi, ...s_database, ...s_tooling, ...s_writing, ...s_media, ...s_ux, ...s_visual, ...s_docs2, ...s_i18n, ...s_edu,
 ];
 
 /* ============================== соответствие имён ============================== */
@@ -165,6 +166,7 @@ export const FRAMES = {
   visual: ' Макет не рендерим и линейкой не меряем: только спецификация — числа, имена, hex из присланного.',
   techdoc: ' Док репозитория не читаем и на месте не правим: только присланный текст, непроверенное так и называем.',
   i18n: ' Языка не знаем: только присланный текст и названные правила локали.',
+  learning: ' ' + ('Человека не видим: судим по присланным ответам, уровень не приписываем.'),
 };
 
 /** У навыков со слишком широких триггеров — второе условие: без него навык лезет в спокойный разговор.
@@ -196,6 +198,9 @@ for (const s of RAW) {
   /* Локализация без словаря и без носителя: рамка на каждом навыке группы 26, иначе
      «так говорят носители» уезжает в ответ как факт. */
   else if (s.cat === 'i18n') FRAME_BY_ID[s.id] = FRAMES.i18n;
+  /* Ученика перед глазами нет: без его присланных ответов навык не имеет права ни на
+     диагноз, ни на «уровень». Рамка на всех пятерых навыках группы 27. */
+  else if (s.cat === 'learning') FRAME_BY_ID[s.id] = FRAMES.learning;
   else if (s.cat === 'memory') FRAME_BY_ID[s.id] = FRAMES.memory;
   else if (s.cat === 'data' && /chart|report/.test(s.id)) FRAME_BY_ID[s.id] = FRAMES.data_visual;
 }

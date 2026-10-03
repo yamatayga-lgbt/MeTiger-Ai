@@ -115,6 +115,19 @@ const guardedSkills = SKILLS.filter((x) => !x.off && GUARDED.some((g) => x.id.st
 const omono = [];
 for (const r of AMBIG) for (const c of BYT) for (const f of OMO_FRAMES) omono.push(f.replace('%s', r).replace('%s', c));
 for (const r of AMBIG2) for (const c of BYT2) for (const f of OMO_FRAMES2) omono.push(f.replace('%s', r).replace('%s', c));
+/* Третий контекст — быт вокруг учебных слов (группа 27): «упражнения для спины», «аналог
+   сиропа», «тест на беременность», «ключи от квартиры», «пробелы в заборе», «оценка квартиры»,
+   «разборка шкафа». Корни тут свои: то, что в обучении означает «задание», в быту означает
+   совсем другое, и навык обязан молчать, пока рядом нет учебного слова. */
+const AMBIG3 = ['упражнения', 'упражнение', 'задание', 'задачи', 'тест', 'контрольная', 'оценка',
+  'пример', 'аналогия', 'аналог', 'курса', 'курс', 'урок', 'пробелы', 'обратную связь', 'разбор',
+  'ключи', 'вопросы', 'ответы', 'конспект', 'материал', 'объясни проще', 'составь план'];
+const BYT3 = ['для спины', 'для поясницы', 'для колена', 'для гитары', 'для холодильника',
+  'в аптеке', 'для сиропа', 'на беременность', 'доллара', 'евро', 'жизни', 'в заборе', 'в стене',
+  'на кухню', 'для тортика', 'для рассады', 'от квартиры', 'для автомобиля', 'по квитанции',
+  'для дачи'];
+const OMO_FRAMES3 = ['%s %s', 'подбери %s %s', 'сделай %s %s', 'напиши %s %s', 'проверь %s %s'];
+for (const r of AMBIG3) for (const c of BYT3) for (const f of OMO_FRAMES3) omono.push(f.replace('%s', r).replace('%s', c));
 const omonoHit = [];
 for (const q of omono) {
   const who = guardedSkills.filter((x) => x.re.test(q)).map((x) => x.id);
@@ -123,7 +136,7 @@ for (const q of omono) {
 const omonoBy = new Map();
 for (const q of omono) {
   for (const x of guardedSkills.filter((y) => y.re.test(q))) {
-    const root = AMBIG.concat(AMBIG2).find((r) => q.includes(r)) || '?';
+    const root = AMBIG.concat(AMBIG2, AMBIG3).find((r) => q.includes(r)) || '?';
     const k = root + ' → ' + x.id;
     omonoBy.set(k, (omonoBy.get(k) || 0) + 1);
   }

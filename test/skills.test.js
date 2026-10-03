@@ -48,6 +48,7 @@ const OURS = [
   'vd-direction', 'vd-system', 'vd-type', 'vd-color', 'vd-layout', 'vd-states', 'vd-spec', 'vd-consistency',
   'td-guide', 'td-runbook', 'td-changelog', 'td-spec', 'td-fresh',
   'l10-ui', 'l10-units', 'l10-term', 'l10-audit', 'l10-source', 'l10-mt', 'l10-fit',
+  'ed-example', 'ed-task', 'ed-quiz', 'ed-gap', 'ed-feedback',
 ];
 /* 04–07 — вторая поставка (id 15–35, секции P и Q), 08–12 — третья (id 36–56, секция R),
    13–17 — четвёртая (id 57–90, секция T) */
@@ -59,8 +60,8 @@ console.log('A — реестр и перенос данных');
 ok('A1: перенесены все 351 навык донора + наши ' + OURS.length,
   SKILLS.length === 351 + OURS.length && SKILLS.filter((x) => !OURS_SET.has(x.id)).length === 351,
   [SKILLS.length, SKILLS.filter((x) => !OURS_SET.has(x.id)).length].join('/'));
-ok('A2: категорий 42 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc/i18n), и каждая непустая',
-  CATS.length === 42 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc', 'i18n'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
+ok('A2: категорий 43 (25 донорских + problem/decision/reading/stats + arch/debug/testing/devops + webdev/dbase/tooling/writing + media/ux/visual/techdoc/i18n/learning), и каждая непустая',
+  CATS.length === 43 && ['problem', 'decision', 'reading', 'stats', 'arch', 'debug', 'testing', 'devops', 'webdev', 'dbase', 'tooling', 'writing', 'media', 'ux', 'visual', 'techdoc', 'i18n', 'learning'].every((c) => CATS.some((x) => x.id === c)) && CATS.every((c) => SKILLS.some((s) => s.id !== '_' && s.cat === c.id)),
   CATS.map((c) => c.id + ':' + SKILLS.filter((s) => s.cat === c.id).length).join(' ').slice(0, 150));
 ok('A3: id уникальны — иначе supersedes молча промахивается', new Set(SKILLS.map((s) => s.id)).size === SKILLS.length);
 ok('A4: у каждого навыка есть текст и триггер (или always)', SKILLS.every((s) => (s.re || s.always) && String(s.text).length > 20));
@@ -791,8 +792,8 @@ console.log('T — добавленные группы 13–17: пять зак�
     REAL.filter((q) => !detect(q, {}).some((x) => ADULT.includes(x))).join(' ;; '));
 
   const st1 = stats();
-  ok('T15: сводка выросла на наши 89 — 407 → 496 (13–17, 18–21, 22–26), выключенных не прибавилось',
-    st1.total === 496 && st1.on === 472 && st1.off === 24 && st1.groups.length === 42, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
+  ok('T15: сводка выросла на наши 94 — 407 → 501 (13–17, 18–21, 22–27), выключенных не прибавилось',
+    st1.total === 501 && st1.on === 477 && st1.off === 24 && st1.groups.length === 43, [st1.total, st1.on, st1.off, st1.groups.length].join('/'));
   ok('T16: у новых навыков нет ни off, ни live-гейта (инструменты им не нужны)',
     ours.every((x) => !x.off && !x.live), ours.filter((x) => x.off || x.live).map((x) => x.id).join(','));
 }
@@ -878,9 +879,9 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('U12: каждый id из OURS есть в реестре, дублей и дырок нет — ' + OURS.length + ' шт.',
     new Set(OURS).size === OURS.length && OURS.every((id) => typeof id === 'string' && get(id)),
     OURS.filter((id) => !get(id)).map((x) => JSON.stringify(x)).join(', '));
-  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md|ux|vd|td|l10)-/;
+  const OUR_PREFIX = /^(wd|ds|tl|tx|db|md|ux|vd|td|l10|ed)-/;
   const missed = SKILLS.filter((x) => OUR_PREFIX.test(x.id) && !OURS.includes(x.id)).map((x) => x.id);
-  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-, ux-, vd-, td-, l10-) перечислены в OURS',
+  ok('U12b: все навыки с нашими префиксами (wd-, ds-, tl-, tx-, db-, md-, ux-, vd-, td-, l10-, ed-) перечислены в OURS',
     missed.length === 0, missed.join(', '));
 }
 
@@ -1162,6 +1163,74 @@ console.log('U — добавленные группы 18–21: четыре з�
   ok('AA14: у каждого из семи пунктов — по две живые фразы, у донора translate — не меньше двух',
     Object.values(hits).every((n) => n >= 2) && donorTranslate >= 2,
     JSON.stringify(Object.assign(hits, { translate: donorTranslate })));
+}
+
+/* ═══════════ BB — группа 27 «Обучение и объяснение» (поставка 0.030) ═══════════
+   Объяснение, план и глубина остались у доноров (`c-simple`, `c-detail`, `study`), и их
+   границы в этом файле проверяются наравне с нашими: доноры были расширены, и расширение
+   должно быть видно тестом. Отдельно закреплено, что бытовые значения учебных слов
+   (конспект для спины, упражнения для поясницы, пробелы в заборе) нас не будят. */
+{
+  const get = (id) => skillById(id);
+  const fired = (q) => detect(q, {}).map((x) => x.id);
+  const ed = SKILLS.filter((x) => /^ed-/.test(x.id));
+  ok('BB1: 5 навыков обучения на месте, своя категория, приоритет 5, тексты ≤ 500',
+    ed.length === 5 && ed.every((x) => x.cat === 'learning' && x.priority === 5 && x.text.length <= 500 && x.text.length > 200),
+    ed.map((x) => x.id + ':' + x.text.length).join(' '));
+  ok('BB2: ни один не зовёт инструмент — ни учебника, ни класса, ни почтового ящика ученика у навыка нет',
+    ed.every((x) => !(x.tools || []).length && !(x.need || []).length),
+    ed.filter((x) => (x.tools || []).length || (x.need || []).length).map((x) => x.id).join(','));
+  ok('BB3: рамка «человека не видим» приклеена ко всем пятерым',
+    ed.every((x) => /Человека не видим: судим по присланным ответам/.test(x.text)),
+    ed.filter((x) => !/Человека не видим/.test(x.text)).map((x) => x.id).join(','));
+  ok('BB4: ed-example берёт близкое человеку и обязан сказать, где аналогия ломается',
+    /ближе к человеку/.test(get('ed-example').text) && /где она ломается/.test(get('ed-example').text)
+      && /не берётся из того же текста/.test(get('ed-example').text));
+  ok('BB5: ed-task держит ключ отдельно от условия и меряет сложность скрытыми шагами',
+    /ключ лежит отдельно от условия/.test(get('ed-task').text) && /сколько шагов скрыто/.test(get('ed-task').text)
+      && /опознать → применить → перенести/.test(get('ed-task').text));
+  ok('BB6: ed-quiz запрещает вопросы-цитаты и выдумывание баллов, дистракторы — из ошибок',
+    /нельзя ответить цитатой/.test(get('ed-quiz').text) && /Дистракторы — из типичных ошибок/.test(get('ed-quiz').text)
+      && /без шкалы баллов не выдумывай/.test(get('ed-quiz').text));
+  ok('BB7: ed-gap называет пробел по материалу, различает три случая и не ставит диагноз',
+    /по материалу, а не по человеку/.test(get('ed-gap').text) && /диагноз не в наших правах/.test(get('ed-gap').text)
+      && /не пройдено/.test(get('ed-gap').text) && /по одному ответу вывод не делаем/.test(get('ed-gap').text));
+  ok('BB8: ed-feedback ссылается на критерий, а не на впечатление, и не ставит оценку без шкалы',
+    /по работе, а не по личности/.test(get('ed-feedback').text)
+      && /что верно → где расходится с критерием → что делать дальше/.test(get('ed-feedback').text)
+      && /внутренне непротиворечиво/.test(get('ed-feedback').text));
+  ok('BB9: донорские границы расширены и не отобраны — ребёнок, «упрости», «глубже», учебный план',
+    fired('объясни ребёнку, почему небо синее').includes('c-simple')
+      && fired('упрости, я не понимаю, что тут происходит').includes('c-simple')
+      && fired('объясни глубже, я уже знаю базу').includes('c-detail')
+      && fired('собери учебный план на семестр').includes('study')
+      && !fired('объясни ребёнку, почему небо синее').some((id) => /^ed-/.test(id)));
+  const byt = ['сделай конспект для спины', 'упражнения для поясницы', 'найди пробелы в заборе',
+    'оценка квартиры для ипотеки', 'разборка шкафа перед переездом', 'напиши примеры для автомобиля',
+    'копай глубже лунку для столба'];
+  ok('BB10: бытовые значения учебных слов не будят ни один ed-*',
+    byt.every((q) => !fired(q).some((id) => /^ed-/.test(id))),
+    byt.filter((q) => fired(q).some((id) => /^ed-/.test(id))).join(' ;; '));
+  const leak = MUNDANE_CORP.filter((q) => fired(q).some((id) => /^ed-/.test(id)));
+  ok('BB11: весь бытовой корпус (274 фразы) не будит навыки группы 27',
+    leak.length === 0, leak.slice(0, 4).map((q) => q + ' → ' + fired(q).filter((id) => /^ed-/.test(id)).join(',')).join(' ;; '));
+  ok('BB12: тексты не обещают открыть учебник, спросить у человека и отправить письмо',
+    !ed.some((x) => /открою (?:учебник|браузер|тест)|спрошу у (?:человека|ученика|класса)|отправлю (?:ученику|почт)|напишу в файл|кликну/i.test(x.text)),
+    ed.filter((x) => /спрошу|отправлю|открою/i.test(x.text)).map((x) => x.id).join(','));
+  const hits = {};
+  for (const id of ['ed-example', 'ed-task', 'ed-quiz', 'ed-gap', 'ed-feedback']) {
+    hits[id] = CANON.filter((x) => x[2] === 'AB' && x[1] === id).length;
+  }
+  const donors = {};
+  for (const id of ['c-simple', 'c-detail', 'study']) {
+    donors[id] = CANON.filter((x) => x[2] === 'AB' && x[1] === id).length;
+  }
+  ok('BB13: у каждого из пяти наших пунктов — по две живые фразы, у трёх донорских — не меньше двух',
+    Object.values(hits).every((n) => n >= 2) && Object.values(donors).every((n) => n >= 2),
+    JSON.stringify(Object.assign(hits, donors)));
+  ok('BB14: рамка стоит в конце каждого текста и ни один текст не вышел за 500',
+    ed.every((x) => /уровень не приписываем\.$/.test(x.text.trim()) && x.text.length <= 500),
+    ed.map((x) => x.text.length).join(' '));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
