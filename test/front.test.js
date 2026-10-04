@@ -956,6 +956,32 @@ console.log('L — песочница: запуск кода в браузере
         && /Searched for &quot;&quot;metiger-ai\.pages\.dev&quot; GitHub&quot;/.test(htmlWebSteps)
         && /Fetched <a[^>]*href="https:\/\/github\.com\/yamatayga-lgbt\/MeTiger-Ai"[^>]*class="web-fetched-url"/.test(htmlWebSteps)
         && /class="web-search-icon"/.test(htmlWebSteps));
+
+    const htmlExplored = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{
+          id: 'e1',
+          role: 'assistant',
+          text: 'Разобрался в проекте.',
+          reads: [
+            { name: 'models.ts', ok: true, line: 'ts · 4200 симв.' },
+            { name: 'ChatView.tsx', ok: true, line: 'tsx · 9100 симв.' },
+            { name: 'битый.docx', ok: false, line: 'не распознан формат' },
+          ],
+          readNotes: ['показаны первые 3 из 5 файлов'],
+        }],
+        typing: false,
+        onSend() {},
+      }),
+    );
+    ok('M34: блок «Explored N reads» сворачивается по умолчанию и построчно показывает значок глаза + «Read <файл>»',
+      /Explored 3 reads/.test(htmlExplored)
+        && /class="msg-explored"(?!\s*open)/.test(htmlExplored)
+        && /Read <span class="explored-step-name" title="models\.ts">models\.ts<\/span>/.test(htmlExplored)
+        && /Couldn&#x27;t read <span class="explored-step-name" title="битый\.docx">битый\.docx<\/span>/.test(htmlExplored)
+        && /explored-step is-failed/.test(htmlExplored)
+        && /показаны первые 3 из 5 файлов/.test(htmlExplored));
   }
 }
 

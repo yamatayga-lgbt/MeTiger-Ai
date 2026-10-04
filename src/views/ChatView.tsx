@@ -188,6 +188,70 @@ function ToolUsedBadge({ tools, ms }: { tools: string[]; ms?: number }) {
   )
 }
 
+/** Открытый глаз — значок «прочитано», как у шагов чтения файлов в агентских интерфейсах. */
+function EyeGlyph({ className = 'explored-icon' }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M1.4 12S5.2 5 12 5s10.6 7 10.6 7-3.8 7-10.6 7S1.4 12 1.4 12Z" />
+      <circle cx="12" cy="12" r="3.1" />
+    </svg>
+  )
+}
+
+/**
+ * «Explored N reads» — свёрнутый по умолчанию список файлов, которые агент
+ * прочитал из вложений к сообщению (имя + формат/объём, или причина отказа).
+ * Живёт НАД ответом, рядом с «Thought for N seconds» и «used <tool>»: это тоже
+ * шаг подготовки ответа, а не примечание под ним.
+ */
+function ExploredReadsBlock({
+  reads,
+  notes,
+}: {
+  reads: { name: string; ok: boolean; line: string }[]
+  notes?: string[]
+}) {
+  if (!reads.length) return null
+  const n = reads.length
+  return (
+    <details className="msg-explored">
+      <summary className="explored-head">
+        <ChevronDown size={14} className="explored-chev" />
+        <EyeGlyph />
+        <span className="explored-title">
+          Explored {n} read{n === 1 ? '' : 's'}
+        </span>
+      </summary>
+      <div className="explored-steps">
+        {reads.map((r, idx) => (
+          <div key={idx} className={`explored-step${r.ok ? '' : ' is-failed'}`}>
+            <EyeGlyph className="explored-step-icon" />
+            <span className="explored-step-label">
+              {r.ok ? 'Read ' : "Couldn't read "}
+              <span className="explored-step-name" title={r.name}>
+                {r.name}
+              </span>
+              {r.line ? <span className="explored-step-meta"> · {r.line}</span> : null}
+            </span>
+          </div>
+        ))}
+        {notes && notes.length ? <div className="explored-notes">{notes.join(' · ')}</div> : null}
+      </div>
+    </details>
+  )
+}
+
 function SearchMagnifierGlyph({ className = 'web-search-icon' }: { className?: string }) {
   return (
     <svg
@@ -643,6 +707,9 @@ export function ChatView({
                   {m.reasoning ? (
                     <CollapsedThought reasoning={m.reasoning} sec={m.thinkingSec} />
                   ) : null}
+                  {Array.isArray(m.reads) && m.reads.length ? (
+                    <ExploredReadsBlock reads={m.reads} notes={m.readNotes} />
+                  ) : null}
                   {Array.isArray(m.tools) && m.tools.length ? (
                     <ToolUsedBadge tools={m.tools} ms={m.ms} />
                   ) : null}
@@ -663,8 +730,10 @@ export function ChatView({
                       станет искать картинку. */}
                   {m.fileError ? <div className="msg-warn">{m.fileError}</div> : null}
                   {/* Что агент прочитал из приложенного — чтобы «он же не видел мой
-                      файл» не превращалось в спор: список прочитанного под ответом. */}
-                  {m.attach ? <div className="msg-read">{m.attach}</div> : null}
+                      файл» не превращалось в спор. Новые ответы показывают это выше,
+                      блоком «Explored N reads»; эта строка — обратная совместимость
+                      для ответов без структурного m.reads. */}
+                  {!m.reads?.length && m.attach ? <div className="msg-read">{m.attach}</div> : null}
                   {/* Чем оплатили окно и чужой «system»: история урезана, подсказки
                       обрезаны. Это не предупреждение, это условия ответа. */}
                   {m.notes ? <div className="msg-note">{m.notes}</div> : null}

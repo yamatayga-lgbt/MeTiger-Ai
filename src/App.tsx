@@ -287,6 +287,9 @@ export default function App() {
               ms: r.ms,
               /* что прочитали из вложений и чем оплатили окно — две строки под ответом */
               attach: r.ok ? attachLine(r) || undefined : undefined,
+              /* те же вложения, но списком — для «Explored N reads» над ответом */
+              reads: r.ok && Array.isArray(r.attachments) && r.attachments.length ? r.attachments : undefined,
+              readNotes: r.ok && Array.isArray(r.attachNotes) && r.attachNotes.length ? r.attachNotes : undefined,
               notes: r.ok ? notesLine(r) || undefined : undefined,
               /* что модель передумала по дороге — над ответом, автоматически свёрнуто в <details>:
                  думать вслух — постоянная функция для думающих моделей */

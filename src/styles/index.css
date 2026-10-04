@@ -1539,6 +1539,94 @@ kbd {
   padding-left: 22px;
 }
 
+/* «Explored N reads» — список прочитанных вложений над ответом, свёрнут по
+   умолчанию (как used <tool>): это шаг подготовки, а не часть самого ответа. */
+.msg-explored {
+  margin: 2px 0 8px;
+}
+
+.explored-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.explored-head::-webkit-details-marker {
+  display: none;
+}
+
+.explored-chev {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 48%, transparent);
+  transition: transform 0.18s ease;
+}
+
+.msg-explored:not([open]) .explored-chev {
+  transform: rotate(-90deg);
+}
+
+.explored-icon {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 64%, transparent);
+}
+
+.explored-title {
+  font-size: 13.5px;
+  color: color-mix(in srgb, var(--text) 78%, transparent);
+}
+
+.explored-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 22px;
+}
+
+.explored-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text) 80%, transparent);
+}
+
+.explored-step.is-failed {
+  color: color-mix(in srgb, var(--text) 52%, transparent);
+}
+
+.explored-step-icon {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+}
+
+.explored-step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explored-step-name {
+  font-family: var(--font-mono);
+}
+
+.explored-step-meta {
+  color: color-mix(in srgb, var(--text) 46%, transparent);
+}
+
+.explored-notes {
+  margin-top: 2px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 46%, transparent);
+}
+
 .web-step {
   min-width: 0;
 }
