@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, ChevronDown, Mic, Paperclip, SlidersHorizontal, Square, X } from 'lucide-react'
-import avatarUrl from '../assets/agent-avatar.png'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
-import { timeGreeting, type ChatMessage } from '../lib/mock'
+import type { ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
@@ -681,20 +680,7 @@ export function ChatView({
           отпустите — приложу фото или файл
         </div>
       ) : null}
-      {empty ? (
-        <div className="chat-hero">
-          <img className="hero-mark" src={avatarUrl} alt="MeTiger Ai" />
-          <h1 className="hero-title">
-            {timeGreeting()}, {user.name}.
-            <br />
-            Чем <span className="accent">помочь</span>?
-          </h1>
-          <p className="hero-sub">
-            Универсальный ИИ-агент для любых задач: тексты, код, изображения, анализ и
-            автоматизация.
-          </p>
-        </div>
-      ) : (
+      {empty ? null : (
         <div className="thread">
           {messages.map((m) =>
             m.role === 'user' ? (

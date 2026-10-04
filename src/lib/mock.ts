@@ -81,11 +81,3 @@ export function generateReply(text: string): string {
   const hit = REPLIES.find((r) => r.match.test(text))
   return hit ? hit.text : DEFAULT_REPLY
 }
-
-export function timeGreeting(d = new Date()): string {
-  const h = d.getHours()
-  if (h < 5) return 'Доброй ночи'
-  if (h < 12) return 'Доброе утро'
-  if (h < 18) return 'Добрый день'
-  return 'Добрый вечер'
-}

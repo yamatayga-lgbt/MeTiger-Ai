@@ -1034,48 +1034,6 @@ kbd {
   min-height: 0;
 }
 
-.chat-hero {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  padding: 32px 8px 26px;
-  animation: fadeUp var(--t-med) both;
-}
-
-.hero-mark {
-  width: 84px;
-  height: 84px;
-  border-radius: 22px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-lg);
-  object-fit: cover;
-}
-
-.hero-title {
-  font-size: clamp(26px, 7vw, 34px);
-  font-weight: 700;
-  letter-spacing: -0.028em;
-  line-height: 1.12;
-}
-
-.hero-title .accent {
-  background: var(--accent-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.hero-sub {
-  margin-top: 10px;
-  max-width: 420px;
-  color: var(--text-2);
-  font-size: 14.5px;
-  line-height: 1.55;
-}
-
 /* thread */
 .thread {
   display: flex;
@@ -3349,11 +3307,6 @@ kbd {
 
   .toast-wrap {
     bottom: 32px;
-  }
-
-  .hero-mark {
-    width: 92px;
-    height: 92px;
   }
 }
 
