@@ -4,50 +4,6 @@
    Позже здесь будет подключение к API агента и инструментов.
    ============================================================ */
 
-import { APP_VERSION } from './version'
-
-export interface AgentProfile {
-  name: string
-  desc: string
-  version: string
-}
-
-export const AGENT: AgentProfile = {
-  name: 'MeTiger Ai',
-  desc: 'Один универсальный агент для любых задач: тексты, код, идеи, анализ и многое другое. Без ролей и переключений — он растёт и скоро сможет всё.',
-  version: APP_VERSION,
-}
-
-export interface Capability {
-  id: string
-  label: string
-  icon:
-    | 'pen'
-    | 'code'
-    | 'lightbulb'
-    | 'chart'
-    | 'languages'
-    | 'globe'
-    | 'image'
-    | 'file'
-    | 'mic'
-    | 'brain'
-  soon?: boolean
-}
-
-export const CAPABILITIES: Capability[] = [
-  { id: 'text', label: 'Тексты и идеи', icon: 'pen' },
-  { id: 'code', label: 'Код', icon: 'code' },
-  { id: 'answers', label: 'Ответы на вопросы', icon: 'lightbulb' },
-  { id: 'analysis', label: 'Анализ', icon: 'chart' },
-  { id: 'translate', label: 'Переводы', icon: 'languages' },
-  { id: 'voice', label: 'Голос', icon: 'mic' },
-  { id: 'web', label: 'Поиск в интернете', icon: 'globe', soon: true },
-  { id: 'image', label: 'Изображения', icon: 'image', soon: true },
-  { id: 'files', label: 'Файлы', icon: 'file', soon: true },
-  { id: 'memory', label: 'Память', icon: 'brain', soon: true },
-]
-
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -119,7 +75,7 @@ const REPLIES: { match: RegExp; text: string }[] = [
 ]
 
 const DEFAULT_REPLY =
-  'Отличный вопрос! Это дизайн-превью MeTiger Ai — здесь пока живёт интерфейс, а «мозги» агента мы подключим на следующем этапе.\n\nПопробуйте спросить про код, изображения или планирование — или загляните в раздел «Агент».'
+  'Отличный вопрос! Это дизайн-превью MeTiger Ai — здесь пока живёт интерфейс, а «мозги» агента мы подключим на следующем этапе.\n\nПопробуйте спросить про код, изображения или планирование.'
 
 export function generateReply(text: string): string {
   const hit = REPLIES.find((r) => r.match.test(text))

@@ -98,7 +98,7 @@ export function loadView(fallback: ViewId): ViewId {
   try {
     const raw = localStorage.getItem(VIEW_KEY)
     const v: unknown = JSON.parse(raw ?? '')
-    if (v === 'chat' || v === 'agent' || v === 'settings') return v
+    if (v === 'chat' || v === 'settings') return v
   } catch {
     /* noop */
   }

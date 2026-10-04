@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Bot,
   Check,
   MessageSquarePlus,
   Moon,
@@ -33,8 +32,7 @@ interface SidebarProps {
   onOpenPalette: () => void
 }
 
-const SECTIONS: { id: ViewId; label: string; icon: typeof Bot }[] = [
-  { id: 'agent', label: 'Агент', icon: Bot },
+const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
   { id: 'settings', label: 'Настройки', icon: Settings },
 ]
 

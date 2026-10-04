@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeftRight,
-  Bot,
   Command,
   Folder,
   MessageSquarePlus,
@@ -163,12 +162,6 @@ export function buildActions({
       label: 'Перейти в чат',
       icon: MessageSquarePlus,
       run: () => navigate('chat'),
-    },
-    {
-      id: 'go-agent',
-      label: 'Профиль агента',
-      icon: Bot,
-      run: () => navigate('agent'),
     },
     {
       id: 'go-settings',

@@ -5,7 +5,6 @@ import { WorkspaceDrawer } from './components/WorkspaceDrawer'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
-import { AgentView } from './views/AgentView'
 import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
@@ -17,7 +16,6 @@ import {
   loadView,
   saveChats,
 } from './lib/persist'
-import { fetchRealRuns } from './lib/stats'
 import { haptic } from './lib/haptic'
 import { siteUser, type Person } from './lib/user'
 import { usePersistentState } from './hooks/usePersistentState'
@@ -30,7 +28,7 @@ import {
   type ReasoningEffort,
 } from './lib/models'
 
-export type ViewId = 'chat' | 'agent' | 'settings'
+export type ViewId = 'chat' | 'settings'
 
 export interface Chat {
   id: string
@@ -41,7 +39,6 @@ export interface Chat {
 
 const TITLES: Record<ViewId, string> = {
   chat: 'Чат',
-  agent: 'Агент',
   settings: 'Настройки',
 }
 
@@ -92,13 +89,11 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [user, setUser] = useState<Person>(siteUser())
-  const [realRuns, setRealRuns] = useState<number | null>(null)
 
   const { pref, resolved, setPref, toggle } = useTheme()
 
   useEffect(() => {
     setUser(siteUser())
-    void fetchRealRuns().then(setRealRuns)
   }, [])
 
   const activeChat = chats.find((c) => c.id === activeChatId)
@@ -390,7 +385,6 @@ export default function App() {
               />
             </div>
           ) : null}
-          {view === 'agent' ? <AgentView runs={realRuns} /> : null}
           {view === 'settings' ? (
             <SettingsView
               user={user}
