@@ -34,6 +34,16 @@
       // Service worker — только он делает иконку на главном экране «приложением»,
       // а не ещё одной закладкой браузера. /api и /telegram он не трогает (см. sw.js).
       if ('serviceWorker' in navigator) {
+        // Публикуем новую версию — новый sw.js ставится в фоне и сразу берёт
+        // управление (skipWaiting + clients.claim в sw.js). Без этого слушателя
+        // уже открытое окно/установленное приложение осталось бы на старых JS/CSS
+        // до ручного закрытия — теперь оно перезагружает себя один раз само.
+        var mtReloaded = false
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (mtReloaded) return
+          mtReloaded = true
+          window.location.reload()
+        })
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('./sw.js').catch(function () {})
         })

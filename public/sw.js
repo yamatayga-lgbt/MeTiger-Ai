@@ -4,9 +4,11 @@
 // показ оболочки, что-то на экране даже без сети). Чат остаётся живым:
 // /api/* и /telegram/* никогда не трогаем — ответы Агента всегда свежие.
 //
-// CACHE_VERSION бампается вручную при публикации (см. scripts/publish.sh),
-// чтобы у всех установленных иконок старая оболочка быстро сменялась новой.
-const CACHE_VERSION = 'v0059'
+// CACHE_VERSION проставляется автоматически перед каждой сборкой
+// (scripts/stamp-sw.mjs, запускается из `npm run build`) из версии в
+// package.json — так у всех установленных иконок старая оболочка быстро
+// сменяется новой, и об этом не нужно вспоминать руками при публикации.
+const CACHE_VERSION = 'v0063'
 const CACHE_NAME = `metiger-shell-${CACHE_VERSION}`
 const SHELL_URLS = ['./', './index.html', './favicon.png', './favicon.svg', './manifest.webmanifest']
 
