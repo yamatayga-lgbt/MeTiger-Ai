@@ -2600,6 +2600,197 @@ kbd {
   color: #10b981;
 }
 
+/* ---------- Меню «+»: Камера / Фото / Файлы / Плагины / Размышлять глубже ---------- */
+.icon-btn.plus-btn.is-open {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.attach-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 50;
+  width: min(272px, 88vw);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  background: var(--bg-elevated);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  animation: pickerPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 560;
+  color: var(--text);
+  text-align: left;
+  transition: background-color var(--t-fast);
+}
+
+.attach-menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.attach-menu-item:active {
+  transform: scale(0.98);
+}
+
+.attach-menu-item.is-soon {
+  color: var(--text-3);
+  cursor: default;
+}
+
+.attach-menu-item.is-soon:hover {
+  background: none;
+}
+
+.attach-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.attach-menu-item.is-soon .attach-menu-icon {
+  color: var(--text-3);
+}
+
+.attach-menu-soon {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--surface-2);
+  padding: 2px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* Файлы → «Недавние»: второй экран того же окна, с кнопкой загрузки сверху. */
+.attach-files {
+  width: min(300px, 90vw);
+}
+
+.attach-files-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 6px;
+}
+
+.attach-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+
+.attach-back:hover {
+  background: var(--surface-hover);
+}
+
+.attach-files-title {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.attach-files-label {
+  margin: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.attach-files-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.attach-files-hint {
+  padding: 16px 10px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.attach-files-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 14px;
+  text-align: left;
+  transition: background-color var(--t-fast);
+}
+
+.attach-files-row:hover {
+  background: var(--surface-hover);
+}
+
+.attach-files-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--surface-2);
+}
+
+.attach-files-thumb-file {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+}
+
+.attach-files-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.attach-files-name {
+  font-size: 13px;
+  font-weight: 560;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-files-sub {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
 /* ---------- Всплывающая панель ПАРАМЕТРЫ (как на скрине 5) ---------- */
 .params-popover {
   position: absolute;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, Mic, Paperclip, SlidersHorizontal, Square, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
@@ -7,9 +7,11 @@ import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
+import { AttachMenu } from '../components/AttachMenu'
 import { CodeRunner } from '../components/CodeRunner'
 import { runnable } from '../lib/sandbox'
 import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
+import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 
 /** Картинки из ответа: превью прямо в пузыре, файл — рядом чипом, чтобы его
     можно было забрать. Ссылка (data-URI) считается один раз на файл: генерация
@@ -494,7 +496,10 @@ export function ChatView({
   const [docs, setDocs] = useState<Attachment[]>([])
   const [docError, setDocError] = useState('')
   const [paramsOpen, setParamsOpen] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const photoRef = useRef<HTMLInputElement>(null)
+  const uploadRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const empty = messages.length === 0
 
@@ -628,8 +633,18 @@ export function ChatView({
     const next: string[] = []
     for (const f of picked) {
       const r = await fileToDataUrl(f)
-      if (r.ok) next.push(r.dataUrl)
-      else setShotError(r.error)
+      if (r.ok) {
+        next.push(r.dataUrl)
+        /* В историю «Файлы → Недавние» кладём то же сжатое превью, что уйдёт
+           модели, — не исходное фото телефона (весит мегабайты зря). */
+        void addToHistory({
+          name: f.name || 'фото.jpg',
+          mime: 'image/jpeg',
+          size: Math.round(r.dataUrl.length * 0.74),
+          kind: 'image',
+          b64: dataUrlToB64(r.dataUrl),
+        })
+      } else setShotError(r.error)
     }
     if (tooManyImages > 0) setShotError(`картинок приложено ${tooManyImages} сверх меры — беру столько, сколько помещается (${MAX_IMAGES})`)
     if (next.length) setShots((prev) => prev.concat(next).slice(0, MAX_IMAGES))
@@ -644,14 +659,30 @@ export function ChatView({
         const file = byName.get(f.name)
         if (!file) continue
         const r = await fileToAttachment(file)
-        if (r.ok) made.push(r.att)
-        else errs.push(r.error)
+        if (r.ok) {
+          made.push(r.att)
+          void addToHistory({ name: r.att.name, mime: r.att.mime, size: r.att.size, kind: r.att.kind, b64: r.att.b64 })
+        } else errs.push(r.error)
       }
       if (extra > 0) errs.push(`лишних файлов ${extra} — читаю не больше ${ATTACH_MAX}`)
       setDocs((prev) => prev.concat(made).slice(0, ATTACH_MAX))
       setDocError(errs.join(' · '))
     }
-    if (fileRef.current) fileRef.current.value = ''
+    if (cameraRef.current) cameraRef.current.value = ''
+    if (photoRef.current) photoRef.current.value = ''
+    if (uploadRef.current) uploadRef.current.value = ''
+  }
+
+  /** Повторное прикрепление из «Файлы → Недавние» — без диска и без сети, уже готово. */
+  const addFromHistory = (h: HistoryItem) => {
+    haptic('light')
+    if (h.kind === 'image') {
+      if (shots.length >= MAX_IMAGES) { setShotError(`картинок уже ${MAX_IMAGES} — больше не влезет, уберите одну`); return }
+      setShots((prev) => prev.concat(fileHref(h)).slice(0, MAX_IMAGES))
+      return
+    }
+    if (docs.length >= ATTACH_MAX) { setDocError(`файлов уже ${ATTACH_MAX} — больше не влезет, уберите один`); return }
+    setDocs((prev) => prev.concat({ name: h.name, mime: h.mime, size: h.size, b64: h.b64, kind: h.kind }).slice(0, ATTACH_MAX))
   }
 
   return (
@@ -920,17 +951,37 @@ export function ChatView({
             <div className="composer-foot-left">
               <button
                 type="button"
-                className="icon-btn"
-                aria-label="Прикрепить файл, документ или запись"
+                className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}`}
+                aria-label="Добавить"
+                aria-expanded={addMenuOpen}
                 onClick={() => {
                   haptic('light')
-                  fileRef.current?.click()
+                  setAddMenuOpen((v) => !v)
                 }}
               >
-                <Paperclip size={18} />
+                <Plus size={20} />
               </button>
+              {/* Камера — снимок сразу с устройства (capture заставляет открыть именно камеру, не выбор приложения). */}
               <input
-                ref={fileRef}
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                hidden
+                onChange={(e) => void addFiles(e.target.files)}
+              />
+              {/* Фото — системная галерея устройства, без camera-capture. */}
+              <input
+                ref={photoRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => void addFiles(e.target.files)}
+              />
+              {/* Файлы → «Загрузить файлы» — любой документ/аудио, как раньше у скрепки. */}
+              <input
+                ref={uploadRef}
                 type="file"
                 accept={ATTACH_ACCEPT}
                 multiple
@@ -978,6 +1029,19 @@ export function ChatView({
               </button>
             </div>
           </div>
+
+          {addMenuOpen ? (
+            <>
+              <div className="model-backdrop" onClick={() => setAddMenuOpen(false)} />
+              <AttachMenu
+                onCamera={() => cameraRef.current?.click()}
+                onPhoto={() => photoRef.current?.click()}
+                onUploadFiles={() => uploadRef.current?.click()}
+                onPickHistory={addFromHistory}
+                onClose={() => setAddMenuOpen(false)}
+              />
+            </>
+          ) : null}
 
           {paramsOpen ? (
             <>
