@@ -70,7 +70,8 @@ export async function fileToDataUrl(file: File, maxSide = MAX_SIDE): Promise<Pic
     const h = Math.max(1, Math.round(h0 * k))
     const made = makeCanvas(w, h)
     if (!made) return { ok: false, error: 'браузер не умеет сжимать картинки' }
-    made.ctx.drawImage(img as CanvasImageSource, 0, 0, w, h)
+    made.ctx.drawImage(img, 0, 0, w, h)
+    if (typeof (img as ImageBitmap).close === 'function') (img as ImageBitmap).close()
     const dataUrl = made.c.toDataURL('image/jpeg', JPEG_QUALITY)
     if (!dataUrl || dataUrl.length < 64) return { ok: false, error: 'не получилось сжать' }
     if (dataUrl.length > MAX_DATAURL_CHARS) return { ok: false, error: 'слишком тяжёлая картинка' }
@@ -114,11 +115,20 @@ export function filesFromTransfer(dt: {
   return out
 }
 
-async function load(objectUrl: string, file: File): Promise<{ width: number; height: number }> {
+/**
+ * Возвращает САМ рисуемый источник (ImageBitmap/<img>), а не копию его width/height —
+ * до этой правки здесь терялся настоящий объект: наружу уходил голый `{width, height}`,
+ * выданный за картинку через `as`. TypeScript верил касту и пропускал, а
+ * `ctx.drawImage()` в рантайме честно падал на любом объекте, который не является
+ * ImageBitmap/HTMLImageElement/и т.д. — ровно с ошибкой "provided value is not of
+ * type (...)". createImageBitmap есть почти во всех современных телефонных браузерах,
+ * так что ветка с потерей объекта срабатывала почти всегда — поэтому картинки не
+ * отправлялись почти ни у кого.
+ */
+async function load(objectUrl: string, file: File): Promise<CanvasImageSource & { width: number; height: number }> {
   if (typeof createImageBitmap === 'function' && file) {
     try {
-      const bmp = await createImageBitmap(file)
-      return { width: bmp.width, height: bmp.height } as HTMLImageElement & { width: number; height: number }
+      return await createImageBitmap(file)
     } catch (e) {
       /*(createImageBitmap отказал — пробуем через <img>, он переваривает больше) */
     }
