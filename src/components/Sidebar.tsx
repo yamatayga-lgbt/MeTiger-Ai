@@ -205,13 +205,11 @@ export function Sidebar({
         <button type="button" className="new-chat-btn" onClick={onNewChat}>
           <MessageSquarePlus size={15} />
           Новый чат
-          <kbd>⌘N</kbd>
         </button>
 
         <button type="button" className="side-item" onClick={onOpenPalette}>
           <Search size={16} />
           Поиск
-          <kbd style={{ marginLeft: 'auto' }}>⌘K</kbd>
         </button>
 
         <div className="side-section">Разделы</div>

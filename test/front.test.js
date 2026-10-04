@@ -223,9 +223,10 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
     /model-search/.test(html) && /поиск по \d+ моделям/.test(html) && /обновить/.test(html), (html.match(/placeholder="[^"]*"/) || [''])[0]);
   ok('I8: подвал говорит, откуда данные', /обновлено \d\d:\d\d/.test(html) && /живых у провайдеров: 4/.test(html), (html.match(/<div class="model-panel-foot">[^<]*/) || [''])[0]);
   const chip = renderToStaticMarkup(React.createElement(ChatView, {
-    user: { first_name: 'Тигр' }, messages: [{ id: 'x', role: 'assistant', text: 'привет' }], typing: false, onSend() {}, model: 'wide/model-b',
+    user: { first_name: 'Тигр' }, messages: [{ id: 'x', role: 'assistant', text: 'привет' }], typing: false, onSend() {},
   }));
-  ok('I9: чип в окне ввода показывает выбранную модель (в бандле — тот же кэш)', /Wide Model/.test(chip), (chip.match(/model-chip-name[^<]*<\/span>/) || [''])[0]);
+  ok('I9: в окне ввода нет витрины чужих моделей — это Агент, остался только значок параметров',
+    !/model-chip/.test(chip) && /class="params-btn/.test(chip) && /MeTiger Ai/.test(chip));
 
   /* нет сети — список не обязан исчезать: остаются витрина и обычный выбор */
   globalThis.fetch = async () => { throw new Error('сети нет'); };
@@ -728,8 +729,9 @@ console.log('L — песочница: запуск кода в браузере
     ok('M20: живой канал рассуждений доехал до экрана и выглядит не как ответ',
       chat.includes('msg-reason-live') && chat.includes('aria-label="Модель думает вслух"')
         && api.includes("ev.channel === 'reasoning'"));
-    ok('M21: «думает вслух» — постоянная функция для думающих моделей (управляется тумблером «Думает» в пикере, без отдельной кнопки в окне ввода)',
-      app.includes("'mt-reasoning'") && app.includes('canModelThink(model)') && !chat.includes('reason-toggle'));
+    ok('M21: «думает вслух» — постоянная функция, включена всегда (без тумблера и без пикера моделей — это Агент, а не выбор чужих моделей)',
+      app.includes('const reasoningOn = true') && app.includes("const model = ''") && app.includes('canModelThink(model)')
+        && !chat.includes('reason-toggle') && !chat.includes('model-chip') && !chat.includes('ModelPicker'));
     ok('M22: сказанное под ответом свёрнуто, а не вывалено в пузырь (рассуждения — не текст ответа)',
       chat.includes('<details className="msg-reason">') && chat.includes('думал вслух')
         && app.includes('slice(0, 4000)'));
@@ -799,15 +801,6 @@ console.log('L — песочница: запуск кода в браузере
         && /\[1\]/.test(htmlOn)
         && !/msg-sources/.test(htmlOff));
 
-    const logoSrc = readFileSync('src/components/Logo.tsx', 'utf8');
-    const favSvg = readFileSync('public/favicon.svg', 'utf8');
-    ok('M26: везде вместо старой буквы «M» стоит аватарка тигра (LogoMark, favicon и чип «Авто»)',
-      logoSrc.includes('agent-avatar.png')
-        && !logoSrc.includes('M8.5 23V9.8')
-        && !favSvg.includes('M8.5 23V9.8')
-        && existsSync('public/favicon.png')
-        && /class="m-av[^"]*"[^>]*><img[^>]*class="m-av-img"/.test(htmlOn));
-
     const out5 = join(dir, 'picker-pro.mjs');
     const entry5 = join(dir, 'picker-pro-entry.tsx');
     writeFileSync(entry5, [
@@ -823,14 +816,6 @@ console.log('L — песочница: запуск кода в браузере
       '--packages=external', '--loader:.png=dataurl', '--outfile=' + out5, '--log-level=error',
     ], { stdio: 'inherit' });
     const { ModelPicker: MP5, ParamsPopover, Topbar, detectBrand, canModelThink, DEFAULT_GEN_PARAMS } = await import(out5);
-
-    ok('M27: оригинальные бренд-иконки определяются по семейству ИИ (Google, Qwen, DeepSeek, Mistral, OpenAI, MeTiger)',
-      detectBrand('') === 'metiger'
-        && detectBrand('gemini-2.5-flash') === 'google'
-        && detectBrand('qwen/qwen3.5-plus:free') === 'qwen'
-        && detectBrand('deepseek-v4-flash') === 'deepseek'
-        && detectBrand('codestral-latest') === 'mistral'
-        && detectBrand('openai/gpt-oss-20b') === 'openai');
 
     const htmlThink = renderToStaticMarkup(
       React.createElement(MP5, {
@@ -848,6 +833,23 @@ console.log('L — песочница: запуск кода в браузере
         onPick() {},
       }),
     );
+
+    const logoSrc = readFileSync('src/components/Logo.tsx', 'utf8');
+    const favSvg = readFileSync('public/favicon.svg', 'utf8');
+    ok('M26: везде вместо старой буквы «M» стоит аватарка тигра (LogoMark, favicon и строка «Авто» в карточке модели движка)',
+      logoSrc.includes('agent-avatar.png')
+        && !logoSrc.includes('M8.5 23V9.8')
+        && !favSvg.includes('M8.5 23V9.8')
+        && existsSync('public/favicon.png')
+        && /class="m-av[^"]*"[^>]*><img[^>]*class="m-av-img"/.test(htmlThink));
+
+    ok('M27: оригинальные бренд-иконки определяются по семейству ИИ (Google, Qwen, DeepSeek, Mistral, OpenAI, MeTiger)',
+      detectBrand('') === 'metiger'
+        && detectBrand('gemini-2.5-flash') === 'google'
+        && detectBrand('qwen/qwen3.5-plus:free') === 'qwen'
+        && detectBrand('deepseek-v4-flash') === 'deepseek'
+        && detectBrand('codestral-latest') === 'mistral'
+        && detectBrand('openai/gpt-oss-20b') === 'openai');
     ok('M28: двухколоночный пикер показывает категории ИИ, контекст (1M Контекст), ток/с и лимит запросов в день и в минуту (250/день · 15/мин)',
       /Google/.test(htmlThink)
         && /Qwen/.test(htmlThink)

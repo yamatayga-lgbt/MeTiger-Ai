@@ -6,15 +6,7 @@ import { type Person } from '../lib/user'
 import { timeGreeting, type ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
 import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
-import {
-  DEFAULT_GEN_PARAMS,
-  EFFORT_LABELS,
-  modelOption,
-  type GenParams,
-  type ReasoningEffort,
-} from '../lib/models'
-import { ModelIcon } from '../components/ModelIcon'
-import { ModelPicker } from '../components/ModelPicker'
+import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { CodeRunner } from '../components/CodeRunner'
 import { runnable } from '../lib/sandbox'
@@ -472,19 +464,10 @@ interface ChatViewProps {
   draftThinkingSec?: number
   /** Живые шаги поиска в интернете (Searching the web -> Searched for / Fetched) */
   draftWebSteps?: WebStep[]
-  /** Переключатель «думать вслух» в панели ввода */
-  reasoningOn?: boolean
-  onToggleReasoning?: () => void
   /** Переключатель глубокого поиска («поиск») в панели ввода */
   searchOn?: boolean
   onToggleSearch?: () => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
-  /** Выбранная модель ('' = Авто) и смена — живут в App и сохраняются. */
-  model?: string
-  onModelChange?: (id: string) => void
-  /** Усилие рассуждения: Низкое / Среднее / Высокое */
-  effort?: ReasoningEffort
-  onEffortChange?: (effort: ReasoningEffort) => void
   /** Параметры генерации (temperature, max_tokens, top_p) */
   genParams?: GenParams
   onGenParamsChange?: (next: GenParams) => void
@@ -498,13 +481,7 @@ export function ChatView({
   draftReasoning,
   draftThinkingSec = 1,
   draftWebSteps = [],
-  reasoningOn = true,
-  onToggleReasoning,
   onSend,
-  model = '',
-  onModelChange,
-  effort = 'medium',
-  onEffortChange,
   genParams = DEFAULT_GEN_PARAMS,
   onGenParamsChange,
 }: ChatViewProps) {
@@ -517,12 +494,10 @@ export function ChatView({
      — чипом с именем и весом, потому что превью у pdf нет и быть не может. */
   const [docs, setDocs] = useState<Attachment[]>([])
   const [docError, setDocError] = useState('')
-  const [pickerOpen, setPickerOpen] = useState(false)
   const [paramsOpen, setParamsOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const empty = messages.length === 0
-  const modelOpt = modelOption(model)
 
   // --- голосовой ввод ---
   const voiceSupported = isVoiceSupported()
@@ -989,40 +964,12 @@ export function ChatView({
             <div className="composer-foot-right">
               <button
                 type="button"
-                className={`model-chip${pickerOpen ? ' is-open' : ''}`}
-                aria-haspopup="listbox"
-                aria-expanded={pickerOpen}
-                title="Выбрать модель и режим мышления"
-                onClick={() => {
-                  haptic('light')
-                  setParamsOpen(false)
-                  setPickerOpen((v) => !v)
-                }}
-              >
-                <ModelIcon
-                  id={modelOpt.id}
-                  vendor={modelOpt.vendor}
-                  name={modelOpt.name}
-                  avatar={modelOpt.avatar}
-                />
-                <span className="model-chip-name">{modelOpt.name}</span>
-                {modelOpt.canThink !== false ? (
-                  <span className="model-chip-mode">
-                    {!reasoningOn ? 'Выкл.' : modelOpt.supportsEffort ? EFFORT_LABELS[effort] : 'Думает'}
-                  </span>
-                ) : null}
-                <ChevronDown size={13} className="model-chip-caret" />
-              </button>
-
-              <button
-                type="button"
                 className={`params-btn${paramsOpen ? ' is-open' : ''}`}
                 aria-label="Параметры генерации"
                 aria-expanded={paramsOpen}
                 title="Параметры: temperature, max_tokens, top_p"
                 onClick={() => {
                   haptic('light')
-                  setPickerOpen(false)
                   setParamsOpen((v) => !v)
                 }}
               >
@@ -1053,23 +1000,6 @@ export function ChatView({
             </div>
           </div>
 
-          {pickerOpen ? (
-            <>
-              <div className="model-backdrop" onClick={() => setPickerOpen(false)} />
-              <ModelPicker
-                model={model}
-                reasoningOn={reasoningOn}
-                onToggleReasoning={onToggleReasoning}
-                effort={effort}
-                onEffortChange={onEffortChange}
-                onPick={(id) => {
-                  onModelChange?.(id)
-                  if (id === model) setPickerOpen(false)
-                }}
-              />
-            </>
-          ) : null}
-
           {paramsOpen ? (
             <>
               <div className="model-backdrop" onClick={() => setParamsOpen(false)} />
@@ -1082,7 +1012,7 @@ export function ChatView({
         </form>
         {voiceError ? <div className="voice-error">{voiceError}</div> : null}
         <p className="composer-hint">
-          <span className="composer-hint-model">{modelOpt.name}</span> · ИИ может ошибаться. Проверяйте важную информацию.
+          <span className="composer-hint-model">MeTiger Ai</span> · ИИ может ошибаться. Проверяйте важную информацию.
         </p>
       </div>
     </div>

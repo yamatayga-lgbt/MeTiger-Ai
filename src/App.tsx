@@ -25,7 +25,6 @@ import {
   DEFAULT_GEN_PARAMS,
   canModelThink,
   isGenParams,
-  isModelId,
   recordModelTelemetry,
   type GenParams,
   type ReasoningEffort,
@@ -75,26 +74,19 @@ export default function App() {
   const [draftThinkingSec, setDraftThinkingSec] = useState<number>(1)
   /* живые шаги веб-поиска и чтения страниц (Searching the web -> Searched for / Fetched) */
   const [draftWebSteps, setDraftWebSteps] = useState<WebStep[]>([])
-  /* показывать ли, как модель думала: выбор живёт между сессиями, как и модель */
-  const [reasoningOn, setReasoningOn] = usePersistentState<boolean>(
-    'mt-reasoning',
-    true,
-    (v): v is boolean => typeof v === 'boolean',
-  )
-  /* усилие рассуждения: Низкое / Среднее / Высокое */
-  const [effort, setEffort] = usePersistentState<ReasoningEffort>(
-    'mt-effort',
-    'medium',
-    (v): v is ReasoningEffort => v === 'low' || v === 'medium' || v === 'high',
-  )
+  /* Это Агент, а не витрина чужих моделей: выбор модели убран из интерфейса
+     (0.057) — движок сам решает, кем ответить, под капотом (model: '' = Авто).
+     «Думает» стала постоянной функцией: включена всегда, когда авто-модель это
+     умеет, — без тумблера и без эффекта выбора в UI. */
+  const model = ''
+  const reasoningOn = true
+  const effort: ReasoningEffort = 'medium'
   /* параметры генерации: temperature, max_tokens, top_p */
   const [genParams, setGenParams] = usePersistentState<GenParams>(
     'mt-params',
     DEFAULT_GEN_PARAMS,
     isGenParams,
   )
-  /* Выбранная модель ответа — между сессиями (как и все настройки). '' = Авто. */
-  const [model, setModel] = usePersistentState<string>('mt-model', '', isModelId)
   const [menuOpen, setMenuOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -392,13 +384,7 @@ export default function App() {
                 draftReasoning={draftReasoning}
                 draftThinkingSec={draftThinkingSec}
                 draftWebSteps={draftWebSteps}
-                reasoningOn={reasoningOn}
-                onToggleReasoning={() => setReasoningOn((v) => !v)}
                 onSend={sendMessage}
-                model={model}
-                onModelChange={setModel}
-                effort={effort}
-                onEffortChange={setEffort}
                 genParams={genParams}
                 onGenParamsChange={setGenParams}
               />
