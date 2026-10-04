@@ -1,0 +1,22 @@
+{
+  "name": "MeTiger Ai — ИИ-агент",
+  "short_name": "MeTiger Ai",
+  "description": "Универсальный ИИ-агент в одном чате: тексты, код, изображения, анализ документов и голосовые. Бесплатно.",
+  "id": "/",
+  "start_url": "./?pwa=1",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait-primary",
+  "background_color": "#0A0A0C",
+  "theme_color": "#0A0A0C",
+  "lang": "ru",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

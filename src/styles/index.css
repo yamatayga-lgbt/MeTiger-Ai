@@ -3404,7 +3404,23 @@ kbd {
   color: var(--accent);
 }
 
-/* ---------- Desktop ---------- */
+/* ---------- Установлено на экран (PWA, display-mode: standalone) ----------
+   В обычной вкладке браузера место под чёлку/статус-бар уже занято адресной
+   строкой. Без неё контент полез бы под статус-бар — добавляем отступ только
+   когда приложение реально запущено с иконки. */
+@media (display-mode: standalone), (display-mode: minimal-ui) {
+  .topbar {
+    height: calc(var(--header-h) + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .sidebar {
+    padding-top: calc(14px + env(safe-area-inset-top));
+    padding-left: calc(12px + env(safe-area-inset-left));
+  }
+}
+
+/* ---------- Десктоп ---------- */
 @media (min-width: 768px) {
   .app {
     grid-template-columns: var(--sidebar-w) 1fr;
