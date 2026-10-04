@@ -22,7 +22,7 @@ function isImgFile(f: { mime: string; kind?: string }): boolean {
   return f.kind === 'image' || /^image\//i.test(f.mime || '')
 }
 
-function FileChips({ files }: { files: NonNullable<ChatMessage['files']> }) {
+function FileChips({ files, onOpen }: { files: NonNullable<ChatMessage['files']>; onOpen: (src: string, name: string) => void }) {
   const items = files.map((f) => ({ f, href: fileHref(f), img: isImgFile(f) }))
   const imgs = items.filter((x) => x.img)
   return (
@@ -30,9 +30,15 @@ function FileChips({ files }: { files: NonNullable<ChatMessage['files']> }) {
       {imgs.length ? (
         <div className="msg-imgs">
           {imgs.map((x, i) => (
-            <a key={`i${i}`} className="msg-img" href={x.href} download={x.f.name} title={x.f.source ? `${x.f.name} · ${x.f.mime} · ${x.f.source}` : `${x.f.name} · ${x.f.mime}`}>
+            <button
+              key={`i${i}`}
+              type="button"
+              className="msg-img"
+              onClick={() => onOpen(x.href, x.f.name)}
+              title={x.f.source ? `${x.f.name} · ${x.f.mime} · ${x.f.source}` : `${x.f.name} · ${x.f.mime}`}
+            >
               <img src={x.href} alt={x.f.name} loading="lazy" />
-            </a>
+            </button>
           ))}
         </div>
       ) : null}
@@ -552,6 +558,9 @@ export function ChatView({
   const [docError, setDocError] = useState('')
   const [paramsOpen, setParamsOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
+  /* Полноэкранный просмотр любой картинки из переписки (своей или от модели) —
+     тап открывает её целиком вместо скачивания/мелкого превью. */
+  const [lightbox, setLightbox] = useState<{ src: string; name?: string } | null>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const photoRef = useRef<HTMLInputElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
@@ -785,7 +794,14 @@ export function ChatView({
                     {m.images && m.images.length ? (
                       <div className="shot-row">
                         {m.images.map((src, i) => (
-                          <img key={i} className="shot" src={src} alt="" />
+                          <button
+                            key={i}
+                            type="button"
+                            className="shot-btn"
+                            onClick={() => src && setLightbox({ src })}
+                          >
+                            <img className="shot" src={src} alt="" />
+                          </button>
                         ))}
                       </div>
                     ) : null}
@@ -830,7 +846,9 @@ export function ChatView({
                   {/* Файлы, которые модель оформила блоком. Ссылка — data-URI:
                       своего хранилища под раздачу нет, файл живёт, пока открыта
                       вкладка. После перезагрузки его нужно попросить заново. */}
-                  {Array.isArray(m.files) && m.files.length ? <FileChips files={m.files} /> : null}
+                  {Array.isArray(m.files) && m.files.length ? (
+                    <FileChips files={m.files} onOpen={(src, name) => setLightbox({ src, name })} />
+                  ) : null}
                   {/* Причина, по которой вложения нет. Прячем её под ответ, а не в
                       конец текста: человек должен увидеть отказ до того, как
                       станет искать картинку. */}
@@ -1131,6 +1149,27 @@ export function ChatView({
           <span className="composer-hint-model">MeTiger Ai</span> · ИИ может ошибаться. Проверяйте важную информацию.
         </p>
       </div>
+      {lightbox ? (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <button type="button" className="lightbox-close" aria-label="Закрыть" onClick={() => setLightbox(null)}>
+            <X size={22} />
+          </button>
+          <img
+            className="lightbox-img"
+            src={lightbox.src}
+            alt={lightbox.name || ''}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <a
+            className="lightbox-download"
+            href={lightbox.src}
+            download={lightbox.name || 'image.png'}
+            onClick={(e) => e.stopPropagation()}
+          >
+            Скачать
+          </a>
+        </div>
+      ) : null}
     </div>
   )
 }

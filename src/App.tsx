@@ -11,11 +11,13 @@ import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
 import { sendChat, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep } from './lib/api'
 import {
+  hydrateChatMedia,
   loadActiveChatId,
   loadChats,
   loadView,
   saveChats,
 } from './lib/persist'
+import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
 import { siteUser, type Person } from './lib/user'
 import { usePersistentState } from './hooks/usePersistentState'
@@ -103,6 +105,20 @@ export default function App() {
     saveChats(chats, activeChatId, view)
   }, [chats, activeChatId, view])
 
+  // Разовая подгрузка настоящих байт картинок/файлов из IndexedDB поверх
+  // текста, который уже отрисован из localStorage — короткая вспышка
+  // «картинки ещё грузятся» при холодном старте приемлема, лишь бы сама
+  // переписка открывалась мгновенно, как раньше.
+  useEffect(() => {
+    let cancelled = false
+    void hydrateChatMedia(chats).then((hydrated) => {
+      if (cancelled) return
+      setChats((cur) => (cur === chats ? hydrated : cur))
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Починка ссылок: активный чат должен существовать
   useEffect(() => {
     if (chats.some((c) => c.id === activeChatId)) return
@@ -162,6 +178,11 @@ export default function App() {
       haptic('medium')
       setChats((prev) => {
         // удаление окончательное: сам чат и пустые черновики уходят
+        const removed = prev.find((c) => c.id === id)
+        if (removed) {
+          // чтобы IndexedDB не копила байты удалённых переписок годами
+          deleteMedia(removed.messages.flatMap(mediaIdsOfMessage))
+        }
         const next = prev.filter((c) => c.id !== id && c.messages.length > 0)
         if (next.length === 0) {
           const chat = emptyChat()
