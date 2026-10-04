@@ -30,7 +30,7 @@ import { currentUserId, identityLine } from '../lib/identity'
 import { GENDER_CHOICES, isGender, type Gender } from '../lib/gender'
 import { usePersistentState } from '../hooks/usePersistentState'
 import { displayName, initials, savePersonName, type Person } from '../lib/user'
-import { APP_VERSION } from '../lib/version'
+import { APP_VERSION, forceAppUpdate } from '../lib/version'
 import type { ThemePref } from '../hooks/useTheme'
 
 interface SettingsViewProps {
@@ -326,9 +326,19 @@ export function SettingsView({
             </div>
             <div className="grow">
               <div className="n">Версия</div>
-              <div className="d">MeTiger Ai · дизайн-превью</div>
+              <div className="d">MeTiger Ai · показывает старую версию? нажмите «Обновить»</div>
             </div>
             <Badge tone="gray">{APP_VERSION}</Badge>
+            <Button
+              variant="ghost"
+              icon={RefreshCw}
+              onClick={() => {
+                notify('Обновляю приложение…')
+                void forceAppUpdate()
+              }}
+            >
+              Обновить
+            </Button>
           </div>
         </div>
       </div>

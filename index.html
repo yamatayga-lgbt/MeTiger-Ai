@@ -45,7 +45,23 @@
           window.location.reload()
         })
         window.addEventListener('load', function () {
-          navigator.serviceWorker.register('./sw.js').catch(function () {})
+          // updateViaCache: 'none' — браузер обязан брать sw.js строго с сети при
+          // каждой проверке, а не из своего HTTP-кэша (им и так управляет _headers,
+          // но так — без исключений на любом браузере).
+          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function (reg) {
+            // На установленном на экран приложении Android/iOS просто сворачивают
+            // и разворачивают вкладку — это НЕ полная перезагрузка страницы, и
+            // браузер сам проверяет sw.js на обновление не всегда достаточно часто.
+            // Поэтому проверяем сами: сразу и каждый раз, когда приложение снова
+            // стало видимым на экране — здесь и ловится зависание на старой версии.
+            reg.update().catch(function () {})
+            document.addEventListener('visibilitychange', function () {
+              if (document.visibilityState === 'visible') reg.update().catch(function () {})
+            })
+            window.addEventListener('focus', function () {
+              reg.update().catch(function () {})
+            })
+          }).catch(function () {})
         })
       }
     </script>
