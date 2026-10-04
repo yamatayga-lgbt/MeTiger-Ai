@@ -888,7 +888,7 @@ export function ChatView({
               ref={textareaRef}
               rows={1}
               value={value}
-              placeholder="Сообщение (Shift+Enter — новая строка)…"
+              placeholder="Спросите что угодно"
               onChange={(e) => {
                 const el = e.target
                 if (!listening) baseRef.current = el.value
