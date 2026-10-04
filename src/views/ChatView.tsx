@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
@@ -12,6 +12,7 @@ import { CodeRunner } from '../components/CodeRunner'
 import { runnable } from '../lib/sandbox'
 import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
+import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 
 /** Картинки из ответа: превью прямо в пузыре, файл — рядом чипом, чтобы его
     можно было забрать. Ссылка (data-URI) считается один раз на файл: генерация
@@ -59,6 +60,60 @@ function fmtTime(total: number): string {
   const m = Math.floor(total / 60)
   const s = total % 60
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+/** Копирование в буфер: сперва нормальный Clipboard API, а в контексте без него
+    (старый WebView, http без TLS) — запасной путь через скрытый textarea, чтобы
+    кнопка не была бесполезной именно там, где чаще всего открыт этот чат. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    /* падаем на запасной путь ниже */
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+/** Строка под пузырём: копировать + «N минут назад» (у ответа — ещё и сколько
+    он шёл). Иконка меняется на галочку на полторы секунды после удачного
+    копирования — обратная связь без тоста, который на телефоне лишний. */
+function MsgFooter({ text, time, align = 'left' }: { text: string; time: string; align?: 'left' | 'right' }) {
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
+  const onCopy = async () => {
+    haptic('light')
+    const ok = await copyText(text)
+    if (!ok) return
+    setCopied(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div className={`msg-footer${align === 'right' ? ' msg-footer-right' : ''}`}>
+      <button type="button" className="msg-copy-btn" onClick={onCopy} aria-label="Скопировать текст">
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+      {time ? <span className="msg-time">{time}</span> : null}
+    </div>
+  )
 }
 
 const WAVE_WEIGHTS = [0.55, 0.95, 0.7, 1, 0.55, 0.85, 0.65]
@@ -503,6 +558,14 @@ export function ChatView({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const empty = messages.length === 0
 
+  /* «N минут назад» под сообщениями сама не обновится без перерисовки —
+     тикаем раз в полминуты, этого достаточно и не грузит телефон. */
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30000)
+    return () => clearInterval(id)
+  }, [])
+
   // --- голосовой ввод ---
   const voiceSupported = isVoiceSupported()
   const [listening, setListening] = useState(false)
@@ -711,27 +774,33 @@ export function ChatView({
           отпустите — приложу фото или файл
         </div>
       ) : null}
+      <div className="thread-scroll">
       {empty ? null : (
         <div className="thread">
           {messages.map((m) =>
             m.role === 'user' ? (
               <div key={m.id} className="msg msg-user">
-                <div className="bubble">
-                  {m.images && m.images.length ? (
-                    <div className="shot-row">
-                      {m.images.map((src, i) => (
-                        <img key={i} className="shot" src={src} alt="" />
-                      ))}
-                    </div>
+                <div className="msg-user-col">
+                  <div className="bubble">
+                    {m.images && m.images.length ? (
+                      <div className="shot-row">
+                        {m.images.map((src, i) => (
+                          <img key={i} className="shot" src={src} alt="" />
+                        ))}
+                      </div>
+                    ) : null}
+                    {m.docs && m.docs.length ? (
+                      <div className="sent-files">
+                        {m.docs.map((d, i) => (
+                          <span className="sent-file" key={i}>{d.name} · {fileSize(d.size)}</span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {m.text ? <div className="msg-text">{m.text}</div> : null}
+                  </div>
+                  {m.text ? (
+                    <MsgFooter text={m.text} time={m.ts ? fmtAgo(m.ts, nowTick) : ''} align="right" />
                   ) : null}
-                  {m.docs && m.docs.length ? (
-                    <div className="sent-files">
-                      {m.docs.map((d, i) => (
-                        <span className="sent-file" key={i}>{d.name} · {fileSize(d.size)}</span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {m.text ? <div className="msg-text">{m.text}</div> : null}
                 </div>
               </div>
             ) : (
@@ -799,6 +868,9 @@ export function ChatView({
                       <span className="msg-advice">{m.advice}</span>
                     </div>
                   ) : null}
+                  {m.text ? (
+                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} />
+                  ) : null}
                 </div>
               </div>
             ),
@@ -851,6 +923,7 @@ export function ChatView({
           ) : null}
         </div>
       )}
+      </div>
 
       <div className="composer-wrap">
         {listening ? (

@@ -196,6 +196,7 @@ export default function App() {
                   id: nextId(),
                   role: 'user',
                   text,
+                  ts: Date.now(),
                   ...(images && images.length ? { images } : {}),
                   /* имена и вес — чтобы чат после перезагрузки показывал, что файл
                      отправляли; содержимое нужно только на сам запрос */
@@ -293,7 +294,7 @@ export default function App() {
             c.id === chatId
               ? {
                   ...c,
-                  messages: [...c.messages, { id: nextId(), role: 'assistant', text: reply, ...meta }],
+                  messages: [...c.messages, { id: nextId(), role: 'assistant', text: reply, ts: Date.now(), ...meta }],
                   updatedAt: Date.now(),
                 }
               : c,

@@ -1023,7 +1023,10 @@ kbd {
 .chat-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  /* height (не min-height): .chat-shell должен ровно заполнять .content и не
+     вылезать за него — тогда переполнение видно только внутри .thread-scroll,
+     а .content никогда не скроллится сам (нет «двойного» скролла). */
+  height: 100%;
   width: 100%;
 }
 
@@ -1034,12 +1037,26 @@ kbd {
   min-height: 0;
 }
 
+/* Скроллится ЭТОТ блок, а не .content и не всё окно: раньше поле ввода было
+   position:sticky и просто рисовалось ПОВЕРХ последних ~90px переписки, не
+   отвоёвывая под себя место — хвост длинного ответа уезжал «под» него и
+   выглядел обрезанным без отступа. Теперь .composer-wrap — обычный блок
+   ПОСЛЕ скролл-зоны: места внахлёст больше нет никогда, при этом на коротких
+   переписках flex (flex:1 у .thread-scroll) сам прижимает поле ввода к низу
+   экрана — без прежнего трюка с margin-top:auto. */
+.thread-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 /* thread */
 .thread {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 10px 0 18px;
+  padding: 10px 0 24px;
 }
 
 .msg {
@@ -1856,13 +1873,13 @@ kbd {
   animation-delay: 0.3s;
 }
 
-/* composer */
+/* composer — обычный (не sticky) блок сразу после .thread-scroll: см.
+   комментарий у .thread-scroll про то, почему sticky здесь был ошибкой. */
 .composer-wrap {
-  position: sticky;
-  bottom: 0;
-  margin: auto -16px -32px;
-  padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, var(--bg) 72%, transparent);
+  flex-shrink: 0;
+  margin: 0 -16px -32px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--bg);
 }
 
 /* ---------- Voice input ---------- */
@@ -3494,7 +3511,7 @@ kbd {
   }
 
   .composer-wrap {
-    margin: auto -40px -48px;
+    margin: 0 -40px -48px;
     padding: 12px 40px 18px;
   }
 
@@ -3548,6 +3565,54 @@ kbd {
   color: var(--text-3);
   font-weight: 500;
   background: none;
+}
+
+/* ------------------------------------------------------------ строка под пузырём:
+   копировать + «N минут назад» (у ответа — ещё и сколько он шёл). */
+.msg-user-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  max-width: min(82%, 560px);
+}
+
+.msg-user-col .bubble {
+  max-width: 100%;
+}
+
+.msg-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.msg-footer-right {
+  flex-direction: row-reverse;
+}
+
+.msg-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm, 6px);
+  color: var(--text-3);
+  transition: color var(--t-fast), background-color var(--t-fast);
+}
+
+.msg-copy-btn:hover {
+  color: var(--text-2);
+  background: var(--surface-hover);
+}
+
+.msg-time {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------ вложения: превью над

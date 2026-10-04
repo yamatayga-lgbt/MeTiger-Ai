@@ -19,9 +19,11 @@ type RawMessage = {
   id?: unknown
   role?: unknown
   text?: unknown
+  ts?: unknown
   src?: unknown
   advice?: unknown
   adviceTone?: unknown
+  ms?: unknown
 }
 
 function sanitizeMessage(m: RawMessage): Chat['messages'][number] | null {
@@ -37,12 +39,18 @@ function sanitizeMessage(m: RawMessage): Chat['messages'][number] | null {
     id: m.id,
     role: m.role,
     text: m.text,
+    /* когда пришло сообщение — чтобы «N минут назад» под ним не сбрасывалось
+       в «только что» после перезагрузки страницы */
+    ...(typeof m.ts === 'number' && isFinite(m.ts) ? { ts: m.ts } : {}),
     /* подпись движка — строки, и только строки: из хранилища может прилететь что угодно */
     ...(typeof m.src === 'string' ? { src: m.src } : {}),
     ...(typeof m.advice === 'string' ? { advice: m.advice } : {}),
     ...(tone ? { adviceTone: tone } : {}),
+    /* сколько шёл ответ — для той же строки рядом с «N минут назад» */
+    ...(typeof m.ms === 'number' && isFinite(m.ms) ? { ms: m.ms } : {}),
   }
 }
+
 
 function sanitizeChat(raw: unknown): Chat | null {
   if (!raw || typeof raw !== 'object') return null

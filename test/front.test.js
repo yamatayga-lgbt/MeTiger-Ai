@@ -96,6 +96,34 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
     }),
   );
   ok('G4: у сообщения без мета подписи нет (не пустая плашка под каждым ответом)', !/msg-meta/.test(quiet));
+
+  /* 0.067: отступ снизу + копирование + «N минут назад» под каждым сообщением. */
+  const now = Date.now();
+  const htmlFooter = renderToStaticMarkup(
+    React.createElement(ChatView, {
+      user: { first_name: 'Тигр' },
+      messages: [
+        { id: 'u1', role: 'user', text: 'Сделай логотип тигра', ts: now - 10 * 60 * 1000 },
+        { id: 'a1', role: 'assistant', text: 'Вот логотип.', ts: now - 9 * 60 * 1000, ms: 12000 },
+      ],
+      typing: false, onSend() {},
+    }),
+  );
+  ok('G5: под ответом ИИ есть кнопка «копировать» и строка «сколько шёл · когда»',
+    /msg-copy-btn/.test(htmlFooter) && /12 с · 9 минут назад/.test(htmlFooter));
+  ok('G6: под своим сообщением тоже есть копирование и «когда» (без длительности — это не ответ)',
+    /msg-footer-right/.test(htmlFooter) && /10 минут назад/.test(htmlFooter));
+  ok('G7: порядок в разметке — сперва пузырь с текстом, подпись времени идёт СТРОГО под ним (видимый отступ)',
+    htmlFooter.indexOf('Вот логотип.') < htmlFooter.lastIndexOf('msg-footer'));
+  const htmlNoTs = renderToStaticMarkup(
+    React.createElement(ChatView, {
+      user: { first_name: 'Тигр' },
+      messages: [{ id: 'a2', role: 'assistant', text: 'Без времени (старое сообщение).' }],
+      typing: false, onSend() {},
+    }),
+  );
+  ok('G8: у сообщения без ts/ms подпись не пустая и не ломает разметку — копирование всё равно работает',
+    /msg-copy-btn/.test(htmlNoTs));
   const userMsg = renderToStaticMarkup(
     React.createElement(ChatView, {
       user: { first_name: 'Тигр' }, messages: [{ id: 'm3', role: 'user', text: 'сколько будет?' }], typing: false, onSend() {},
