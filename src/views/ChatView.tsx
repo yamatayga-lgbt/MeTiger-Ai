@@ -719,9 +719,6 @@ export function ChatView({
               </div>
             ) : (
               <div key={m.id} className="msg msg-ai">
-                <div className="msg-avatar">
-                  <img src={avatarUrl} alt="" />
-                </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="ai-name">MeTiger Ai</div>
                   {/* Мысли модели и вызванные инструменты идут СВЕРХУ ответа и автоматически
@@ -760,9 +757,6 @@ export function ChatView({
                   {/* Чем оплатили окно и чужой «system»: история урезана, подсказки
                       обрезаны. Это не предупреждение, это условия ответа. */}
                   {m.notes ? <div className="msg-note">{m.notes}</div> : null}
-                  {Array.isArray(m.skills) && m.skills.length ? (
-                    <div className="msg-skills">по навыкам: {m.skills.join(' · ')}</div>
-                  ) : null}
                   {Array.isArray(m.sources) && m.sources.length ? (
                     <div className="msg-sources" aria-label="Источники">
                       {m.sources.map((s, i) => (
@@ -780,10 +774,12 @@ export function ChatView({
                       ))}
                     </div>
                   ) : null}
-                  {m.advice || m.src ? (
+                  {/* Модель/провайдер/режим и счётчик мс намеренно не показываем — это
+                      Агент, а не витрина чужих моделей (0.058). Из тайминга остаётся
+                      только «Thought for N seconds» выше, когда агент правда думал. */}
+                  {m.advice ? (
                     <div className={`msg-meta${m.adviceTone ? ' is-' + m.adviceTone : ''}`}>
-                      {m.advice ? <span className="msg-advice">{m.advice}</span> : null}
-                      {m.src ? <span className="msg-src">{m.src}</span> : null}
+                      <span className="msg-advice">{m.advice}</span>
                     </div>
                   ) : null}
                 </div>
@@ -793,9 +789,6 @@ export function ChatView({
 
           {typing ? (
             <div className="msg msg-ai">
-              <div className="msg-avatar">
-                <img src={avatarUrl} alt="" />
-              </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ai-name">MeTiger Ai</div>
                 {Array.isArray(draftWebSteps) && draftWebSteps.length ? (
