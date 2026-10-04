@@ -252,6 +252,53 @@ function ExploredReadsBlock({
   )
 }
 
+/** Карандаш поверх листа — значок «написал файл», парный к EyeGlyph «прочитал». */
+function WriteFileGlyph() {
+  return (
+    <svg
+      className="write-file-icon"
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+      <path d="m17.5 3.5 3 3L12 15l-4 1 1-4 8.5-8.5Z" />
+    </svg>
+  )
+}
+
+/**
+ * «Write <файл> · N lines» — строка над ответом на каждый файл, который агент
+ * оформил через filegen (docx/xlsx/csv/txt/md/html). Живёт в том же ряду шагов
+ * подготовки ответа, что ExploredReadsBlock, ToolUsedBadge и WebSearchBlock.
+ */
+function WriteFilesBlock({ files }: { files: { name: string; lines?: number }[] }) {
+  if (!files.length) return null
+  return (
+    <div className="msg-write-files">
+      {files.map((f, idx) => (
+        <div key={idx} className="write-file-row">
+          <WriteFileGlyph />
+          <span className="write-file-label">
+            Write <span className="write-file-name">{f.name}</span>
+          </span>
+          {typeof f.lines === 'number' ? (
+            <span className="write-file-lines">
+              {f.lines} line{f.lines === 1 ? '' : 's'}
+            </span>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function SearchMagnifierGlyph({ className = 'web-search-icon' }: { className?: string }) {
   return (
     <svg
@@ -716,6 +763,7 @@ export function ChatView({
                   {Array.isArray(m.webSteps) && m.webSteps.length ? (
                     <WebSearchBlock steps={m.webSteps} />
                   ) : null}
+                  {Array.isArray(m.files) && m.files.length ? <WriteFilesBlock files={m.files} /> : null}
                   <div className="bubble">
                     <RichText text={m.text} onRunOutput={(t) => onSend(t)} />
                   </div>

@@ -495,6 +495,10 @@ function generate(opts) {
     buf,
     b64: b64s(buf),
     size: buf.length,
+    /* строки ИСХОДНОГО текста модели (до упаковки в docx/xlsx/csv/html) — для
+       строки «Write <файл> · N lines» над ответом, тем же смыслом, что «сколько
+       агент написал», а не байтами готового контейнера. */
+    lines: content.split(/\r\n|\r|\n/).length,
   };
 }
 

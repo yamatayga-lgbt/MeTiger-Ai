@@ -58,7 +58,7 @@ export interface ChatMessage {
   images?: string[]
   /** Документы, которые модель оформила файлом (в localStorage не пишутся — тот же
       мотив, что и с картинками: base64 съедает квоту молча). */
-  files?: { name: string; mime: string; size: number; b64: string; kind?: string; source?: string }[]
+  files?: { name: string; mime: string; size: number; b64: string; kind?: string; source?: string; lines?: number }[]
   /** Причина, по которой картинка или документ не пришли, — словами источника. */
   fileError?: string
   /** Навыки, включившиеся по смыслу этого вопроса. */

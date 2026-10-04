@@ -982,6 +982,27 @@ console.log('L — песочница: запуск кода в браузере
         && /Couldn&#x27;t read <span class="explored-step-name" title="битый\.docx">битый\.docx<\/span>/.test(htmlExplored)
         && /explored-step is-failed/.test(htmlExplored)
         && /показаны первые 3 из 5 файлов/.test(htmlExplored));
+
+    const htmlWrite = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{
+          id: 'wf1',
+          role: 'assistant',
+          text: 'Готово.',
+          files: [
+            { name: 'Смета на ремонт.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 12000, b64: 'AAAA', lines: 42 },
+          ],
+        }],
+        typing: false,
+        onSend() {},
+      }),
+    );
+    ok('M35: строка «Write <файл> · N lines» рендерится над ответом рядом с остальными шагами подготовки',
+      /class="msg-write-files"/.test(htmlWrite)
+        && /Write <span class="write-file-name">Смета на ремонт\.docx<\/span>/.test(htmlWrite)
+        && /<span class="write-file-lines">42 lines<\/span>/.test(htmlWrite)
+        && htmlWrite.indexOf('msg-write-files') < htmlWrite.indexOf('class="bubble"'));
   }
 }
 

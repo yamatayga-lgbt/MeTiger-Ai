@@ -60,7 +60,7 @@ export interface ChatResult {
   /** Навыки, которые включились по смыслу вопроса (engine/skills.js). */
   skills?: string[]
   /** Документы, которые модель оформила файлом: имя, mime, вес и base64 целиком. */
-  files?: { name: string; mime: string; size: number; b64: string; kind?: string; source?: string }[]
+  files?: { name: string; mime: string; size: number; b64: string; kind?: string; source?: string; lines?: number }[]
   /** Почему вложение не вышло: «картинка не вышла: gemini: 429 …». Пусто — значит всё дошло. */
   fileError?: string
   /** Текст изменён большинством — это надо показать, а не спрятать. */

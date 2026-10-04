@@ -1539,6 +1539,50 @@ kbd {
   padding-left: 22px;
 }
 
+/* «Write <файл> · N lines» — строка на каждый файл, который агент оформил
+   filegen'ом, над ответом рядом с used <tool> / Searching the web / Explored reads. */
+.msg-write-files {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 2px 0 8px;
+}
+
+.write-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--text) 80%, transparent);
+}
+
+.write-file-icon {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 64%, transparent);
+}
+
+.write-file-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.write-file-name {
+  font-family: var(--font-mono);
+}
+
+.write-file-lines {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 46%, transparent);
+}
+
 /* «Explored N reads» — список прочитанных вложений над ответом, свёрнут по
    умолчанию (как used <tool>): это шаг подготовки, а не часть самого ответа. */
 .msg-explored {

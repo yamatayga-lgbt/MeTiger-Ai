@@ -135,6 +135,9 @@ ok('B8: формат и имя берутся из просьбы человек
   formatFromText('сделай таблицу xlsx') === 'xlsx' && formatFromText('голым текстом') === 'txt'
   && nameFromText('оформи в файл смету на ремонт, пожалуйста') === 'смету на ремонт', '');
 ok('B9: список форматов у инструмента и у постобработки один', Object.keys(FMT).join() === 'docx,xlsx,csv,txt,md,html', Object.keys(FMT).join());
+ok('B10: у готового файла есть число строк исходного текста — для «Write <файл> · N lines» над ответом',
+  generate({ format: 'txt', name: 'x', content: 'одна\nдве\nтри' }).lines === 3
+  && generate({ format: 'docx', name: 'x', content: 'без переносов' }).lines === 1, '');
 
 console.log('C — движок: указание в промпте, файлы в ответе');
 const ENV = { ODIROUTER_KEYS: 'od1', GROQ_KEYS: 'g1' };
