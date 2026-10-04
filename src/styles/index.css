@@ -2,6 +2,9 @@
    MeTiger Ai — Design System
    Минимализм в духе Claude / Grok / Linear.
    Тёмная тема — по умолчанию, светлая — тёплая «бумажная».
+   Акцент — монохромный (чёрный/белый, как у ChatGPT и Grok):
+   без цветового бренда, только контраст; тёплый жёлтый остался
+   отдельным семантическим цветом ровно для статуса «осторожно» (--amber).
    ============================================================ */
 
 /* ---------- Tokens ---------- */
@@ -9,11 +12,6 @@
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
-
-  --accent: #f5a623;
-  --accent-strong: #e8890b;
-  --accent-fg: #1c1204;
-  --accent-grad: linear-gradient(135deg, #ffb13d, #f07a1a);
 
   --r-xs: 6px;
   --r-sm: 8px;
@@ -42,14 +40,24 @@
   --text: #edeef2;
   --text-2: #9ba1ae;
   --text-3: #6a7080;
-  --accent-soft: rgba(245, 166, 35, 0.13);
-  --accent-border: rgba(245, 166, 35, 0.32);
+  /* акцент тёмной темы — почти белый (как первичная кнопка ChatGPT/Grok в тёмном
+     режиме): это контраст, а не цвет бренда. */
+  --accent: #e9e9ee;
+  --accent-strong: #ffffff;
+  --accent-fg: #111114;
+  --accent-grad: linear-gradient(135deg, #f2f2f5, #d6d6dc);
+  --accent-soft: rgba(255, 255, 255, 0.09);
+  --accent-border: rgba(255, 255, 255, 0.22);
   --danger: #f26d6d;
   --ok: #4ec98a;
   --ok-soft: rgba(78, 201, 138, 0.13);
   --blue: #6ea8ff;
   --blue-soft: rgba(110, 168, 255, 0.13);
-  --amber-soft: rgba(245, 166, 35, 0.13);
+  /* «осторожно» — отдельный семантический цвет, не бренд: приглушённое золото,
+     чтобы предупреждение не терялось среди монохромного интерфейса. */
+  --amber: #e0b23c;
+  --amber-soft: rgba(224, 178, 60, 0.14);
+  --amber-border: rgba(224, 178, 60, 0.32);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 4px 18px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
@@ -69,20 +77,29 @@
   --text: #171512;
   --text-2: #6e6a62;
   --text-3: #a09a8e;
-  --accent-soft: rgba(230, 138, 0, 0.12);
-  --accent-border: rgba(230, 138, 0, 0.35);
+  /* акцент светлой темы — почти чёрный (первичная кнопка в светлом ChatGPT/Grok):
+     тот же контраст, зеркально. */
+  --accent: #17151a;
+  --accent-strong: #000000;
+  --accent-fg: #ffffff;
+  --accent-grad: linear-gradient(135deg, #2b2a30, #0c0b0e);
+  --accent-soft: rgba(23, 21, 26, 0.06);
+  --accent-border: rgba(23, 21, 26, 0.18);
   --danger: #d64545;
   --ok: #2e9e63;
   --ok-soft: rgba(46, 158, 99, 0.12);
   --blue: #3b76e8;
   --blue-soft: rgba(59, 118, 232, 0.1);
-  --amber-soft: rgba(230, 138, 0, 0.12);
+  --amber: #8a6d1f;
+  --amber-soft: rgba(138, 109, 31, 0.12);
+  --amber-border: rgba(138, 109, 31, 0.32);
   --shadow-sm: 0 1px 2px rgba(23, 21, 18, 0.06);
   --shadow-md: 0 6px 20px rgba(23, 21, 18, 0.08);
   --shadow-lg: 0 18px 48px rgba(23, 21, 18, 0.14);
   --scrim: rgba(30, 27, 22, 0.32);
   --code-bg: #1c1b18;
   --user-bubble: #ebe8df;
+
 }
 
 /* ---------- Reset ---------- */
@@ -888,7 +905,7 @@ kbd {
 
 .badge-amber {
   background: var(--amber-soft);
-  color: var(--accent-strong);
+  color: var(--amber);
 }
 
 .badge-blue {
@@ -3500,9 +3517,9 @@ kbd {
   background: var(--ok-soft);
 }
 .msg-meta.is-warn .msg-advice {
-  color: var(--accent-strong);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
+  color: var(--amber);
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-border);
 }
 .msg-meta.is-quiet .msg-advice {
   color: var(--text-3);
