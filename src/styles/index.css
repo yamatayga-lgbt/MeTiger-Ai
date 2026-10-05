@@ -3150,6 +3150,22 @@ kbd {
   transform: scale(0.92);
 }
 
+/* Остановка запроса — та же форма кнопки, но сознательно не цвет «отправить»: если
+   случайно нажать второй раз, это не отправит ничего заново. */
+.send-btn.stop-btn {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.send-btn.stop-btn:hover {
+  background: var(--surface-hover);
+}
+
+.send-btn.stop-btn:active {
+  transform: scale(0.92);
+}
+
 .composer-hint {
   margin-top: 5px;
   text-align: center;

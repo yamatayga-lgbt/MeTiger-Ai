@@ -82,6 +82,9 @@ export interface ChatResult {
   streamError?: string
   /** Что модель написала себе перед ответом (у упрямых провайдеров — в отдельном поле). */
   reasoning?: string
+  /** Запрос оборвал человек кнопкой «Остановить» — это не сбой сети и не таймаут,
+      UI не должен показывать это как ошибку движка. */
+  stopped?: boolean
 }
 
 export interface SseEvent {
@@ -503,7 +506,16 @@ export async function sendChat(
     return { ok: true, reply: data.reply || '', ...data }
   } catch (e) {
     const aborted = (e as Error)?.name === 'AbortError'
-    return { ok: false, reply: '', error: aborted ? 'время вышло' : 'сеть недоступна' }
+    /* Оба случая — один и тот же AbortError, но причина разная: свой 75-секундный
+       таймаут здесь же сверху и явная остановка человеком (opts.signal, дошёл снаружи
+       из App.tsx) — это не «сеть сломалась» и не повод показывать ошибку движка. */
+    const stopped = aborted && !!(opts.signal && opts.signal.aborted)
+    return {
+      ok: false,
+      reply: '',
+      error: stopped ? 'остановлено' : aborted ? 'время вышло' : 'сеть недоступна',
+      stopped: stopped || undefined,
+    }
   } finally {
     clearTimeout(timer)
   }

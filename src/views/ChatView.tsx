@@ -12,6 +12,7 @@ import { Markdown } from '../components/Markdown'
 import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
+import { enterKeySends } from '../lib/platform'
 
 /** Картинки из ответа: превью прямо в пузыре, файл — рядом чипом, чтобы его
     можно было забрать. Ссылка (data-URI) считается один раз на файл: генерация
@@ -495,6 +496,9 @@ interface ChatViewProps {
   searchOn?: boolean
   onToggleSearch?: () => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
+  /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
+      нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
+  onStop?: () => void
   /** Параметры генерации (temperature, max_tokens, top_p) */
   genParams?: GenParams
   onGenParamsChange?: (next: GenParams) => void
@@ -509,6 +513,7 @@ export function ChatView({
   draftThinkingSec = 1,
   draftWebSteps = [],
   onSend,
+  onStop,
   genParams = DEFAULT_GEN_PARAMS,
   onGenParamsChange,
 }: ChatViewProps) {
@@ -657,6 +662,10 @@ export function ChatView({
   }
 
   const submit = () => {
+    /* Пока предыдущий ответ ещё не пришёл — второй запрос не копим поверх первого:
+       клавиатура (Enter на компьютере) могла бы это сделать в обход disabled у кнопки,
+       которая на это время сама превращается в «Остановить». */
+    if (typing) return
     const text = (listening ? stopVoiceInput() : value).trim()
     /* Картинка или файл без вопроса — это запрос «посмотри, что я прислал»: движок
        сам решит, что с этим делать. Совсем пустой ход не отправляем. */
@@ -1006,7 +1015,12 @@ export function ChatView({
                 if (fs.length) { e.preventDefault(); void addFiles(fs) }
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                /* На компьютере (есть hover и точный указатель — мышь/трекпад) Enter
+                   отправляет, Shift+Enter переносит строку — обычное дело для чата.
+                   На телефоне у клавиши «следующая строка» то же событие Enter, а
+                   Shift взять неоткуда — там Enter обязан просто переводить строку,
+                   отправляет только кнопка (см. src/lib/platform.ts). */
+                if (e.key === 'Enter' && !e.shiftKey && enterKeySends()) {
                   e.preventDefault()
                   submit()
                 }
@@ -1090,14 +1104,32 @@ export function ChatView({
                 </button>
               ) : null}
 
-              <button
-                type="submit"
-                className="send-btn"
-                disabled={!value.trim() && shots.length === 0 && docs.length === 0}
-                aria-label="Отправить"
-              >
-                <ArrowUp size={18} />
-              </button>
+              {typing ? (
+                /* Запрос уже ушёл — например, отправили по ошибке. Стоп реально
+                   обрывает сетевой запрос (AbortController в App.tsx), а не просто
+                   прячет «Печатает» на экране — см. src/lib/api.ts (поле stopped). */
+                <button
+                  type="button"
+                  className="send-btn stop-btn"
+                  aria-label="Остановить"
+                  title="Остановить генерацию"
+                  onClick={() => {
+                    haptic('light')
+                    onStop?.()
+                  }}
+                >
+                  <Square size={14} />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="send-btn"
+                  disabled={!value.trim() && shots.length === 0 && docs.length === 0}
+                  aria-label="Отправить"
+                >
+                  <ArrowUp size={18} />
+                </button>
+              )}
             </div>
           </div>
 

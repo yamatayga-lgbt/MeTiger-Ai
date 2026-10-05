@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { WorkspaceDrawer } from './components/WorkspaceDrawer'
@@ -65,6 +65,10 @@ export default function App() {
     loadActiveChatId('c-start'),
   )
   const [typing, setTyping] = useState(false)
+  /* Запрос, который сейчас в полёте — чтобы кнопка «Остановить» реально обрывала
+     именно его, а не просто прятала «Печатает» на экране. Один слот: второй запрос
+     поверх первого не копим (submit() в ChatView сам это проверяет через typing). */
+  const abortRef = useRef<AbortController | null>(null)
   /* черновик текущего ответа: приходит кусками из /api/chat, пока он идёт */
   const [draft, setDraft] = useState<string | null>(null)
   /* черновик рассуждений той же головы — отдельная строка над ответом, только когда
@@ -138,6 +142,11 @@ export default function App() {
   }, [chats, activeChatId])
 
   const notify = useCallback((msg: string) => setToast(msg), [])
+  /* Кнопка «Остановить» на композере: реально обрывает сетевой запрос, а не просто
+     прячет индикатор — sendChat() увидит это через opts.signal и пометит r.stopped. */
+  const stopGeneration = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
 
   const navigate = useCallback((v: ViewId) => {
     haptic('select')
@@ -241,8 +250,11 @@ export default function App() {
       setDraftReasoning(allowThink ? '' : null)
       setDraftThinkingSec(1)
       setDraftWebSteps([])
+      const ac = new AbortController()
+      abortRef.current = ac
       void (async () => {
         const r = await sendChat(text, history, {
+          signal: ac.signal,
           ...(images && images.length ? { images } : {}),
           ...(attachments && attachments.length ? { attachments } : {}),
           ...(model ? { model } : {}),
@@ -277,6 +289,17 @@ export default function App() {
             r.ms,
             (r.reply ? r.reply.length : 0) + (r.reasoning ? r.reasoning.length : 0),
           )
+        }
+        if (abortRef.current === ac) abortRef.current = null
+        if (r.stopped) {
+          /* Остановили сами — это не сбой движка и не демо-ответ, в чат ничего
+             дописывать не нужно: просто убираем «Печатает» и говорим короткое слово. */
+          setTyping(false)
+          setDraft(null)
+          setDraftReasoning(null)
+          setDraftWebSteps([])
+          setToast('Остановлено')
+          return
         }
         const finalThinkSec = Math.max(
           1,
@@ -409,6 +432,7 @@ export default function App() {
                 draftThinkingSec={draftThinkingSec}
                 draftWebSteps={draftWebSteps}
                 onSend={sendMessage}
+                onStop={stopGeneration}
                 genParams={genParams}
                 onGenParamsChange={setGenParams}
               />

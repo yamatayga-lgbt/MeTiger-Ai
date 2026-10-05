@@ -802,6 +802,34 @@ console.log('L2 — песочница: Python через Pyodide (второй 
   }
 
   {
+    /* Кнопка «Остановить» снаружи дёргает opts.signal — а не внутренний 75-секундный
+       таймер sendChat. Оба падают одним и тем же AbortError, но для человека это
+       разные вещи: «я сам остановил» и «сервис не ответил вовремя». */
+    const saved5 = globalThis.fetch;
+    try {
+      globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => {
+          const e = new Error('aborted'); e.name = 'AbortError'; reject(e);
+        });
+      });
+      const userAc = new AbortController();
+      const pending = sendChat('привет', [], { signal: userAc.signal });
+      userAc.abort();
+      const r = await pending;
+      ok('M19b: человек сам остановил запрос — r.stopped === true, ошибка не похожа на таймаут/сеть',
+        r.ok === false && r.stopped === true && r.error === 'остановлено', JSON.stringify(r));
+    } finally { globalThis.fetch = saved5 }
+
+    const saved6 = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => { const e = new Error('x'); e.name = 'AbortError'; throw e; };
+      const r = await sendChat('привет', [], {});
+      ok('M19c: тот же AbortError, но БЕЗ внешнего сигнала (свой таймаут) — это «время вышло», а не «остановлено»',
+        r.ok === false && !r.stopped && r.error === 'время вышло', JSON.stringify(r));
+    } finally { globalThis.fetch = saved6 }
+  }
+
+  {
     const api = readFileSync('src/lib/api.ts', 'utf8');
     const chat = readFileSync('src/views/ChatView.tsx', 'utf8');
     const app = readFileSync('src/App.tsx', 'utf8');
@@ -1098,6 +1126,66 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         && /Write <span class="write-file-name">Смета на ремонт\.docx<\/span>/.test(htmlWrite)
         && /<span class="write-file-lines">42 lines<\/span>/.test(htmlWrite)
         && htmlWrite.indexOf('msg-write-files') < htmlWrite.indexOf('class="bubble"'));
+
+    /* Стоп-кнопка и «Enter не всегда отправляет» — новая пара функций: случайно
+       отправленный запрос можно оборвать, а на телефоне Enter просто переводит строку. */
+    const htmlTypingOn = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{ id: 'st1', role: 'user', text: 'вопрос' }],
+        typing: true,
+        draft: '',
+        onSend() {},
+        onStop() {},
+      }),
+    );
+    const htmlTypingOff = renderToStaticMarkup(
+      React.createElement(ChatView, {
+        user: { name: 'Тигр', language_code: 'ru' },
+        messages: [{ id: 'st2', role: 'user', text: 'вопрос' }],
+        typing: false,
+        onSend() {},
+        onStop() {},
+      }),
+    );
+    ok('M36: пока ответ не пришёл, кнопка отправки превращается в «Остановить» (а не просто гаснет)',
+      /class="send-btn stop-btn"/.test(htmlTypingOn)
+        && /aria-label="Остановить"/.test(htmlTypingOn)
+        && !/aria-label="Отправить"/.test(htmlTypingOn));
+    ok('M37: когда ответа не ждём, кнопка снова обычная «Отправить», стоп-кнопки нет',
+      /aria-label="Отправить"/.test(htmlTypingOff) && !/stop-btn/.test(htmlTypingOff));
+
+    const chatSrc2 = readFileSync('src/views/ChatView.tsx', 'utf8');
+    ok('M38: второй Enter поверх ещё не пришедшего ответа ничего не копит — submit() сам это проверяет',
+      /const submit = \(\) => \{\s*(\/\*[\s\S]*?\*\/\s*)?if \(typing\) return/.test(chatSrc2));
+    ok('M39: Enter без Shift отправляет только там, где рядом мышь/трекпад — на телефоне это просто перенос строки',
+      /e\.key === 'Enter' && !e\.shiftKey && enterKeySends\(\)/.test(chatSrc2)
+        && chatSrc2.includes("import { enterKeySends } from '../lib/platform'"));
+
+    const platformOut = join(dir, 'platform.mjs');
+    execFileSync(bin, ['src/lib/platform.ts', '--format=esm', '--outfile=' + platformOut, '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' });
+    const { enterKeySends } = await import(platformOut);
+    const savedWindow = globalThis.window;
+    try {
+      globalThis.window = { matchMedia: (q) => ({ matches: /pointer: fine/.test(q) }) };
+      ok('M40: на компьютере (hover+точный указатель в matchMedia) Enter отправляет', enterKeySends() === true);
+      globalThis.window = { matchMedia: () => ({ matches: false }) };
+      ok('M41: на телефоне (matchMedia не совпал) Enter не отправляет — значит, просто перенос строки', enterKeySends() === false);
+      globalThis.window = {};
+      ok('M42: совсем древний браузер без matchMedia — ведём себя как раньше (Enter отправляет)', enterKeySends() === true);
+    } finally {
+      if (savedWindow === undefined) delete globalThis.window; else globalThis.window = savedWindow;
+    }
+
+    const appSrc = readFileSync('src/App.tsx', 'utf8');
+    ok('M43: стоп реально обрывает именно ушедший запрос — свой AbortController на каждую отправку, а не просто флаг в интерфейсе',
+      appSrc.includes('const abortRef = useRef<AbortController | null>(null)')
+        && /const ac = new AbortController\(\)/.test(appSrc)
+        && /signal: ac\.signal/.test(appSrc)
+        && /const stopGeneration = useCallback\(\(\) => \{\s*abortRef\.current\?\.abort\(\)/.test(appSrc)
+        && appSrc.includes('onStop={stopGeneration}'));
+    ok('M44: остановленный человеком запрос не превращается в фейковую ошибку движка или демо-ответ — для него отдельная ветка',
+      /if \(r\.stopped\) \{/.test(appSrc) && appSrc.includes("setToast('Остановлено')"));
   }
 }
 
