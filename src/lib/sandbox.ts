@@ -48,13 +48,20 @@ export interface RunResult {
 }
 
 /**
- * Запускать разрешаем только явно помеченному JS: блок без языка и `python`/`ts`
- * исполнить нечем, а врать «готово, работает» после молчаливого пропуска — худшее,
- * что может сделать интерфейс с кодом.
+ * Запускать разрешаем только явно помеченному JS или Python: блок без языка или с
+ * `ts`/чем-то ещё исполнить нечем, а врать «готово, работает» после молчаливого
+ * пропуска — худшее, что может сделать интерфейс с кодом.
  */
 export function runnable(lang: string): boolean {
+  return sandboxKind(lang) !== null
+}
+
+/** Какой из двух движков (src/components/CodeRunner.tsx) обслуживает этот язык. */
+export function sandboxKind(lang: string): 'js' | 'py' | null {
   const l = String(lang || '').trim().toLowerCase()
-  return l === 'js' || l === 'javascript'
+  if (l === 'js' || l === 'javascript') return 'js'
+  if (l === 'py' || l === 'python' || l === 'python3') return 'py'
+  return null
 }
 
 /** Проверки до запуска. Каждая с причиной — модель читает этот текст и правит код. */

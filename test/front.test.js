@@ -501,9 +501,13 @@ console.log('L — песочница: запуск кода в браузере
   execFileSync(bin, ['src/lib/sandbox.ts', '--bundle', '--platform=node', '--format=esm', '--outfile=' + sb], { cwd: process.cwd(), stdio: 'inherit' })
   const S = await import(sb)
 
-  ok('L1: к запуску допускается только явный JS (ts/python/без языка — нет)',
-    S.runnable('js') && S.runnable('JavaScript') && !S.runnable('ts') && !S.runnable('python') && !S.runnable(''),
-    [S.runnable('js'), S.runnable('ts'), S.runnable('')].join('/'))
+  ok('L1: к запуску допускается явный JS и Python (ts/без языка — нет)',
+    S.runnable('js') && S.runnable('JavaScript') && S.runnable('python') && S.runnable('py')
+      && !S.runnable('ts') && !S.runnable(''),
+    [S.runnable('js'), S.runnable('python'), S.runnable('ts'), S.runnable('')].join('/'))
+  ok('L1b: движок выбирается по языку — js/py различимы, остальное — demo (null)',
+    S.sandboxKind('js') === 'js' && S.sandboxKind('python3') === 'py' && S.sandboxKind('ts') === null,
+    [S.sandboxKind('js'), S.sandboxKind('python3'), S.sandboxKind('ts')].join('/'))
   ok('L2: пустой код и код через край — отказ назван словами, а не тишина',
     /пустой код/.test(S.prepare('   ').error) && S.prepare('1'.repeat(S.MAX_CODE + 1)).ok === false
       && S.prepare('1'.repeat(S.MAX_CODE + 1)).error.indexOf(String(S.MAX_CODE)) > 0,
@@ -556,6 +560,50 @@ console.log('L — песочница: запуск кода в браузере
     /runnable\(lang\)[\s\S]{0,80}песочница/.test(chat) && /<CodeRunner/.test(chat))
   ok('L16: вывод можно вернуть модели — иначе цикл обрывается на «у меня упало»',
     /onSend/.test(runner) && /Вывод — модели/.test(runner) && /onRunOutput/.test(chat))
+}
+
+console.log('L2 — песочница: Python через Pyodide (второй движок, тёплый иframe между запусками)')
+{
+  /* Зачем второй движок: DeepSeek и большинство бесплатных чатов вообще не выполняют код
+     в диалоге. У нас уже был JS — теперь то же самое для Python, самого частого языка в
+     задачах «напиши и проверь». Рантайм греется один раз и держится между запусками —
+     проверка смотрит именно за этим устройством, а не за тем, что CPython умеет цикл. */
+  const sb2 = join(dir, 'pysandbox.mjs')
+  execFileSync(bin, ['src/lib/pysandbox.ts', '--bundle', '--platform=node', '--format=esm', '--outfile=' + sb2], { cwd: process.cwd(), stdio: 'inherit' })
+  const P = await import(sb2)
+  const runner = readFileSync(join(process.cwd(), 'src', 'components', 'CodeRunner.tsx'), 'utf8')
+  const chat = readFileSync(join(process.cwd(), 'src', 'components', 'Markdown.tsx'), 'utf8')
+
+  ok('L17: пустой код и код через край — отказ назван словами (как у JS)',
+    /пустой код/.test(P.preparePy('   ').error) && P.preparePy('1'.repeat(20001)).ok === false,
+    JSON.stringify(P.preparePy('').error))
+  ok('L18: документ Pyodide сужает CSP до одного CDN-хоста, а не открывает сеть целиком',
+    (() => { const d = P.buildPySrcDoc(); return /default-src 'none'/.test(d) && /cdn\.jsdelivr\.net/.test(d) && /wasm-unsafe-eval/.test(d) })(),
+    P.buildPySrcDoc().slice(0, 140))
+  ok('L19: документ статический (код не зашит внутрь) — код приходит позже через postMessage',
+    P.buildPySrcDoc.length === 0 && /addEventListener\("message"/.test(P.buildPySrcDoc()) && /runPythonAsync\(String\(d\.code/.test(P.buildPySrcDoc()),
+    'buildPySrcDoc.length=' + P.buildPySrcDoc.length)
+  const rOk = P.normalizePy({ logs: ['1', '2'], value: '3', ms: 40 })
+  ok('L20: вывод Python = строки print плюс возвращённое значение, как у JS',
+    rOk.ok && rOk.output.indexOf('1\n2') === 0 && /→ 3/.test(rOk.output), JSON.stringify(rOk.output))
+  const rErr = P.normalizePy({ logs: [], error: 'NameError: name \'x\' is not defined', ms: 5 })
+  ok('L21: ошибка Python даёт ok:false и подсказку (своя таблица, не JS-овская)',
+    !rErr.ok && !!rErr.hint && /области видимости/.test(rErr.hint), JSON.stringify(rErr))
+
+  /* Вёрстка: оба движка — один компонент, язык решает, какой из двух использовать, и
+     тёплый иframe для Python не пересоздаётся на каждый клик (в отличие от JS). */
+  ok('L22: CodeRunner получает язык и выбирает движок через sandboxKind, а не угадывает',
+    /sandboxKind\(lang/.test(runner) && /PY_MARK/.test(runner) && /pyReady/.test(runner),
+    'ok')
+  ok('L23: Python-иframe не пересоздаётся на каждый запуск — повторный клик шлёт postMessage в тот же фрейм',
+    /contentWindow\.postMessage/.test(runner) && /buildPySrcDoc\(\)/.test(runner),
+    'ok')
+  ok('L24: таймаут и у загрузки Pyodide, и у самого запуска — оба названы, а не тишина',
+    /PY_LOAD_TIMEOUT_MS/.test(runner) && /PY_RUN_TIMEOUT_MS/.test(runner) && /не загрузилось за/.test(runner),
+    'ok')
+  ok('L25: бейдж в чате различает языки — у Python своя подпись, не просто «песочница»',
+    /песочница · Python/.test(chat) && /sandboxKind\(lang\)/.test(chat),
+    'ok')
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
