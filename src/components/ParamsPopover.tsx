@@ -16,6 +16,8 @@ export function ParamsPopover({ params, onChange }: ParamsPopoverProps) {
   const sliderTokVal = params.maxTokens <= 0 ? MAX_TOKENS_SLIDER_TOP : Math.min(MAX_TOKENS_SLIDER_TOP, Math.max(MAX_TOKENS_SLIDER_MIN, params.maxTokens))
   const tokPct = Math.round(((sliderTokVal - MAX_TOKENS_SLIDER_MIN) / (MAX_TOKENS_SLIDER_TOP - MAX_TOKENS_SLIDER_MIN)) * 100)
   const topPPct = Math.round(((params.topP - 0.05) / (1 - 0.05)) * 100)
+  const presPct = Math.round(((params.presencePenalty - -2) / 4) * 100)
+  const freqPct = Math.round(((params.frequencyPenalty - -2) / 4) * 100)
 
   return (
     <div className="params-popover" role="dialog" aria-label="Параметры генерации">
@@ -100,6 +102,50 @@ export function ParamsPopover({ params, onChange }: ParamsPopoverProps) {
           }}
         />
         <div className="params-hint">Сужает круг слов-кандидатов</div>
+      </div>
+
+      {/* 4. presence_penalty */}
+      <div className="params-group">
+        <div className="params-row-head">
+          <span className="params-key">presence_penalty</span>
+          <span className="params-val">{params.presencePenalty.toFixed(1)}</span>
+        </div>
+        <input
+          type="range"
+          className="params-slider"
+          min={-2}
+          max={2}
+          step={0.1}
+          value={params.presencePenalty}
+          style={{ '--pct': `${presPct}%` } as CSSProperties}
+          aria-label="presence_penalty"
+          onChange={(e) => {
+            onChange({ ...params, presencePenalty: Number(e.target.value) })
+          }}
+        />
+        <div className="params-hint">Выше нуля — реже вернётся к уже раскрытой теме целиком</div>
+      </div>
+
+      {/* 5. frequency_penalty */}
+      <div className="params-group">
+        <div className="params-row-head">
+          <span className="params-key">frequency_penalty</span>
+          <span className="params-val">{params.frequencyPenalty.toFixed(1)}</span>
+        </div>
+        <input
+          type="range"
+          className="params-slider"
+          min={-2}
+          max={2}
+          step={0.1}
+          value={params.frequencyPenalty}
+          style={{ '--pct': `${freqPct}%` } as CSSProperties}
+          aria-label="frequency_penalty"
+          onChange={(e) => {
+            onChange({ ...params, frequencyPenalty: Number(e.target.value) })
+          }}
+        />
+        <div className="params-hint">Выше нуля — реже повторяет одни и те же слова и фразы</div>
       </div>
     </div>
   )

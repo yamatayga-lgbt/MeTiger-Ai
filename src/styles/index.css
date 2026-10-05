@@ -2946,6 +2946,11 @@ kbd {
   bottom: calc(100% + 10px);
   z-index: 50;
   width: min(360px, 100%);
+  /* 0.070: добавились presence/frequency penalty — пятой группе уже не всегда
+     хватает высоты экрана телефона, попап теперь сам скроллится, а не вылезает
+     за верхний край вьюпорта. */
+  max-height: min(72vh, 560px);
+  overflow-y: auto;
   padding: 12px 18px 18px;
   border: 1px solid var(--border-strong);
   border-radius: 20px;

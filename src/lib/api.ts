@@ -440,10 +440,14 @@ export async function sendChat(
      * web-search и читает первую найденную страницу, даже без слова «погугли».
      */
     webSearch?: boolean
-    /** Параметры генерации (temperature, max_tokens, top_p) и усилие рассуждения */
+    /** Параметры генерации (temperature, max_tokens, top_p, penalty) и усилие рассуждения */
     temperature?: number
     maxTokens?: number
     topP?: number
+    /** -2..2, 0 = выключено. Положительное — модель реже уходит в уже раскрытые темы целиком. */
+    presencePenalty?: number
+    /** -2..2, 0 = выключено. Положительное — модель реже повторяет одни и те же слова/фразы. */
+    frequencyPenalty?: number
     reasoningEffort?: 'low' | 'medium' | 'high'
   } = {},
 ): Promise<ChatResult> {
@@ -471,6 +475,8 @@ export async function sendChat(
         temperature: typeof opts.temperature === 'number' ? opts.temperature : undefined,
         maxTokens: typeof opts.maxTokens === 'number' && opts.maxTokens > 0 ? opts.maxTokens : undefined,
         topP: typeof opts.topP === 'number' ? opts.topP : undefined,
+        presencePenalty: typeof opts.presencePenalty === 'number' ? opts.presencePenalty : undefined,
+        frequencyPenalty: typeof opts.frequencyPenalty === 'number' ? opts.frequencyPenalty : undefined,
         reasoningEffort: opts.reasoningEffort || undefined,
         /* кто пишет: по этому ключу бэкенд держит память и профиль. Без него весь
            веб делил одну память на всех незнакомцев */

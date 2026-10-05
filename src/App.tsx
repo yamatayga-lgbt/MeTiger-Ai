@@ -26,6 +26,7 @@ import {
   canModelThink,
   isGenParams,
   recordModelTelemetry,
+  withGenParamDefaults,
   type GenParams,
   type ReasoningEffort,
 } from './lib/models'
@@ -80,12 +81,16 @@ export default function App() {
   const model = ''
   const reasoningOn = true
   const effort: ReasoningEffort = 'medium'
-  /* параметры генерации: temperature, max_tokens, top_p */
-  const [genParams, setGenParams] = usePersistentState<GenParams>(
+  /* параметры генерации: temperature, max_tokens, top_p, presence/frequency penalty */
+  const [genParamsRaw, setGenParams] = usePersistentState<GenParams>(
     'mt-params',
     DEFAULT_GEN_PARAMS,
     isGenParams,
   )
+  /* penalty-поля появились в 0.070 — у кого эти настройки сохранились ДО обновления,
+     объект из localStorage их не содержит; без этой подстановки `undefined.toFixed()`
+     в ParamsPopover уронил бы попап первым же открытием у старых пользователей. */
+  const genParams = withGenParamDefaults(genParamsRaw)
   const [menuOpen, setMenuOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -263,6 +268,8 @@ export default function App() {
           temperature: genParams.temperature,
           ...(genParams.maxTokens > 0 ? { maxTokens: genParams.maxTokens } : {}),
           topP: genParams.topP,
+          presencePenalty: genParams.presencePenalty,
+          frequencyPenalty: genParams.frequencyPenalty,
         })
         if (r.ok) {
           recordModelTelemetry(

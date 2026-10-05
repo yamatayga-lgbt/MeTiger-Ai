@@ -489,6 +489,7 @@ export function createEngine(opts) {
         const req = buildRequest({
           cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
           maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
+          presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
         const r = await attemptOne(id, model, req, left);
@@ -573,6 +574,7 @@ export function createEngine(opts) {
           cfg, keyIdx, model, provider: id, messages: curMessages,
           system: system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
           tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
+          presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
         const r = await attemptOne(id, model, req, left);

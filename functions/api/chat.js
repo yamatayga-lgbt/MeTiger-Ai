@@ -420,6 +420,8 @@ async function handlePost(context) {
     temperature: norm.temperature,
     maxTokens: norm.maxTokens,
     topP: norm.topP,
+    presencePenalty: norm.presencePenalty,
+    frequencyPenalty: norm.frequencyPenalty,
     reasoningEffort: norm.reasoningEffort,
     showReasoning: wantReasoning,
     system: norm.system || PERSONA_SYSTEM,

@@ -80,6 +80,23 @@ console.log('C — тело запроса — формат своего про�
 
   const or = buildRequest({ cfg: P.openrouter, keyIdx: 0, model: 'x/y:free', tier: 'fast', messages: [{ role: 'user', content: 'х' }], system: 'с' });
   ok('C9: openrouter получает подсказку models', Array.isArray(or.body.models) && or.body.models[0] === 'x/y:free');
+
+  /* 0.070: presence/frequency penalty — второе расширение карточки «Параметры». */
+  const withPen = buildRequest({
+    cfg: P.groq, keyIdx: 0, model: 'm', tier: 'fast', messages: [{ role: 'user', content: 'x' }], system: 'c',
+    presencePenalty: 0.6, frequencyPenalty: -0.3,
+  });
+  ok('C10: presence/frequency_penalty доезжают до openai-совместимого тела под своим именем',
+    withPen.body.presence_penalty === 0.6 && withPen.body.frequency_penalty === -0.3, JSON.stringify(withPen.body));
+  const noPen = buildRequest({ cfg: P.groq, keyIdx: 0, model: 'm', tier: 'fast', messages: [{ role: 'user', content: 'x' }], system: 'c' });
+  ok('C11: без penalty в запросе — полей нет вовсе (используется дефолт самого провайдера, не наш 0)',
+    !('presence_penalty' in noPen.body) && !('frequency_penalty' in noPen.body), JSON.stringify(Object.keys(noPen.body)));
+  const gp2 = buildRequest({
+    cfg: P.gemini, keyIdx: 0, model: 'm', tier: 'fast', messages: [{ role: 'user', content: 'x' }], system: 'c',
+    presencePenalty: 1.2, frequencyPenalty: 0.4,
+  });
+  ok('C12: у gemini те же два поля — camelCase внутри generationConfig',
+    gp2.body.generationConfig.presencePenalty === 1.2 && gp2.body.generationConfig.frequencyPenalty === 0.4, JSON.stringify(gp2.body.generationConfig));
 }
 
 console.log('D — из ответа достаётся текст, а не мусор');

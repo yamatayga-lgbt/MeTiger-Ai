@@ -27,12 +27,18 @@ export interface GenParams {
   /** 0 = Макс. (потолок самой модели), иначе 256..8192 */
   maxTokens: number
   topP: number
+  /** -2..2, 0 = выключено. Положительное — реже повторяет уже сказанные темы целиком. */
+  presencePenalty: number
+  /** -2..2, 0 = выключено. Положительное — реже повторяет одни и те же слова/фразы. */
+  frequencyPenalty: number
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
   temperature: 1.0,
   maxTokens: 0,
   topP: 0.95,
+  presencePenalty: 0,
+  frequencyPenalty: 0,
 }
 
 export function isGenParams(v: unknown): v is GenParams {
@@ -41,17 +47,33 @@ export function isGenParams(v: unknown): v is GenParams {
   return (
     typeof o.temperature === 'number' &&
     typeof o.maxTokens === 'number' &&
-    typeof o.topP === 'number'
+    typeof o.topP === 'number' &&
+    /* поля появились в 0.070 — старое сохранённое состояние (до обновления) их не
+       содержит, поэтому отсутствие трактуем как 0 (выключено), а не как брак данных */
+    (o.presencePenalty === undefined || typeof o.presencePenalty === 'number') &&
+    (o.frequencyPenalty === undefined || typeof o.frequencyPenalty === 'number')
   )
+}
+
+/** Старое сохранённое состояние (до 0.070) не несёт новых полей — подставляем нейтраль. */
+export function withGenParamDefaults(p: GenParams): GenParams {
+  return {
+    ...p,
+    presencePenalty: typeof p.presencePenalty === 'number' ? p.presencePenalty : 0,
+    frequencyPenalty: typeof p.frequencyPenalty === 'number' ? p.frequencyPenalty : 0,
+  }
 }
 
 export function isDefaultGenParams(p: GenParams): boolean {
   return (
     Math.abs(p.temperature - DEFAULT_GEN_PARAMS.temperature) < 0.01 &&
     p.maxTokens === DEFAULT_GEN_PARAMS.maxTokens &&
-    Math.abs(p.topP - DEFAULT_GEN_PARAMS.topP) < 0.01
+    Math.abs(p.topP - DEFAULT_GEN_PARAMS.topP) < 0.01 &&
+    Math.abs((p.presencePenalty || 0) - DEFAULT_GEN_PARAMS.presencePenalty) < 0.01 &&
+    Math.abs((p.frequencyPenalty || 0) - DEFAULT_GEN_PARAMS.frequencyPenalty) < 0.01
   )
 }
+
 
 export interface ModelOption {
   /** '' = Авто: движок сам выберет модель под задачу. */

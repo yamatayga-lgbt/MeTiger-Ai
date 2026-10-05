@@ -74,6 +74,9 @@ export function buildRequest(o) {
   if (ceil) maxTokens = Math.max(64, Math.min(maxTokens, ceil.maxOut));
   const temp = typeof o.temperature === 'number' ? o.temperature : 0.8;
   const topP = typeof o.topP === 'number' && Number.isFinite(o.topP) ? o.topP : undefined;
+  /* -2..2, undefined = провайдеру ничего не шлём (его собственный дефолт, обычно 0). */
+  const presencePenalty = typeof o.presencePenalty === 'number' && Number.isFinite(o.presencePenalty) ? o.presencePenalty : undefined;
+  const frequencyPenalty = typeof o.frequencyPenalty === 'number' && Number.isFinite(o.frequencyPenalty) ? o.frequencyPenalty : undefined;
   const pics = (Array.isArray(o.images) ? o.images : [])
     .map(parseDataUrl).filter(Boolean).slice(0, o.maxImages || 2);
 
@@ -127,7 +130,13 @@ export function buildRequest(o) {
       } : {}),
       body: {
         contents: sys.concat(contents),
-        generationConfig: Object.assign({ maxOutputTokens: maxTokens, temperature: temp }, topP != null ? { topP } : {}),
+        /* Gemini называет эти поля так же, как мы — camelCase, без перевода в snake_case. */
+        generationConfig: Object.assign(
+          { maxOutputTokens: maxTokens, temperature: temp },
+          topP != null ? { topP } : {},
+          presencePenalty != null ? { presencePenalty } : {},
+          frequencyPenalty != null ? { frequencyPenalty } : {},
+        ),
       },
       parse: (d) => {
         const cand = (d.candidates && d.candidates[0]) || {};
@@ -166,7 +175,14 @@ export function buildRequest(o) {
   return {
     url: url(cfg.base) + '/chat/completions',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
-    body: Object.assign({ model, messages, max_tokens: maxTokens, temperature: temp }, topP != null ? { top_p: topP } : {}, o.stream ? { stream: true } : {}, cfg.id === 'openrouter' ? { models: [model] } : {}),
+    body: Object.assign(
+      { model, messages, max_tokens: maxTokens, temperature: temp },
+      topP != null ? { top_p: topP } : {},
+      presencePenalty != null ? { presence_penalty: presencePenalty } : {},
+      frequencyPenalty != null ? { frequency_penalty: frequencyPenalty } : {},
+      o.stream ? { stream: true } : {},
+      cfg.id === 'openrouter' ? { models: [model] } : {},
+    ),
     parse: (d) => {
       const err = d.error && (d.error.message || d.error.code);
       const ch = (d.choices && d.choices[0]) || {};

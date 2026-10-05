@@ -887,14 +887,24 @@ console.log('L2 — песочница: Python через Pyodide (второй 
       "export { ParamsPopover } from '../../../src/components/ParamsPopover'",
       "export { ModelIcon, detectBrand } from '../../../src/components/ModelIcon'",
       "export { Topbar } from '../../../src/components/Topbar'",
-      "export { canModelThink, DEFAULT_GEN_PARAMS } from '../../../src/lib/models'",
+      "export { canModelThink, DEFAULT_GEN_PARAMS, isGenParams, isDefaultGenParams, withGenParamDefaults } from '../../../src/lib/models'",
       '',
     ].join('\n'), 'utf8');
     execFileSync(bin, [
       entry5, '--bundle', '--platform=node', '--format=esm',
       '--packages=external', '--loader:.png=dataurl', '--outfile=' + out5, '--log-level=error',
     ], { stdio: 'inherit' });
-    const { ModelPicker: MP5, ParamsPopover, Topbar, detectBrand, canModelThink, DEFAULT_GEN_PARAMS } = await import(out5);
+    const { ModelPicker: MP5, ParamsPopover, Topbar, detectBrand, canModelThink, DEFAULT_GEN_PARAMS, isGenParams, isDefaultGenParams, withGenParamDefaults } = await import(out5);
+
+    ok('M29z: старое сохранённое состояние (до 0.070, без penalty-полей) всё ещё валидно и достраивается нулями',
+      isGenParams({ temperature: 1, maxTokens: 0, topP: 0.95 })
+        && withGenParamDefaults({ temperature: 1, maxTokens: 0, topP: 0.95 }).presencePenalty === 0
+        && withGenParamDefaults({ temperature: 1, maxTokens: 0, topP: 0.95 }).frequencyPenalty === 0,
+      'ok')
+    ok('M29y: дефолт считается дефолтом, сдвинутый penalty — уже нет',
+      isDefaultGenParams(DEFAULT_GEN_PARAMS) === true
+        && isDefaultGenParams({ ...DEFAULT_GEN_PARAMS, presencePenalty: 0.5 }) === false,
+      'ok')
 
     const htmlThink = renderToStaticMarkup(
       React.createElement(MP5, {
@@ -960,6 +970,10 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         && /temperature/.test(htmlParams)
         && /max_tokens/.test(htmlParams) && /Макс\./.test(htmlParams)
         && /top_p/.test(htmlParams));
+    ok('M30b: 0.070 — карточка расширена presence_penalty и frequency_penalty (по умолчанию 0.0)',
+      /presence_penalty/.test(htmlParams) && /frequency_penalty/.test(htmlParams)
+        && (htmlParams.match(/>0\.0</g) || []).length === 2,
+      (htmlParams.match(/>0\.0</g) || []).length)
 
     const htmlTopbar = renderToStaticMarkup(
       React.createElement(Topbar, {

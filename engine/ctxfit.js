@@ -109,6 +109,25 @@ export function normalizeFields(body, env) {
     topP = clampNumber(rawTopP, 0.05, 1, 0.95);
   }
 
+  /* presence/frequency penalty — тот же приём, что у temperature: ноль — настоящее
+     значение («выключено»), а не «не прислали», поэтому проверяем на != null, а не
+     на truthy (0 || default стёр бы ровно тот случай, который чаще всего и шлют). */
+  let presencePenalty;
+  const rawPresence = o.presencePenalty != null ? o.presencePenalty : o.presence_penalty;
+  if (rawPresence != null && Number.isFinite(Number(rawPresence))) {
+    const v = clampNumber(rawPresence, -2, 2, 0);
+    presencePenalty = v;
+    if (Number(rawPresence) !== v) notes.push('presence_penalty ' + rawPresence + ' вернул в диапазон -2…2');
+  }
+
+  let frequencyPenalty;
+  const rawFrequency = o.frequencyPenalty != null ? o.frequencyPenalty : o.frequency_penalty;
+  if (rawFrequency != null && Number.isFinite(Number(rawFrequency))) {
+    const v = clampNumber(rawFrequency, -2, 2, 0);
+    frequencyPenalty = v;
+    if (Number(rawFrequency) !== v) notes.push('frequency_penalty ' + rawFrequency + ' вернул в диапазон -2…2');
+  }
+
   const reasoningEffort = o.reasoningEffort === 'low' || o.reasoningEffort === 'medium' || o.reasoningEffort === 'high'
     ? o.reasoningEffort
     : undefined;
@@ -117,7 +136,7 @@ export function normalizeFields(body, env) {
   const provider = typeof o.provider === 'string' && /^[a-z0-9_-]{1,40}$/i.test(o.provider.trim()) ? o.provider.trim() : undefined;
   const chatId = String(o.chatId || 'web').replace(/[\u0000-\u001f]/g, '').slice(0, 80);
 
-  return { text, system, history, temperature, maxTokens, topP, reasoningEffort, model, provider, chatId, notes, caps: cap };
+  return { text, system, history, temperature, maxTokens, topP, presencePenalty, frequencyPenalty, reasoningEffort, model, provider, chatId, notes, caps: cap };
 }
 
 /** Выжимка из отрезанной истории — одна строка, чтобы модель знала, что было раньше. */

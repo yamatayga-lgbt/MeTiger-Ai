@@ -36,6 +36,24 @@ ok('C3: clampNumber держит рамки и не боится мусора', 
   ok('C13: провайдер с путью («groq/../x») не проходит, а значит будет выбран движком', long.provider === undefined, JSON.stringify(long.provider));
   const t0 = normalizeFields({ text: 'x', temperature: 0 }, {});
   ok('C14: ялевой ноль — это значение, а не «не прислали»', t0.temperature === 0, JSON.stringify(t0.temperature));
+
+  /* 0.070: presence/frequency penalty — второе расширение карточки «Параметры»
+     (после temperature/max_tokens/top_p) тем же приёмом: клиентский мусор режется
+     молча ДО провайдера, а не долетает до него и не роняет запрос на 400. */
+  const penClamped = normalizeFields({ text: 'x', presencePenalty: 9, frequencyPenalty: -9 }, {});
+  ok('C14a: presence/frequency_penalty тоже возвращаются в рамку (-2…2) словами',
+    penClamped.presencePenalty === 2 && penClamped.frequencyPenalty === -2
+      && /presence_penalty 9/.test(penClamped.notes.join()) && /frequency_penalty -9/.test(penClamped.notes.join()),
+    JSON.stringify(penClamped));
+  const penZero = normalizeFields({ text: 'x', presencePenalty: 0, frequencyPenalty: 0 }, {});
+  ok('C14b: ноль у penalty — тоже значение, а не «не прислали» (как у temperature)',
+    penZero.presencePenalty === 0 && penZero.frequencyPenalty === 0, JSON.stringify(penZero));
+  const penSnake = normalizeFields({ text: 'x', presence_penalty: 1.5, frequency_penalty: -0.5 }, {});
+  ok('C14c: snake_case-алиасы (как шлют некоторые клиенты) читаются так же, как camelCase',
+    penSnake.presencePenalty === 1.5 && penSnake.frequencyPenalty === -0.5, JSON.stringify(penSnake));
+  const penNone = normalizeFields({ text: 'x' }, {});
+  ok('C14d: без penalty в запросе — поля undefined, а не 0 по умолчанию (провайдер получит свой дефолт)',
+    penNone.presencePenalty === undefined && penNone.frequencyPenalty === undefined, JSON.stringify(penNone));
 }
 
 {
