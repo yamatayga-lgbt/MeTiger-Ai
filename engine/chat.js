@@ -198,6 +198,14 @@ export function createEngine(opts) {
   /**
    * Обход. queue — список провайдеров; на каждого перебираем модели пула,
    * при 429/смерти ключа переходим к следующему ключу, потом к провайдеру.
+   *
+   * `input.chatId` — адрес ЗАПИСИ памяти (у одного человека несколько чатов
+   * приложения делят один адрес, см. memoryKey в engine/profile.js — это и
+   * даёт «агент помнит, что было в другом чате»). `input.origin` — id КОНКРЕТНОГО
+   * чата приложения, которым помечается новая реплика/факт/правило внутри этой
+   * записи: он не меняет, куда пишем, только чей это вклад — по нему потом можно
+   * стереть память ровно одного чата (functions/api/chat.js: forgetThread →
+   * memory.forgetOrigin), не трогая остальные чаты того же человека.
    */
   async function run(input) {
     const started = Date.now();
@@ -333,7 +341,7 @@ export function createEngine(opts) {
         if (!history.length && ctx.recent.length) history = ctx.recent.map((mm) => ({ role: mm.role, content: mm.content }));
         const lastA = history.slice().reverse().find((mm) => mm.role === 'assistant');
         const lastU = history.slice().reverse().find((mm) => mm.role === 'user');
-        const cons = await memory.consider(input.chatId, text, lastA ? { reply: lastA.content, user: lastU ? lastU.content : '' } : null);
+        const cons = await memory.consider(input.chatId, text, lastA ? { reply: lastA.content, user: lastU ? lastU.content : '' } : null, input.origin);
         if (cons && cons.block) system = system + '\n\n' + cons.block;
       } catch (e) {
         /* память не имеет права сломать ответ — максимум, она молчит */
@@ -539,9 +547,9 @@ export function createEngine(opts) {
                  и история, подставленная из памяти в следующий запрос, читается задом
                  наперёд: модель получала «ответ → вопрос» и начинала бормотать.
                  Это поймали живым прогоном и тестом H1. */
-              await memory.addMessage(input.chatId, 'user', text);
-              const dd = await memory.addMessage(input.chatId, 'assistant', final.reply);
-              await memory.rememberFacts(input.chatId, text);
+              await memory.addMessage(input.chatId, 'user', text, input.origin);
+              const dd = await memory.addMessage(input.chatId, 'assistant', final.reply, input.origin);
+              await memory.rememberFacts(input.chatId, text, input.origin);
               const after = dd || (await memory.load(input.chatId));
               if (memory.needsCompact(after)) await memory.compact(input.chatId);
               await memory.flush();

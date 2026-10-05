@@ -9,7 +9,7 @@ import { SettingsView } from './views/SettingsView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
-import { sendChat, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep } from './lib/api'
+import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep } from './lib/api'
 import {
   hydrateChatMedia,
   loadActiveChatId,
@@ -190,6 +190,10 @@ export default function App() {
   const deleteChat = useCallback(
     (id: string) => {
       haptic('medium')
+      // забыть вклад именно этого чата на сервере (факты, транскрипт, подстройка),
+      // не всю память человека — другие его чаты её по-прежнему разделяют.
+      // Best-effort и не блокирует удаление: см. комментарий в lib/api.ts
+      forgetThread(id)
       setChats((prev) => {
         // удаление окончательное: сам чат и пустые черновики уходят
         const removed = prev.find((c) => c.id === id)
@@ -255,6 +259,7 @@ export default function App() {
       void (async () => {
         const r = await sendChat(text, history, {
           signal: ac.signal,
+          threadId: chatId,
           ...(images && images.length ? { images } : {}),
           ...(attachments && attachments.length ? { attachments } : {}),
           ...(model ? { model } : {}),

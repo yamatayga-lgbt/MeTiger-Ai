@@ -83,26 +83,52 @@ export function normalize(chatId, raw) {
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: String(m.content).slice(0, LIMITS.msgChars),
           ts: Number(m.ts) || 0,
+          /* Из какого чата приложения пришла реплика (не адрес хранения — у
+             одного человека несколько чатов физически делят одну запись, см.
+             memoryKey в engine/profile.js). Пусто — запись старше этого поля
+             или пришла без привязки (бот, curl): трогать её при forgetOrigin
+             нельзя, мы не знаем, чья она. */
+          origin: String(m.origin || '').slice(0, 80),
         }))
       : [],
-    facts: Array.isArray(d.facts) ? d.facts.map((f) => String(f).slice(0, LIMITS.factChars)).slice(-LIMITS.factsMax) : [],
-    lessons: Array.isArray(d.lessons) ? d.lessons.map((l) => String(l).slice(0, 400)).slice(-LIMITS.lessonsMax) : [],
+    /* Факты и уроки раньше были просто строками — тег «из какого чата» неоткуда
+       взять у старых записей. normalize() принимает обе формы: голую строку
+       заворачивает в { text, origin: '', ts: 0 } (безопасно — такую запись
+       forgetOrigin не тронет ни для одного чата, чтобы не удалить чужое по
+       ошибке), а новые приходят уже объектом. */
+    facts: Array.isArray(d.facts)
+      ? d.facts
+        .map((f) => (typeof f === 'string' ? { text: f, origin: '', ts: 0 } : f))
+        .filter((f) => f && typeof f.text === 'string')
+        .map((f) => ({ text: String(f.text).slice(0, LIMITS.factChars), origin: String(f.origin || '').slice(0, 80), ts: Number(f.ts) || 0 }))
+        .filter((f) => f.text)
+        .slice(-LIMITS.factsMax)
+      : [],
+    lessons: Array.isArray(d.lessons)
+      ? d.lessons
+        .map((l) => (typeof l === 'string' ? { text: l, origin: '', ts: 0 } : l))
+        .filter((l) => l && typeof l.text === 'string')
+        .map((l) => ({ text: String(l.text).slice(0, 400), origin: String(l.origin || '').slice(0, 80), ts: Number(l.ts) || 0 }))
+        .filter((l) => l.text)
+        .slice(-LIMITS.lessonsMax)
+      : [],
     images: Array.isArray(d.images)
       ? d.images
         .filter((x) => x && typeof x.description === 'string')
-        .map((x) => ({ ts: Number(x.ts) || 0, description: String(x.description).slice(0, 2000), snippet: String(x.snippet || '').slice(0, 300) }))
+        .map((x) => ({ ts: Number(x.ts) || 0, description: String(x.description).slice(0, 2000), snippet: String(x.snippet || '').slice(0, 300), origin: String(x.origin || '').slice(0, 80) }))
         .slice(-12)
       : [],
     attune: {
       prefs: Array.isArray(d.attune && d.attune.prefs)
         ? d.attune.prefs
           .filter((p) => p && typeof p.text === 'string')
-          .map((p) => ({ key: String(p.key || p.text.slice(0, 24)), text: String(p.text).slice(0, 200), count: Number(p.count) || 1, ts: Number(p.ts) || 0 }))
+          .map((p) => ({ key: String(p.key || p.text.slice(0, 24)), text: String(p.text).slice(0, 200), count: Number(p.count) || 1, ts: Number(p.ts) || 0, origin: String(p.origin || '').slice(0, 80) }))
         : [],
       turns: Number(d.attune && d.attune.turns) || 0,
       hits: Number(d.attune && d.attune.hits) || 0,
       misses: Number(d.attune && d.attune.misses) || 0,
       goals: Array.isArray(d.attune && d.attune.goals) ? d.attune.goals.map(String).slice(-LIMITS.goalsMax) : [],
+
     },
   };
 }
@@ -225,39 +251,39 @@ export function createMemory(opts) {
     return next;
   }
 
-  async function addMessage(chatId, role, content) {
+  async function addMessage(chatId, role, content, origin) {
     const d = await load(chatId);
-    d.messages.push({ role: role === 'assistant' ? 'assistant' : 'user', content: String(content || '').slice(0, LIMITS.msgChars), ts: now() });
+    d.messages.push({ role: role === 'assistant' ? 'assistant' : 'user', content: String(content || '').slice(0, LIMITS.msgChars), ts: now(), origin: String(origin || '') });
     /* жёсткий потолок длины истории: KV не безразмерен, а старое уже есть в сводке */
     const cap = Math.max(cfg.compactAt * 4, 200);
     if (d.messages.length > cap) d.messages = d.messages.slice(-cap);
     return save(chatId, d);
   }
 
-  async function addFact(chatId, fact) {
+  async function addFact(chatId, fact, origin) {
     const f = String(fact || '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.factChars);
     if (!f) return null;
     const d = await load(chatId);
-    if (d.facts.indexOf(f) < 0) {
-      d.facts.push(f);
+    if (!d.facts.some((x) => x.text === f)) {
+      d.facts.push({ text: f, origin: String(origin || ''), ts: now() });
       if (d.facts.length > cfg.factsMax) d.facts = d.facts.slice(-cfg.factsMax);
       return save(chatId, d);
     }
     return d;
   }
 
-  async function rememberFacts(chatId, text) {
+  async function rememberFacts(chatId, text, origin) {
     const list = extractFacts(text);
-    for (const f of list) await addFact(chatId, f);
+    for (const f of list) await addFact(chatId, f, origin);
     return list;
   }
 
-  async function addLesson(chatId, text) {
+  async function addLesson(chatId, text, origin) {
     const l = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 400);
     if (!l) return null;
     const d = await load(chatId);
-    if (d.lessons.indexOf(l) < 0) {
-      d.lessons.push(l);
+    if (!d.lessons.some((x) => x.text === l)) {
+      d.lessons.push({ text: l, origin: String(origin || ''), ts: now() });
       if (d.lessons.length > LIMITS.lessonsMax) d.lessons = d.lessons.slice(-LIMITS.lessonsMax);
       return save(chatId, d);
     }
@@ -266,7 +292,7 @@ export function createMemory(opts) {
 
   /* ==================== Подстройка (attune) ==================== */
 
-  async function addPref(chatId, key, text) {
+  async function addPref(chatId, key, text, origin) {
     const t = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!t) return null;
     const k = String(key || t.slice(0, 24));
@@ -277,8 +303,12 @@ export function createMemory(opts) {
       found.count = (found.count || 1) + 1;
       found.ts = now();
       found.text = t;
+      /* origin НЕ трогаем: правило закреплено за чатом, где оно родилось
+         первый раз, даже если позже подтверждалось в другом чате того же
+         человека — иначе forgetOrigin при удалении того, другого чата,
+         нечаянно стёр бы чужое (для него) правило. */
     } else {
-      a.prefs.push({ key: k, text: t, count: 1, ts: now() });
+      a.prefs.push({ key: k, text: t, count: 1, ts: now(), origin: String(origin || '') });
       if (a.prefs.length > cfg.prefsMax) {
         /* прощаем то, что не подтверждалось: вытесняем самое слабое и самое старое */
         a.prefs.sort((x, y) => (x.count - y.count) || (x.ts - y.ts));
@@ -332,8 +362,8 @@ export function createMemory(opts) {
     const hot = d.messages.slice(-cfg.hot);
     const parts = [];
     if (d.summary) parts.push('【Сводка прошлого разговора】\n' + d.summary);
-    if (d.facts.length) parts.push('【Что важно помнить о собеседнике】\n' + d.facts.map((f) => '• ' + f).join('\n'));
-    if (!fast && d.lessons.length) parts.push('【Выученное в этом чате】\n' + d.lessons.map((l) => '• ' + l).join('\n'));
+    if (d.facts.length) parts.push('【Что важно помнить о собеседнике】\n' + d.facts.map((f) => '• ' + f.text).join('\n'));
+    if (!fast && d.lessons.length) parts.push('【Выученное в этом чате】\n' + d.lessons.map((l) => '• ' + l.text).join('\n'));
     if (!fast && d.images.length) {
       parts.push('【Что было на картинках】\n' + d.images.slice(-3).map((x) => '• ' + x.description.slice(0, 300)).join('\n'));
     }
@@ -372,7 +402,7 @@ export function createMemory(opts) {
    * Реакция на ПРОШЛЫЙ ответ + цель СЕЙЧАС — и всё, что из этого следует.
    * Вызывается до генерации: поправка должна попасть в этот же ответ.
    */
-  async function consider(chatId, text, prev) {
+  async function consider(chatId, text, prev, origin) {
     if (!enabled) return null;
     const d = await load(chatId);
     const prevUser = prev && prev.user;
@@ -380,7 +410,7 @@ export function createMemory(opts) {
     const reaction = prevReply ? readReaction(text, prevReply, prevUser) : null;
     const intent = resolveIntent(text, d.messages.filter((m) => m.role === 'user').map((m) => m.content), reaction, d.attune.goals[d.attune.goals.length - 1]);
     const dirs = directivesFrom(reaction, intent);
-    for (const x of dirs) await addPref(chatId, x.key, x.text);
+    for (const x of dirs) await addPref(chatId, x.key, x.text, origin);
     if (reaction && reaction.kind !== 'neutral') {
       await bumpAttune(chatId, { result: reaction.kind === 'hit' ? 'hit' : 'miss', goal: intent && intent.key });
     } else if (intent) {
@@ -463,6 +493,44 @@ export function createMemory(opts) {
     return true;
   }
 
+  /**
+   * Стереть вклад ОДНОГО чата приложения (origin), не трогая всю запись: у
+   * человека несколько чатов физически делят одну запись в хранилище (см.
+   * memoryKey в engine/profile.js — один адрес на всего человека, не на чат),
+   * поэтому полный forget() стёр бы заодно и другие его чаты. Здесь — точечно:
+   * из транскрипта, фактов, уроков и предпочтений убирается только то, что
+   * помечено этим origin, остальное остаётся как было.
+   *
+   * Чего это НЕ делает (и не может): сводка (summary) уже слита в один текст
+   * из реплик разных чатов до того, как они были стёрты компакцией — вычленить
+   * из неё кусок одного чата нельзя. Это редкий случай (сжатие срабатывает
+   * только на очень длинной истории, см. LIMITS.compactAt) и честно не
+   * выдаётся за полное удаление: только то, что ещё хранится отдельно.
+   */
+  async function forgetOrigin(chatId, origin) {
+    const o = String(origin || '').trim();
+    if (!o) return null;
+    const d = await load(chatId);
+    const before = {
+      messages: d.messages.length,
+      facts: d.facts.length,
+      lessons: d.lessons.length,
+      prefs: d.attune.prefs.length,
+    };
+    d.messages = d.messages.filter((m) => m.origin !== o);
+    d.facts = d.facts.filter((f) => f.origin !== o);
+    d.lessons = d.lessons.filter((l) => l.origin !== o);
+    d.images = d.images.filter((x) => x.origin !== o);
+    d.attune.prefs = d.attune.prefs.filter((p) => p.origin !== o);
+    await save(chatId, d);
+    return {
+      messages: before.messages - d.messages.length,
+      facts: before.facts - d.facts.length,
+      lessons: before.lessons - d.lessons.length,
+      prefs: before.prefs - d.attune.prefs.length,
+    };
+  }
+
   async function stats(chatId) {
     const d = await load(chatId);
     return {
@@ -498,6 +566,7 @@ export function createMemory(opts) {
     needsCompact,
     compact,
     forget,
+    forgetOrigin,
     stats,
     flush: () => Promise.all(Array.from(pending)),
   };

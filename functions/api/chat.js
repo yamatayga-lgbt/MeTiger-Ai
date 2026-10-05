@@ -65,6 +65,11 @@ import * as modelreg from '../../engine/modelreg.js';
 import { lineOf as imgLineOf } from '../../engine/imggen.js';
 import { normalizeFields, stats as ctxStats } from '../../engine/ctxfit.js';
 import { createProfile, memoryKey, sanitizeUserId } from '../../engine/profile.js';
+/* Тот же безопасный алфавит, что у sanitizeUserId: это проверка ЛЮБОГО
+   стабильного идентификатора без мусора (id чата приложения — не «юзер», но
+   требование к форме то же самое) — отдельного имени ради одной мысли не стоит
+   заводить новый регексп. */
+const sanitizeOrigin = sanitizeUserId;
 import { compose as composeAttach, readDocBytes, readVoiceBytes, DOC_CHARS, IMAGE_NAME, sniffImageMime } from '../../engine/attach.js';
 import { createStt } from '../../engine/voicein.js';
 
@@ -227,6 +232,27 @@ async function handlePost(context) {
   let body = null;
   try { body = await request.json(); } catch (e) { return json({ ok: false, error: 'нужен JSON' }, 400); }
 
+  /* «Забудь этот чат» — служебная просьба, не реплика в разговоре: ни текста,
+     ни вложений, ни счёта по рейт-лимиту ей не нужно, поэтому выход — раньше
+     всей остальной проверки тела. body.forgetThread — id КОНКРЕТНОГО чата
+     приложения (Chat.id из src/App.tsx), не адрес хранения: у человека
+     несколько чатов делят одну запись памяти (см. memoryKey в
+     engine/profile.js), а здесь стирается только то, что помечено этим чатом
+     (engine/memory.js: forgetOrigin) — остальные чаты того же человека не
+     трогаются и агент продолжает помнить то, что было в них. */
+  const forgetThreadId = sanitizeOrigin(body && body.forgetThread);
+  if (forgetThreadId) {
+    const uid0 = sanitizeUserId(body.userId)
+      || (/^tg_[0-9]{3,}$/.test(String(body.chatId || '')) ? String(body.chatId) : '');
+    const chatId0 = memoryKey(uid0, String(body.chatId || request.headers.get('x-mt-chat') || 'web').replace(/[\u0000-\u001f]/g, '').slice(0, 80));
+    const store0 = memoryStore(env);
+    if (!store0) return json({ ok: true, forgotten: false, why: 'память выключена (нет связки MEMORY)' });
+    const memory0 = createMemory({ store: store0, env });
+    const removed = await memory0.forgetOrigin(chatId0, forgetThreadId);
+    await memory0.flush();
+    return json({ ok: true, forgotten: true, chatId: chatId0, removed, memory: await memory0.stats(chatId0) });
+  }
+
   const words = String((body && body.text) || '').trim();
   if (words.length > 24000) return json({ ok: false, error: 'слишком длинный запрос' }, 413);
 
@@ -290,6 +316,10 @@ async function handlePost(context) {
   const userId = sanitizeUserId(body.userId)
     || (/^tg_[0-9]{3,}$/.test(String(norm.chatId || '')) ? norm.chatId : '');
   const chatId = memoryKey(userId, norm.chatId || String(request.headers.get('x-mt-chat') || 'web').slice(0, 80));
+  /* Чей конкретно это чат в приложении (Chat.id из src/App.tsx) — метка вклада
+     в общую запись chatId, не сам адрес. Без неё «удалить чат» не мог бы
+     забыть только свой кусок, см. forgetThread выше. */
+  const threadId = sanitizeOrigin(body.threadId);
   const store = memoryStore(env);
   /* Каталог моделей — до движка: без этого на холодном изоляте выбор модели из
      каталога снимается молча, и человек получает ответ не той модели. */
@@ -432,6 +462,7 @@ async function handlePost(context) {
        и «text» был бы просто украшением, а provider с путью дошёл бы до выбора */
     text: norm.text || text, history,
     chatId: memory ? chatId : undefined,
+    origin: memory ? threadId : undefined,
     images: allImages,
     tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
     only: norm.provider,

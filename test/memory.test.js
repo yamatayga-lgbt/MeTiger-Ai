@@ -63,6 +63,9 @@ console.log('A — полная форма записи: что сохранил
     keyFor('кот и пёс') + ' vs ' + keyFor('кот или пёс'));
   ok('A6c: длинный ключ не уезжает за разумные рамки (KV режет 512 байт, мы режем раньше)',
     keyFor('x'.repeat(500)).length <= 64, String(keyFor('x'.repeat(500)).length));
+  ok('A7: старые записи KV (факты/уроки — просто строки) читаются как {text, origin:"", ts:0} — обратная совместимость',
+    base.facts[0].text === 'факт' && base.facts[0].origin === '' && base.lessons[0].text === 'урок' && base.lessons[0].origin === '',
+    JSON.stringify({ facts: base.facts, lessons: base.lessons }));
 }
 
 console.log('B — хранилище: одно чтение на чат, запись не молчит об ошибке');
@@ -110,13 +113,16 @@ console.log('C — факты: запоминаем то, что человек 
   for (let i = 0; i < 9; i++) await m.addFact('c3', 'факт ' + i);
   await m.addFact('c3', 'факт 8');
   const d = await m.load('c3');
-  ok('C6: факты не дублируются', d.facts.filter((f) => f === 'факт 8').length === 1, JSON.stringify(d.facts));
+  ok('C6: факты не дублируются', d.facts.filter((f) => f.text === 'факт 8').length === 1, JSON.stringify(d.facts));
   ok('C7: потолок фактов держится — хранилище не раздувается', d.facts.length === 5, String(d.facts.length));
   ok('C8: rememberFacts вытаскивает из реплики и пишет', (await (async () => {
     const mm = createMemory({ store: fakeKV().store, env: {} });
     const list = await mm.rememberFacts('c4', 'меня зовут Тигр');
     return (await mm.load('c4')).facts.length === list.length && list.length === 1;
   })()));
+  ok('C9: факт хранит объектом { text, origin, ts } — чтобы потом знать, из какого чата он пришёл',
+    typeof d.facts[0] === 'object' && typeof d.facts[0].text === 'string' && 'origin' in d.facts[0] && 'ts' in d.facts[0],
+    JSON.stringify(d.facts[0]));
 }
 
 console.log('D — компакция: старое в сводку, свежее не потерять');
@@ -350,6 +356,78 @@ console.log('I — дозапрос продолжения не является
     memReqs === 1, 'всего запросов ' + sent.length + ', с памятью ' + memReqs);
   ok('I6: всего два запроса на ответ: сам и продолжение (совет дозапрос не разводит)',
     sent.length === 2, String(sent.length));
+}
+
+console.log('J — несколько чатов одного человека: общая память, точечное забывание одного чата');
+{
+  /* Два чата одного человека физически делят одну запись (адрес = userId, не
+     chatId приложения) — это и даёт кросс-чатовую осведомлённость. origin —
+     штамп «из какого чата» на каждой реплике/факте/правиле, по нему потом
+     можно стереть вклад ровно одного чата, не трогая остальные. */
+  const { store } = fakeKV();
+  const m = createMemory({ store, env: {} });
+  await m.addMessage('u-1', 'user', 'привет из чата А', 'chatA');
+  await m.addMessage('u-1', 'assistant', 'привет!', 'chatA');
+  await m.addFact('u-1', 'работает Python-разработчиком', 'chatA');
+  await m.addMessage('u-1', 'user', 'привет из чата Б', 'chatB');
+  await m.addMessage('u-1', 'assistant', 'и тебе привет', 'chatB');
+  await m.addFact('u-1', 'живёт в Гомеле', 'chatB');
+
+  const before = await m.load('u-1');
+  ok('J1: оба чата пишут в ОДНУ запись (адрес — человек, не чат приложения)',
+    before.messages.length === 4 && before.facts.length === 2, JSON.stringify({ msgs: before.messages.length, facts: before.facts.length }));
+  ok('J2: контекст для модели видит факты из ОБОИХ чатов — это и есть «агент помнит, что было в чате Б»',
+    before.facts.some((f) => f.text === 'работает Python-разработчиком') && before.facts.some((f) => f.text === 'живёт в Гомеле'));
+
+  const removed = await m.forgetOrigin('u-1', 'chatA');
+  const after = await m.load('u-1');
+  ok('J3: удаление чата А стёрло ровно его вклад — две реплики и один факт',
+    removed.messages === 2 && removed.facts === 1, JSON.stringify(removed));
+  ok('J4: чат Б остался НЕТРОНУТЫМ — свои реплики и факт на месте',
+    after.messages.length === 2 && after.messages.every((x) => x.origin === 'chatB')
+      && after.facts.length === 1 && after.facts[0].text === 'живёт в Гомеле',
+    JSON.stringify(after));
+  ok('J5: без origin в запросе — forgetOrigin отказывается (не знаем, что стирать, лучше ничего)',
+    (await m.forgetOrigin('u-1', '')) === null);
+}
+
+console.log('K — то же самое, но через HTTP-границу /api/chat (как видит фронт)');
+{
+  /* Настоящая KV хранит строки: put сериализует сам, get('json') отдаёт разобранный
+     объект (см. memoryStore выше и комментарий у G2) — упрощённый fakeKV() этого
+     не умеет (хранит и отдаёт сырое значение как есть), поэтому здесь свой фейк. */
+  const kvStore = new Map();
+  const kv = {
+    get: async (k) => (kvStore.has(k) ? JSON.parse(kvStore.get(k)) : null),
+    put: async (k, v) => { kvStore.set(k, v); },
+    delete: async (k) => { kvStore.delete(k); },
+  };
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    text: async () => JSON.stringify({ choices: [{ message: { content: 'ок, записал' }, finish_reason: 'stop' }] }),
+  });
+  const envWithKv = { GROQ_KEYS: 'g1', MEMORY: kv };
+  const post = (o) => onRequestPost({
+    request: new Request('http://x/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) }),
+    env: envWithKv,
+  });
+
+  await post({ text: 'меня зовут Тигр', userId: 'uuuu1111', threadId: 'thread-A' });
+  const j2 = await (await post({ text: 'у меня есть кот', userId: 'uuuu1111', threadId: 'thread-B' })).json();
+  ok('K1: оба «чата сайдбара» (один userId, разные threadId) делят общий счётчик памяти',
+    j2.ok === true && j2.memory && j2.memory.messages === 4, JSON.stringify(j2.memory));
+
+  const j3 = await (await post({ userId: 'uuuu1111', forgetThread: 'thread-A' })).json();
+  ok('K2: forgetThread не требует текста — это служебное действие, а не реплика',
+    j3.ok === true && j3.forgotten === true, JSON.stringify(j3));
+  ok('K3: после forgetThread для thread-A в записи остались только 2 реплики thread-B',
+    j3.memory.messages === 2, JSON.stringify(j3.memory));
+
+  const j4 = await (await post({ text: 'что ты про меня знаешь?', userId: 'uuuu1111', threadId: 'thread-B' })).json();
+  ok('K4: чат thread-B продолжает отвечать как ни в чём не бывало — его память не пострадала',
+    j4.ok === true, JSON.stringify(j4));
+  globalThis.fetch = saved;
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
