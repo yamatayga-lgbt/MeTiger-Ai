@@ -1017,9 +1017,10 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         && /class="topbar-side topbar-right"/.test(htmlTopbar)
         && cssSrc.includes('grid-template-columns: 44px 1fr 44px')
         && cssSrc.includes('grid-template-rows: minmax(0, 1fr)'));
-    ok('M31b: вместо апселла подписки («Подключить» как у ChatGPT) — капсула «Настройки» по центру, сразу открывает настройки (у нас всё бесплатно)',
-      /class="topbar-pill"[^>]*title="Новый чат"/.test(htmlTopbar)
-        && /Настройки<\/span>/.test(htmlTopbar)
+    ok('M31b: вместо апселла подписки («Подключить» как у ChatGPT) — капсула по центру показывает НАЗВАНИЕ ЧАТА, а нажатие на неё открывает настройки (у нас всё бесплатно)',
+      /class="topbar-pill"[^>]*title="Настройки"/.test(htmlTopbar)
+        && /<span>Новый чат<\/span>/.test(htmlTopbar)
+        && /aria-label="Новый чат · открыть настройки"/.test(htmlTopbar)
         && !/Подключить/.test(htmlTopbar));
     ok('M31c: кнопки слева и справа в шапке — круглые, с собственным фоном (как в референсе), а не обычные квадратные icon-btn',
       /icon-btn topbar-round only-mobile/.test(htmlTopbar)
