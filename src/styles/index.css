@@ -818,6 +818,33 @@ a {
   text-overflow: ellipsis;
 }
 
+/* Раздел без своего чата (например, «Настройки») — капсула не кликается и
+   не намекает на меню стрелкой: там нечего переименовывать/удалять. */
+.topbar-pill-static {
+  cursor: default;
+}
+
+.topbar-pill-static:hover {
+  background: var(--surface-2);
+}
+
+/* Переименование прямо в шапке — то же поле, что и у пункта чата в сайдбаре,
+   просто без своей рамки-капсулы вокруг (у rename-input она уже есть). */
+.topbar-pill-editing {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.topbar-pill-editing .rename-input {
+  width: 180px;
+  max-width: 60vw;
+  margin: 0;
+  text-align: center;
+  font-weight: 650;
+}
+
+
 /* Круглые кнопки слева/справа в шапке — отдельным фоном, как у ChatGPT,
    а не обычные квадратные icon-btn, которые используются по всему приложению. */
 .icon-btn.topbar-round {

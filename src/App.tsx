@@ -417,7 +417,12 @@ export default function App() {
           title={title}
           onOpenMenu={() => setMenuOpen(true)}
           onOpenWorkspace={() => setWorkspaceOpen(true)}
-          onOpenSettings={() => navigate('settings')}
+          {...(view === 'chat'
+            ? {
+                onRenameChat: (t: string) => renameChat(activeChatId, t),
+                onDeleteChat: () => deleteChat(activeChatId),
+              }
+            : {})}
         />
 
         <main className="content">

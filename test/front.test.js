@@ -1008,7 +1008,15 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         title: 'Новый чат',
         onOpenMenu() {},
         onOpenWorkspace() {},
-        onOpenSettings() {},
+        onRenameChat() {},
+        onDeleteChat() {},
+      }),
+    );
+    const htmlTopbarStatic = renderToStaticMarkup(
+      React.createElement(Topbar, {
+        title: 'Настройки',
+        onOpenMenu() {},
+        onOpenWorkspace() {},
       }),
     );
     const cssSrc = readFileSync('src/styles/index.css', 'utf8');
@@ -1017,15 +1025,31 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         && /class="topbar-side topbar-right"/.test(htmlTopbar)
         && cssSrc.includes('grid-template-columns: 44px 1fr 44px')
         && cssSrc.includes('grid-template-rows: minmax(0, 1fr)'));
-    ok('M31b: вместо апселла подписки («Подключить» как у ChatGPT) — капсула по центру показывает НАЗВАНИЕ ЧАТА, а нажатие на неё открывает настройки (у нас всё бесплатно)',
-      /class="topbar-pill"[^>]*title="Настройки"/.test(htmlTopbar)
+    ok('M31b: вместо апселла подписки («Подключить» как у ChatGPT) — капсула по центру показывает НАЗВАНИЕ ЧАТА, и НЕ открывает настройки по клику (это была ошибка 0.073, убрано)',
+      /class="topbar-pill"[^>]*title="Новый чат"/.test(htmlTopbar)
         && /<span>Новый чат<\/span>/.test(htmlTopbar)
-        && /aria-label="Новый чат · открыть настройки"/.test(htmlTopbar)
-        && !/Подключить/.test(htmlTopbar));
+        && !/Подключить/.test(htmlTopbar)
+        && !/открыть настройки/.test(htmlTopbar));
     ok('M31c: кнопки слева и справа в шапке — круглые, с собственным фоном (как в референсе), а не обычные квадратные icon-btn',
       /icon-btn topbar-round only-mobile/.test(htmlTopbar)
         && /icon-btn topbar-round"/.test(htmlTopbar)
         && cssSrc.includes('.icon-btn.topbar-round'));
+    ok('M31d: на экране чата капсула — кнопка со стрелкой вниз (намёк на меню Переименовать/Удалить), а не на разделах без своего чата («Настройки» и т.п.)',
+      /<button[^>]*class="topbar-pill"[^>]*aria-haspopup="menu"/.test(htmlTopbar)
+        && /<svg[^>]*class="lucide lucide-chevron-down"/.test(htmlTopbar)
+        && /<div class="topbar-pill topbar-pill-static"[^>]*>\s*<span>Настройки<\/span>/.test(htmlTopbarStatic)
+        && !/chevron-down/.test(htmlTopbarStatic));
+
+    const topbarSrc = readFileSync('src/components/Topbar.tsx', 'utf8');
+    const appSrc2 = readFileSync('src/App.tsx', 'utf8');
+    ok('M31e: клик по капсуле открывает меню «Переименовать / Удалить» (то же, что и у чата в сайдбаре), а не настройки — апселл-ошибка 0.073 полностью убрана',
+      topbarSrc.includes('Переименовать') && topbarSrc.includes('Удалить')
+        && topbarSrc.includes('className="chat-menu"') && topbarSrc.includes('className="danger"')
+        && !/onOpenSettings|Settings/.test(topbarSrc));
+    ok('M31f: App.tsx включает переименование/удаление в шапке только на экране чата, Настройки остаются доступны только через сайдбар',
+      /onRenameChat: \(t: string\) => renameChat\(activeChatId, t\)/.test(appSrc2)
+        && /onDeleteChat: \(\) => deleteChat\(activeChatId\)/.test(appSrc2)
+        && /view === 'chat'\s*\n\s*\? \{/.test(appSrc2));
 
     const htmlLiveThink = renderToStaticMarkup(
       React.createElement(ChatView, {
