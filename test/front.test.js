@@ -1008,15 +1008,23 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         title: 'Новый чат',
         onOpenMenu() {},
         onOpenWorkspace() {},
+        onOpenSettings() {},
       }),
     );
     const cssSrc = readFileSync('src/styles/index.css', 'utf8');
-    ok('M31: заголовок «Новый чат» центрирован в Topbar, а список моделей в пикере прокручивается (grid-template-rows: minmax(0, 1fr))',
+    ok('M31: список моделей в пикере прокручивается (grid-template-rows: minmax(0, 1fr))',
       /class="topbar-side topbar-left"/.test(htmlTopbar)
-        && /<div class="page-title">Новый чат<\/div>/.test(htmlTopbar)
         && /class="topbar-side topbar-right"/.test(htmlTopbar)
         && cssSrc.includes('grid-template-columns: 44px 1fr 44px')
         && cssSrc.includes('grid-template-rows: minmax(0, 1fr)'));
+    ok('M31b: вместо апселла подписки («Подключить» как у ChatGPT) — капсула «Настройки» по центру, сразу открывает настройки (у нас всё бесплатно)',
+      /class="topbar-pill"[^>]*title="Новый чат"/.test(htmlTopbar)
+        && /Настройки<\/span>/.test(htmlTopbar)
+        && !/Подключить/.test(htmlTopbar));
+    ok('M31c: кнопки слева и справа в шапке — круглые, с собственным фоном (как в референсе), а не обычные квадратные icon-btn',
+      /icon-btn topbar-round only-mobile/.test(htmlTopbar)
+        && /icon-btn topbar-round"/.test(htmlTopbar)
+        && cssSrc.includes('.icon-btn.topbar-round'));
 
     const htmlLiveThink = renderToStaticMarkup(
       React.createElement(ChatView, {

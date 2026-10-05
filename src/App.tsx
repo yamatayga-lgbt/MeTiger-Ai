@@ -417,6 +417,7 @@ export default function App() {
           title={title}
           onOpenMenu={() => setMenuOpen(true)}
           onOpenWorkspace={() => setWorkspaceOpen(true)}
+          onOpenSettings={() => navigate('settings')}
         />
 
         <main className="content">

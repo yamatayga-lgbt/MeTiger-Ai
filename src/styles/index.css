@@ -782,6 +782,57 @@ a {
   letter-spacing: -0.01em;
 }
 
+/* Капсула «Настройки» посередине шапки — на месте апселла подписки у ChatGPT.
+   У нас всё бесплатно, поэтому вместо «Подключить» тут прямой переход в настройки. */
+.topbar-pill {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color var(--t-fast), transform var(--t-fast);
+}
+
+.topbar-pill:hover {
+  background: var(--surface-hover);
+}
+
+.topbar-pill:active {
+  transform: scale(0.96);
+}
+
+.topbar-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Круглые кнопки слева/справа в шапке — отдельным фоном, как у ChatGPT,
+   а не обычные квадратные icon-btn, которые используются по всему приложению. */
+.icon-btn.topbar-round {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.icon-btn.topbar-round:hover {
+  background: var(--surface-hover);
+}
+
+
 /* ---------- Buttons / controls ---------- */
 .icon-btn {
   display: inline-flex;
