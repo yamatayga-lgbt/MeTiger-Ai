@@ -268,6 +268,52 @@ console.log('H — граница HTTP: /api/chat на общем слое');
 }
 async function onRequestGet(o) { const m = await import('../functions/api/chat.js'); return m.onRequestGet(o); }
 
+console.log('P — обход через proxy-worker/: рейт-лимит видит подлинный IP человека, не IP самого воркера');
+{
+  /* Должно совпадать с PROXY_SHARED_SECRET в functions/api/chat.js и
+     PROXY_SECRET в proxy-worker/src/index.js — одна и та же мягкая метка. */
+  const SECRET = 'mt-proxy-v1-9f3c2a7e1b4d6f80';
+  const ENV = { GROQ_KEYS: 'g1', RATE_MAX: '2' };
+  const kv = fakeKv();
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    text: async () => JSON.stringify({ choices: [{ message: { content: 'ответ' }, finish_reason: 'stop' }] }),
+  });
+  const envWithKv = Object.assign({}, ENV, { MEMORY: kv });
+  const reqVia = (proxyIp, secret, workerIp) => new Request('http://x/api/chat', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      // так видит запрос сам pages.dev: cf-connecting-ip — это IP воркера-обхода,
+      // ОДИН на всех, кто идёт этим путём, а не человека
+      'cf-connecting-ip': workerIp || '10.0.0.1',
+      ...(proxyIp ? { 'x-mt-proxy-ip': proxyIp } : {}),
+      ...(secret !== undefined ? { 'x-mt-proxy-secret': secret } : {}),
+    },
+    body: JSON.stringify({ text: 'привет', rate: 0 }),
+  });
+
+  const a1 = await onRequestPost({ request: reqVia('9.9.9.1', SECRET), env: envWithKv });
+  const a2 = await onRequestPost({ request: reqVia('9.9.9.1', SECRET), env: envWithKv });
+  const a3 = await onRequestPost({ request: reqVia('9.9.9.1', SECRET), env: envWithKv });
+  ok('P1: с правильным секретом лимит считается по x-mt-proxy-ip (человек), третий запрос той же «проксированной» личности — 429',
+    [a1.status, a2.status, a3.status].join(',') === '200,200,429', [a1.status, a2.status, a3.status].join(','));
+
+  const b1 = await onRequestPost({ request: reqVia('9.9.9.2', SECRET), env: envWithKv });
+  ok('P2: другой человек через ТОТ ЖЕ воркер (тот же cf-connecting-ip) — свой, ещё не исчерпанный лимит',
+    b1.status === 200, b1.status);
+
+  const c1 = await onRequestPost({ request: reqVia('9.9.9.9', 'wrong-secret', '10.0.0.9'), env: envWithKv });
+  const c2 = await onRequestPost({ request: reqVia('9.9.9.9', 'wrong-secret', '10.0.0.9'), env: envWithKv });
+  const c3 = await onRequestPost({ request: reqVia('9.9.9.9', 'wrong-secret', '10.0.0.9'), env: envWithKv });
+  ok('P3: заголовок без верного секрета в счёт не идёт (кто угодно мог бы его подделать) — лимит считается по настоящему cf-connecting-ip',
+    [c1.status, c2.status, c3.status].join(',') === '200,200,429', [c1.status, c2.status, c3.status].join(','));
+
+  globalThis.fetch = saved;
+}
+
+
 console.log('D — формы хранилища: прод и локальная заглушка');
 {
   /* Настоящий KV-байндинг отдаёт строку, а fileKV из scripts/api-dev.js — готовый

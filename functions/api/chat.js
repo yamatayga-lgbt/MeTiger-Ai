@@ -18,6 +18,29 @@ import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
 import { stats as skillStats } from '../../engine/skills.js';
 
+/**
+ * *.pages.dev целиком режется у части провайдеров по SNI (Россия — с мая 2024,
+ * похожая картина у части белорусских провайдеров) — дело не в этом коде, любой
+ * сайт на pages.dev страдает одинаково. Запасной вход для таких сетей —
+ * `proxy-worker/` на бесплатном *.workers.dev: он прозрачно пробрасывает сюда
+ * каждый запрос и шлёт подлинный IP человека отдельным заголовком — иначе
+ * рейт-лимитер ниже видел бы IP самого воркера-обхода, один на всех, кто идёт
+ * через него (см. proxy-worker/src/index.js).
+ *
+ * Секрет — МЯГКАЯ защита: как и X-Forwarded-For ниже, её можно подделать, послав
+ * заголовки на сам pages.dev напрямую. Это не граница безопасности, а просто
+ * честный учётчик для вежливого троттлинга, не стоит усложнять ради него.
+ */
+const PROXY_SHARED_SECRET = 'mt-proxy-v1-9f3c2a7e1b4d6f80';
+
+function realClientIp(request, env) {
+  const secret = (env && env.PROXY_SHARED_SECRET) || PROXY_SHARED_SECRET;
+  const viaProxy = request.headers.get('x-mt-proxy-ip');
+  if (viaProxy && request.headers.get('x-mt-proxy-secret') === secret) return viaProxy;
+  return request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
+}
+
+
 /** Чем читаем вложения веб-чата — одной строкой для curl-диагностики. */
 function attachLine(env) {
   const e = env || {};
@@ -238,7 +261,7 @@ async function handlePost(context) {
   const allImages = images.concat((att && att.images) || []);
   if (allImages.length > 2) allImages.length = 2;
 
-  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
+  const ip = realClientIp(request, env);
   const limits = limitsStore(env);
   const rate = createRateLimiter({ store: limits, cfg: limitsCfg(env), base: RATE_LOCAL });
   if (env.RATE_LIMIT !== '0') {

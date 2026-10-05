@@ -1,7 +1,7 @@
 {
   "name": "metiger-ai",
   "private": true,
-  "version": "0.075",
+  "version": "0.076",
   "type": "module",
   "description": "MeTiger Ai — универсальный ИИ-агент: один чат на сайте, тексты, код, картинки, файлы",
   "scripts": {
@@ -17,6 +17,7 @@
     "publish:fast": "bash scripts/publish.sh --fast",
     "publish:bump": "bash scripts/publish.sh --bump",
     "kv:onboard": "bash scripts/kv-onboard.sh",
+    "publish:proxy": "wrangler deploy --config proxy-worker/wrangler.toml",
     "ask": "node scripts/ask.js"
   },
   "dependencies": {
