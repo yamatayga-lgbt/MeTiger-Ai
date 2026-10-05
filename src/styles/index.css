@@ -1114,6 +1114,11 @@ kbd {
   padding: 0;
   max-width: 100%;
   color: var(--text);
+  /* Markdown здесь уже настоящая HTML-структура (заголовки/списки/абзацы со
+     своими отступами) — базовый pre-wrap только дублирует переносы строк из
+     исходного текста лишней пустой строкой поверх них. Внутри <pre><code>
+     собственный моноширинный white-space держит браузер сам по себе. */
+  white-space: normal;
 }
 
 .ai-name {
@@ -1130,6 +1135,107 @@ kbd {
 
 .msg-text p:last-child {
   margin-bottom: 0;
+}
+
+/* Заголовки, списки, цитаты, таблицы и т.д. — настоящий Markdown (remark/GFM),
+   а не звёздочки и решётки буквами: см. src/components/Markdown.tsx. */
+.msg-text h1,
+.msg-text h2,
+.msg-text h3,
+.msg-text h4,
+.msg-text h5,
+.msg-text h6 {
+  margin: 16px 0 8px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.msg-text > *:first-child {
+  margin-top: 0;
+}
+.msg-text h1 { font-size: 1.45em; }
+.msg-text h2 { font-size: 1.28em; }
+.msg-text h3 { font-size: 1.15em; }
+.msg-text h4, .msg-text h5, .msg-text h6 { font-size: 1.02em; }
+
+.msg-text ul,
+.msg-text ol {
+  margin: 0 0 8px;
+  padding-left: 1.4em;
+}
+.msg-text li {
+  margin: 2px 0;
+}
+.msg-text li > p {
+  margin: 0 0 4px;
+}
+.msg-text li::marker {
+  color: var(--text-2);
+}
+/* Чек-листы GFM (- [ ] / - [x]) — без маркера-точки перед чекбоксом */
+.msg-text li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -1.4em;
+}
+.msg-text input[type='checkbox'] {
+  margin-right: 6px;
+}
+
+.msg-text blockquote {
+  margin: 0 0 8px;
+  padding: 2px 12px;
+  border-left: 3px solid var(--border);
+  color: var(--text-2);
+}
+.msg-text blockquote p {
+  margin: 0 0 4px;
+}
+
+.msg-text hr {
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.msg-text strong {
+  font-weight: 700;
+}
+.msg-text del {
+  opacity: 0.65;
+}
+
+.msg-text a {
+  color: var(--accent, #4b6ef5);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-word;
+}
+
+.msg-text .md-img {
+  max-width: 100%;
+  border-radius: var(--r-md);
+  display: block;
+  margin: 6px 0;
+}
+
+.msg-text table {
+  margin: 4px 0 10px;
+  border-collapse: collapse;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+  font-size: 13.5px;
+}
+.msg-text th,
+.msg-text td {
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  text-align: left;
+}
+.msg-text thead th {
+  background: var(--surface-2);
+  font-weight: 650;
 }
 
 .msg-text code.inline {

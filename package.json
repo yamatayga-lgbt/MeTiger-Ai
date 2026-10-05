@@ -1,7 +1,7 @@
 {
   "name": "metiger-ai",
   "private": true,
-  "version": "0.068",
+  "version": "0.069",
   "type": "module",
   "description": "MeTiger Ai — универсальный ИИ-агент: один чат на сайте, тексты, код, картинки, файлы",
   "scripts": {
@@ -22,7 +22,9 @@
   "dependencies": {
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

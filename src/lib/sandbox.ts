@@ -124,7 +124,10 @@ export function buildSrcDoc(code: string): string {
   return [
     '<!doctype html><html><head><meta charset="utf-8">',
     /* Ни сети, ни файлов, ни картинок: только инлайн-скрипт, который мы сами вписали. */
-    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'">',
+    /* style-src тоже 'unsafe-inline': без него собственный <style> ниже (сброс
+       отступов/фона) сам попадал под запрет default-src 'none' и был просто
+       холостым — ничего не давал наружу/внутрь, но и не применялся. */
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'">',
     '<style>html,body{margin:0;background:transparent}</style>',
     '</head><body><script type="module">',
     'const M=' + JSON.stringify(MARK),

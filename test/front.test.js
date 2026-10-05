@@ -542,9 +542,11 @@ console.log('L — песочница: запуск кода в браузере
   ok('L12: отказа без браузера не скрыть — текст названного отказа экспортирован',
     /не проверен/.test(S.NO_SANDBOX), S.NO_SANDBOX)
 
-  /* А вот это уже про вёрстку: кнопка обязана быть у JS-блока, а iframe — без same-origin. */
+  /* А вот это уже про вёрстку: кнопка обязана быть у JS-блока, а iframe — без same-origin.
+     Блоки кода рендерит src/components/Markdown.tsx (полноценный Markdown, 0.069) —
+     туда же переехали CodeRunner и бейдж «песочница»/«demo», раньше бывшие в ChatView.tsx. */
   const runner = readFileSync(join(process.cwd(), 'src', 'components', 'CodeRunner.tsx'), 'utf8')
-  const chat = readFileSync(join(process.cwd(), 'src', 'views', 'ChatView.tsx'), 'utf8')
+  const chat = readFileSync(join(process.cwd(), 'src', 'components', 'Markdown.tsx'), 'utf8')
   ok('L13: iframe запускается строго с allow-scripts и без allow-same-origin',
     (() => { const m = /sandbox="([^"]*)"/.exec(runner); return !!m && m[1] === 'allow-scripts'; })(),
     (runner.match(/sandbox="[^"]*"/) || [''])[0])

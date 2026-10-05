@@ -8,8 +8,7 @@ import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../l
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
-import { CodeRunner } from '../components/CodeRunner'
-import { runnable } from '../lib/sandbox'
+import { Markdown } from '../components/Markdown'
 import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
@@ -480,40 +479,6 @@ function WebSearchBlock({ steps, live = false }: { steps: WebStep[]; live?: bool
   )
 }
 
-function RichText({ text, onRunOutput }: { text: string; onRunOutput?: (t: string) => void }) {
-  const segments = text.split(/```/)
-  return (
-    <div className="msg-text">
-      {segments.map((seg, i) => {
-        if (i % 2 === 1) {
-          const firstBreak = seg.indexOf('\n')
-          const lang = firstBreak > -1 ? seg.slice(0, firstBreak).trim() : ''
-          const code = firstBreak > -1 ? seg.slice(firstBreak + 1) : seg
-          return (
-            <div className="code-block" key={i}>
-              <div className="code-head">
-                <span>{lang || 'code'}</span>
-                {/* Не «demo» для JS: его можно запустить, и человек должен видеть,
-                    что блок проверялся, а не просто красиво подсвечен. */}
-                <span>{runnable(lang) ? 'песочница' : 'demo'}</span>
-              </div>
-              <pre>
-                <code>{code.replace(/\n$/, '')}</code>
-              </pre>
-              {runnable(lang) ? <CodeRunner code={code.replace(/\n$/, '')} onSend={onRunOutput} /> : null}
-            </div>
-          )
-        }
-        return (
-          <p key={i} style={{ whiteSpace: 'pre-wrap' }}>
-            {seg}
-          </p>
-        )
-      })}
-    </div>
-  )
-}
-
 interface ChatViewProps {
   user: Person
   messages: ChatMessage[]
@@ -593,6 +558,21 @@ export function ChatView({
     const id = window.setInterval(() => setSeconds((s) => s + 1), 1000)
     return () => window.clearInterval(id)
   }, [listening])
+
+  // Esc закрывает оверлеи этого экрана — глобальный обработчик в App.tsx не
+  // видит локальное состояние ChatView (меню вложений, параметры, просмотр
+  // картинки), а клавиатурный Esc должен работать одинаково для всех них.
+  useEffect(() => {
+    if (!addMenuOpen && !paramsOpen && !lightbox) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setAddMenuOpen(false)
+      setParamsOpen(false)
+      setLightbox(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [addMenuOpen, paramsOpen, lightbox])
 
   // авто-высота поля и при программном изменении текста (голос)
   useEffect(() => {
@@ -839,7 +819,7 @@ export function ChatView({
                   ) : null}
                   {Array.isArray(m.files) && m.files.length ? <WriteFilesBlock files={m.files} /> : null}
                   <div className="bubble">
-                    <RichText text={m.text} onRunOutput={(t) => onSend(t)} />
+                    <Markdown text={m.text} onRunOutput={(t) => onSend(t)} />
                   </div>
                   {/* Кто ответил и что сказал совет. Это не украшение: по ней видно,
                       что ответ проверяли, а не угадали, и где его исправили. */}
