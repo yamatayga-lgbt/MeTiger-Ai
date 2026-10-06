@@ -19,6 +19,7 @@ import { buildRequest, rawCall, streamCall, isProviderError, isRefusal, stripThi
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
 import { gatherTools } from './tools.js';
 import { sharedImggen, packImages, wantsImage, editsReady } from './imggen.js';
+import { sharedUsage } from './usage.js';
 import { fit as fitContext } from './ctxfit.js';
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { TOOL_TITLES } from './tools.js';
@@ -89,6 +90,10 @@ export function createEngine(opts) {
   const health = Object.create(null);   /* id → [ключевое состояние] */
   const lastCallAt = Object.create(null);
   const usage = Object.create(null);    /* id → { calls, ok, refused, dead, t } */
+  /* Расход провайдеров для панели «Использование и Лимиты»: считаем каждую
+     исходящую попытку и её исход. Карта `usage` выше — про этот запрос, а слой
+     `usage` живёт на изолят и уезжает в KV (engine/usage.js). */
+  const usageTrack = o.usage || sharedUsage(env);
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
 
   /* Карантин — для провайдеров, которые не медлят, а не отвечают вовсе: токен без
@@ -99,6 +104,9 @@ export function createEngine(opts) {
   const QUARANTINE_MS = Math.max(60000, Number(env.QUARANTINE_MS) || 240000);
   function punish(id, why, ms) {
     quar.set(id, { until: Date.now() + (ms || QUARANTINE_MS), why: String(why || '').slice(0, 140) });
+    /* Пауза видна человеку в панели использования: «провайдер молчит» и «провайдер
+       наказан на 10 минут» — разные истории, и вторая не должна выглядеть поломкой. */
+    usageTrack.pause(id, why, ms || QUARANTINE_MS);
   }
   function punished(id) {
     const q = quar.get(id);
@@ -111,6 +119,7 @@ export function createEngine(opts) {
     const u = usage[id] || (usage[id] = { calls: 0, ok: 0, refused: 0, dead: 0, t: 0 });
     u.calls++;
     if (kind) u[kind] = (u[kind] || 0) + 1;
+    usageTrack.outcome(id, kind);
   }
   function markKey(id, idx, patch) {
     const arr = health[id] || (health[id] = []);
@@ -134,6 +143,8 @@ export function createEngine(opts) {
    * Возвращает { ok, reply, reasoning, provider, model, finish } или { ok:false, why }.
    */
   async function attemptOne(id, model, req, deadlineLeft) {
+    /* Считаем попытку ДО сети: таймаут и отказ — тоже расход квоты провайдера. */
+    usageTrack.attempt(id, model);
     const budget = Math.min(TIMEOUT[req.tier] || 30000, deadlineLeft);
     /* Поток имеет смысл только там, где мы умеем его читать (req.sse) и есть кому его
        нести. Провайдер, проигнорировавший stream:true, вернёт json — streamCall это
@@ -782,6 +793,10 @@ export function createEngine(opts) {
     providers: P,
     health: () => JSON.parse(JSON.stringify(health)),
     usage: () => JSON.parse(JSON.stringify(usage)),
+    /* Расход по провайдерам за сутки (UTC) — для GET /api/usage и панели настроек.
+       `flush` вызывается дверью через waitUntil: он сам решает, пора ли писать в KV. */
+    usageStats: () => usageTrack.snapshot(),
+    usageFlush: (o) => usageTrack.flush(o),
     alive: () => Object.keys(P).filter((id) => providerAlive(P, id, health)),
     quarantine: () => Array.from(quar.entries()).map(([id, v]) => ({ provider: id, why: v.why, ms: Math.max(0, v.until - Date.now()) })),
     punish,

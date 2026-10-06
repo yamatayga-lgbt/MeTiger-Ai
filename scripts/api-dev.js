@@ -25,6 +25,9 @@ import { onRequestDelete as profileDelete, onRequestGet as profileGet, onRequest
 /* Реестр навыков — тоже дверью: без неё «что включится на мой вопрос» можно было
    смотреть только на проде, а проверять новые навыки надо локально. */
 import { onRequestGet as skillsGet } from '../functions/api/skills.js';
+/* Расход провайдеров — панель «Использование и Лимиты» в настройках. Локально она
+   обязана работать так же, как в проде: иначе счётчик проверялся бы только выкладкой. */
+import { onRequestGet as usageGet } from '../functions/api/usage.js';
 import * as modelreg from '../engine/modelreg.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,13 +102,14 @@ createServer((req, res) => {
       }
       if (path === '/api/models') return reply(await modelsGet(context));
       if (path === '/api/skills') return reply(await skillsGet(context));
+      if (path === '/api/usage') return reply(await usageGet(context));
       if (path === '/api/profile') {
         if (req.method === 'PUT') return reply(await profilePut(context));
         if (req.method === 'DELETE') return reply(await profileDelete(context));
         return reply(await profileGet(context));
       }
       const index = {
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills', 'GET /api/usage'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       };
       /* Прод на неизвестный путь не отвечает 200: Pages отдаёт либо заглушку

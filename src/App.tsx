@@ -6,6 +6,7 @@ import { CommandPalette, buildActions, type PaletteAction } from './components/C
 import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
 import { SettingsView } from './views/SettingsView'
+import { UsageView } from './views/UsageView'
 import { useTheme } from './hooks/useTheme'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
@@ -31,7 +32,7 @@ import {
   type ReasoningEffort,
 } from './lib/models'
 
-export type ViewId = 'chat' | 'settings'
+export type ViewId = 'chat' | 'settings' | 'usage'
 
 export interface Chat {
   id: string
@@ -43,6 +44,7 @@ export interface Chat {
 const TITLES: Record<ViewId, string> = {
   chat: 'Чат',
   settings: 'Настройки',
+  usage: 'Использование и Лимиты',
 }
 
 let msgSeq = 0
@@ -455,8 +457,10 @@ export default function App() {
               themePref={pref}
               onThemePref={setPref}
               notify={notify}
+              onNavigate={navigate}
             />
           ) : null}
+          {view === 'usage' ? <UsageView /> : null}
         </main>
       </div>
 

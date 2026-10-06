@@ -4098,3 +4098,151 @@ kbd {
   font-size: 11px;
   opacity: 0.9;
 }
+
+/* ---------- «Использование и Лимиты» (src/views/UsageView.tsx) ----------
+   Экран живых чисел: полоска «обновлено», четыре сводки и строки провайдеров с
+   полосой расхода. Всё на переменных темы — светлая и тёмная выглядят одинаково
+   уместно, отдельной палитры этому экрану не нужно. */
+.usage-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin: 18px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.usage-live .grow {
+  flex: 1;
+  min-width: 0;
+}
+.usage-dim {
+  color: var(--text-3);
+}
+/* Точка «живой»: пульсирует, только когда числа действительно пришли. Ошибка —
+   точка гаснет, а прежние числа остаются: «не обновилось» ≠ «расход ноль». */
+.usage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--text-3);
+  flex-shrink: 0;
+}
+.usage-dot.on {
+  background: var(--ok);
+  animation: usagePulse 2s infinite;
+}
+@keyframes usagePulse {
+  0% { box-shadow: 0 0 0 0 rgba(78, 201, 138, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(78, 201, 138, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(78, 201, 138, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .usage-dot.on { animation: none; }
+}
+
+.usage-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 26px;
+}
+.usage-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 12px 14px;
+}
+.usage-cap {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.usage-num {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 4px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+.usage-sub {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+.usage-prov {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.usage-prov:last-child {
+  border-bottom: none;
+}
+.usage-prov.is-paused {
+  background: var(--amber-soft);
+}
+.usage-prov-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.usage-prov-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+.usage-prov-head .n {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.usage-prov-head .d {
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.usage-bar {
+  height: 5px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  margin: 10px 0 8px;
+  overflow: hidden;
+}
+.usage-bar-fill {
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--ok);
+  transition: width var(--t-med);
+}
+.usage-bar-fill.is-full {
+  background: var(--amber);
+}
+.usage-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.usage-meta b {
+  color: var(--text);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.usage-k-warn {
+  color: var(--amber);
+}
+.usage-pause {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--amber);
+}
+@media (max-width: 420px) {
+  .usage-num { font-size: 23px; }
+}

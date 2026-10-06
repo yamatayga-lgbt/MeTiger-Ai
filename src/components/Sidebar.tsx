@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  Activity,
   Check,
   MessageSquarePlus,
   Moon,
@@ -33,6 +34,7 @@ interface SidebarProps {
 }
 
 const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
+  { id: 'usage', label: 'Использование', icon: Activity },
   { id: 'settings', label: 'Настройки', icon: Settings },
 ]
 

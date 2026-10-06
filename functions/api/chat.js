@@ -499,6 +499,9 @@ async function handlePost(context) {
   const after = () => Promise.all([
     quarantine.flush().catch(() => null),
     brave.flush().catch(() => null),
+    /* Счётчик расхода — тем же фоном: он сам решает, пора ли писать в KV
+       (USAGE_WRITE_MS), поэтому ответ человеку ждать хранилище не должен. */
+    engine.usageFlush().catch(() => null),
   ]).then(() => null);
   if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 

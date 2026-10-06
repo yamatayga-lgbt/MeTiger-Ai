@@ -598,6 +598,51 @@ export function recordModelTelemetry(id: string | undefined, ms?: number, chars?
   }
 }
 
+/**
+ * Сводка по этому устройству — для панели «Использование и Лимиты».
+ *
+ * Серверный счётчик (GET /api/usage) видит изоляты и потому врёт с точностью до
+ * минуты. Свой расход человек знает точно: он уже лежит в localStorage рядом с
+ * моделью и скоростью (getModelTelemetry). Панель показывает оба числа рядом —
+ * «на устройстве» мгновенно и точно, «всего» с честной сноской.
+ */
+export interface TelemetrySummary {
+  today: number
+  total: number
+  tokPerSec: number
+  minutes: number
+  perModel: { id: string; today: number; total: number; tokPerSec: number }[]
+}
+
+export function telemetrySummary(): TelemetrySummary {
+  const map = readTelemetryMap()
+  const today = todayIso()
+  const now = Date.now()
+  const perModel: TelemetrySummary['perModel'] = []
+  let daySum = 0
+  let totalSum = 0
+  let minSum = 0
+  for (const key of Object.keys(map)) {
+    if (key === '_total') continue
+    const e = map[key]
+    if (!e) continue
+    const usedToday = e.day === today ? e.dayCount || 0 : 0
+    const mins = Array.isArray(e.minStamps) ? e.minStamps.filter((t) => now - t < 60_000).length : 0
+    daySum += usedToday
+    totalSum += e.requests || 0
+    minSum += mins
+    perModel.push({ id: key, today: usedToday, total: e.requests || 0, tokPerSec: e.tokPerSec || 0 })
+  }
+  perModel.sort((a, b) => b.today - a.today || b.total - a.total)
+  return {
+    today: daySum,
+    total: map._total?.requests || totalSum,
+    tokPerSec: map._total?.tokPerSec || 0,
+    minutes: minSum,
+    perModel,
+  }
+}
+
 /* ==================== живой каталог (GET /api/models) ==================== */
 
 /** Строка каталога — то же, что отдаёт functions/api/models.js. */

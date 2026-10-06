@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Activity,
   ArrowLeftRight,
   Command,
   Folder,
@@ -162,6 +163,12 @@ export function buildActions({
       label: 'Перейти в чат',
       icon: MessageSquarePlus,
       run: () => navigate('chat'),
+    },
+    {
+      id: 'go-usage',
+      label: 'Использование и Лимиты',
+      icon: Activity,
+      run: () => navigate('usage'),
     },
     {
       id: 'go-settings',
