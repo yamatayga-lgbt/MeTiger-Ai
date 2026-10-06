@@ -1314,7 +1314,9 @@ console.log('── N · стекло (Glassmorphism) ───');
 
   ok('N9: на телефоне стекло дешевле (размытие меньше), сияние неподвижно, а карточки и меню — без размытия вовсе',
     /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 12px/.test(css)
-      && /@media \(max-width: 780px\) \{[\s\S]{0,900}\.ambient i \{\s*animation: none/.test(css)
+      /* Специфичность в проверке та же, что и в правке: `.ambient i` проигрывает
+         `.ambient i:nth-child(N)`, и «стоп» обязан быть объявлен так же точно. */
+      && /@media \(max-width: 780px\) \{[\s\S]{0,1200}\.ambient i:nth-child\(1\),[\s\S]{0,160}animation: none/.test(css)
       && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,200}backdrop-filter: none/.test(css));
 
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
