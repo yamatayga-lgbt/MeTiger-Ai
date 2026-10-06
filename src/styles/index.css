@@ -4283,6 +4283,16 @@ kbd {
   .usage-num { font-size: 23px; }
 }
 
+/* Узкий экран: переключатель «Авто · Мужской · Женский» не помещается рядом с
+   подписью и наезжает на неё (подпись обрезается под ним). Отправляем переключатель
+   на собственную строку — это было и до стекла, но чиним вместе. */
+@media (max-width: 460px) {
+  .settings-row .segmented {
+    flex: 1 0 100%;
+    justify-content: flex-start;
+  }
+}
+
 /* ============================================================
    Стекло · Glassmorphism («жидкое стекло») — 0.086
 
@@ -4389,7 +4399,12 @@ kbd {
 .settings-card,
 .usage-card,
 .profile-card {
-  background: var(--glass);
+  background-color: var(--glass);
+  /* Блик — слой ФОНА, а не псевдоэлемент. Псевдоэлементу нужен position:
+     relative, а он перебивал absolute у попапов (параметры и модели) и ломал
+     раскладку поля ввода: попап становился обычным блоком внутри строки и
+     растягивал её на пол-экрана. Слой фона не трогает положение вовсе. */
+  background-image: var(--glass-sheen);
   border-color: var(--glass-brd);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
@@ -4403,44 +4418,9 @@ kbd {
 .params-popover,
 .attach-menu,
 .chat-menu {
-  background: var(--glass-strong);
+  background-color: var(--glass-strong);
   backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-}
-
-/* Блик: тонкая световая плёнка по верхней половине панели. Именно она читается
-   как «стекло», а не как «полупрозрачный прямоугольник». */
-.topbar::after,
-.model-panel::after,
-.params-popover::after,
-.palette::after,
-.toast::after,
-.settings-card::after,
-.usage-card::after,
-.composer::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--glass-sheen);
-  pointer-events: none;
-}
-
-/* Панели с бликом обязаны его удерживать внутри себя. У .topbar это ещё и
-   обязательно по раскладке: он grid с тремя колонками (44px 1fr 44px), и
-   ::after в потоке стал бы ЧЕТВЁРТЫМ grid-элементом и уехал бы на вторую
-   строку. position: relative (не sticky!) держит блик на месте и не трогает
-   раскладку — про sticky и backdrop-filter см. комментарий у .topbar выше. */
-.topbar,
-.toast,
-.model-panel,
-.params-popover,
-.palette,
-.settings-card,
-.usage-card,
-.chat-menu,
-.attach-menu {
-  position: relative;
 }
 
 /* ---------- Обвязка ───────────────────────────────────────── */
@@ -4448,10 +4428,11 @@ kbd {
 /* Шапка: стекло поверх сияния. position: static сохранён намеренно — см.
    комментарий у .topbar выше, sticky+blur на мобильном WebKit дёргается. */
 .topbar {
-  /* первая строка — запасной цвет для браузеров без color-mix: неизвестная функция
-     обнуляет всё объявление, и без запаса шапка осталась бы совсем прозрачной */
-  background: var(--bg);
-  background: color-mix(in srgb, var(--bg) 58%, transparent);
+  /* только цвет: блик уже лежит слоем фона из общей группы, и шорткат
+     `background` его бы стёр. Первая строка — запасной цвет для браузеров
+     без color-mix (неизвестная функция обнуляет всё объявление). */
+  background-color: var(--bg);
+  background-color: color-mix(in srgb, var(--bg) 58%, transparent);
 }
 
 /* Сайдбар — выезжающий ящик: плотнее остальных, под ним текст чата. */
@@ -4464,6 +4445,7 @@ kbd {
 /* Поле ввода. Пилюля — полупрозрачное стекло, а размывает ОДНА обёртка вокруг
    неё (правило 2): иначе на телефоне два вложенных blur на самом видном месте. */
 .composer-wrap {
+  position: relative;
   background: var(--bg);
   background: linear-gradient(
     to top,
@@ -4471,13 +4453,27 @@ kbd {
     color-mix(in srgb, var(--bg) 78%, transparent) 78%,
     color-mix(in srgb, var(--bg) 62%, transparent)
   );
+}
+
+/* Размытие поля ввода — отдельным слоем, а НЕ backdrop-filter самой обёртки.
+   backdrop-filter делает элемент «системой координат» для потомков с
+   position: fixed. Внутри обёртки живёт затемнение .model-backdrop (им
+   закрывается попап по клику мимо), и оно сжималось до размеров поля ввода:
+   клик мимо перестал закрывать попап. Слой ::before размывает так же, но
+   ничего не переопределяет. */
+.composer-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
 }
 .composer {
   position: relative;
-  background: var(--bg-elevated);
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  background-color: var(--bg-elevated);
+  background-color: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  background-image: var(--glass-sheen);
   border-color: var(--glass-brd);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
 }
@@ -4487,16 +4483,16 @@ kbd {
 
 /* Пузырь человека: полупрозрачный, но БЕЗ размытия (правило 1). */
 .msg-user .bubble {
-  background: var(--user-bubble);
-  background: color-mix(in srgb, var(--user-bubble) 78%, transparent);
+  background-color: var(--user-bubble);
+  background-color: color-mix(in srgb, var(--user-bubble) 78%, transparent);
   border-color: var(--glass-brd);
   box-shadow: inset 0 1px 0 var(--glass-rim);
 }
 
 /* Голосовая панель и «+»-меню живут поверх ленты — им тоже стекло. */
 .voice-panel {
-  background: var(--accent-soft);
-  background: color-mix(in srgb, var(--accent-soft) 70%, var(--glass));
+  background-color: var(--accent-soft);
+  background-color: color-mix(in srgb, var(--accent-soft) 70%, var(--glass));
   box-shadow: inset 0 1px 0 var(--glass-rim);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
@@ -4519,11 +4515,31 @@ kbd {
    за текстом на узком экране ему тесно. */
 @media (max-width: 780px) {
   :root {
-    --glass-blur: 14px;
-    --glass-blur-lg: 20px;
+    --glass-blur: 12px;
+    --glass-blur-lg: 18px;
   }
   .ambient {
     opacity: calc(var(--ambient-o) * 0.82);
+  }
+  /* Сияние на телефоне стоит неподвижно: его дрейф — это три полноэкранных
+     слоя в композиторе на каждом кадре, а заметен он боковым зрением. Платим
+     кадром, а не красотой. */
+  .ambient i {
+    animation: none;
+  }
+  /* Карточки и выпадающие меню на телефоне — без размытия. Под ними лежит
+     только сияние (оно мягкое, размывать его нечего), а каждый backdrop-filter
+     в кадре во время прокрутки — это пересчёт размытия всего, что под ним.
+     Прозрачность, кромка и блик остаются: панель по-прежнему стеклянная. */
+  .settings-card,
+  .usage-card,
+  .profile-card,
+  .chat-menu,
+  .attach-menu,
+  .voice-panel {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--glass-strong);
   }
 }
 
@@ -4582,16 +4598,6 @@ kbd {
   }
   .msg-user .bubble {
     background: var(--user-bubble);
-  }
-  .topbar::after,
-  .model-panel::after,
-  .params-popover::after,
-  .palette::after,
-  .toast::after,
-  .settings-card::after,
-  .usage-card::after,
-  .composer::after {
-    display: none;
   }
 }
 

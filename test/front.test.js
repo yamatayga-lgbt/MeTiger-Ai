@@ -1253,7 +1253,11 @@ console.log('── N · стекло (Glassmorphism) ───');
      искать правила по всему файлу, проверка «в поле ввода ровно одно размытие»
      споткнётся о собственный же честный откат. */
   const fallback = css.indexOf('/* ---------- Уважение к настройкам системы ---------- */');
-  const glassArea = start < 0 ? '' : css.slice(start, fallback > start ? fallback : undefined);
+  /* Комментарии вырезаем: они объясняют, ЧЕМ был плох прежний подход, и сами
+     содержат слова вроде «position:» и «backdrop-filter» — проверка на них
+     спотыкалась бы о собственное объяснение. */
+  const stripCssComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+  const glassArea = start < 0 ? '' : stripCssComments(css.slice(start, fallback > start ? fallback : undefined));
   const ruleBody = (sel) => {
     const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp('(^|\\n)[ \\t]*' + esc + '[ \\t]*(?:,|\\{)', 'g');
@@ -1288,7 +1292,7 @@ console.log('── N · стекло (Glassmorphism) ───');
     glassGroup.slice(0, 80));
 
   ok('N4: поле ввода — стекло, и размывает его РОВНО одна обёртка (вложенный blur стоит как два полноэкранных композита)',
-    /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(ruleBody('.composer-wrap'))
+    /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(ruleBody('.composer-wrap::before'))
       && /color-mix\(in srgb, var\(--bg-elevated\) 72%, transparent\)/.test(ruleBody('.composer'))
       && !/backdrop-filter/.test(ruleBody('.composer')));
 
@@ -1298,18 +1302,20 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N6: пузырь человека при этом полупрозрачный (сквозь него видно сияние)',
     /color-mix\(in srgb, var\(--user-bubble\)/.test(ruleBody('.msg-user .bubble')));
 
-  ok('N7: блик-плёнка у панелей есть, а у шапки он удерживается position: relative (иначе стал бы четвёртой колонкой grid)',
-    /background: var\(--glass-sheen\)/.test(css)
-      && /\.topbar::after/.test(css)
-      && /position: relative/.test(ruleBody('.topbar')));
+  ok('N7: блик сделан СЛОЁМ ФОНА (background-image), а не псевдоэлементом — псевдоэлементу нужен position: relative, а он перебивал absolute у попапов',
+    /background-image: var\(--glass-sheen\)/.test(glassArea)
+      && !/\.topbar::after/.test(css)
+      && !/\.params-popover::after/.test(css)
+      && !/\.palette::after/.test(css));
 
   ok('N8: сияние — градиенты, а не filter: blur() (размытие огромного элемента — лишний композит на каждом кадре телефона)',
     /\.ambient i \{[\s\S]{0,400}radial-gradient/.test(css)
       && !/\.ambient[\s\S]{0,60}filter: blur/.test(css));
 
-  ok('N9: на телефоне стекло дешевле (14px вместо 22px) и сияние тише',
-    /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 14px/.test(css)
-      && /@media \(max-width: 780px\) \{[\s\S]{0,400}\.ambient/.test(css));
+  ok('N9: на телефоне стекло дешевле (размытие меньше), сияние неподвижно, а карточки и меню — без размытия вовсе',
+    /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 12px/.test(css)
+      && /@media \(max-width: 780px\) \{[\s\S]{0,900}\.ambient i \{\s*animation: none/.test(css)
+      && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,200}backdrop-filter: none/.test(css));
 
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
     /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)
@@ -1323,6 +1329,16 @@ console.log('── N · стекло (Glassmorphism) ───');
 
   ok('N12: блок стекла стоит ПОСЛЕ обычных правил — при равной специфичности выигрывает он',
     start > css.indexOf('\n.params-popover {') && start > css.indexOf('\n.settings-card {'));
+
+
+  ok('N14: стекло НЕ трогает положение элементов — попапы и меню остаются absolute (иначе попап становится блоком в строке поля ввода и растягивает её до 574px — это был баг 0.086)',
+    ['.model-panel', '.params-popover', '.attach-menu', '.chat-menu'].every((sel) => !/position:/.test(ruleBody(sel))));
+
+  ok('N15: у обёртки поля ввода своё размытие выключено — иначе backdrop-filter делает её системой координат для fixed-потомков, и затемнение .model-backdrop сжимается до размеров поля (клик мимо перестаёт закрывать попап)',
+    !/backdrop-filter: blur/.test(ruleBody('.composer-wrap')) && /backdrop-filter: blur/.test(ruleBody('.composer-wrap::before')));
+
+  ok('N16: на узком экране переключатель «Авто/Мужской/Женский» уходит на свою строку, а не наезжает на подпись',
+    /@media \(max-width: 460px\) \{[\s\S]{0,300}\.settings-row \.segmented[\s\S]{0,80}flex: 1 0 100%/.test(css));
 
   ok('N13: системная полоса телефона идёт за темой — полупрозрачная шапка не упирается в чужой цвет',
     /id="meta-theme-color"/.test(htmlSrc)
