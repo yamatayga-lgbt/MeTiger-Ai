@@ -1,5 +1,4 @@
 import {
-  Activity,
   Bell,
   Cpu,
   Fingerprint,
@@ -33,15 +32,12 @@ import { usePersistentState } from '../hooks/usePersistentState'
 import { displayName, initials, savePersonName, type Person } from '../lib/user'
 import { APP_VERSION, forceAppUpdate } from '../lib/version'
 import type { ThemePref } from '../hooks/useTheme'
-import type { ViewId } from '../App'
 
 interface SettingsViewProps {
   user: Person
   themePref: ThemePref
   onThemePref: (p: ThemePref) => void
   notify: (msg: string) => void
-  /** Переход на отдельный экран «Использование и Лимиты» (он же в сайдбаре и палитре). */
-  onNavigate: (v: ViewId) => void
 }
 
 export function SettingsView({
@@ -49,7 +45,6 @@ export function SettingsView({
   themePref,
   onThemePref,
   notify,
-  onNavigate,
 }: SettingsViewProps) {
   const [prefs, setPrefs] = usePersistentState('mt-settings', {
     notifications: true,
@@ -175,42 +170,6 @@ export function SettingsView({
                 { value: 'dark', label: <Moon size={15} />, title: 'Тёмная' },
               ]}
             />
-          </div>
-        </div>
-      </div>
-
-      {/* Отдельная кнопка, а не строка внутри «Приложения»: расход — то, что
-          открывают чаще всего (агент «затупил» → посмотреть, у кого кончилась
-          квота), и искать это в самом низу настроек было бы издевательством. */}
-      <div className="settings-group">
-        <div className="settings-label">Расход</div>
-        <div className="settings-card">
-          <div
-            className="settings-row tappable"
-            role="button"
-            tabIndex={0}
-            onClick={() => onNavigate('usage')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onNavigate('usage')
-              }
-            }}
-          >
-            <div className="icon-wrap">
-              <Activity size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Использование и Лимиты</div>
-              <div className="d">
-                Счётчик запросов в день и в минуту по каждому провайдеру — обновляется сам,
-                пока экран открыт
-              </div>
-            </div>
-            <Badge tone="green">Живой</Badge>
-            <Button variant="ghost" icon={Activity} onClick={() => onNavigate('usage')}>
-              Открыть
-            </Button>
           </div>
         </div>
       </div>

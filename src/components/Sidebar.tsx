@@ -34,7 +34,9 @@ interface SidebarProps {
 }
 
 const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
-  { id: 'usage', label: 'Использование', icon: Activity },
+  /* Расход — пунктом раздела, а не строкой в Настройках: в Настройках он дублировал
+     этот же переход, и человек искал его в двух местах вместо одного. */
+  { id: 'usage', label: 'Использование и Лимиты', icon: Activity },
   { id: 'settings', label: 'Настройки', icon: Settings },
 ]
 

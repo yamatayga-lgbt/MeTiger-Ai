@@ -457,7 +457,6 @@ export default function App() {
               themePref={pref}
               onThemePref={setPref}
               notify={notify}
-              onNavigate={navigate}
             />
           ) : null}
           {view === 'usage' ? <UsageView /> : null}
