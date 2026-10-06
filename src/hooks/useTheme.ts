@@ -36,6 +36,11 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolved
+    /* Системная полоса телефона (адресная строка/статус-бар) — в цвет темы.
+       Со стеклом это заметнее, чем раньше: полупрозрачная шапка не должна
+       упираться в чужой по цвету кусок системного интерфейса. */
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0a0a0c' : '#f7f6f2')
     try {
       localStorage.setItem(STORAGE_KEY, pref)
     } catch {

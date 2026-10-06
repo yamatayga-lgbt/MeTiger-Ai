@@ -1230,6 +1230,106 @@ console.log('L2 — песочница: Python через Pyodide (второй 
   }
 }
 
+
+console.log('── N · стекло (Glassmorphism) ───');
+{
+  /* Проверяем не «есть ли красиво», а три вещи, на которых стекло держится:
+     1) обвязка размывается, а лента сообщений — НЕТ (иначе прокрутка на
+        телефоне становится слайд-шоу: десятки backdrop-filter, едущих в кадре);
+     2) слабый браузер и просьба «меньше прозрачности» дают непрозрачные панели;
+     3) блик у шапки удерживается абсолютным позиционированием — у .topbar
+        grid на три колонки, и ::after в потоке стал бы четвёртым элементом. */
+  const css = readFileSync('src/styles/index.css', 'utf8');
+  const appSrc = readFileSync('src/App.tsx', 'utf8');
+  const htmlSrc = readFileSync('index.html', 'utf8');
+  const themeSrc = readFileSync('src/hooks/useTheme.ts', 'utf8');
+
+  /* Правило ищем ТОЛЬКО внутри блока стекла: у .composer, .topbar, .msg-user .bubble
+     и .drawer-scrim есть и прежние правила выше по файлу, и брать первое вхождение
+     значило бы проверять старый стиль вместо нового. Селектор может стоять и в
+     группе (через запятую) — поэтому ищем «селектор, затем , или {». */
+  const start = css.indexOf('/* ---------- Само стекло ---------- */');
+  /* Отсекаем хвост с откатами: там у стекла нарочно backdrop-filter: none, и если
+     искать правила по всему файлу, проверка «в поле ввода ровно одно размытие»
+     споткнётся о собственный же честный откат. */
+  const fallback = css.indexOf('/* ---------- Уважение к настройкам системы ---------- */');
+  const glassArea = start < 0 ? '' : css.slice(start, fallback > start ? fallback : undefined);
+  const ruleBody = (sel) => {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('(^|\\n)[ \\t]*' + esc + '[ \\t]*(?:,|\\{)', 'g');
+    const out = [];
+    let m;
+    while ((m = re.exec(glassArea))) {
+      const brace = glassArea.indexOf('{', m.index);
+      if (brace < 0) break;
+      out.push(glassArea.slice(m.index, glassArea.indexOf('}', brace)));
+      re.lastIndex = brace;
+    }
+    return out.join('\n');
+  };
+  const glassGroup = start < 0 ? '' : css.slice(start, css.indexOf('}', start));
+  const veilGroup = glassGroup.indexOf('.palette {') > 0
+    ? glassGroup.slice(glassGroup.indexOf('.palette {'))
+    : '';
+
+  ok('N1: сияние под стеклом нарисовано тремя пятнами внутри оболочки приложения, и оно вне чтения для программ (aria-hidden)',
+    /className="ambient"[^>]*aria-hidden="true"[\s\S]{0,120}<i \/>[\s\S]{0,40}<i \/>[\s\S]{0,40}<i \/>/.test(appSrc));
+
+  ok('N2: у стекла свои токены в ОБЕИХ темах (прозрачность, кромка, блик, тень, цвета сияния)',
+    ['dark', 'light'].every((t) => {
+      const i = css.indexOf("data-theme='" + t + "'");
+      const body = i < 0 ? '' : css.slice(i, css.indexOf('}', i));
+      return ['--glass:', '--glass-strong:', '--glass-brd:', '--glass-rim:', '--glass-sheen:', '--glass-shadow:', '--ambient-1:', '--ambient-2:', '--ambient-3:'].every((k) => body.includes(k));
+    }), 'нет токена в одной из тем');
+
+  ok('N3: размывается обвязка — шапка, сайдбар, попапы, меню, палитра, тост, ящик, карточки',
+    ['topbar', 'sidebar', 'chat-menu', 'model-panel', 'params-popover', 'attach-menu', 'palette', 'toast', 'workspace-drawer', 'settings-card', 'usage-card', 'profile-card']
+      .every((n) => glassGroup.includes('.' + n)) && /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(glassGroup),
+    glassGroup.slice(0, 80));
+
+  ok('N4: поле ввода — стекло, и размывает его РОВНО одна обёртка (вложенный blur стоит как два полноэкранных композита)',
+    /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(ruleBody('.composer-wrap'))
+      && /color-mix\(in srgb, var\(--bg-elevated\) 72%, transparent\)/.test(ruleBody('.composer'))
+      && !/backdrop-filter/.test(ruleBody('.composer')));
+
+  ok('N5: сообщения в ленте НЕ размываются — это то, что защищает прокрутку на телефоне',
+    !glassGroup.includes('.bubble') && !/backdrop-filter/.test(ruleBody('.msg-user .bubble')) && !/backdrop-filter/.test(ruleBody('.bubble')));
+
+  ok('N6: пузырь человека при этом полупрозрачный (сквозь него видно сияние)',
+    /color-mix\(in srgb, var\(--user-bubble\)/.test(ruleBody('.msg-user .bubble')));
+
+  ok('N7: блик-плёнка у панелей есть, а у шапки он удерживается position: relative (иначе стал бы четвёртой колонкой grid)',
+    /background: var\(--glass-sheen\)/.test(css)
+      && /\.topbar::after/.test(css)
+      && /position: relative/.test(ruleBody('.topbar')));
+
+  ok('N8: сияние — градиенты, а не filter: blur() (размытие огромного элемента — лишний композит на каждом кадре телефона)',
+    /\.ambient i \{[\s\S]{0,400}radial-gradient/.test(css)
+      && !/\.ambient[\s\S]{0,60}filter: blur/.test(css));
+
+  ok('N9: на телефоне стекло дешевле (14px вместо 22px) и сияние тише',
+    /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 14px/.test(css)
+      && /@media \(max-width: 780px\) \{[\s\S]{0,400}\.ambient/.test(css));
+
+  ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
+    /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)
+      && /prefers-reduced-transparency: reduce/.test(css)
+      && /prefers-contrast: more/.test(css)
+      && /backdrop-filter: none/.test(css));
+
+  ok('N11: скримы под ящиками и палитрой размывают фон, а не просто затемняют',
+    /backdrop-filter: blur\(7px\)/.test(ruleBody('.drawer-scrim'))
+      && /backdrop-filter: blur\(9px\)/.test(ruleBody('.palette-overlay')));
+
+  ok('N12: блок стекла стоит ПОСЛЕ обычных правил — при равной специфичности выигрывает он',
+    start > css.indexOf('\n.params-popover {') && start > css.indexOf('\n.settings-card {'));
+
+  ok('N13: системная полоса телефона идёт за темой — полупрозрачная шапка не упирается в чужой цвет',
+    /id="meta-theme-color"/.test(htmlSrc)
+      && /meta\[name="theme-color"\]/.test(themeSrc)
+      && /#0a0a0c/.test(themeSrc) && /#f7f6f2/.test(themeSrc));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
 
