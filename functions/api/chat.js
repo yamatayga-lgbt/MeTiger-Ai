@@ -583,6 +583,11 @@ async function handlePost(context) {
 
 export async function onRequestGet(context) {
   const engine = createEngine({ env: context.env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE });
+  /* Отметки «этот картиночный источник отвечал» лежат в общем хранилище: без этого
+     ожидания диагностика честно, но бесполезно говорила «не проверен» о pollinations,
+     которым картинка сделалась минуту назад (живой прод, 6 окт 2026). Потолок — на
+     случай медленного KV: диагностика не имеет права висеть. */
+  try { await Promise.race([engine.imgHydrate(), new Promise((r) => setTimeout(r, 300))]); } catch (e) { /* молча */ }
   return json({
     ok: true, alive: engine.alive(), providers: Object.keys(engine.providers).length,
     /* как отвечаем по умолчанию — человек видит это одним curl, не читая код */

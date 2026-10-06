@@ -236,7 +236,10 @@ export const LIST_SOURCES = {
   groq: { url: 'https://api.groq.com/openai/v1/models', prefix: 'GROQ', priceUnknown: true },
   mistral: { url: 'https://api.mistral.ai/v1/models', prefix: 'MISTRAL', priceUnknown: true },
   cerebras: { url: 'https://api.cerebras.ai/v1/models', prefix: 'CEREBRAS', priceUnknown: true },
-  zai: { url: 'https://api.z.ai/api/paas/v4/models', prefix: 'ZAI', priceUnknown: true },
+  /* У z.ai все ручки POST-овые: на GET их же адрес отвечает 405, и это было видно
+     в каталоге как вечная ошибка «zai: HTTP 405» (дважды — ещё и повтор был).
+     Ключ на месте, модели в пуле работают; не хватало только формы запроса. */
+  zai: { url: 'https://api.z.ai/api/paas/v4/models', prefix: 'ZAI', priceUnknown: true, postOnly: true },
   odirouter: { url: 'https://api.odirouter.ai/v1/models', prefix: 'ODIROUTER', priceUnknown: true },
   sharellm: { url: 'https://sharellm.net/v1/models', prefix: 'SHARELLM', priceUnknown: true },
   atria: { url: 'https://api.atria-asi.ai/v1/models', prefix: 'ATRIA', priceUnknown: true },
@@ -260,6 +263,8 @@ function nativeCfg(src, env) {
     : { authorization: 'Bearer ' + keys[0] };
   return {
     url: c.url,
+    /* postOnly значит «этот адрес отвечает 405 на GET, пробуй POST» (см. LIST_SOURCES.zai) */
+    postOnly: !!c.postOnly,
     headers: Object.assign({ accept: 'application/json' }, head),
     pick: (d) => (Array.isArray(d && d.data) ? d.data : (Array.isArray(d && d.models) ? d.models : (Array.isArray(d && d.result) ? d.result : []))),
     map: c.kind === 'gemini' ? fromGemini : ((m) => fromProviderList(m, src, { priceUnknown: c.priceUnknown })),
@@ -275,6 +280,23 @@ const PARSERS = {
  * Тянет каталоги провайдеров. Один источник сдох — второй всё равно считаем:
  * реестр дополняет, а не заменяет (как у донора).
  */
+/**
+ * Что сказать про отказ каталога. Молчаливый «HTTP 405» в ответе /api/models
+ * выглядит как поломка проекта, хотя означает конкретную вещь: у этого провайдера
+ * список моделей не отдаётся вообще, а его модели работают из пула движка.
+ */
+function catalogErrorOf(src, status) {
+  const code = Number(status) || 0;
+  const e = new Error(
+    code === 405 ? 'список моделей не отдаётся по этому адресу (HTTP 405) — их видно в выборе из пула движка'
+      : code === 401 || code === 403 ? 'ключ не принят (HTTP ' + code + ')'
+        : code === 404 ? 'адреса списка моделей больше нет (HTTP 404)'
+          : 'HTTP ' + code
+  );
+  e.status = code;
+  return e;
+}
+
 export async function fetchCatalog(opts = {}) {
   const fetchImpl = opts.fetchImpl || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
   if (!fetchImpl) return { models: [], errors: ['нет fetch'] };
@@ -296,22 +318,42 @@ export async function fetchCatalog(opts = {}) {
     const cfg = PARSERS[src] || nativeCfg(src, env);
     if (!cfg) { errors.push(src + ': нет парсера'); continue; }
     let got = null;
-    for (let i = 0; i < attempts && !got; i++) {
+    /* stop — «отказ определённый, повтор не поможет»: 401/403/404/405 лечатся не
+       повтором, а другим ключом или другим адресом. Раньше z.ai успевал положить
+       две одинаковые строки в каждый ответ каталога. */
+    let stop = false;
+    for (let i = 0; i < attempts && !got && !stop; i++) {
       const ctl = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
       if (timer && timer.unref) timer.unref();
       try {
-        const r = await fetchImpl(cfg.url, {
+        let r = await fetchImpl(cfg.url, {
           headers: Object.assign({ 'User-Agent': 'MeTigerAi/0.011' }, cfg.headers || { accept: 'application/json' }),
           signal: ctl ? ctl.signal : undefined,
         });
-        if (!r || !r.ok) throw new Error('HTTP ' + ((r && r.status) || 0));
+        /* 405 на GET — не «источника нет», а «этот адрес ждёт другую форму запроса»
+           (у z.ai все ручки POST-овые). Пробуем то, что он просит, один раз. */
+        if (r && r.status === 405 && cfg.postOnly) {
+          r = await fetchImpl(cfg.url, {
+            method: 'POST',
+            headers: Object.assign({ 'User-Agent': 'MeTigerAi/0.011', 'content-type': 'application/json' }, cfg.headers || {}),
+            body: '{}',
+            signal: ctl ? ctl.signal : undefined,
+          });
+        }
+        if (!r || !r.ok) throw catalogErrorOf(src, r && r.status);
         const data = cfg.pick(await r.json());
         if (!data.length) throw new Error('пустой список');
         got = data.map(cfg.map).filter(Boolean).slice(0, perSource(env));
       } catch (e) {
-        errors.push(src + ': ' + String((e && e.message) || e));
-        if (i < attempts - 1) await sleep(Math.min(4000, 500 * 2 ** i));
+        errors.push(src + ': ' + String((e && e.message) || e).replace(/^Error:\s*/, ''));
+        /* Определённый отказ (401/403/404/405) повтором не лечится: это не «сеть
+           мигнула», а «так нельзя». Раньше z.ai давал две одинаковые строки в
+           каждом ответе каталога, и по ним нельзя было понять, что случилось. */
+        const status = Number(e && e.status) || 0;
+        const definite = status >= 400 && status < 500 && status !== 408 && status !== 429;
+        if (definite) stop = true;
+        else if (i < attempts - 1) await sleep(Math.min(4000, 500 * 2 ** i));
       } finally {
         if (timer) clearTimeout(timer);
       }
@@ -321,7 +363,9 @@ export async function fetchCatalog(opts = {}) {
       for (const m of got) models.push(m);
     }
   }
-  return { models, errors, read };
+  /* Одинаковые строки в списке ошибок ничего не добавляют: «zai: HTTP 503» дважды —
+     это одна беда, а не две. Порядок сохраняем: первая беда важнее. */
+  return { models, errors: Array.from(new Set(errors)), read };
 }
 
 /**

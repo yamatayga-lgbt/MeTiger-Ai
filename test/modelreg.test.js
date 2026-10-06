@@ -178,11 +178,15 @@ ok('F5 после TTL каталог помечен протухшим', stalePr
 M.forgetMemo();
 netCalls = 0;
 const broke = await M.refresh(env, store, { fetchImpl: async () => { netCalls++; throw new Error('нет сети'); }, now: 1700000, sleep: async () => {} });
-ok('F6 сеть легла — движок получает то, что знал, а не пустоту', broke && broke.models.length === 4 && broke.errors.length === 4, JSON.stringify((broke && broke.errors || []).slice(0, 1)));
+/* Ошибок ровно по одной на источник: раньше в списке стояло «openrouter: нет сети»
+   дважды (по строке на попытку), и по нему нельзя было понять, сколько источников
+   легло. Повтор при этом остался — см. W4 ниже, там он и проверяется по вызовам. */
+ok('F6 сеть легла — движок получает то, что знал, а не пустоту, и в ошибках по строке на источник',
+  broke && broke.models.length === 4 && broke.errors.length === 2, JSON.stringify((broke && broke.errors || []).slice(0, 2)));
 ok('F7 на провале ничего не перезаписано', store.puts === 1 && netCalls === 4, `${netCalls} попыток`);
 M.forgetMemo();
 const empty = await M.refresh(env, fakeKv(1), { fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }), sleep: async () => {}, now: 1 });
-ok('F8 пустой ответ провайдера — пустой каталог без падения', Array.isArray(empty.models) && empty.models.length === 0 && (empty.errors || []).length === 4);
+ok('F8 пустой ответ провайдера — пустой каталог без падения (ошибки — по строке на источник)', Array.isArray(empty.models) && empty.models.length === 0 && (empty.errors || []).length === 2);
 M.forgetMemo();
 const obj = fakeKv(1);
 await obj.put(M.CATALOG_KEY, { updatedAt: Date.now(), count: 1, models: [{ id: 'a/b:free', free: true, chat: true, ctx: 100, maxOut: 10, vision: false, visionKnown: true, src: 'openrouter' }] });
@@ -610,6 +614,47 @@ console.log('── N · один id у двух провайдеров: пот�
     ok('V6: снимок проверки не старше полугода — иначе список пора перемерить',
       age >= 0 && age < 180, `дата ${VERIFIED.at}, прошло ${Math.round(age)} дн (перемерить: node scripts/models-probe.mjs --all)`);
   }
+
+
+console.log('── W · отказ каталога: 405 лечится формой запроса, а не повтором ───');
+{
+  /* Живой прод 6 окт 2026: /api/models в каждом ответе нёс «zai: HTTP 405» дважды, хотя
+     ключ на месте и модели в пуле работают. У z.ai все ручки POST-овые: GET на их адрес
+     списка не отдаёт. Теперь слой пробует POST, а определённые отказы (401/403/404/405)
+     не повторяет — «так нельзя» повтором не лечится. */
+  const env = { ZAI_KEYS: 'z1' };
+  const okList = () => new Response(JSON.stringify({ data: [{ id: 'glm-5.3' }, { id: 'glm-4.7-flash' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  const seen1 = [];
+  const r1 = await M.fetchCatalog({
+    env, sources: ['zai'], attempts: 2, sleep: async () => {},
+    fetchImpl: async (u, i) => { seen1.push((i && i.method) || 'GET'); return (i && i.method) === 'POST' ? okList() : new Response('nope', { status: 405 }); },
+  });
+  ok('W1: GET получил 405 → слой сам пробует POST и получает список',
+    r1.models.length === 2 && r1.errors.length === 0 && seen1.join(',') === 'GET,POST',
+    JSON.stringify({ calls: seen1, err: r1.errors }));
+
+  const seen2 = [];
+  const r2 = await M.fetchCatalog({
+    env, sources: ['zai'], attempts: 2, sleep: async () => {},
+    fetchImpl: async (u, i) => { seen2.push((i && i.method) || 'GET'); return new Response('nope', { status: 405 }); },
+  });
+  ok('W2: 405 в обе формы — одна внятная строка вместо двух «HTTP 405»',
+    r2.errors.length === 1 && /не отдаётся/.test(r2.errors[0]) && /из пула/.test(r2.errors[0]),
+    JSON.stringify(r2.errors));
+  ok('W3: и повтора не было — GET+POST и всё (определённый отказ не лечится повтором)',
+    seen2.length === 2, JSON.stringify(seen2));
+
+  const seen3 = [];
+  const r3 = await M.fetchCatalog({
+    env, sources: ['zai'], attempts: 2, sleep: async () => {},
+    fetchImpl: async () => { seen3.push('×'); return new Response('bad', { status: 503 }); },
+  });
+  ok('W4: а 5xx по-прежнему повторяем — это может быть мигнувшая сеть',
+    seen3.length === 2, String(seen3.length));
+  ok('W5: но одинаковые строки в списке ошибок больше не дублируются',
+    r3.errors.length === 1, JSON.stringify(r3.errors));
+}
 
 console.log('\n' + (fail ? 'ПРОВАЛЫ: ' + fail : 'готово') + ` · пройдено ${pass}, провалено ${fail}`);
 process.exit(fail ? 1 : 0);

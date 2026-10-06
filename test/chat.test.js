@@ -5,6 +5,7 @@
  */
 import { buildTable, providerAlive, pickKey } from '../engine/providers.js';
 import { createEngine } from '../engine/chat.js';
+import * as ensemble from '../engine/ensemble.js';
 import { onRequestPost, onRequestGet } from '../functions/api/chat.js';
 
 let pass = 0, fail = 0;
@@ -393,6 +394,49 @@ console.log('K2 — картинки сквозь движок (engine/imggen.js
     !f4.calls.some((c) => c.isImg) && !(r5.files || []).length && (r5.tools || []).indexOf('imggen') < 0,
     JSON.stringify({ calls: f4.calls.length, tools: r5.tools }));
   ok('K2l: и блок, который модель всё равно выдала, человеку не показывается', r5.reply.indexOf('```img') < 0, JSON.stringify(r5.reply));
+}
+
+console.log('W — ответ, проверенный калькулятором, голов не требует (замер прода: 4,5 с против 14,1 с)');
+{
+  /* Правило родилось из живого замера: одинаковый «17×23» отвечал 4,5 с и 14,1 с.
+     Во втором прогоне движок до потолка COUNCIL_MS (12 с) ждал головы, которые не
+     ответили, — и всё ради проверки того, что уже посчитал калькулятор. */
+  const proof = ensemble.verifiedByTool;
+  const C = '[Инструмент: Калькулятор]\n17*23 = 391';
+  ok('W1: ответ-число, совпавший с калькулятором, признан проверенным',
+    !!proof({ tools: ['calc'], block: C, reply: '391', intent: 'math' })
+      && !!proof({ tools: ['calc'], block: C, reply: '391 (результат калькулятора).', intent: 'math' }),
+    String(proof({ tools: ['calc'], block: C, reply: '391', intent: 'math' })));
+  ok('W2: модель проигнорировала число инструмента — совет по-прежнему нужен',
+    proof({ tools: ['calc'], block: C, reply: 'Не могу ответить на этот вопрос.', intent: 'math' }) === null
+      && proof({ tools: ['calc'], block: C, reply: 'Двадцать три умножить на семнадцать будет двести.', intent: 'math' }) === null);
+  ok('W3: осторожность и оговорки снимают пропуск — там вердикт к месту',
+    proof({ tools: ['calc'], block: C, reply: 'Примерно 391', intent: 'math' }) === null
+      && proof({ tools: ['calc'], block: C, reply: '391, но если считать по-другому, выйдет иное', intent: 'math' }) === null);
+  ok('W4: звался не calc — правила нет (другой инструмент сам может ошибаться)',
+    proof({ tools: ['web-search'], block: '[Инструмент: Поиск] 391', reply: '391', intent: 'math' }) === null);
+  ok('W5: разделители тысяч и запятая сверяются тем же ключом, что у совета',
+    !!proof({ tools: ['calc'], block: '[Инструмент: Калькулятор]\n2 000 000 / 4 = 500 000', reply: '500 000', intent: 'math' })
+      && !!proof({ tools: ['calc'], block: '[Инструмент: Калькулятор]\n1/8 = 0,125', reply: '0,125', intent: 'math' }));
+  ok('W6: абзац с числом внутри — не «ответ числом», головы остаются',
+    proof({ tools: ['calc'], block: C, reply: 'Смотри: 17 умножить на 23 это 391, и вот почему это важно для расчёта бюджета.', intent: 'math' }) === null);
+
+  /* Врезка в движок: на такой задаче головы не зовут вообще. */
+  const f = fakeFetch(() => ({ body: chat('391') }));
+  const e = createEngine({ env: ENV, fetch: f, sleep: async () => {}, quarantine: new Map() });
+  const r = await e.run({ text: 'сколько будет 17*23' });
+  ok('W7: типовая арифметика — один запрос вместо трёх (головы не звали)',
+    r.ok === true && /калькулятор/i.test(r.ensembleSkip || '') && f.calls.length === 1,
+    JSON.stringify({ calls: f.calls.length, skip: r.ensembleSkip }));
+  ok('W8: и человеку это не молчание: пропуск назван причиной, а не пустотой',
+    /проверен/i.test(r.ensembleSkip || ''), r.ensembleSkip);
+
+  /* Обратная сторона: без проверки инструментом совет жив, как жил. */
+  const f2 = fakeFetch((url, body, i) => ({ body: chat(i === 0 ? 'Осталось 17' : 'Осталось 17') }));
+  const e2 = createEngine({ env: ENV, fetch: f2, sleep: async () => {}, quarantine: new Map() });
+  const r2 = await e2.run({ text: 'В вазе 24 яблока, треть съели, ещё 5 вечером, сколько осталось?' });
+  ok('W9: задача без инструмента по-прежнему собирает головы (правило узкое, а не «совет выключен»)',
+    r2.ok === true && f2.calls.length > 1, JSON.stringify({ calls: f2.calls.length, ens: r2.ensemble, skip: r2.ensembleSkip }));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

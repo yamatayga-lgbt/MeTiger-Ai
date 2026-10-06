@@ -239,6 +239,14 @@ export function createEngine(opts) {
     const useSkills = isDefaultSys && input.skills !== false && input.useTools !== false;
     /* Готовность картинок — из кэша слоя, без сети: навыки правки оживают только
        тогда, когда источник уже хоть раз вернул байт (см. LIVE_CATS в skills.js). */
+    /* Навыки правки включаются по тому, отвечал ли картиночный источник хоть раз.
+       Раньше это знание умирало вместе с изолятом, и в свежем запросе 11 навыков
+       правки молчали, хотя картинки делались минуту назад. Отметку кладём в общее
+       хранилище (engine/imggen.js), поэтому здесь ждём чтение — но с потолком:
+       быстрое укладывается, медленное ответ не тормозит. */
+    if (imggen.hydrate && !imggen.status().sources.some((x) => x.ready)) {
+      await Promise.race([imggen.hydrate(), sleep(150)]);
+    }
     const imgToolReady = { imggen: editsReady(imggen.status()) };
     const skills = useSkills ? detectSkills(text, { images, env, imgToolReady }) : [];
     /* «Разное мышление» под язык: если в вопросе код или просьба кода на языке L,
@@ -561,6 +569,9 @@ export function createEngine(opts) {
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
             tools: toolsRes.used, sources: toolsRes.sources || [], webSteps: toolsRes.webSteps || [],
             reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
+            /* Ответ уже подтверждён инструментом (арифметику посчитал калькулятор) —
+               совет голов на такое не созывается: см. ensemble.verifiedByTool. */
+            toolProof: ensemble.verifiedByTool({ tools: toolsRes.used, block: toolsRes.block, reply, intent }),
           };
           /* Советы голов (Этап 2): факт может поправить большинство, манеру не трогаем.
              Головы вызываются с других провайдеров и сами совет не собирают. */
@@ -700,6 +711,13 @@ export function createEngine(opts) {
 
     const wantEnsemble = ec.on && ec.k >= 2 && !(input.images && input.images.length)
       && ensemble.shouldPoll(input.text, { env, classify: classifyTask });
+    if (wantEnsemble && hit.toolProof) {
+      /* Живой замер прода: одинаковый «17×23» стоил 4,5 с и 14,1 с — во втором
+         прогоне человек ждал головы, которые не ответили, ради проверки того, что
+         уже посчитал калькулятор. Пропуск назван словами, а не молчанием. */
+      out.ensembleSkip = hit.toolProof;
+      return out;
+    }
     if (wantEnsemble && spent >= budget) {
       out.ensembleSkip = 'бюджет советов исчерпан (COUNCIL_BUDGET=' + budget + ')';
     }
@@ -804,6 +822,10 @@ export function createEngine(opts) {
     /* состояние картинок — для /api/chat: человек должен видеть, что умеет
        движок сегодня, а не что ему обещают */
     img: () => imggen.status(),
+    /* Подтянуть «кто из картиночных источников отвечал» из общего хранилища:
+       дверь зовёт это перед своей диагностикой, чтобы строка статуса не говорила
+       «не проверен» о том, что проверено (см. engine/imggen.js). */
+    imgHydrate: () => (imggen.hydrate ? imggen.hydrate() : Promise.resolve(false)),
     imgReady: () => editsReady(imggen.status()),
     imgCanEdit: () => imggen.canEdit(),
   };

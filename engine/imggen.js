@@ -182,6 +182,17 @@ function pollinationsSource(env) {
  * Вердикты источников кэшируются на изолятор: пинать мёртвый API каждым запросом —
  * значит платить человеку секундами за чужую недоступность.
  */
+/* Живость источника переживает изолят.
+   Cloudflare поднимает Worker заново на каждый запрос, и признак «этот источник уже
+   отвечал» умирал вместе с ним: на живом проде 6 окт 2026 картинка сделалась за
+   6,2 с (pollinations), а GET /api/chat тут же подписывал все три источника как
+   «не проверен». Человек читает это как «картинки могут не работать».
+   Поэтому факт и время ответа кладём в то же общее хранилище, что и память, и
+   подписываем возраст — «жив (12 мин назад)». Хранится только отметка времени:
+   ни промптов, ни картинок там нет. */
+export const ALIVE_KEY = 'img:alive';
+export const ALIVE_TTL_MS = 24 * 3600e3;
+
 export function createImggen(o) {
   const opts = o || {};
   const env = opts.env || {};
@@ -196,6 +207,11 @@ export function createImggen(o) {
 
   const fail = new Map();          /* id → { why, until } */
   const alive = new Set();         /* id, который уже хоть раз ответил */
+  const seenAt = new Map();        /* id → когда ответил (мс) — это переживает изолят */
+  const kv = opts.store !== undefined ? opts.store
+    : (env.MEMORY && typeof env.MEMORY.get === 'function' && typeof env.MEMORY.put === 'function' ? env.MEMORY : null);
+  let aliveWritten = 0;            /* когда отметку писали в хранилище */
+  let hydrateOnce = null;          /* одно чтение на изолят, а не на каждый вызов */
   const withTimeout = (p, ms, label) => {
     let tm;
     return Promise.race([
@@ -203,6 +219,46 @@ export function createImggen(o) {
       new Promise((_, rej) => { tm = setTimeout(() => rej(new Error('таймаут источника ' + label)), ms); }),
     ]);
   };
+
+  /** Отметить источник живым — в памяти и (не чаще минуты) в хранилище. */
+  function remember(id, at) {
+    const t = Number(at) || now();
+    alive.add(id);
+    seenAt.set(id, t);
+    if (!kv) return;
+    if (now() - aliveWritten < 60000) return;
+    aliveWritten = now();
+    const payload = { at: now(), seen: {} };
+    for (const [k, v] of seenAt) payload.seen[k] = v;
+    /* Фоном и молча: это подсказка для статуса, и падать из-за неё ответ не имеет права. */
+    Promise.resolve(kv.put(ALIVE_KEY, JSON.stringify(payload), { expirationTtl: 172800 })).catch(() => {});
+  }
+
+  /**
+   * Прочитать «кто уже отвечал» из общего хранилища — один раз на изолят.
+   * Возвращает промис: дверь вызывает его фоном, а разбору навыков правки он нужен
+   * до ответа (по нему включаются 11 навыков категории `editing`), поэтому в run()
+   * он ждётся с потолком — быстрое чтение укладывается, медленное не тормозит ответ.
+   */
+  function hydrate() {
+    if (!kv) return Promise.resolve(false);
+    if (hydrateOnce) return hydrateOnce;
+    hydrateOnce = Promise.resolve(kv.get(ALIVE_KEY))
+      .then((raw) => {
+        let data = raw;
+        if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { data = null; } }
+        if (!data || !data.seen || typeof data.seen !== 'object') return false;
+        const fresh = now() - numOr(env.IMGGEN_ALIVE_MS, ALIVE_TTL_MS);
+        let got = 0;
+        for (const id of Object.keys(data.seen)) {
+          const t = Number(data.seen[id]) || 0;
+          if (t > fresh) { alive.add(id); seenAt.set(id, t); got++; }
+        }
+        return got > 0;
+      })
+      .catch(() => false);
+    return hydrateOnce;
+  }
 
   function chain() {
     const list = [];
@@ -234,6 +290,9 @@ export function createImggen(o) {
           id: s.id,
           edits: !!s.edits,
           ready: alive.has(s.id),
+          /* когда источник отвечал: свежая отметка — «проверен сейчас», из хранилища —
+             «жив (12 мин назад)». Молчаливое «жив» без возраста было бы догадкой. */
+          seenAt: seenAt.get(s.id) || 0,
           blocked: f && f.until > now() ? f.why : '',
         };
       }),
@@ -259,7 +318,7 @@ export function createImggen(o) {
         const buf = out.bytes;
         if (!buf || buf.length < 256) throw new Error('источник вернул пустую картинку');
         if (buf.length > MAX_IMAGE_BYTES) throw new Error(`картинка ${Math.round(buf.length / 1024)} КБ — больше, чем мы носим в ответе`);
-        alive.add(s.id);
+        remember(s.id);
         fail.delete(s.id);
         return { ok: true, source: s.id, bytes: buf, mime: out.mime || IMG_MIME(buf), text: out.text || '' };
       } catch (e) {
@@ -276,6 +335,8 @@ export function createImggen(o) {
     generate: (args) => run('generate', args),
     edit: (args) => run('edit', args),
     status,
+    /** Подтянуть «кто отвечал» из общего хранилища (один раз на изолят). */
+    hydrate,
     /** Есть ли чем править приложенную картинку (для навыков категории `editing`). */
     async canEdit() {
       if (off) return false;
@@ -291,7 +352,7 @@ export function createImggen(o) {
       });
       return !!probe.ok;
     },
-    forget: () => { fail.clear(); },
+    forget: () => { fail.clear(); seenAt.clear(); alive.clear(); hydrateOnce = null; },
   };
 }
 
@@ -417,7 +478,12 @@ function cleanName(s) {
  */
 let shared = null;
 export function sharedImggen(env, fetchImpl, log) {
-  if (!shared) shared = createImggen({ env: env || {}, fetch: fetchImpl, log });
+  if (!shared) {
+    shared = createImggen({ env: env || {}, fetch: fetchImpl, log });
+    /* Чтение — фоном и без ожидания: слой общий на изолят, поэтому к следующему
+       обращению отметки уже на месте, а на первый ответ это не влияет. */
+    Promise.resolve(shared.hydrate()).catch(() => {});
+  }
   return shared;
 }
 
@@ -434,6 +500,23 @@ export function editsReady(status) {
 export function lineOf(st) {
   if (!st) return 'выключен';
   if (!st.on) return 'выключен · ' + st.why;
-  const parts = st.sources.map((s) => s.id + (s.ready ? ' · жив' : s.blocked ? ' · ' + s.blocked : ' · не проверен') + (s.edits ? ' (правка есть)' : ''));
+  const parts = st.sources.map((s) => {
+    /* Возраст отметки обязателен: «жив» без него — догадка, а не состояние.
+       Отметка старше суток не показывается как «жив» — см. IMGGEN_ALIVE_MS. */
+    const age = s.ready && s.seenAt ? ' · ' + ageOf(s.seenAt) : '';
+    const state = s.ready ? 'жив' : s.blocked ? s.blocked : 'не проверен';
+    return s.id + ' · ' + state + age + (s.edits ? ' (правка есть)' : '');
+  });
   return 'источники: ' + (parts.join('; ') || 'нет ни одного') + (st.why ? ' · ' + st.why : '');
+}
+
+/** «12 мин назад», «только что», «2 ч назад» — словами, как в остальных подписях. */
+function ageOf(at) {
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (s < 45) return 'только что';
+  const m = Math.round(s / 60);
+  if (m < 60) return m + ' мин назад';
+  const h = Math.round(m / 60);
+  if (h < 24) return h + ' ч назад';
+  return Math.round(h / 24) + ' сут назад';
 }

@@ -289,6 +289,54 @@ ok('G9: IMG_DIRECTIVE объясняет модели формат блока', 
     calls3.length === 2, String(calls3.length));
 }
 
+
+console.log('H — живость источника переживает изолят (живой прод: картинка 6,2 с, а статус «не проверен»)');
+{
+  /* Cloudflare поднимает Worker заново на каждый запрос, поэтому признак «источник
+     отвечал» жил только внутри одного запроса. Теперь отметка лежит в общем KV. */
+  const kvMap = new Map();
+  const kv = {
+    get: async (k) => (kvMap.has(k) ? kvMap.get(k) : null),
+    put: async (k, v) => { kvMap.set(k, v); },
+  };
+  const env = { MEMORY: kv, IMGGEN_SOURCE: 'pollinations' };
+  /* источник отвечает настоящей jpeg-картинкой — как pollinations на проде */
+  const jpg = () => new Response(img('image/jpeg', 4096), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+  const routes = { pollinations: jpg };
+  const fetch1 = stub(routes);
+
+  const a = createImggen({ env, fetch: fetch1 });
+  ok('H1: до первого ответа статус честно говорит «не проверен»',
+    lineOf(a.status()).indexOf('не проверен') >= 0, lineOf(a.status()));
+  const r = await a.generate({ prompt: 'кот' });
+  ok('H2: источник ответил — статус «жив» с возрастом отметки, а не просто «жив»',
+    r.ok === true && /жив · (только что|\d+ мин назад)/.test(lineOf(a.status())), lineOf(a.status()));
+  await new Promise((res) => setTimeout(res, 30));
+  ok('H3: отметка уехала в общее хранилище (только время и имя источника)',
+    !!kvMap.get('img:alive') && Object.keys(JSON.parse(kvMap.get('img:alive')).seen).indexOf('pollinations') >= 0,
+    String(kvMap.get('img:alive')).slice(0, 120));
+
+  /* Новый изолят — новый слой, хранилище то же. */
+  const b = createImggen({ env, fetch: stub(routes) });
+  ok('H4: свежий изолят сам по себе ничего не помнит', lineOf(b.status()).indexOf('не проверен') >= 0, lineOf(b.status()));
+  await b.hydrate();
+  ok('H5: после гидратации он видит, что источник живой — и знает, когда тот отвечал',
+    /жив · (только что|\d+ мин назад)/.test(lineOf(b.status())), lineOf(b.status()));
+
+  /* Отметка старше суток — не «жив», а «не проверен»: прошлый ответ ничего не обещает. */
+  const stale = { MEMORY: { get: async () => JSON.stringify({ at: 1, seen: { pollinations: Date.now() - 25 * 3600 * 1000 } }), put: async () => {} }, IMGGEN_SOURCE: 'pollinations' };
+  const c = createImggen({ env: stale, fetch: stub(routes) });
+  await c.hydrate();
+  ok('H6: отметке старше суток не верим — она не выдаётся за сегодняшнюю проверку',
+    lineOf(c.status()).indexOf('не проверен') >= 0, lineOf(c.status()));
+
+  /* Мусор в хранилище не ломает статус. */
+  const junk = { MEMORY: { get: async () => 'не json', put: async () => {} }, IMGGEN_SOURCE: 'pollinations' };
+  const d = createImggen({ env: junk, fetch: stub(routes) });
+  const got = await d.hydrate();
+  ok('H7: испорченное значение в хранилище — не ошибка, а «не знаем»', got === false && lineOf(d.status()).indexOf('не проверен') >= 0);
+}
+
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 if (fail) process.exitCode = 1;
 void assert;
