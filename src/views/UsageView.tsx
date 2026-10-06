@@ -204,7 +204,12 @@ export function UsageView() {
           <div className="settings-row">
             <div className="grow">
               <div className="n">Точность</div>
-              <div className="d">{data?.precision.note || 'изоляты складывают числа в общее хранилище'}</div>
+              <div className="d">
+                {data?.precision.note || 'изоляты складывают числа в общее хранилище'}
+                {data?.precision.writeCap
+                  ? ` · не больше ${data.precision.writeCap} записей в KV на изолят за сутки, чтобы счётчик не съел чужую квоту`
+                  : ''}
+              </div>
             </div>
             <Badge tone="gray">≈</Badge>
           </div>

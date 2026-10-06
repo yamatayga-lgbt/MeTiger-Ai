@@ -301,7 +301,9 @@ console.log('W — дверь GET /api/usage');
     JSON.stringify(data.rate));
   ok('W5: ответ не кэшируется — иначе «живой» счётчик показывал бы вчерашнее',
     res.headers.get('cache-control') === 'no-store' && res.headers.get('access-control-allow-origin') === '*');
-  ok('W6: сутки UTC и время до сброса посчитаны',
+  ok('W6: потолок записей в KV виден наружу — панель подписывает им свою точность',
+    data.precision.writeCap === 300, JSON.stringify(data.precision));
+  ok('W6b: сутки UTC и время до сброса посчитаны',
     data.tz === 'UTC' && /^\d{4}-\d{2}-\d{2}$/.test(data.day) && data.resetInMs > 0 && data.resetInMs <= 86400000,
     data.day + ' · ' + data.resetInMs);
 

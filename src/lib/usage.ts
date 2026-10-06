@@ -52,6 +52,7 @@ export interface UsageSnapshot {
     approx: boolean
     writeMs: number
     readMs: number
+    writeCap?: number
     writes: number
     reads: number
     unsaved: number

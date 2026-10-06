@@ -110,6 +110,7 @@ export async function onRequestGet(context) {
       approx: true,
       writeMs: snap.writeMs,
       readMs: snap.readMs,
+      writeCap: snap.writeCap,
       writes: snap.writes,
       reads: snap.reads,
       unsaved: snap.unsaved,
