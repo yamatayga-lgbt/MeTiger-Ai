@@ -7,7 +7,17 @@
  */
 import * as jb from '../engine/jailbreak.js';
 import * as freedom from '../engine/freedom.js';
+import * as fdata from '../engine/freedom.data.js';
 import { createEngine } from '../engine/chat.js';
+
+/**
+ * Заголовок блока уточнения берём из самих данных, а не строкой в тесте.
+ * В 0.079 блок назывался «【Повторная попытка · отказ недопустим】», потом его
+ * переименовали в «【Свободная система · уточнение】» — и три проверки ниже
+ * остались на старом имени, хотя поведение не менялось: рамка обхода по-прежнему
+ * стоит первой, а при JAILBREAK=0 повтор случается без рамки.
+ */
+const BYPASS_HEAD = fdata.BYPASS_SYSTEM.split('\n')[0];
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -127,9 +137,9 @@ function fakeFetch(script) {
 {
   const esc = freedom.escalationBlock({}, { reframed: true, model: 'openai/gpt-oss-120b' });
   ok('E1: на эскалации рамка обхода стоит ПЕРЕД текстом обхода',
-    esc.indexOf('закрытая рабочая сессия') < esc.indexOf('【Повторная попытка') && esc.includes('【Повторная попытка'));
+    esc.indexOf('закрытая рабочая сессия') < esc.indexOf(BYPASS_HEAD) && esc.includes(BYPASS_HEAD));
   ok('E2: JAILBREAK=0 не убирает BYPASS — отказ по-прежнему переспрашивается',
-    freedom.escalationBlock({ JAILBREAK: '0' }, { reframed: true }).includes('【Повторная попытка')
+    freedom.escalationBlock({ JAILBREAK: '0' }, { reframed: true }).includes(BYPASS_HEAD)
       && !freedom.escalationBlock({ JAILBREAK: '0' }, { reframed: true }).includes('закрытая рабочая сессия'));
   ok('E3: reframeMark отдаёт метку и молчит при выключенном слое свободы',
     freedom.reframeMark({}, { model: 'gpt-4o' }) === ' ' + jb.JB_MARK
@@ -199,7 +209,7 @@ function fakeFetch(script) {
   const b6 = JSON.stringify((s6.calls[1] || {}).body || {});
   ok('F6: с выключенным обходом повтор всё равно случается, но без рамки обхода',
     s6.calls.length === 2 && r6.ok === true && /Skyrim/.test(r6.reply)
-      && b6.includes('【Повторная попытка') && !b6.includes('закрытая рабочая сессия'),
+      && b6.includes(BYPASS_HEAD) && !b6.includes('закрытая рабочая сессия'),
     JSON.stringify({ calls: s6.calls.length, ok: r6.ok }));
 }
 
