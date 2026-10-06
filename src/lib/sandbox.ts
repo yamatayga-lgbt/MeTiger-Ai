@@ -48,20 +48,65 @@ export interface RunResult {
 }
 
 /**
- * Запускать разрешаем только явно помеченному JS или Python: блок без языка или с
- * `ts`/чем-то ещё исполнить нечем, а врать «готово, работает» после молчаливого
- * пропуска — худшее, что может сделать интерфейс с кодом.
+ * Запускать/проверять разрешаем только то, у чего есть движок: явный JS, Python,
+ * SQL, HTML/CSS-превью, JSON или TypeScript (после транспиляции). Блок без языка
+ * или с чем-то неисполнимым показываем как `demo`, а врать «готово, работает» —
+ * худшее, что может сделать интерфейс с кодом.
  */
+
+/** Движок, который исполняет/проверяет код данного языка (см. CodeRunner.tsx). */
+export type EngineId = 'js' | 'py' | 'sql' | 'html' | 'json' | 'ts'
+
+/** Язык (алиас из ```-блока) → движок. Чем больше языков здесь, тем шире песочница. */
+const ENGINE_OF: Record<string, EngineId> = {
+  js: 'js', javascript: 'js', jsx: 'js', mjs: 'js', cjs: 'js', node: 'js',
+  ts: 'ts', typescript: 'ts', tsx: 'ts',
+  py: 'py', python: 'py', python3: 'py', py3: 'py',
+  sql: 'sql', sqlite: 'sql',
+  html: 'html', html5: 'html', xml: 'html', svg: 'html',
+  css: 'html', /* CSS-превью — это HTML-документ со стилем внутри */
+  json: 'json',
+}
+
+/** Какой движок обслуживает язык, или null — тогда блок только для показа (demo). */
+export function sandboxKind(lang: string): EngineId | null {
+  return ENGINE_OF[String(lang || '').trim().toLowerCase()] ?? null
+}
+
+/** Запускать/проверять разрешаем только то, у чего есть движок. */
 export function runnable(lang: string): boolean {
   return sandboxKind(lang) !== null
 }
 
-/** Какой из двух движков (src/components/CodeRunner.tsx) обслуживает этот язык. */
-export function sandboxKind(lang: string): 'js' | 'py' | null {
-  const l = String(lang || '').trim().toLowerCase()
-  if (l === 'js' || l === 'javascript') return 'js'
-  if (l === 'py' || l === 'python' || l === 'python3') return 'py'
-  return null
+/** Подпись на карточке блока кода: что именно делает кнопка запуска. */
+export function engineLabel(lang: string): string {
+  switch (sandboxKind(lang)) {
+    case 'js': return 'песочница'
+    case 'ts': return 'песочница · TS'
+    case 'py': return 'песочница · Python'
+    case 'sql': return 'песочница · SQL'
+    case 'html': return 'превью'
+    case 'json': return 'проверка · JSON'
+    default: return 'demo'
+  }
+}
+
+/**
+ * Документ-превью для HTML/CSS: код рендерится в изолированном iframe
+ * (`allow-scripts`, без same-origin), скрипты внутри работают, но до родителя не
+ * достают. Полный документ отдаём как есть, фрагмент заворачиваем в <body>; чистый
+ * CSS — в <style> поверх демо-странички, чтобы было на что смотреть.
+ */
+export function buildHtmlDoc(code: string, lang: string): string {
+  const src = String(code || '')
+  if (String(lang || '').trim().toLowerCase() === 'css') {
+    return '<!doctype html><html><head><meta charset="utf-8"><style>' + src + '</style></head>'
+      + '<body><h3>Превью CSS</h3><p class="mt">Демо-текст в стиле.</p>'
+      + '<button class="mt">Кнопка</button><ul><li>пункт</li><li>другой пункт</li></ul></body></html>'
+  }
+  const full = /^\s*<!?doctype|<html[\s>]/i.test(src)
+  return full ? src
+    : '<!doctype html><html><head><meta charset="utf-8"></head><body>' + src + '</body></html>'
 }
 
 /** Проверки до запуска. Каждая с причиной — модель читает этот текст и правит код. */

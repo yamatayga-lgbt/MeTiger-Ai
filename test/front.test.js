@@ -501,13 +501,17 @@ console.log('L — песочница: запуск кода в браузере
   execFileSync(bin, ['src/lib/sandbox.ts', '--bundle', '--platform=node', '--format=esm', '--outfile=' + sb], { cwd: process.cwd(), stdio: 'inherit' })
   const S = await import(sb)
 
-  ok('L1: к запуску допускается явный JS и Python (ts/без языка — нет)',
+  ok('L1: к запуску допускается явный JS, Python, SQL, HTML, JSON, TypeScript (без языка — нет)',
     S.runnable('js') && S.runnable('JavaScript') && S.runnable('python') && S.runnable('py')
-      && !S.runnable('ts') && !S.runnable(''),
-    [S.runnable('js'), S.runnable('python'), S.runnable('ts'), S.runnable('')].join('/'))
-  ok('L1b: движок выбирается по языку — js/py различимы, остальное — demo (null)',
-    S.sandboxKind('js') === 'js' && S.sandboxKind('python3') === 'py' && S.sandboxKind('ts') === null,
-    [S.sandboxKind('js'), S.sandboxKind('python3'), S.sandboxKind('ts')].join('/'))
+      && S.runnable('sql') && S.runnable('html') && S.runnable('json') && S.runnable('ts')
+      && !S.runnable(''),
+    [S.runnable('js'), S.runnable('sql'), S.runnable('ts'), S.runnable('')].join('/'))
+  ok('L1b: движок выбирается по языку — js/py/sql/html/json/ts различимы, без языка — demo (null)',
+    S.sandboxKind('js') === 'js' && S.sandboxKind('python3') === 'py'
+      && S.sandboxKind('sql') === 'sql' && S.sandboxKind('html') === 'html'
+      && S.sandboxKind('json') === 'json' && S.sandboxKind('ts') === 'ts'
+      && S.sandboxKind('') === null,
+    [S.sandboxKind('js'), S.sandboxKind('python3'), S.sandboxKind('sql'), S.sandboxKind('ts')].join('/'))
   ok('L2: пустой код и код через край — отказ назван словами, а не тишина',
     /пустой код/.test(S.prepare('   ').error) && S.prepare('1'.repeat(S.MAX_CODE + 1)).ok === false
       && S.prepare('1'.repeat(S.MAX_CODE + 1)).error.indexOf(String(S.MAX_CODE)) > 0,
@@ -556,8 +560,8 @@ console.log('L — песочница: запуск кода в браузере
     (runner.match(/sandbox="[^"]*"/) || [''])[0])
   ok('L14: watchdog стоит, и по нему фрейм снимается (убить цикл больше нечем)',
     /setTimeout\(/.test(runner) && /setDoc\(null\)/.test(runner))
-  ok('L15: JS-блок в чате помечен «песочница», а не «demo», и кнопка ему дана',
-    /runnable\(lang\)[\s\S]{0,80}песочница/.test(chat) && /<CodeRunner/.test(chat))
+  ok('L15: блок кода проверяется на запуск (runnable) и ему даётся CodeRunner с подписью engineLabel',
+    /runnable\(lang\)/.test(chat) && /engineLabel\(lang\)/.test(chat) && /<CodeRunner/.test(chat))
   ok('L16: вывод можно вернуть модели — иначе цикл обрывается на «у меня упало»',
     /onSend/.test(runner) && /Вывод — модели/.test(runner) && /onRunOutput/.test(chat))
 }
@@ -601,8 +605,12 @@ console.log('L2 — песочница: Python через Pyodide (второй 
   ok('L24: таймаут и у загрузки Pyodide, и у самого запуска — оба названы, а не тишина',
     /PY_LOAD_TIMEOUT_MS/.test(runner) && /PY_RUN_TIMEOUT_MS/.test(runner) && /не загрузилось за/.test(runner),
     'ok')
-  ok('L25: бейдж в чате различает языки — у Python своя подпись, не просто «песочница»',
-    /песочница · Python/.test(chat) && /sandboxKind\(lang\)/.test(chat),
+  ok('L25: бейдж различает языки — engineLabel даёт разные подписи (Python/SQL/HTML/JSON/TS)',
+    (() => {
+      const s = readFileSync(join(process.cwd(), 'src', 'lib', 'sandbox.ts'), 'utf8');
+      return /песочница · Python/.test(s) && /песочница · SQL/.test(s)
+        && /превью/.test(s) && /проверка · JSON/.test(s) && /песочница · TS/.test(s);
+    })(),
     'ok')
 }
 

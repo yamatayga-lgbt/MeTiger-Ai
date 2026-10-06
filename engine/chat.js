@@ -31,6 +31,7 @@ import * as ensemble from './ensemble.js';
 import { createMemory } from './memory.js';
 import * as modelreg from './modelreg.js';
 import * as vcouncil from './vcouncil.js';
+import { detectLang, langMind } from './langmind.js';
 
 export const PERSONA_SYSTEM =
   'Ты — MeTiger Ai, универсальный ИИ-агент в одном чате. Отвечаешь на языке '
@@ -228,6 +229,16 @@ export function createEngine(opts) {
        тогда, когда источник уже хоть раз вернул байт (см. LIVE_CATS в skills.js). */
     const imgToolReady = { imggen: editsReady(imggen.status()) };
     const skills = useSkills ? detectSkills(text, { images, env, imgToolReady }) : [];
+    /* «Разное мышление» под язык: если в вопросе код или просьба кода на языке L,
+       подсказываем модели думать в терминах этого языка (engine/langmind.js). */
+    let langMindBlock = '';
+    try {
+      const lid = detectLang(text);
+      if (lid) {
+        const m = langMind(lid);
+        if (m) langMindBlock = '\n\n' + m;
+      }
+    } catch (_e) { /* langmind не должен ломать запрос */ }
     const wantWeb = input.webSearch === true;
     const toolsRes = input.useTools === false
       ? { used: [], block: '', directive: '', sources: [], webSteps: [] }
@@ -268,7 +279,8 @@ export function createEngine(opts) {
       : '';
     let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint + thinkHint
       + (skBlock ? '\n\n' + skBlock : '')
-      + (toolsRes.directive ? '\n\n' + toolsRes.directive : '');
+      + (toolsRes.directive ? '\n\n' + toolsRes.directive : '')
+      + langMindBlock;
     /* Свобода ответа: блоки правил из engine/freedom.data.js (данные перенесены из
        Yama) доезжают только до нашего собственного режима — кто прислал свою
        `system`, тот её и контролирует. Головы совета идут со своей подсказкой, так

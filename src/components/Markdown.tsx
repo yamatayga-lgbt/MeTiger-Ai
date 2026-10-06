@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CodeRunner } from './CodeRunner'
-import { runnable, sandboxKind } from '../lib/sandbox'
+import { runnable, engineLabel } from '../lib/sandbox'
 
 /* ============================================================
    Рендер ответа модели как настоящего Markdown, а не сырого текста.
@@ -46,7 +46,7 @@ export function Markdown({ text, onRunOutput }: Props) {
               <div className="code-block">
                 <div className="code-head">
                   <span>{lang || 'code'}</span>
-                  <span>{runnable(lang) ? (sandboxKind(lang) === 'py' ? 'песочница · Python' : 'песочница') : 'demo'}</span>
+                  <span>{runnable(lang) ? engineLabel(lang) : 'demo'}</span>
                 </div>
                 <pre>
                   <code>{raw}</code>
