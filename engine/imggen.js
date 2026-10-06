@@ -32,6 +32,10 @@
 
 const TIMEOUT_MS = 90000;        /* генерация — не поиск: 90 с потолок на источник (IMGGEN_TIMEOUT_MS) */
 const FAIL_TTL_MS = 300000;      /* источник с ошибкой не трогаем 5 минут (IMGGEN_RETRY_MS) */
+/* Лимит — не поломка: «бесплатный доступ кончился на минуту» лечится ожиданием в
+   минуту, а не парковкой на пять. Живой прод 6 окт 2026: Pollinations отдавал 402
+   пачками, и после первого такого ответа картинки пропадали на 5 минут. */
+const BUSY_TTL_MS = 60000;       /* источник с 402/429 не трогаем минуту (IMGGEN_BUSY_MS) */
 
 /** env-переключатель: пустое и нечисловое — дефолт, 0 разрешён (отключить парковку). */
 const numOr = (v, d) => {
@@ -152,24 +156,64 @@ function geminiSource(env) {
 }
 
 /** Pollinations: без ключа, но с 2026 года отдаёт только то, что уже есть в кэше (402 иначе). */
-function pollinationsSource(env) {
+function pollinationsSource(env, state) {
   if (env.IMGGEN_POLLINATIONS === 'off') return null;
   const model = String(env.IMGGEN_POLL_MODEL || '');
+  /* Какая форма адреса сработала последней — помним на слой (объекты источников
+     собираются заново на каждый вызов, а выяснять одно и то же дважды незачем).
+     Начинаем с голой: она дешевле. */
+  const st = state || { form: 'bare' };
+  const prefer = () => st.form;
+  const urlsOf = (prompt, size) => {
+    const [w, h] = String(size || DEFAULT_SIZE).split('x');
+    const bare = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`;
+    const full = `${bare}?width=${encodeURIComponent(w || '1024')}&height=${encodeURIComponent(h || '576')}&nologo=true${model ? '&model=' + encodeURIComponent(model) : ''}`;
+    return { bare, full };
+  };
   return {
     id: 'pollinations',
     edits: false,
     async generate({ prompt, size, fetchImpl }) {
-      const [w, h] = String(size || DEFAULT_SIZE).split('x');
-      const q = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${encodeURIComponent(w || '1024')}&height=${encodeURIComponent(h || '576')}&nologo=true${model ? '&model=' + encodeURIComponent(model) : ''}`;
-      const r = await fetchImpl(q, { headers: { accept: 'image/*' } });
-      if (!r.ok) {
-        let why = 'http ' + r.status;
-        try { const j = await r.json(); why = (j && (j.error && (j.error.code || j.error.message) || j.message)) || why; } catch { /* тело не json */ }
-        throw new Error(why + ' (у Pollinations бесплатен только уже закэшированный промпт)');
+      /* 6 окт 2026 замерено вживую: у Pollinations бесплатен ТОЛЬКО голый адрес
+         (/prompt/<текст>), а любой параметр — width, height, nologo, model, seed —
+         отвечает 402 Payment Required и пустым телом {}. Проверено каждым
+         параметром по отдельности. Прежний адрес был с width/height/nologo, то есть
+         каждый заказ картинки упирался в 402. Поэтому сначала голый; если он не дал
+         картинку, пробуем адрес с параметрами — на случай, если платный шлюз снимут.
+         Цена голого адреса — картинка в размере по умолчанию (не в заказанном). */
+      const { bare, full } = urlsOf(prompt, size);
+      const order = prefer() === 'full' ? [['full', full], ['bare', bare]] : [['bare', bare], ['full', full]];
+      let lastBare = null;
+      let lastFull = null;
+      for (const [form, url] of order) {
+        const r = await fetchImpl(url, { headers: { accept: 'image/*' } });
+        if (!r.ok) {
+          let why = 'http ' + r.status;
+          try { const j = await r.json(); why = (j && (j.error && (j.error.code || j.error.message) || j.message)) || why; } catch { /* тело не json */ }
+          if (r.status === 402) {
+            /* Голый адрес бесплатен, пока не кончился лимит: 402 на нём — это про
+               лимит, а не про параметры. Разные причины — разные слова и разное
+               время ожидания (см. BUSY_TTL_MS). */
+            if (form === 'bare') why += ' (бесплатный лимит Pollinations исчерпан)';
+            else why += ' (у Pollinations бесплатен только голый адрес — без width/height/nologo)';
+          }
+          const e = new Error(why);
+          e.status = r.status;
+          if (form === 'bare') lastBare = e; else lastFull = e;
+          continue;
+        }
+        const buf = new Uint8Array(await r.arrayBuffer());
+        if (buf.length < 512) {
+          const e = new Error('источник вернул пустышку');
+          if (form === 'bare') lastBare = e; else lastFull = e;
+          continue;
+        }
+        st.form = form;
+        return { bytes: buf, url: '' };
       }
-      const buf = new Uint8Array(await r.arrayBuffer());
-      if (buf.length < 512) throw new Error('источник вернул пустышку');
-      return { bytes: buf, url: '' };
+      /* Если голый адрес упёрся в 402 — это про лимит, и человеку надо услышать
+         именно это, а не «у вас неправильные параметры». */
+      throw (lastBare && lastBare.status === 402 ? lastBare : (lastFull || lastBare)) || new Error('источник не ответил');
     },
     async edit() { throw new Error('правка картинок у этого источника не умеет'); },
   };
@@ -202,8 +246,11 @@ export function createImggen(o) {
   const off = String(env.IMGGEN || '') === 'off';
   const timeoutMs = Math.max(1000, numOr(env.IMGGEN_TIMEOUT_MS, TIMEOUT_MS));
   const failTtl = numOr(env.IMGGEN_RETRY_MS, FAIL_TTL_MS);
+  const busyTtl = Math.min(failTtl, numOr(env.IMGGEN_BUSY_MS, BUSY_TTL_MS));
   const only = String(env.IMGGEN_SOURCE || '').trim();
-  const builders = [geminiSource, odirouterSource, pollinationsSource];
+  /* Общее состояние источников на слой: у Pollinations — какая форма адреса сработала. */
+  const pollState = { form: 'bare' };
+  const builders = [geminiSource, odirouterSource, (env) => pollinationsSource(env, pollState)];
 
   const fail = new Map();          /* id → { why, until } */
   const alive = new Set();         /* id, который уже хоть раз ответил */
@@ -323,7 +370,11 @@ export function createImggen(o) {
         return { ok: true, source: s.id, bytes: buf, mime: out.mime || IMG_MIME(buf), text: out.text || '' };
       } catch (e) {
         const why = String((e && e.message) || e).slice(0, 160);
-        fail.set(s.id, { why, until: now() + failTtl });
+        const status = Number(e && e.status) || 0;
+        /* 402/429 — «доступ кончился», а не «источник сломался»: ждём минуту, чтобы
+           вернуться, а не пять, чтобы человек остался без картинок. */
+        const busy = status === 402 || status === 429 || /(^|\D)(402|429)(\D|$)/.test(why);
+        fail.set(s.id, { why, until: now() + (busy ? busyTtl : failTtl) });
         tried.push(`${s.id}: ${why}`);
         log('imggen', s.id, why);
       }

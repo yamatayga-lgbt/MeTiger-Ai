@@ -124,7 +124,12 @@ ok('G9: IMG_DIRECTIVE объясняет модели формат блока', 
   const layer = createImggen({ env: ENV, fetch: stub({ gemini: err('quota', 'RESOURCE_EXHAUSTED', 429), odirouter: err('paid_multimodal_model_forbidden', 'платные'), 'image.pollinations': () => json({}, 402) }, calls) });
   const r = await layer.generate({ prompt: 'a cat' });
   ok('G21: цепочка проходит все три источника и собирает причины', !r.ok && /429|RESOURCE/.test(r.why) && /paid_multimodal/.test(r.why) && /Pollinations/.test(r.why), r.why);
-  ok('G22: порядок — gemini, odirouter, pollinations', calls.length === 3 && /googleapis/.test(calls[0]) && /odirouter/.test(calls[1]) && /pollinations/.test(calls[2]), calls.join(' | '));
+/* Pollinations теперь пробует две формы адреса (см. секцию I): сначала голый, потом с
+   параметрами. На отказе это два запроса, и это правильно — «голый адрес бесплатен»
+   замерено на живом сервисе 6 окт 2026, и он дешевле прежнего. */
+  ok('G22: порядок — gemini, odirouter, потом pollinations (обе формы адреса)',
+    calls.length === 4 && /googleapis/.test(calls[0]) && /odirouter/.test(calls[1]) && calls.slice(2).every((u) => /pollinations/.test(u)) && !calls[2].includes('?') && calls[3].includes('?'),
+    calls.join(' | '));
   const calls2 = [];
   const layer2 = createImggen({ env: ENV, fetch: stub({ gemini: err('quota', 'x', 429), odirouter: () => odirOk() }, calls2) });
   const r2 = await layer2.generate({ prompt: 'a cat' });
@@ -146,7 +151,10 @@ ok('G9: IMG_DIRECTIVE объясняет модели формат блока', 
   const r1 = await layer.generate({ prompt: 'a cat' });
   const n = calls.length;
   const r2 = await layer.generate({ prompt: 'another cat' });
-  ok('G26: отказавший источник паркуется — второго вызова нет', calls.length === n && n === 3, calls.join(' | '));
+  /* Три запроса первого заказа — это gemini, odirouter и pollinations (тот теперь
+     пробует две формы адреса). Важно другое: на ВТОРОМ заказе ни одного нового
+     запроса, потому что отказавшие источники припаркованы. */
+  ok('G26: отказавший источник паркуется — второго вызова нет', calls.length === n, calls.join(' | '));
   ok('G27: и в причине прямо сказано, сколько ждать', /ждём \d+ с/.test(r2.why), r2.why.slice(0, 90));
   ok('G28: строка статуса собрана для /api/chat', /источники/.test(lineOf(layer.status())) || /источник/.test(lineOf(layer.status())), lineOf(layer.status()).slice(0, 80));
   layer.forget();
@@ -213,7 +221,9 @@ ok('G9: IMG_DIRECTIVE объясняет модели формат блока', 
   const layer = createImggen({ env: { IMGGEN_SOURCE: 'pollinations' }, fetch: (u, i) => { bodies.push(String(u)); return Promise.resolve(binary(img())); } });
   const r = await layer.generate({ prompt: 'рыжий кот', size: '768x512' });
   const q = decodeURIComponent(bodies[0]);
-  ok('G40: Pollinations — GET с размером, nologo и промптом в пути', r.ok && /image\.pollinations\.ai\/prompt\/рыжий кот/.test(q) && /width=768/.test(bodies[0]) && /nologo=true/.test(bodies[0]), bodies[0]);
+  /* Было: один GET с width/height/nologo. С 6 окт 2026 такие адреса отвечают 402
+     (любой параметр — платный), поэтому первым идёт голый адрес с промптом в пути. */
+  ok('G40: Pollinations — первым делом голый GET с промптом в пути', r.ok && bodies.length === 1 && /image\.pollinations\.ai\/prompt\/рыжий кот/.test(q) && !bodies[0].includes('?'), bodies[0]);
 }
 {
   const reqs = [];
@@ -335,6 +345,94 @@ console.log('H — живость источника переживает изо
   const d = createImggen({ env: junk, fetch: stub(routes) });
   const got = await d.hydrate();
   ok('H7: испорченное значение в хранилище — не ошибка, а «не знаем»', got === false && lineOf(d.status()).indexOf('не проверен') >= 0);
+}
+
+
+console.log('── I · Pollinations: бесплатен только голый адрес ───');
+{
+  /* Живой прод 6 окт 2026: «нарисуй закат над морем» вернулось текстом — все три
+     источника отказали, а у Pollinations стояло «http 402». Замерено вживую:
+     голый /prompt/<текст> отдаёт JPEG, а ЛЮБОЙ параметр (width, height, nologo,
+     model, seed — каждый проверен по отдельности) отвечает 402 с пустым телом {}.
+     Прежний адрес был с width/height/nologo, то есть каждый заказ упирался в 402. */
+  /* Только pollinations в цепочке: здесь важно, сколько запросов делает именно он. */
+  const POLL_ONLY = { IMGGEN_SOURCE: 'pollinations' };
+  const noParams = (url) => !String(url).includes('?');
+  const jpg = () => new Response(new Uint8Array(4096), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+
+  const c1 = [];
+  const l1 = createImggen({ env: POLL_ONLY, fetch: stub({ 'image.pollinations': (u) => (noParams(u) ? jpg() : json({}, 402)) }, c1) });
+  const r1 = await l1.generate({ prompt: 'sunset', size: '1024x576' });
+  ok('I1: картинка приходит с первого запроса — голым адресом, без параметров',
+    r1.ok && r1.source === 'pollinations' && c1.length === 1 && noParams(c1[0]), c1.join(' | '));
+
+  const c2 = [];
+  const l2 = createImggen({ env: POLL_ONLY, fetch: stub({ 'image.pollinations': (u) => (noParams(u) ? json({}, 402) : jpg()) }, c2) });
+  const r2 = await l2.generate({ prompt: 'sunset', size: '1024x576' });
+  ok('I2: голый отказал — слой сам пробует прежний адрес с параметрами',
+    r2.ok && c2.length === 2 && noParams(c2[0]) && !noParams(c2[1]), c2.join(' | '));
+
+  const r3 = await l2.generate({ prompt: 'sunset' });
+  ok('I3: удачная форма запомнена — второй заказ не платит лишним запросом',
+    r3.ok && c2.length === 3 && !noParams(c2[2]), c2.join(' | '));
+
+  const c4 = [];
+  const l4 = createImggen({ env: POLL_ONLY, fetch: stub({ 'image.pollinations': () => json({}, 402) }, c4) });
+  const r4 = await l4.generate({ prompt: 'sunset' });
+  /* Здесь 402 отвечают обе формы, значит упёрлись в лимит (см. секцию J), и причина
+     должна называть лимит — а не «Pollinations сломался» и не «неправильный размер». */
+  ok('I4: отказали обе формы — причина называет лимит бесплатного доступа',
+    !r4.ok && /402/.test(r4.why) && /лимит/.test(r4.why) && /Pollinations/.test(r4.why), r4.why);
+
+  const c5 = [];
+  const l5 = createImggen({ env: POLL_ONLY, fetch: stub({ 'image.pollinations': (u) => (noParams(u) ? new Response(new Uint8Array(0), { status: 200 }) : jpg()) }, c5) });
+  const r5 = await l5.generate({ prompt: 'sunset' });
+  ok('I5: пустышка (200 и ноль байт) — тоже повод попробовать другую форму',
+    r5.ok && c5.length === 2 && noParams(c5[0]) && !noParams(c5[1]), c5.join(' | '));
+}
+
+
+console.log('── J · лимит — не поломка: минута ожидания вместо пяти ───');
+{
+  /* Живой прод 6 окт 2026: Pollinations отвечал 402 пачками (бесплатный доступ к
+     новым промптам то есть, то нет). После первого же такого ответа источник
+     парковался на IMGGEN_RETRY_MS = 5 минут, и человек пять минут получал вместо
+     картинки текст. Лимит лечится ожиданием, а не парковкой: ждём минуту. */
+  const POLL = { IMGGEN_SOURCE: 'pollinations' };
+  const err402 = () => new Response(JSON.stringify({}), { status: 402, headers: { 'content-type': 'application/json' } });
+  let t = 1000000;
+  const c = [];
+  const layer = createImggen({ env: POLL, now: () => t, log: () => {}, fetch: async (u) => { c.push(String(u)); return err402(); } });
+
+  const r1 = await layer.generate({ prompt: 'кот' });
+  ok('J1: 402 на голом адресе объясняется лимитом, а не «неправильными параметрами»',
+    !r1.ok && /лимит/.test(r1.why) && !/width\/height/.test(r1.why), r1.why);
+
+  const n1 = c.length;
+  t += 30000;
+  await layer.generate({ prompt: 'кот' });
+  ok('J2: через полминуты источник ещё не трогаем — ждём', c.length === n1, `запросов ${c.length - n1}`);
+
+  t += 35000;   /* всего 65 с */
+  await layer.generate({ prompt: 'кот' });
+  ok('J3: через минуту возвращаемся к нему — а не ждём пять минут, как было',
+    c.length > n1, `запросов ${c.length - n1}`);
+
+  /* А вот «модели нет» / «приложение отозвано» — это поломка: тут ждём по-долгому. */
+  let t2 = 2000000;
+  const c2 = [];
+  const l2 = createImggen({
+    env: { IMGGEN_SOURCE: 'odirouter', ODIROUTER_KEYS: 'k' },
+    now: () => t2,
+    log: () => {},
+    fetch: async (u) => { c2.push(String(u)); return new Response(JSON.stringify({ error: { code: 'model_not_found', message: 'нет такой модели' } }), { status: 404, headers: { 'content-type': 'application/json' } }); },
+  });
+  const r2 = await l2.generate({ prompt: 'кот' });
+  const n2 = c2.length;
+  t2 += 70000;
+  await l2.generate({ prompt: 'кот' });
+  ok('J4: «модели нет» — это поломка, а не лимит: через минуту всё ещё не трогаем',
+    !r2.ok && c2.length === n2, `${r2.why} | запросов ${c2.length - n2}`);
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
