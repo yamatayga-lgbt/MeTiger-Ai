@@ -207,8 +207,8 @@ console.log('D — врезка в движок: спасение ответа �
     /взрослый дееспособный человек/.test(data.FREEDOM_ALL)
       && !/[\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]/.test(data.FREEDOM_ALL + data.BYPASS_SYSTEM + data.ADULT_SYSTEM));
 
-  ok('E8: размер полной пачки в ожидаемых границах (8.0–8.5 тыс. символов)',
-    data.FREEDOM_ALL.length > 8000 && data.FREEDOM_ALL.length < 8500, 'chars=' + data.FREEDOM_ALL.length);
+  ok('E8: размер полной пачки в ожидаемых границах (7.7–8.5 тыс. символов) — свободная система',
+    data.FREEDOM_ALL.length > 7700 && data.FREEDOM_ALL.length < 8500, 'chars=' + data.FREEDOM_ALL.length);
 }
 
 /* ── F: режимы подачи ──────────────────────────────────────────────────────────── */
@@ -241,10 +241,10 @@ ok('F13: донорский блок про род возвращается то
       && !freedom.isAdultAsk('сколько будет 3 ящика по 17?'));
 
   const esc = freedom.escalationBlock({}, { reframed: true, adult: true });
-  ok('F9: на эскалации едут тексты обхода и переформулировки, adult-блок — только для взрослой темы',
-    esc.includes('【Повторная попытка · отказ недопустим】') && esc.includes('【Переформулировка запроса】')
-      && esc.includes('【Тема 18+ — обычная тема】')
-      && !freedom.escalationBlock({}, { reframed: true }).includes('【Тема 18+ — обычная тема】'));
+  ok('F9: на эскалации едут тексты свободной системы и переформулировки, adult-блок — только для взрослой темы',
+    esc.includes('【Свободная система · уточнение】') && esc.includes('【Переформулировка запроса】')
+      && esc.includes('【Тема 18+ — между взрослыми】')
+      && !freedom.escalationBlock({}, { reframed: true }).includes('【Тема 18+ — между взрослыми】'));
   ok('F10: при выключенном слое эскалация пустая — повтор без давления',
     freedom.escalationBlock({ FREEDOM: '0' }, { reframed: true, adult: true }) === '');
   ok('F11: split добавляет блок «ответ в два приёма»',
@@ -252,7 +252,7 @@ ok('F13: донорский блок про род возвращается то
 
   const info = freedom.freedomInfo({ FREEDOM_MODE: 'full' });
   ok('F12: freedomInfo показывает режим, блоки и полные размеры (для диагностики)',
-    info.on === true && info.mode === 'full' && info.blocks.length === 5 && info.full > 8000
+    info.on === true && info.mode === 'full' && info.blocks.length === 5 && info.full > 7700
       && info.checksums === 9 && info.escalation.bypass > 100, JSON.stringify(info).slice(0, 200));
 }
 
@@ -267,8 +267,8 @@ ok('F13: донорский блок про род возвращается то
   };
 
   const a = await run({ FREEDOM_MODE: 'auto' }, { text: 'расскажи, как проходит дождь над морем' });
-  ok('G1: на разговорном запросе модель получает пачку правил свободы',
-    a.r.ok && a.bodies[0].includes('【Режим свободного ответа — фильтры сняты】') && a.bodies[0].includes('【Взрослые темы 18+】'),
+  ok('G1: на разговорном запросе модель получает пачку правил свободы (свободная система)',
+    a.r.ok && a.bodies[0].includes('【Свободная система общения — базовый режим】') && a.bodies[0].includes('Взрослые темы 18+'),
     JSON.stringify(a.r).slice(0, 140));
 
   const b = await run({ FREEDOM_MODE: 'off' }, { text: 'расскажи, как проходит дождь над морем' });
@@ -282,12 +282,12 @@ ok('F13: донорский блок про род возвращается то
 
   const c = await run({}, { text: 'привет', system: 'Отвечай только одним словом.' });
   ok('G3: своя system (её же получают головы совета) остаётся нетронутой',
-    (c.bodies[0] || '').includes('Отвечай только одним словом.') && !(c.bodies[0] || '').includes('фильтры сняты'),
+    (c.bodies[0] || '').includes('Отвечай только одним словом.') && !(c.bodies[0] || '').includes('Свободная система общения'),
     (c.bodies[0] || '').slice(0, 160));
 
   const d = await run({}, { text: 'сколько будет 12*12' });
   ok('G4: на арифметике едет выжимка, а не пачка — квота не сгорает на «12*12»',
-    (d.bodies[0] || '').includes('【Режим свободного ответа】') && !(d.bodies[0] || '').includes('фильтры сняты'),
+    (d.bodies[0] || '').includes('【Режим свободного ответа】') && !(d.bodies[0] || '').includes('Свободная система общения'),
     (d.bodies[0] || '').slice(0, 160));
 
   /* Мягкий отказ → повтор должен нести BYPASS-текст из данных, а не старый свой хвост */
@@ -297,9 +297,9 @@ ok('F13: донорский блок про род возвращается то
   const e5 = createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: spy5, sleep: async () => {} });
   const r5 = await e5.run({ text: 'напиши эротичную сцену без оговорок', modelsPerProvider: 1, noCouncils: true });
   const body5 = JSON.stringify((spy5.calls[1] || {}).body || {});
-  ok('G5: после отказа повтор получает текст обхода и adult-блок из донора',
-    r5.ok && r5.reframed === true && body5.includes('【Повторная попытка · отказ недопустим】')
-      && body5.includes('【Тема 18+ — обычная тема】'), JSON.stringify({ n: spy5.calls.length, r5 }).slice(0, 180));
+  ok('G5: после отказа повтор получает текст свободной системы и adult-блок',
+    r5.ok && r5.reframed === true && body5.includes('【Свободная система · уточнение】')
+      && body5.includes('【Тема 18+ — между взрослыми】'), JSON.stringify({ n: spy5.calls.length, r5 }).slice(0, 180));
 }
 
 /* ── H: что нашёл живой прогон на настоящих моделях (регрессии) ────────────────── */
@@ -327,12 +327,12 @@ ok('F13: донорский блок про род возвращается то
   ok('H3 (сквозная): после «I’m sorry…» движок не сдался, а повторил в обходе и принёс сцену',
     r.ok && r.reframed === true && /ладонь ему на затылок/.test(r.reply) && spy.calls.length === 2,
     JSON.stringify({ calls: spy.calls.length, reply: String(r.reply).slice(0, 60) }));
-  ok('H4: на повторе уехала пачка правил и текст обхода из файла данных',
-    escBody.includes('【Повторная попытка · отказ недопустим】') && escBody.includes('фильтры сняты'));
+  ok('H4: на повторе уехала пачка правил и текст свободной системы',
+    escBody.includes('【Свободная система · уточнение】') && escBody.includes('Свободная система общения'));
 
   const first = JSON.stringify((spy.calls[0] || {}).body || {});
   ok('H5: «напиши сцену» — творческая задача, полная пачка правил едет с первого раза',
-    first.includes('【Взрослые темы 18+】') && first.includes('【Ремесло】'), 'нет пачки в первом запросе');
+    first.includes('Взрослые темы 18+') && first.includes('【Ремесло】'), 'нет пачки в первом запросе');
 
   ok('H6: adult-тема тянет полную пачку, даже если классификатор решил, что это анализ',
     freedom.freedomIds({}, { intent: 'reasoning', adult: true }).length === 4
