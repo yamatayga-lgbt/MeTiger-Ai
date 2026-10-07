@@ -303,6 +303,12 @@ console.log('W — дверь GET /api/usage');
   ok('W2: суточный потолок берётся из таблицы провайдеров, остаток посчитан',
     groq && groq.dayLimit === 1000 && groq.remaining === 1000 && groq.rpm === 30 && groq.live === true,
     JSON.stringify(groq));
+  /* 0.094: «Локальная модель» — не наш пул, а свой сервер человека (LOCAL_BASE_URL).
+     Без него строки в панели быть не должно: иначе человек видит провайдера без
+     ключа и адреса и идёт искать, «где её взять». */
+  ok('W3a: без LOCAL_BASE_URL строки «Локальная модель» в панели расхода нет (и Cerebras, убранный в 0.094 как платный, тоже не остался)',
+    !data.providers.some((p) => p.id === 'local') && !data.providers.some((p) => /Cerebras/i.test(p.label || '')),
+    data.providers.map((p) => p.id).join(','));
   ok('W3: провайдер без ключа виден, но помечен как выпавший',
     data.providers.some((p) => p.id === 'openrouter' && p.live === false && p.keys === 0));
   ok('W4: ставка на человека видна и честно говорит, когда общего хранилища нет',
