@@ -1293,7 +1293,7 @@ console.log('── N · стекло (Glassmorphism) ───');
 
   ok('N4: поле ввода — стекло, и размывает его РОВНО одна обёртка (вложенный blur стоит как два полноэкранных композита)',
     /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(ruleBody('.composer-wrap::before'))
-      && /color-mix\(in srgb, var\(--bg-elevated\) 72%, transparent\)/.test(ruleBody('.composer'))
+      && /color-mix\(in srgb, var\(--pane\) 62%, transparent\)/.test(ruleBody('.composer'))
       && !/backdrop-filter/.test(ruleBody('.composer')));
 
   ok('N5: сообщения в ленте НЕ размываются — это то, что защищает прокрутку на телефоне',
@@ -1315,8 +1315,8 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N9: на телефоне стекло с размытием 12px; размытие снято только у карточек настроек и расхода (замер: с ним прокрутка настроек падала до 16 fps), а сияние ДЫШИТ',
     /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 12px/.test(css)
       && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,260}backdrop-filter: none/.test(css)
-      && /--glass: rgba\(24, 24, 33, 0\.42\)/.test(css)
-      && /--ambient-1: rgba\(126, 108, 255, 0\.52\)/.test(css));
+      && /--glass: rgba\(52, 52, 70, 0\.34\)/.test(css)
+      && /--ambient-1: rgba\(132, 112, 255, 0\.5\)/.test(css));
 
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
     /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)
@@ -1346,10 +1346,13 @@ console.log('── N · стекло (Glassmorphism) ───');
       && !/flex: 1 0 100%/.test(css));
 
 
-  ok('N17: стекло на телефоне достаточно прозрачное (0.42 тёмная / 0.46 светлая), а меню поверх текста — плотнее (--glass-strong): иначе буквы просвечивают',
-    /--glass: rgba\(24, 24, 33, 0\.42\)/.test(css)
-      && /--glass: rgba\(255, 255, 255, 0\.46\)/.test(css)
-      && /--glass-strong: rgba\(18, 18, 25, 0\.6\)/.test(css));
+  ok('N17: стекло прозрачное в обеих темах (0.34 тёмная / 0.34 светлая), меню поверх текста плотнее (--glass-strong), а поле ввода — свой токен --pane: на тёмных обоях оно светлее фона (замер: без этого панель и фон совпадали по яркости)',
+    /--glass: rgba\(52, 52, 70, 0\.34\)/.test(css)
+      && /--glass: rgba\(255, 255, 255, 0\.34\)/.test(css)
+      && /--glass-strong: rgba\(42, 42, 58, 0\.5\)/.test(css)
+      && /--pane: #3e3e54/.test(css)
+      && /--pane: #ffffff/.test(css)
+      && /background-color: color-mix\(in srgb, var\(--pane\) 62%, transparent\)/.test(ruleBody('.composer')));
 
   ok('N18: переключатели в настройках не раздувают строку (высота 60px, а не 102): блок «Тема» и «Род агента» в одну строку с подписью, подпись не обрезается многоточием',
     /\.seg-short \{\s*display: none/.test(css)
@@ -1360,6 +1363,21 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N19: стекло есть и у мелочей — капсула чата, круглые кнопки шапки, активный пункт сайдбара размывают и прозрачны (без них казалось, что стекло только в шапке и поле ввода)',
     /\.topbar-pill,[\s\S]{0,120}\.icon-btn\.topbar-round,[\s\S]{0,120}\.side-item\.active \{/.test(glassArea)
       && /\.topbar-pill,[\s\S]{0,400}backdrop-filter: blur\(var\(--glass-blur\)\)/.test(glassArea));
+
+  /* Обои — то, ради чего вообще видно стекло, поэтому сторож тут жёсткий.
+     Считаем по CSS БЕЗ комментариев: в пояснениях к правилам встречаются те же
+     слова («filter: blur»), и проверка ловила бы текст, а не код. */
+  const bareWall = stripCssComments(css);
+
+  ok('N21: под стеклом лежат ОБОИ — базовый цветной градиент на весь экран в обеих темах (замер до них: насыщенность фона 5 из 255, белая панель 46% на светлом фоне визуально не отличалась от фона — человек дважды сказал «не вижу стекло»)', 
+    /--wall: linear-gradient\(/.test(bareWall)
+      && (bareWall.match(/--wall: linear-gradient\(/g) || []).length >= 2
+      && (bareWall.match(/--wall-band: /g) || []).length >= 2
+      && /background-image: var\(--wall\)/.test(bareWall)
+      && /\.ambient::before \{[\s\S]{0,400}var\(--wall-band\)/.test(bareWall)
+      && /\.ambient i \{[\s\S]{0,300}opacity: var\(--ambient-o\)/.test(bareWall)
+      && !/\.ambient \{[\s\S]{0,300}opacity: var\(--ambient-o\)/.test(bareWall)
+      && !/wall-band[\s\S]{0,200}filter: blur/.test(bareWall));
 
   ok('N20: сияние дышит на чате и стоит на экранах с крупными карточками — движение под ними стоит кадров (замер: 29,8 fps против 60)',
     /\.ambient:not\(\.ambient-still\) i:nth-child\(1\)/.test(css)
