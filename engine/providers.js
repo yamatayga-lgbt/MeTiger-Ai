@@ -286,6 +286,9 @@ export function buildTable(env) {
          ключи равны слову keyless: с настоящим ключом заголовок уходит как всем,
          иначе OVH отвечал бы 403 на собственный же валидный токен. */
       noAuth: !!(c.noAuth && keys.length && keys.every((k) => k === 'keyless')),
+      /* Донесено до движка: имена этого пула взяты из живого каталога провайдера,
+         и замер живости (models-verified) к ним не применяется — см. modelreg.js. */
+      poolFromCatalog: !!c.poolFromCatalog,
     };
   }
   return out;

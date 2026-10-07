@@ -36,6 +36,10 @@ export function poolsOf(P) {
   const tierOf = Object.create(null);
   for (const pid of Object.keys(P)) {
     const cfg = P[pid];
+    /* Пулы витрины — вся таблица, а не только те, у кого сейчас есть ключ:
+       так держат K3/K9 («человек видит проверенные пулы, а не пустоту»), и это
+       же правило записано в README. Отвечает всё равно только тот, у кого ключ
+       есть — это решает провайдерский обход (providerAlive). */
     const fast = (cfg.models && cfg.models.fast) || [];
     const smart = [].concat((cfg.models && cfg.models.smart) || []);
     if (!fast.length && !smart.length) continue;

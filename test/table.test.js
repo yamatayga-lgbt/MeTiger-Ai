@@ -100,6 +100,15 @@ console.log('── T · TABLE против живого замера ───'
   ok('T-new-3: имя из живого каталога провайдера замер не режет (иначе дубль-спасатель исчезает из выбора)',
     withoutTrust.length === 0 && withTrust.length === 1, `без пометки ${withoutTrust.length}, с пометкой ${withTrust.length}`);
 
+  /* Флаг обязан доехать до живого P: без него /api/models считает trusted пустым,
+     и gpt-oss-120b (мёртвый по общему замеру) исчезает из выбора совсем — на проде
+     это и случилось в 0.097, пока флаг не прокинули через buildTable. */
+  const live = buildTable({ SAMBANOVA_KEYS: 'sn-1', OVH_KEYS: 'keyless', NVIDIA_KEYS: 'nv1', GITHUB_KEYS: 'gh1' });
+  const noFlag = ['nvidia', 'github', 'sambanova', 'ovh'].filter((id) => !live[id].poolFromCatalog);
+  const tr = poolsOf(live).pools.filter((p) => live[p.provider].poolFromCatalog).flatMap((p) => p.fast.concat(p.smart));
+  ok('T-new-5: пометка «имена из каталога» доезжает до живого P и покрывает дубль-спасателя',
+    noFlag.length === 0 && tr.includes('gpt-oss-120b'), noFlag.join(',') + ' | ' + tr.length + ' имён');
+
   const req = (env) => {
     const cfg = buildTable(env).ovh;
     return shape.buildRequest({ cfg, model: 'gpt-oss-120b', keyIdx: 0, messages: [{ role: 'user', content: 'привет' }], system: '', maxTokens: 16 });
