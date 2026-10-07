@@ -243,20 +243,22 @@ export const LIST_SOURCES = {
   sharellm: { url: 'https://sharellm.net/v1/models', prefix: 'SHARELLM', priceUnknown: true },
   atria: { url: 'https://api.atria-asi.ai/v1/models', prefix: 'ATRIA', priceUnknown: true },
   gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', prefix: 'GEMINI', kind: 'gemini', priceUnknown: true },
-  /* 0.097. Эти четыре каталога проверены живой пробой: списки моделей у NVIDIA,
-     SambaNova и OVHcloud отдаются даже без ключа (у GitHub — только с токеном). */
-  nvidia: { url: 'https://integrate.api.nvidia.com/v1/models', prefix: 'NVIDIA', priceUnknown: true },
+  /* 0.097/0.099. Каталоги новых пулов проверены живой пробой: у LLM7 и Kilo
+     они читаются вовсе без ключа (keyless), у SambaNova — с её ключом, у GitHub —
+     с токеном. priceUnknown намеренно НЕ стоит у llm7 и kilo: их каталоги полны
+     платных моделей, и пометка «цена неизвестна = бесплатно» вытащила бы claude
+     и gpt в список выбора. Берём оттуда только то, что провайдер сам зовёт free. */
+  llm7: { url: 'https://api.llm7.io/v1/models', prefix: 'LLM7', keyless: true },
+  kilo: { url: 'https://api.kilo.ai/api/gateway/models', prefix: 'KILO', keyless: true },
   sambanova: { url: 'https://api.sambanova.ai/v1/models', prefix: 'SAMBANOVA', priceUnknown: true },
   github: { url: 'https://models.github.ai/catalog/models', prefix: 'GITHUB', priceUnknown: true },
-  /* noAuth: у OVHcloud каталог (и чат) открыты без ключа, но на любой неправильный
-     заголовок авторизации приходит 403 — поэтому с «ключом» keyless его не шлём. */
-  ovh: { url: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models', prefix: 'OVH', priceUnknown: true, noAuth: true },
 };
 
 /** Какие нативные списки вообще можно спросить в этом окружении. */
 export function listSources(env, opts = {}) {
   const keys = opts.keys || envKeys;
-  return Object.keys(LIST_SOURCES).filter((id) => keys(env, LIST_SOURCES[id].prefix).length > 0);
+  /* keyless-источники (LLM7, Kilo) спрашиваем всегда: им ключ не нужен вовсе. */
+  return Object.keys(LIST_SOURCES).filter((id) => LIST_SOURCES[id].keyless || keys(env, LIST_SOURCES[id].prefix).length > 0);
 }
 
 /** Один источник → его строки. Возвращаем и заголовок авторизации, и парсер. */
@@ -264,10 +266,10 @@ function nativeCfg(src, env) {
   const c = LIST_SOURCES[src];
   if (!c) return null;
   const keys = envKeys(env, c.prefix);
-  if (!keys.length) return null;
+  if (!keys.length && !c.keyless) return null;
   const head = c.kind === 'gemini'
     ? { 'x-goog-api-key': keys[0] }
-    : c.noAuth
+    : !keys.length
       ? {}
       : { authorization: 'Bearer ' + keys[0] };
   return {
@@ -647,7 +649,7 @@ export function showcase(cat, opts = {}) {
   const alive = new Set(ver.alive || []);
   /* trusted — имена, которые провайдер сам назвал в своём каталоге (пулы с
      poolFromCatalog). Замер живости судит имя вообще, и «gpt-oss-120b мёртв»
-     верно для Groq, но не для SambaNova и OVH; такие имена не выкидываем. */
+     верно для Groq, но не для SambaNova: там это имя живёт в её каталоге. */
   const trusted = new Set(opts.trusted || []);
   const dead = new Set(ver.dead || []);
   const audited = !!(ver.alive || []).length || !!(ver.dead || []).length;

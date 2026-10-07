@@ -28,9 +28,18 @@ function stub(voiceText) {
   const calls = [];
   globalThis.fetch = async (url, init) => {
     const u = String(url);
+    const method = String((init && init.method) || 'GET').toUpperCase();
     if (u.indexOf('/audio/transcriptions') >= 0) {
       calls.push({ kind: 'stt', body: init && init.body });
       return new Response(JSON.stringify(voiceText === null ? { text: '' } : { text: voiceText, language: 'ru' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    /* Всё, что не POST к модели, — чтение (каталог, поиск, добор фактов совета).
+       Помечаем отдельно: с 0.099 в очереди появились keyless-шлюзы, совет голов
+       собирается и в тестовом окружении, и его поисковые GET-ы шли последними —
+       «последним вызовом» оказывался не ответ модели, а сбор фактов. */
+    if (method !== 'POST') {
+      calls.push({ kind: 'read', url: u, body: null });
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     let parsed = null;
     try { parsed = JSON.parse(String(init && init.body)); } catch (e) { /* не json */ }

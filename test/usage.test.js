@@ -308,25 +308,24 @@ console.log('W — дверь GET /api/usage');
   ok('W3a: в панели расхода нет ни Cerebras, ни «Локальной модели» — убранные провайдеры не висят в счёте',
     !data.providers.some((p) => p.id === 'local') && !data.providers.some((p) => /Cerebras/i.test(p.label || '')),
     data.providers.map((p) => p.id).join(','));
-  /* 0.097: пулы-дублёры. В панели у них свои ставки, и OVHcloud включается
-     словом keyless — без него провайдера в очереди нет вовсе. */
-  ok('W3b: у пулов-дублёров 0.097 свои ставки в панели, а не чужие',
-    data.providers.some((p) => p.id === 'nvidia' && p.rpm === 40)
+  /* 0.099: пулы-дублёры. LLM7 и Kilo работают без ключа вовсе (keyless) — им
+     ключ не нужен, поэтому в панели у них нулевые ключи и свои ставки. */
+  ok('W3b: у пулов-дублёров 0.099 свои ставки в панели, а не чужие',
+    data.providers.some((p) => p.id === 'llm7' && p.rpm === 15)
+      && data.providers.some((p) => p.id === 'kilo' && p.rpm === 10)
       && data.providers.some((p) => p.id === 'sambanova' && p.rpm === 20)
-      && data.providers.some((p) => p.id === 'github' && p.rpm === 15)
-      && data.providers.some((p) => p.id === 'ovh' && p.rpm === 2),
-    data.providers.filter((p) => ['nvidia', 'sambanova', 'github', 'ovh'].includes(p.id)).map((p) => p.id + ':' + p.rpm).join(','));
+      && data.providers.some((p) => p.id === 'github' && p.rpm === 15),
+    data.providers.filter((p) => ['llm7', 'kilo', 'sambanova', 'github'].includes(p.id)).map((p) => p.id + ':' + p.rpm).join(','));
 
-  const ovhCtx = () => ({
-    env: { OVH_KEYS: 'keyless' },
+  const klCtx = () => ({
+    env: {},
     request: new Request('https://metiger-ai.pages.dev/api/usage'),
   });
-  const ovhData = await (await usageGet(ovhCtx())).json();
-  const row = ovhData.providers.find((p) => p.id === 'ovh');
-  /* live:true — «в очереди и с ключом»; сам ответ может быть 429 сколько угодно
-     раз, это видно в счёте попыток, а не в этой строке. */
-  ok('W3c: OVHcloud со словом keyless — живой провайдер с одним ключом',
-    !!row && row.keys === 1 && row.live === true && row.dayLimit === 500,
+  const klData = await (await usageGet(klCtx())).json();
+  const row = klData.providers.find((p) => p.id === 'llm7');
+  /* keyless: ноль ключей — не «выпал», а нормальный режим; квота дня из таблицы. */
+  ok('W3c: LLM7 без ключей — живой провайдер, а не выпавший',
+    !!row && row.keys === 0 && row.live === true && row.dayLimit === 1000,
     JSON.stringify(row));
 
   ok('W3: провайдер без ключа виден, но помечен как выпавший',

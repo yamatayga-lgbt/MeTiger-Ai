@@ -97,7 +97,11 @@ console.log('E — обход: годный ответ или честный с�
   const f6 = fakeFetch(() => ({ body: chat('x') }));
   const e6 = createEngine({ env: {}, fetch: f6, sleep: async () => {} });
   const r6 = await e6.run({ text: 'привет' });
-  ok('E13: без ключей вообще — не падаем, а объясняем', r6.ok === false && r6.tried.every((t) => /нет живых ключей/.test(t.why || '')), JSON.stringify(r6).slice(0, 200));
+  /* 0.099: без ключей продукт больше не «объясняет отказ», а отвечает через
+     keyless-шлюзы (Kilo, LLM7) — им ключ не нужен вовсе. Отказ остаётся честным
+     только когда в очереди никого: это уже не пустое окружение, а выключенные пулы. */
+  ok('E13: без ключей вообще отвечает keyless-шлюз, а не отказ',
+    r6.ok === true && (r6.provider === 'kilo' || r6.provider === 'llm7'), JSON.stringify({ provider: r6.provider, model: r6.model, ok: r6.ok }));
 }
 
 console.log('F — ротация ключей и лимиты');
@@ -154,8 +158,12 @@ console.log('G — вход /api/chat (Pages Function): то, что видит 
   const d = await onRequestPost({ request: req({ text: 'ещё' }), env: ENV });
   ok('G5: частый клиент получает 429 — квоты бесплатных провайдеров защищены', d.status === 429, 'status=' + d.status);
   const e2 = await onRequestPost({ request: req({ text: 'привет', rate: 0 }), env: { RATE_LIMIT: '0' } });
-  ok('G6: без ключей — 503 со списком попыток (фронт по нему решает, показывать ли демо)',
-    e2.status === 503 && Array.isArray((await e2.json()).tried));
+  /* 0.099: раньше без ключей отдавали 503 и фронт показывал демо. Теперь без
+     ключей отвечают keyless-шлюзы — демо не нужно, ответ настоящий. */
+  const e2j = await e2.json();
+  ok('G6: без ключей отвечает keyless-пул — отказ не подменяет ответ',
+    e2.status === 200 && (e2j.provider === 'kilo' || e2j.provider === 'llm7'),
+    JSON.stringify({ status: e2.status, provider: e2j.provider }));
   const st = await onRequestGet({ env: ENV });
   const sj = await st.json();
   ok('G7: GET /api/chat отдаёт живых провайдеров — это и есть наблюдаемость',

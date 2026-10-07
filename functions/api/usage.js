@@ -68,7 +68,9 @@ export async function onRequestGet(context) {
       id,
       label: cfg.label || id,
       keys: (cfg.keys || []).length,
-      live: (cfg.keys || []).length > 0,
+      /* keyless — «работает без ключа» (LLM7, Kilo): в очереди он есть, даже
+         когда ключей ноль. Ключ появится — ничего не изменится, кроме заголовка. */
+      live: (cfg.keys || []).length > 0 || !!cfg.keyless,
       dayLimit,
       rpm,
       attempt,

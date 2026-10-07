@@ -10,7 +10,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { TABLE, buildTable } from '../engine/providers.js';
+import { TABLE, buildTable, providerAlive, pickKey } from '../engine/providers.js';
 import * as modelreg from '../engine/modelreg.js';
 import * as shape from '../engine/shape.js';
 import { poolsOf } from '../functions/api/models.js';
@@ -67,27 +67,36 @@ console.log('── T · TABLE против живого замера ───'
     `живых ${alive.size}, дата ${VERIFIED.at}`);
 }
 
-/* ── 0.097: вторая волна бесплатных пулов — дубли моделей ради взаимозамены ──
+/* ── 0.097/0.099: вторая волна бесплатных пулов — дубли моделей ради взаимозамены ──
    Смысл добавления: если один провайдер не ответил на модель, ту же модель
    спросим у второго. Отсюда три вещи, которые должны быть верны машиной:
      · имя, живущее у двоих, — ОДНА строка в списке выбора (иначе человек видит
        дубль и выбирает наугад, какая «настоящая»);
      · имена из каталога самого провайдера (poolFromCatalog) замер не режет;
-     · OVHcloud без ключа (keyless) не шлёт заголовка авторизации — на любой
-       неправильный он отвечает 403 и провайдер выглядел бы мёртвым. */
+     · провайдер без ключа вовсе (keyless: LLM7, Kilo) — живой: он обязан
+       попадать в очередь и не слать заголовок авторизации, пока ключа нет. */
 {
-  const P = buildTable({ SAMBANOVA_KEYS: 'sn-1', OVH_KEYS: 'keyless', GITHUB_KEYS: 'gh1', NVIDIA_KEYS: 'nv1' });
-  const missing = ['nvidia', 'github', 'sambanova', 'ovh'].filter((id) => !P[id] || !P[id].models.fast.length || !P[id].models.smart.length);
-  ok('T-new-1: четыре новых пула на месте и с ключами дают имена в обоих слоях', missing.length === 0, missing.join(', '));
+  /* SambaNova и GitHub ждут ключей; LLM7 и Kilo работают вообще без них. */
+  const P = buildTable({ SAMBANOVA_KEYS: 'sn-1', GITHUB_KEYS: 'gh1' });
+  const ids4 = ['sambanova', 'github', 'llm7', 'kilo'];
+  const missing = ids4.filter((id) => !P[id] || !P[id].models.fast.length || !P[id].models.smart.length);
+  ok('T-new-1: четыре новых пула на месте и дают имена в обоих слоях', missing.length === 0, missing.join(', '));
 
-  const { pools, ids } = poolsOf(buildTable({ SAMBANOVA_KEYS: 'sn-1', OVH_KEYS: 'keyless' }));
+  /* Четыре пула волны — из живых каталогов провайдеров, у llm7 и kilo ключа нет вовсе. */
+  ok('T-new-1b: LLM7 и Kilo живут без ключей (keyless), SambaNova без ключа выпадает',
+    providerAlive(P, 'llm7', {}) && providerAlive(P, 'kilo', {}) && pickKey(P, 'llm7', {}) === 0
+      && !providerAlive(buildTable({}), 'sambanova', {}) && !providerAlive(buildTable({}), 'github', {}),
+    'llm7=' + providerAlive(P, 'llm7', {}) + ' sambanova=' + providerAlive(P, 'sambanova', {}));
+
+  const { pools, ids } = poolsOf(P);
   /* Дубли считаются по ТОЧНОМУ имени: оно и есть адрес модели у провайдера, и
      «Meta-Llama-3.3-70B-Instruct» у SambaNova — не то же имя, что
      «Meta-Llama-3_3-70B-Instruct» у OVHcloud (подчёркивание вместо точки).
      Свести их к одной строке значило бы послать одному из двоих чужое имя. */
   const inTwo = ids.filter((id) => pools.filter((p) => p.fast.concat(p.smart).includes(id)).length >= 2);
+  /* nemotron-3-ultra-550b-a55b:free живёт у Kilo и у OpenRouter — тот самый дубль. */
   ok('T-new-2: модель, живущая у двух провайдеров, — одна строка в списке (без дублей)',
-    inTwo.includes('gpt-oss-120b') && inTwo.every((id) => ids.filter((x) => x === id).length === 1),
+    inTwo.includes('nvidia/nemotron-3-ultra-550b-a55b:free') && inTwo.every((id) => ids.filter((x) => x === id).length === 1),
     'живут у двоих: ' + inTwo.join(', ') + '; ids=' + ids.length);
 
   /* Замер живости (снимок 2026-10-03) зовёт gpt-oss-120b мёртвым. Для пула из
@@ -103,19 +112,19 @@ console.log('── T · TABLE против живого замера ───'
   /* Флаг обязан доехать до живого P: без него /api/models считает trusted пустым,
      и gpt-oss-120b (мёртвый по общему замеру) исчезает из выбора совсем — на проде
      это и случилось в 0.097, пока флаг не прокинули через buildTable. */
-  const live = buildTable({ SAMBANOVA_KEYS: 'sn-1', OVH_KEYS: 'keyless', NVIDIA_KEYS: 'nv1', GITHUB_KEYS: 'gh1' });
-  const noFlag = ['nvidia', 'github', 'sambanova', 'ovh'].filter((id) => !live[id].poolFromCatalog);
+  const live = buildTable({ SAMBANOVA_KEYS: 'sn-1', GITHUB_KEYS: 'gh1' });
+  const noFlag = ids4.filter((id) => !live[id].poolFromCatalog);
   const tr = poolsOf(live).pools.filter((p) => live[p.provider].poolFromCatalog).flatMap((p) => p.fast.concat(p.smart));
   ok('T-new-5: пометка «имена из каталога» доезжает до живого P и покрывает дубль-спасателя',
     noFlag.length === 0 && tr.includes('gpt-oss-120b'), noFlag.join(',') + ' | ' + tr.length + ' имён');
 
   const req = (env) => {
-    const cfg = buildTable(env).ovh;
-    return shape.buildRequest({ cfg, model: 'gpt-oss-120b', keyIdx: 0, messages: [{ role: 'user', content: 'привет' }], system: '', maxTokens: 16 });
+    const cfg = buildTable(env).llm7;
+    return shape.buildRequest({ cfg, model: 'GLM-5.3-Flash', keyIdx: 0, messages: [{ role: 'user', content: 'привет' }], system: '', maxTokens: 16 });
   };
-  const anon = req({ OVH_KEYS: 'keyless' }), real = req({ OVH_KEYS: 'ovh-key-настоящий' });
-  ok('T-new-4: OVHcloud без ключа идёт без заголовка авторизации, а с ключом — как все',
-    !('authorization' in anon.headers) && !!anon.headers['content-type'] && real.headers.authorization === 'Bearer ovh-key-настоящий',
+  const anon = req({}), real = req({ LLM7_KEYS: 'llm7-key' });
+  ok('T-new-4: провайдер без ключа идёт без заголовка авторизации, а с ключом — как все',
+    !('authorization' in anon.headers) && !!anon.headers['content-type'] && real.headers.authorization === 'Bearer llm7-key',
     JSON.stringify(anon.headers));
 }
 

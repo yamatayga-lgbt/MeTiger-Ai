@@ -135,30 +135,13 @@ export const TABLE = {
     },
   },
   /* ------------------------------------------------------------------
-     Вторая волна бесплатных пулов (0.097). Смысл ровно тот, ради которого они
-     добавлены: у одного и того же имени модели теперь ДВА дома. Упал Groq на
-     gpt-oss — тот же gpt-oss спросим у OVHcloud или SambaNova, а не уйдём на
-     чужую слабую модель. Ни у кого из четвёрки не нужна карта.
+     Вторая волна бесплатных пулов (0.097/0.099). Смысл ровно тот, ради которого
+     они добавлены: у одного и того же имени модели теперь ДВА дома. Упал один
+     провайдер на gpt-oss или nemotron — то же имя спросим у второго, а не уйдём
+     на чужую слабую модель. Ни у кого из этих пулов не нужна карта: LLM7 и
+     Kilo Gateway работают вообще без ключа, GitHub Models — от токена GitHub,
+     а SambaNova ждёт ключа (её бесплатный слой требует карту — держим наготове).
      ------------------------------------------------------------------ */
-
-  /* NVIDIA NIM: 1000 кредитов на аккаунт (не в день), 40 запросов/мин.
-     Ключ начинается с nvapi-, берётся на build.nvidia.com. Имена моделей —
-     «издатель/модель», проверены по публичному каталогу /v1/models (80 штук). */
-  nvidia: {
-    label: "NVIDIA NIM",
-    kind: "openai",
-    base: "https://integrate.api.nvidia.com/v1",
-    envPrefix: 'NVIDIA',
-    limit: 1000,
-    /* Имена ниже прочитаны из собственного каталога NVIDIA (/v1/models, 80 штук,
-       проверено 07.10). Замер живости (engine/models-verified.js) судит имя как
-       таковое и про эти пулы ничего не знает — поэтому table-prune их не режет. */
-    poolFromCatalog: true,
-    models: {
-      fast: ["openai/gpt-oss-20b", "z-ai/glm-5.3-flash", "deepseek-ai/deepseek-v4.1-flash", "google/gemma-4-31b-it"],
-      smart: ["moonshotai/kimi-k2.6", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "mistralai/mistral-large-2-instruct", "z-ai/glm-5.3"],
-    },
-  },
 
   /* GitHub Models: бесплатно любому аккаунту GitHub (доступ у человека уже есть),
      ключ — персональный токен с правом models:read. Потолки скромные
@@ -179,6 +162,43 @@ export const TABLE = {
     },
   },
 
+  /* LLM7: бесплатный шлюз, ключ не нужен вовсе — без него он держит около
+     15 запросов в минуту на адрес (дальше «Rate limit exceeded. Retry after 3
+     seconds»). Читается и каталог, и чат. В пуле только имена, проверенные живым
+     запросом: GLM-5.3-Flash и codestral-latest отвечают без ключа, часть
+     остальных имён из их каталога просит ключ — такие не берём. */
+  llm7: {
+    label: "LLM7",
+    kind: "openai",
+    base: "https://api.llm7.io/v1",
+    envPrefix: 'LLM7',
+    keyless: true,
+    limit: 1000,
+    poolFromCatalog: true,
+    models: {
+      fast: ["codestral-latest", "gpt-oss:20b", "nemotron-3-nano:30b"],
+      smart: ["GLM-5.3-Flash", "gemma4:31b", "minimax-m3"],
+    },
+  },
+
+  /* Kilo Gateway: тоже без ключа. kilo-auto/free — их собственный роутер, который
+     сам выбирает бесплатную модель (в пробах уводил на nemotron-3-ultra — у нас
+     это же имя есть у OpenRouter, и это ровно тот дубль, ради которого пул тут).
+     Часть `:free` имён отдаёт 429 от самого провайдера — такие не берём. */
+  kilo: {
+    label: "Kilo",
+    kind: "openai",
+    base: "https://api.kilo.ai/api/gateway",
+    envPrefix: 'KILO',
+    keyless: true,
+    limit: 1000,
+    poolFromCatalog: true,
+    models: {
+      fast: ["inclusionai/ling-3.1-flash"],
+      smart: ["kilo-auto/free", "poolside/laguna-s-2.1:free", "nvidia/nemotron-3-ultra-550b-a55b:free"],
+    },
+  },
+
   /* SambaNova: 20 запросов в минуту, но всего 20 в сутки на бесплатном слое.
      Держим в конце очереди: этого хватает, чтобы ответить, когда остальные
      пулы уже выдохлись, и не хватает, чтобы быть первой головой. */
@@ -194,26 +214,6 @@ export const TABLE = {
     models: {
       fast: ["Meta-Llama-3.3-70B-Instruct", "gemma-4-31B-it"],
       smart: ["gpt-oss-120b", "DeepSeek-V3.1", "MiniMax-M3"],
-    },
-  },
-
-  /* OVHcloud AI Endpoints: единственный провайдер, которому ключ НЕ нужен —
-     анонимный слой (2 запроса в минуту на IP на модель). Но он же и самый
-     капризный: на любой неверный заголовок авторизации отвечает 403, поэтому
-     для него заголовок не отправляется вовсе (noAuth), а «ключ» в настройках
-     пишется словом keyless. Есть и обычный бесплатный ключ (без карты) —
-     тогда вместо word'а keyless кладётся он, и заголовок уходит как всем. */
-  ovh: {
-    label: "OVHcloud",
-    kind: "openai",
-    base: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-    envPrefix: 'OVH',
-    noAuth: true,
-    poolFromCatalog: true,
-    limit: 500,
-    models: {
-      fast: ["gpt-oss-20b", "Qwen3.5-9B", "Mistral-Small-3.2-24B-Instruct-2506"],
-      smart: ["gpt-oss-120b", "Qwen3.5-397B-A17B", "Meta-Llama-3_3-70B-Instruct", "Qwen2.5-VL-72B-Instruct"],
     },
   },
 
@@ -247,8 +247,8 @@ export const ORDER = {
   /* Cerebras убран целиком (0.094): провайдер стал платным, а продукт бесплатный.
      Мёртвый провайдер в очереди — это не «на всякий случай», а лишняя попытка
      и лишняя строка в отчёте о том, кто отказал. */
-  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'nvidia', 'sambanova', 'github', 'ovh'],
-  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'nvidia', 'sambanova', 'github', 'ovh'],
+  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'kilo', 'llm7', 'sambanova', 'github'],
+  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'kilo', 'llm7', 'sambanova', 'github'],
 };
 
 /* Картинка: зрячие первыми. */
@@ -282,10 +282,11 @@ export function buildTable(env) {
       id, label: c.label, kind: c.kind, keys, limit: c.limit, models: c.models,
       base: c.base,
       account: (env && env.CLOUDFLARE_ACCOUNT_ID) || '',
-      /* noAuth — «этот провайдер умеет без ключа». Включается только когда все
-         ключи равны слову keyless: с настоящим ключом заголовок уходит как всем,
-         иначе OVH отвечал бы 403 на собственный же валидный токен. */
-      noAuth: !!(c.noAuth && keys.length && keys.every((k) => k === 'keyless')),
+      /* keyless — «провайдер работает без ключа вообще» (LLM7 и Kilo Gateway):
+         он жив пустым списком ключей, а заголовок авторизации не шлётся, пока
+         ключа нет. Появится ключ — уйдёт как всем. */
+      keyless: !!c.keyless,
+      noAuth: !!c.keyless && !keys.length,
       /* Донесено до движка: имена этого пула взяты из живого каталога провайдера,
          и замер живости (models-verified) к ним не применяется — см. modelreg.js. */
       poolFromCatalog: !!c.poolFromCatalog,
@@ -297,7 +298,9 @@ export function buildTable(env) {
 /** Есть ли у провайдера живой ключ и не исчерпана ли квота. */
 export function providerAlive(P, id, health) {
   const cfg = P[id];
-  if (!cfg || !cfg.keys || !cfg.keys.length) return false;
+  if (!cfg) return false;
+  /* keyless-провайдер жив и без ключей: это не «выключен», а его обычный режим. */
+  if (!cfg.keys || !cfg.keys.length) return !!cfg.keyless;
   if (cfg.kind === 'openai' && cfg.base.indexOf('{acc}') >= 0 && !cfg.account) return false;
   const now = Date.now();
   for (let i = 0; i < cfg.keys.length; i++) {
@@ -316,7 +319,9 @@ export function providerAlive(P, id, health) {
 /** Самый разгруженный живой ключ — ротация, а не «первый, который отвечает». */
 export function pickKey(P, id, health) {
   const cfg = P[id];
-  if (!cfg || !cfg.keys.length) return -1;
+  if (!cfg) return -1;
+  /* keyless без ключей — не «исчерпаны», а обычный путь: виртуальный ключ 0. */
+  if (!cfg.keys.length) return cfg.keyless ? 0 : -1;
   let best = -1, bestUsed = Infinity;
   for (let i = 0; i < cfg.keys.length; i++) {
     const k = (health && health[id] && health[id][i]) || null;

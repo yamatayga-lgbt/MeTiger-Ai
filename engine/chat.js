@@ -649,7 +649,7 @@ export function createEngine(opts) {
   function order(tier) { return ORDER[tier] || ORDER.fast; }
 
   function aliveOrder(tier) {
-    const ids = Object.keys(P).filter((id) => P[id].keys.length && providerAlive(P, id, health));
+    const ids = Object.keys(P).filter((id) => (P[id].keys.length || P[id].keyless) && providerAlive(P, id, health));
     const live = ids.filter((id) => !punished(id));
     /* совсем без голов лучше, чем с выдуманным большинством: если в карантине все,
        пробуем как раньше (провайдер мог вернуться раньше срока) */

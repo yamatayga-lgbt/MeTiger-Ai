@@ -174,8 +174,8 @@ export function buildRequest(o) {
   }
   return {
     url: url(cfg.base) + '/chat/completions',
-    /* noAuth (OVHcloud без ключа): свой заголовок авторизации ему не нужен —
-       с любым неправильным он отвечает 403, поэтому не шлём вовсе. */
+    /* noAuth (LLM7, Kilo — провайдеры без ключа): пока ключа нет, заголовок
+       авторизации не шлём вовсе; появится ключ — уйдёт как всем. */
     headers: Object.assign(
       { 'content-type': 'application/json' },
       cfg.noAuth ? {} : { authorization: 'Bearer ' + key },

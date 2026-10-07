@@ -164,7 +164,9 @@ const fakeFetch = async (url) => {
 const env = { MODELS_REFRESH_MS: '120000' };
 const p0 = M.refresh(env, store, { fetchImpl: fakeFetch, now: 1000000, curated: [{ id: 'glm-4.7-flash' }] });
 await p0;
-ok('F1 сеть дёрнута ровно по двум источникам', netCalls === 2, netCalls);
+/* Четыре источника: openrouter и xkiro всегда, llm7 и kilo — потому что keyless
+   (им ключ не нужен вовсе, см. engine/modelreg.js LIST_SOURCES). */
+ok('F1 сеть дёрнута ровно по четырём источникам', netCalls === 4, netCalls);
 ok('F2 каталог лёг в KV одним значением', store.puts === 1 && typeof store._raw.get(M.CATALOG_KEY).value === 'string');
 const saved = JSON.parse(store._raw.get(M.CATALOG_KEY).value);
 ok('F3 в KV попали updatedAt, count и models', saved.updatedAt === 1000000 && saved.models.length === 4, JSON.stringify(saved.count));
@@ -182,11 +184,11 @@ const broke = await M.refresh(env, store, { fetchImpl: async () => { netCalls++;
    дважды (по строке на попытку), и по нему нельзя было понять, сколько источников
    легло. Повтор при этом остался — см. W4 ниже, там он и проверяется по вызовам. */
 ok('F6 сеть легла — движок получает то, что знал, а не пустоту, и в ошибках по строке на источник',
-  broke && broke.models.length === 4 && broke.errors.length === 2, JSON.stringify((broke && broke.errors || []).slice(0, 2)));
-ok('F7 на провале ничего не перезаписано', store.puts === 1 && netCalls === 4, `${netCalls} попыток`);
+  broke && broke.models.length === 4 && broke.errors.length === 4, JSON.stringify((broke && broke.errors || []).slice(0, 4)));
+ok('F7 на провале ничего не перезаписано', store.puts === 1 && netCalls === 8, `${netCalls} попыток`);
 M.forgetMemo();
 const empty = await M.refresh(env, fakeKv(1), { fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }), sleep: async () => {}, now: 1 });
-ok('F8 пустой ответ провайдера — пустой каталог без падения (ошибки — по строке на источник)', Array.isArray(empty.models) && empty.models.length === 0 && (empty.errors || []).length === 2);
+ok('F8 пустой ответ провайдера — пустой каталог без падения (ошибки — по строке на источник)', Array.isArray(empty.models) && empty.models.length === 0 && (empty.errors || []).length === 4);
 M.forgetMemo();
 const obj = fakeKv(1);
 await obj.put(M.CATALOG_KEY, { updatedAt: Date.now(), count: 1, models: [{ id: 'a/b:free', free: true, chat: true, ctx: 100, maxOut: 10, vision: false, visionKnown: true, src: 'openrouter' }] });
@@ -400,7 +402,7 @@ console.log('── I · потолок модели доходит до тел�
       const dR = await resR.json();
       globalThis.fetch = g;
       ok('K11: ?refresh=1 перечитывает провайдеров и отдаёт новое',
-         net2 === 2 && dR.models.some((m) => m.id === 'new/model:free') && !dR.models.some((m) => m.id === 'wide/model-b'),
+         net2 === 4 && dR.models.some((m) => m.id === 'new/model:free') && !dR.models.some((m) => m.id === 'wide/model-b'),
          net2 + ' сетевых запросов, каталог ' + dR.catalogCount);
       M.forgetMemo();
 
@@ -448,7 +450,7 @@ console.log('── L · сервисные модели и прогрев пе�
   await M.maybeRefresh({}, null, { fetchImpl: spy, sleep: async () => {} });
   const second = await M.maybeRefresh({}, null, { fetchImpl: spy, sleep: async () => {} });
   ok('L11 тормоз фонового обновления: сколько бы запросов ни прошло — одна попытка в минуту',
-    second === null && hits === 4, hits + ' запросов (2 источника × 2 попытки), второй вызов — ' + (second === null ? 'null' : 'объект'));
+    second === null && hits === 8, hits + ' запросов (4 источника × 2 попытки), второй вызов — ' + (second === null ? 'null' : 'объект'));
   M.resetThrottle(); M.forgetMemo();
 }
 
@@ -492,13 +494,19 @@ console.log('── M · собственные списки провайдер�
   const od2 = M.TEST.fromProviderList({ id: 'gemini-2.5-flash-lite', owned_by: 'google' }, 'odirouter', { priceUnknown: true });
   ok('M12: генераторы видео у odirouter не лезут в список', od.chat === false && od2.chat === true);
 
-  /* какие источники вообще трогаем — только те, у которых есть ключ */
-  ok('M13: без ключа провайдера его список не дёргается',
-    M.TEST.listSources({ GROQ_KEYS: 'k1' }).join() === 'groq' && M.TEST.listSources({}).length === 0,
+  /* какие источники вообще трогаем: с ключом — своего провайдера, а LLM7 и Kilo
+     (keyless) — всегда, им ключ не нужен вовсе. */
+  ok('M13: без ключа провайдера его список не дёргается, а keyless-источники — дёргается',
+    M.TEST.listSources({ GROQ_KEYS: 'k1' }).sort().join() === 'groq,kilo,llm7'
+      && M.TEST.listSources({}).sort().join() === 'kilo,llm7',
     JSON.stringify(M.TEST.listSources({ GROQ_KEYS: 'k1', OPENROUTER_KEYS: 'o' })));
   const cfg = M.TEST.nativeCfg('gemini', { GEMINI_KEYS: 'abc,def' });
   ok('M14: заголовок gemini — x-goog-api-key, а не Bearer', !!cfg && cfg.headers['x-goog-api-key'] === 'abc' && !/abc/.test(cfg.url));
   ok('M15: чужой/безключевой провайдер конфига не даёт', M.TEST.nativeCfg('cloudflare', { CLOUDFLARE_KEYS: 'x' }) === null && M.TEST.nativeCfg('groq', {}) === null);
+  const kl = M.TEST.nativeCfg('kilo', {});
+  ok('M15b: keyless-источник читается без ключа и без заголовка авторизации',
+    !!kl && !('authorization' in kl.headers) && kl.url === 'https://api.kilo.ai/api/gateway/models',
+    JSON.stringify(kl && kl.headers));
 
   /* сетевой путь: groq спросили, ключ подставили, строки помечены src=groq */
   M.forgetMemo(); M.resetThrottle();
