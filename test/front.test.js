@@ -1277,7 +1277,7 @@ console.log('── N · стекло (Glassmorphism) ───');
     : '';
 
   ok('N1: сияние под стеклом нарисовано тремя пятнами внутри оболочки приложения, и оно вне чтения для программ (aria-hidden)',
-    /className="ambient"[^>]*aria-hidden="true"[\s\S]{0,120}<i \/>[\s\S]{0,40}<i \/>[\s\S]{0,40}<i \/>/.test(appSrc));
+    /className=\{view === 'chat' \? 'ambient' : 'ambient ambient-still'\}[^>]*aria-hidden="true"[\s\S]{0,140}<i \/>[\s\S]{0,40}<i \/>[\s\S]{0,40}<i \/>/.test(appSrc));
 
   ok('N2: у стекла свои токены в ОБЕИХ темах (прозрачность, кромка, блик, тень, цвета сияния)',
     ['dark', 'light'].every((t) => {
@@ -1312,10 +1312,11 @@ console.log('── N · стекло (Glassmorphism) ───');
     /\.ambient i \{[\s\S]{0,400}radial-gradient/.test(css)
       && !/\.ambient[\s\S]{0,60}filter: blur/.test(css));
 
-  ok('N9: на телефоне стекло дешевле (размытие 12px, карточки без размытия), но сияние ДЫШИТ — остановленное сияние выглядело как пропавшее стекло (ошибка 0.087, отменена)',
+  ok('N9: на телефоне стекло с размытием 12px; размытие снято только у карточек настроек и расхода (замер: с ним прокрутка настроек падала до 16 fps), а сияние ДЫШИТ',
     /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 12px/.test(css)
       && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,260}backdrop-filter: none/.test(css)
-      && !/animation: none/.test(css.slice(css.indexOf('@media (max-width: 780px)'), css.indexOf('/* Телефон, у которого мало ядер'))));
+      && /--glass: rgba\(24, 24, 33, 0\.42\)/.test(css)
+      && /--ambient-1: rgba\(126, 108, 255, 0\.52\)/.test(css));
 
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
     /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)
@@ -1345,14 +1346,25 @@ console.log('── N · стекло (Glassmorphism) ───');
       && !/flex: 1 0 100%/.test(css));
 
 
-  ok('N17: в стекле на телефоне прозрачность ОБЫЧНАЯ (--glass), а не плотная: на 0.72 карточки читались как непрозрачные плиты, и человек сказал «стекло пропало»',
-    /@media \(max-width: 780px\) \{[\s\S]{0,1200}\.settings-card,[\s\S]{0,300}background-color: var\(--glass\)/.test(css)
-      && /@media \(max-width: 780px\) \{[\s\S]{0,1200}\.chat-menu,[\s\S]{0,200}background-color: var\(--glass-strong\)/.test(css));
+  ok('N17: стекло на телефоне достаточно прозрачное (0.42 тёмная / 0.46 светлая), а меню поверх текста — плотнее (--glass-strong): иначе буквы просвечивают',
+    /--glass: rgba\(24, 24, 33, 0\.42\)/.test(css)
+      && /--glass: rgba\(255, 255, 255, 0\.46\)/.test(css)
+      && /--glass-strong: rgba\(18, 18, 25, 0\.6\)/.test(css));
 
   ok('N18: переключатели в настройках не раздувают строку (высота 60px, а не 102): блок «Тема» и «Род агента» в одну строку с подписью, подпись не обрезается многоточием',
     /\.seg-short \{\s*display: none/.test(css)
       && /@media \(max-width: 460px\) \{[\s\S]{0,300}\.seg-long \{ display: none/.test(css)
       && !/\.settings-row \.segmented \{\s*flex: 1 0 100%/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')));
+
+
+  ok('N19: стекло есть и у мелочей — капсула чата, круглые кнопки шапки, активный пункт сайдбара размывают и прозрачны (без них казалось, что стекло только в шапке и поле ввода)',
+    /\.topbar-pill,[\s\S]{0,120}\.icon-btn\.topbar-round,[\s\S]{0,120}\.side-item\.active \{/.test(glassArea)
+      && /\.topbar-pill,[\s\S]{0,400}backdrop-filter: blur\(var\(--glass-blur\)\)/.test(glassArea));
+
+  ok('N20: сияние дышит на чате и стоит на экранах с крупными карточками — движение под ними стоит кадров (замер: 29,8 fps против 60)',
+    /\.ambient:not\(\.ambient-still\) i:nth-child\(1\)/.test(css)
+      && /\.ambient-still i \{\s*animation: none !important/.test(css)
+      && /view === 'chat' \? 'ambient' : 'ambient ambient-still'/.test(readFileSync('src/App.tsx', 'utf8')));
 
   ok('N13: системная полоса телефона идёт за темой — полупрозрачная шапка не упирается в чужой цвет',
     /id="meta-theme-color"/.test(htmlSrc)

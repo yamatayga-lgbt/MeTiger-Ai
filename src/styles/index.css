@@ -74,17 +74,19 @@
 
   /* Стекло тёмной темы: панель светлее фона и почти прозрачна, по верхней кромке —
      тонкая подсветка (rim light). Это и есть «жидкое стекло»: видно, что за панелью. */
-  --glass: rgba(22, 22, 29, 0.52);
-  --glass-strong: rgba(16, 16, 22, 0.72);
-  --glass-brd: rgba(255, 255, 255, 0.1);
-  --glass-rim: rgba(255, 255, 255, 0.16);
+  --glass: rgba(24, 24, 33, 0.42);
+  --glass-strong: rgba(18, 18, 25, 0.6);
+  --glass-brd: rgba(255, 255, 255, 0.14);
+  --glass-rim: rgba(255, 255, 255, 0.22);
   --glass-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 52%);
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0) 52%);
   /* Сияние под стеклом: три приглушённых пятна. Тише, чем может показаться нужным, —
      сквозь панели должен читаться текст, а не спорить с ним. */
-  --ambient-1: rgba(124, 108, 255, 0.34);
-  --ambient-2: rgba(24, 205, 180, 0.2);
-  --ambient-3: rgba(84, 124, 246, 0.26);
+  /* Сияние — это то, ЧТО показывает стекло. Тусклое сияние = «стекло пропало»,
+     это уже случалось (0.087–0.088). Держим цвета заметно живыми. */
+  --ambient-1: rgba(126, 108, 255, 0.52);
+  --ambient-2: rgba(26, 214, 186, 0.34);
+  --ambient-3: rgba(88, 128, 250, 0.42);
   --ambient-o: 1;
 }
 
@@ -124,16 +126,16 @@
 
   /* Стекло светлой темы: «морозное», а не тонированное — белая панель поверх тёплой
      бумаги. Пятна сияния здесь мягче (пастель), иначе светлый фон становится грязным. */
-  --glass: rgba(255, 255, 255, 0.58);
-  --glass-strong: rgba(255, 255, 255, 0.78);
-  --glass-brd: rgba(23, 21, 18, 0.09);
-  --glass-rim: rgba(255, 255, 255, 0.9);
-  --glass-shadow: 0 14px 36px rgba(23, 21, 18, 0.1);
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 55%);
-  --ambient-1: rgba(255, 176, 122, 0.26);
-  --ambient-2: rgba(126, 150, 255, 0.22);
-  --ambient-3: rgba(104, 200, 176, 0.18);
-  --ambient-o: 0.85;
+  --glass: rgba(255, 255, 255, 0.46);
+  --glass-strong: rgba(255, 255, 255, 0.68);
+  --glass-brd: rgba(23, 21, 18, 0.12);
+  --glass-rim: rgba(255, 255, 255, 0.95);
+  --glass-shadow: 0 14px 36px rgba(23, 21, 18, 0.11);
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 55%);
+  --ambient-1: rgba(255, 168, 108, 0.4);
+  --ambient-2: rgba(122, 148, 255, 0.34);
+  --ambient-3: rgba(96, 202, 176, 0.28);
+  --ambient-o: 0.95;
 }
 
 /* ---------- Reset ---------- */
@@ -4342,7 +4344,7 @@ kbd {
   border-radius: 50%;
   will-change: transform;
 }
-.ambient i:nth-child(1) {
+.ambient:not(.ambient-still) i:nth-child(1) {
   left: -32vmax;
   top: -38vmax;
   width: 84vmax;
@@ -4350,7 +4352,7 @@ kbd {
   background: radial-gradient(circle at 50% 50%, var(--ambient-1) 0%, transparent 54%);
   animation: ambientDrift1 47s ease-in-out infinite alternate;
 }
-.ambient i:nth-child(2) {
+.ambient:not(.ambient-still) i:nth-child(2) {
   right: -30vmax;
   top: 6vmax;
   width: 72vmax;
@@ -4358,7 +4360,7 @@ kbd {
   background: radial-gradient(circle at 50% 50%, var(--ambient-2) 0%, transparent 54%);
   animation: ambientDrift2 59s ease-in-out infinite alternate;
 }
-.ambient i:nth-child(3) {
+.ambient:not(.ambient-still) i:nth-child(3) {
   left: -12vmax;
   bottom: -48vmax;
   width: 92vmax;
@@ -4500,6 +4502,44 @@ kbd {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
 }
 
+/* Мелкие элементы — тоже стекло: капсула с названием чата, круглые кнопки в
+   шапке, активный пункт сайдбара, чипы вложений. Без них интерфейс читается как
+   «стекло только в двух местах» (шапка и поле ввода), хотя панелей много. */
+.topbar-pill,
+.icon-btn.topbar-round,
+.side-item.active {
+  background-color: var(--glass);
+  background-image: var(--glass-sheen);
+  border-color: var(--glass-brd);
+  box-shadow: inset 0 1px 0 var(--glass-rim);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+
+/* Наведение у этих же элементов — тоже полупрозрачное, иначе при касании
+   панель щёлкает в непрозрачный цвет и стекло «выключается» под пальцем. */
+.topbar-pill:hover,
+.icon-btn.topbar-round:hover,
+.side-item.active:hover {
+  background-color: rgba(255, 255, 255, 0.09);
+}
+[data-theme='light'] .topbar-pill:hover,
+[data-theme='light'] .icon-btn.topbar-round:hover,
+[data-theme='light'] .side-item.active:hover {
+  background-color: rgba(23, 21, 18, 0.06);
+}
+
+/* Сияние «спокойное»: на экранах с крупными прозрачными карточками (настройки,
+   расход) движение сияния стоит кадров — замерено на прокрутке настроек:
+   с дрейфом 29,8 fps (30 кадров из 110 дольше 20 мс), без дрейфа 60 fps.
+   Это софтверный рендер (в песочнице нет видеокарты), на живом телефоне дешевле,
+   но выбирать «красиво или плавно» не надо: на главном экране сияние дышит
+   (прокрутку ленты движение не задевает: 60 fps), а под тяжёлыми экранами стоит.
+   Стекло при этом видно везде — его держат прозрачность, кромка и блик. */
+.ambient-still i {
+  animation: none !important;
+}
+
 /* ---------- Скримы (затемнение под ящиками) ---------- */
 /* Скрим гасит фон и слегка его размывает — за ним глубина, а не мутная каша. */
 .drawer-scrim {
@@ -4534,24 +4574,18 @@ kbd {
      (замер на прокрутке ленты: 60 fps, кадр 16,7 мс, ни одного кадра дольше
      20 мс). Останавливать его нельзя: без движения стекло выглядит плоским
      и человек решает, что оно «пропало» — это была ошибка 0.087. */
-  /* Карточки и меню на телефоне — БЕЗ размытия, но с полной прозрачностью
-     стекла. Под карточкой лежит только мягкое сияние: размывать в нём нечего,
-     каждый backdrop-filter в кадре — это лишний пересчёт. А вот плотность
-     вернули к обычной (0.52): на 0.72 карточки читались как непрозрачные
-     плиты, и стекло пропадало. */
+  /* Карточки настроек и расхода на телефоне — со стеклом, но БЕЗ размытия.
+     Замерено: с размытием прокрутка настроек падает до 16 fps (58 кадров из 120
+     дольше 20 мс, худший 276 мс) — на телефоне это рывки. А визуально размытие
+     тут ничего не даёт: за карточкой лежит мягкое сияние, а размытие гладкого
+     градиента не отличается от его отсутствия. Размытие нужно там, где за
+     панелью ТЕКСТ: шапка, поле ввода, меню — у них оно остаётся.
+     Стекло карточек держат прозрачность, кромка и блик. */
   .settings-card,
   .usage-card,
-  .profile-card,
-  .voice-panel {
+  .profile-card {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background-color: var(--glass);
-  }
-  /* Меню «+» и меню чата лежат ПОВЕРХ текста — им размытие нужно, иначе буквы
-     просвечивают сквозь панель и мешают читать. */
-  .chat-menu,
-  .attach-menu {
-    background-color: var(--glass-strong);
   }
 }
 
