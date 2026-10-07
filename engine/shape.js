@@ -174,7 +174,12 @@ export function buildRequest(o) {
   }
   return {
     url: url(cfg.base) + '/chat/completions',
-    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
+    /* noAuth (OVHcloud без ключа): свой заголовок авторизации ему не нужен —
+       с любым неправильным он отвечает 403, поэтому не шлём вовсе. */
+    headers: Object.assign(
+      { 'content-type': 'application/json' },
+      cfg.noAuth ? {} : { authorization: 'Bearer ' + key },
+    ),
     body: Object.assign(
       { model, messages, max_tokens: maxTokens, temperature: temp },
       topP != null ? { top_p: topP } : {},

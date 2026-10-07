@@ -134,6 +134,89 @@ export const TABLE = {
       smart: ["Atria-Dawn-Preview"],
     },
   },
+  /* ------------------------------------------------------------------
+     Вторая волна бесплатных пулов (0.097). Смысл ровно тот, ради которого они
+     добавлены: у одного и того же имени модели теперь ДВА дома. Упал Groq на
+     gpt-oss — тот же gpt-oss спросим у OVHcloud или SambaNova, а не уйдём на
+     чужую слабую модель. Ни у кого из четвёрки не нужна карта.
+     ------------------------------------------------------------------ */
+
+  /* NVIDIA NIM: 1000 кредитов на аккаунт (не в день), 40 запросов/мин.
+     Ключ начинается с nvapi-, берётся на build.nvidia.com. Имена моделей —
+     «издатель/модель», проверены по публичному каталогу /v1/models (80 штук). */
+  nvidia: {
+    label: "NVIDIA NIM",
+    kind: "openai",
+    base: "https://integrate.api.nvidia.com/v1",
+    envPrefix: 'NVIDIA',
+    limit: 1000,
+    /* Имена ниже прочитаны из собственного каталога NVIDIA (/v1/models, 80 штук,
+       проверено 07.10). Замер живости (engine/models-verified.js) судит имя как
+       таковое и про эти пулы ничего не знает — поэтому table-prune их не режет. */
+    poolFromCatalog: true,
+    models: {
+      fast: ["openai/gpt-oss-20b", "z-ai/glm-5.3-flash", "deepseek-ai/deepseek-v4.1-flash", "google/gemma-4-31b-it"],
+      smart: ["moonshotai/kimi-k2.6", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "mistralai/mistral-large-2-instruct", "z-ai/glm-5.3"],
+    },
+  },
+
+  /* GitHub Models: бесплатно любому аккаунту GitHub (доступ у человека уже есть),
+     ключ — персональный токен с правом models:read. Потолки скромные
+     (15 запросов/мин и 150 в день на дешёвом слое, 10/50 на дорогом),
+     поэтому это не «главная голова», а запасная: когда облачные пулы выдохлись
+     за сутки, она всё ещё отвечает. Имена моделей уточняются по каталогу
+     провайдера сразу после первого запроса с ключом. */
+  github: {
+    label: "GitHub Models",
+    kind: "openai",
+    base: "https://models.github.ai/inference",
+    envPrefix: 'GITHUB',
+    limit: 150,
+    poolFromCatalog: true,
+    models: {
+      fast: ["openai/gpt-4.1-mini", "openai/gpt-4o-mini"],
+      smart: ["openai/gpt-4.1", "deepseek/DeepSeek-R1", "meta/Llama-4-Scout-17B-16E-Instruct"],
+    },
+  },
+
+  /* SambaNova: 20 запросов в минуту, но всего 20 в сутки на бесплатном слое.
+     Держим в конце очереди: этого хватает, чтобы ответить, когда остальные
+     пулы уже выдохлись, и не хватает, чтобы быть первой головой. */
+  sambanova: {
+    label: "SambaNova",
+    kind: "openai",
+    base: "https://api.sambanova.ai/v1",
+    envPrefix: 'SAMBANOVA',
+    limit: 20,
+    /* gpt-oss-120b у SambaNova — тот самый дубль, ради которого пул и добавлен:
+       у Groq это имя значится мёртвым, здесь оно в живом каталоге провайдера. */
+    poolFromCatalog: true,
+    models: {
+      fast: ["Meta-Llama-3.3-70B-Instruct", "gemma-4-31B-it"],
+      smart: ["gpt-oss-120b", "DeepSeek-V3.1", "MiniMax-M3"],
+    },
+  },
+
+  /* OVHcloud AI Endpoints: единственный провайдер, которому ключ НЕ нужен —
+     анонимный слой (2 запроса в минуту на IP на модель). Но он же и самый
+     капризный: на любой неверный заголовок авторизации отвечает 403, поэтому
+     для него заголовок не отправляется вовсе (noAuth), а «ключ» в настройках
+     пишется словом keyless. Есть и обычный бесплатный ключ (без карты) —
+     тогда вместо word'а keyless кладётся он, и заголовок уходит как всем. */
+  ovh: {
+    label: "OVHcloud",
+    kind: "openai",
+    base: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+    envPrefix: 'OVH',
+    noAuth: true,
+    poolFromCatalog: true,
+    limit: 500,
+    models: {
+      fast: ["gpt-oss-20b", "Qwen3.5-9B", "Mistral-Small-3.2-24B-Instruct-2506"],
+      smart: ["gpt-oss-120b", "Qwen3.5-397B-A17B", "Meta-Llama-3_3-70B-Instruct", "Qwen2.5-VL-72B-Instruct"],
+    },
+  },
+
   sharellm: {
     label: "ShareLLM",
     kind: "openai",
@@ -164,8 +247,8 @@ export const ORDER = {
   /* Cerebras убран целиком (0.094): провайдер стал платным, а продукт бесплатный.
      Мёртвый провайдер в очереди — это не «на всякий случай», а лишняя попытка
      и лишняя строка в отчёте о том, кто отказал. */
-  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter'],
-  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm'],
+  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'nvidia', 'sambanova', 'github', 'ovh'],
+  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'nvidia', 'sambanova', 'github', 'ovh'],
 };
 
 /* Картинка: зрячие первыми. */
@@ -199,6 +282,10 @@ export function buildTable(env) {
       id, label: c.label, kind: c.kind, keys, limit: c.limit, models: c.models,
       base: c.base,
       account: (env && env.CLOUDFLARE_ACCOUNT_ID) || '',
+      /* noAuth — «этот провайдер умеет без ключа». Включается только когда все
+         ключи равны слову keyless: с настоящим ключом заголовок уходит как всем,
+         иначе OVH отвечал бы 403 на собственный же валидный токен. */
+      noAuth: !!(c.noAuth && keys.length && keys.every((k) => k === 'keyless')),
     };
   }
   return out;

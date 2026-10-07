@@ -308,6 +308,27 @@ console.log('W — дверь GET /api/usage');
   ok('W3a: в панели расхода нет ни Cerebras, ни «Локальной модели» — убранные провайдеры не висят в счёте',
     !data.providers.some((p) => p.id === 'local') && !data.providers.some((p) => /Cerebras/i.test(p.label || '')),
     data.providers.map((p) => p.id).join(','));
+  /* 0.097: пулы-дублёры. В панели у них свои ставки, и OVHcloud включается
+     словом keyless — без него провайдера в очереди нет вовсе. */
+  ok('W3b: у пулов-дублёров 0.097 свои ставки в панели, а не чужие',
+    data.providers.some((p) => p.id === 'nvidia' && p.rpm === 40)
+      && data.providers.some((p) => p.id === 'sambanova' && p.rpm === 20)
+      && data.providers.some((p) => p.id === 'github' && p.rpm === 15)
+      && data.providers.some((p) => p.id === 'ovh' && p.rpm === 2),
+    data.providers.filter((p) => ['nvidia', 'sambanova', 'github', 'ovh'].includes(p.id)).map((p) => p.id + ':' + p.rpm).join(','));
+
+  const ovhCtx = () => ({
+    env: { OVH_KEYS: 'keyless' },
+    request: new Request('https://metiger-ai.pages.dev/api/usage'),
+  });
+  const ovhData = await (await usageGet(ovhCtx())).json();
+  const row = ovhData.providers.find((p) => p.id === 'ovh');
+  /* live:true — «в очереди и с ключом»; сам ответ может быть 429 сколько угодно
+     раз, это видно в счёте попыток, а не в этой строке. */
+  ok('W3c: OVHcloud со словом keyless — живой провайдер с одним ключом',
+    !!row && row.keys === 1 && row.live === true && row.dayLimit === 500,
+    JSON.stringify(row));
+
   ok('W3: провайдер без ключа виден, но помечен как выпавший',
     data.providers.some((p) => p.id === 'openrouter' && p.live === false && p.keys === 0));
   ok('W4: ставка на человека видна и честно говорит, когда общего хранилища нет',

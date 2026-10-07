@@ -64,8 +64,13 @@ for (let i = 0; i < lines.length; i++) {
 }
 
 const removed = {}, blocked = [];
+/* Блоки с `poolFromCatalog: true` — вне приговора: их имена пришли из живого
+   каталога самого провайдера, а замер живости судит имя вообще (см. док вверху). */
+const fromCatalog = [];
+
 for (const b of blocks.filter((x) => x.to !== undefined)) {
   const body = lines.slice(b.from, b.to);
+  if (body.some((l) => /^\s*poolFromCatalog:\s*true,/.test(l))) { fromCatalog.push(b.name); continue }
   const tierLines = [];
   let have = 0;
   for (let i = 0; i < body.length; i++) {
@@ -106,4 +111,5 @@ writeFileSync(FILE, lines.join('\n'));
 console.log(`TABLE: убрано ${total} имён · ${Object.entries(removed).map(([k, v]) => k + ' −' + v).join(', ')}`);
 if (pinned.size) console.log(`голов интента защищено: ${pinned.size} (${[...pinned].join(', ')})`);
 if (blocked.length) console.log('не тронуто (иначе провайдеру некому отвечать):\n  ' + blocked.join('\n  '));
+if (fromCatalog.length) console.log('вне приговора (имена из живого каталога провайдера): ' + fromCatalog.join(', '));
 console.log('после правки: npm test и node scripts/table-prune.mjs --check (должно быть «уже вычищена»)');

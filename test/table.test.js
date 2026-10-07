@@ -11,6 +11,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { TABLE, buildTable } from '../engine/providers.js';
+import * as modelreg from '../engine/modelreg.js';
+import * as shape from '../engine/shape.js';
 import { poolsOf } from '../functions/api/models.js';
 import { VERIFIED } from '../engine/models-verified.js';
 import { INTENT_HEADS } from '../engine/route.js';
@@ -30,15 +32,21 @@ console.log('── T · TABLE против живого замера ───'
   ok('T1: ни один провайдер не остался без имён — пустой пул это выключенный провайдер',
     empties.length === 0, empties.join(', '));
 
-  /* base у `local` нет намеренно: адрес берётся из окружения (LOCAL_BASE), а не из файла.
-     Поэтому требовать его у всех — значило бы вечно красный тест на честной записи. */
+  /* base, envPrefix и limit есть у всех пулов: у OVHcloud ключ не нужен вовсе
+     (noAuth), и его «ключ» в настройках пишется словом keyless — префикс всё
+     равно обязан быть, иначе провайдера не включить в окружении. */
   const broken = Object.entries(TABLE)
     .filter(([, def]) => !def.base || !def.envPrefix || !def.limit)
     .map(([name]) => name);
   ok('T2: у каждого провайдера есть адрес, префикс ключа и потолок',
     broken.length === 0, broken.join(', '));
 
-  const withLive = Object.entries(TABLE).filter(([, def]) => namesOf(def).some((id) => alive.has(id)));
+  /* Пулы с poolFromCatalog вне сравнения: их имена пришли из живого каталога самого
+     провайдера, а замер судит имя как таковое (gpt-oss-120b мёртв у Groq и жив у
+     SambaNova). То же правило у scripts/table-prune.mjs — иначе вечный красный тест. */
+  const withLive = Object.entries(TABLE)
+    .filter(([, def]) => !def.poolFromCatalog)
+    .filter(([, def]) => namesOf(def).some((id) => alive.has(id)));
   /* Головы интента исключаем тем же правилом, что и scripts/table-prune.mjs: замер
      судит имя, а не пару «имя + провайдер», и у OdiRouter deepseek живёт, хотя у groq
      та же строка отвечает чужой моделью. Разные правила у теста и у инструмента — это
@@ -59,8 +67,48 @@ console.log('── T · TABLE против живого замера ───'
     `живых ${alive.size}, дата ${VERIFIED.at}`);
 }
 
-console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
-if (fail) process.exit(1);
+/* ── 0.097: вторая волна бесплатных пулов — дубли моделей ради взаимозамены ──
+   Смысл добавления: если один провайдер не ответил на модель, ту же модель
+   спросим у второго. Отсюда три вещи, которые должны быть верны машиной:
+     · имя, живущее у двоих, — ОДНА строка в списке выбора (иначе человек видит
+       дубль и выбирает наугад, какая «настоящая»);
+     · имена из каталога самого провайдера (poolFromCatalog) замер не режет;
+     · OVHcloud без ключа (keyless) не шлёт заголовка авторизации — на любой
+       неправильный он отвечает 403 и провайдер выглядел бы мёртвым. */
+{
+  const P = buildTable({ SAMBANOVA_KEYS: 'sn-1', OVH_KEYS: 'keyless', GITHUB_KEYS: 'gh1', NVIDIA_KEYS: 'nv1' });
+  const missing = ['nvidia', 'github', 'sambanova', 'ovh'].filter((id) => !P[id] || !P[id].models.fast.length || !P[id].models.smart.length);
+  ok('T-new-1: четыре новых пула на месте и с ключами дают имена в обоих слоях', missing.length === 0, missing.join(', '));
+
+  const { pools, ids } = poolsOf(buildTable({ SAMBANOVA_KEYS: 'sn-1', OVH_KEYS: 'keyless' }));
+  /* Дубли считаются по ТОЧНОМУ имени: оно и есть адрес модели у провайдера, и
+     «Meta-Llama-3.3-70B-Instruct» у SambaNova — не то же имя, что
+     «Meta-Llama-3_3-70B-Instruct» у OVHcloud (подчёркивание вместо точки).
+     Свести их к одной строке значило бы послать одному из двоих чужое имя. */
+  const inTwo = ids.filter((id) => pools.filter((p) => p.fast.concat(p.smart).includes(id)).length >= 2);
+  ok('T-new-2: модель, живущая у двух провайдеров, — одна строка в списке (без дублей)',
+    inTwo.includes('gpt-oss-120b') && inTwo.every((id) => ids.filter((x) => x === id).length === 1),
+    'живут у двоих: ' + inTwo.join(', ') + '; ids=' + ids.length);
+
+  /* Замер живости (снимок 2026-10-03) зовёт gpt-oss-120b мёртвым. Для пула из
+     каталога SambaNova это неправда, и витрина обязана оставить строку. */
+  const dead = { at: '2026-10-03', alive: ['free-qwen3.5-plus'], dead: ['gpt-oss-120b'] };
+  const withoutTrust = modelreg.showcase({ updatedAt: 1, models: [], byId: {} },
+    { pickIds: ['gpt-oss-120b'], curatedIds: ['gpt-oss-120b'], verified: dead, tierOf: () => 'smart' });
+  const withTrust = modelreg.showcase({ updatedAt: 1, models: [], byId: {} },
+    { pickIds: ['gpt-oss-120b'], curatedIds: ['gpt-oss-120b'], verified: dead, trusted: ['gpt-oss-120b'], tierOf: () => 'smart' });
+  ok('T-new-3: имя из живого каталога провайдера замер не режет (иначе дубль-спасатель исчезает из выбора)',
+    withoutTrust.length === 0 && withTrust.length === 1, `без пометки ${withoutTrust.length}, с пометкой ${withTrust.length}`);
+
+  const req = (env) => {
+    const cfg = buildTable(env).ovh;
+    return shape.buildRequest({ cfg, model: 'gpt-oss-120b', keyIdx: 0, messages: [{ role: 'user', content: 'привет' }], system: '', maxTokens: 16 });
+  };
+  const anon = req({ OVH_KEYS: 'keyless' }), real = req({ OVH_KEYS: 'ovh-key-настоящий' });
+  ok('T-new-4: OVHcloud без ключа идёт без заголовка авторизации, а с ключом — как все',
+    !('authorization' in anon.headers) && !!anon.headers['content-type'] && real.headers.authorization === 'Bearer ovh-key-настоящий',
+    JSON.stringify(anon.headers));
+}
 
 /* ── 0.094/0.096: Cerebras и «Локальная модель» убраны из продукта целиком ──
    Cerebras стал платным, локальная голова требовала своего сервера и висела в
@@ -81,3 +129,6 @@ if (fail) process.exit(1);
   ok('T-local-2: и в списке моделей его нет, даже если переменные LOCAL_* остались в окружении (мёртвая настройка не воскрешает провайдера)',
     !P.pools.some((p) => p.provider === 'local') && !P.ids.includes('qwen3.5-35b-a3b'), P.pools.map((p) => p.provider).join(','));
 }
+
+console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
+if (fail) process.exit(1);

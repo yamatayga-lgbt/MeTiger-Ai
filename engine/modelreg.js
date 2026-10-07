@@ -243,6 +243,14 @@ export const LIST_SOURCES = {
   sharellm: { url: 'https://sharellm.net/v1/models', prefix: 'SHARELLM', priceUnknown: true },
   atria: { url: 'https://api.atria-asi.ai/v1/models', prefix: 'ATRIA', priceUnknown: true },
   gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', prefix: 'GEMINI', kind: 'gemini', priceUnknown: true },
+  /* 0.097. Эти четыре каталога проверены живой пробой: списки моделей у NVIDIA,
+     SambaNova и OVHcloud отдаются даже без ключа (у GitHub — только с токеном). */
+  nvidia: { url: 'https://integrate.api.nvidia.com/v1/models', prefix: 'NVIDIA', priceUnknown: true },
+  sambanova: { url: 'https://api.sambanova.ai/v1/models', prefix: 'SAMBANOVA', priceUnknown: true },
+  github: { url: 'https://models.github.ai/catalog/models', prefix: 'GITHUB', priceUnknown: true },
+  /* noAuth: у OVHcloud каталог (и чат) открыты без ключа, но на любой неправильный
+     заголовок авторизации приходит 403 — поэтому с «ключом» keyless его не шлём. */
+  ovh: { url: 'https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/models', prefix: 'OVH', priceUnknown: true, noAuth: true },
 };
 
 /** Какие нативные списки вообще можно спросить в этом окружении. */
@@ -259,7 +267,9 @@ function nativeCfg(src, env) {
   if (!keys.length) return null;
   const head = c.kind === 'gemini'
     ? { 'x-goog-api-key': keys[0] }
-    : { authorization: 'Bearer ' + keys[0] };
+    : c.noAuth
+      ? {}
+      : { authorization: 'Bearer ' + keys[0] };
   return {
     url: c.url,
     /* postOnly значит «этот адрес отвечает 405 на GET, пробуй POST» (см. LIST_SOURCES.zai) */
@@ -635,6 +645,10 @@ export function showcase(cat, opts = {}) {
      Если снимка нет (проверку ещё не повторяли) — не режем ничего. */
   const ver = opts.verified || CHECKED || {};
   const alive = new Set(ver.alive || []);
+  /* trusted — имена, которые провайдер сам назвал в своём каталоге (пулы с
+     poolFromCatalog). Замер живости судит имя вообще, и «gpt-oss-120b мёртв»
+     верно для Groq, но не для SambaNova и OVH; такие имена не выкидываем. */
+  const trusted = new Set(opts.trusted || []);
   const dead = new Set(ver.dead || []);
   const audited = !!(ver.alive || []).length || !!(ver.dead || []).length;
   const tiers = opts.tierOf || (() => 'fast');
@@ -642,7 +656,7 @@ export function showcase(cat, opts = {}) {
   const seen = new Set();
   for (const id of pickIds) {
     if (seen.has(id)) continue;
-    if (audited && dead.has(id)) continue;
+    if (audited && dead.has(id) && !trusted.has(id)) continue;
     seen.add(id);
     const m = cat && cat.byId ? cat.byId[id] : null;
     out.push({

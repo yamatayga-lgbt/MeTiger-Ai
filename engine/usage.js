@@ -50,6 +50,14 @@ export const PROVIDER_RPM = {
   atria: 20,
   sharellm: 20,
   odirouter: 15,
+  /* 0.097. NVIDIA — 40 запросов/мин, но всего 1000 кредитов на аккаунт.
+     SambaNova на бесплатном слое — 20 в минуту И 20 в сутки.
+     GitHub Models даёт 150 запросов в день (дешёвый слой) при 15 в минуту.
+     OVHcloud в анонимном режиме — 2 запроса в минуту на IP и на модель. */
+  nvidia: 40,
+  sambanova: 20,
+  github: 15,
+  ovh: 2,
 };
 
 function envNum(env, name, def, min) {

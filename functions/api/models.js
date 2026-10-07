@@ -59,6 +59,10 @@ export async function onRequestGet(context) {
   const force = url.searchParams.get('refresh') === '1';
   const P = buildTable(env);
   const { pools, ids, tierOf } = poolsOf(P);
+  /* Имена из пулов, собранных по живому каталогу самого провайдера (poolFromCatalog):
+     их не режет замер живости — см. engine/modelreg.js, «trusted». */
+  const trusted = pools.filter((p) => P[p.provider] && P[p.provider].poolFromCatalog)
+    .flatMap((p) => p.fast.concat(p.smart));
 
   const store = memoryStore(env);
   let cat = await modelreg.loadCatalog(store, { env, force });
@@ -80,6 +84,7 @@ export async function onRequestGet(context) {
   const list = modelreg.showcase(cat, {
     pickIds: ids,
     curatedIds: ids,
+    trusted,
     tierOf: (id) => tierOf[id] || 'fast',
   });
 
