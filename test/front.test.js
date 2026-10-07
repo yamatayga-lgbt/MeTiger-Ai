@@ -1332,7 +1332,7 @@ console.log('── N · стекло (Glassmorphism) ───');
     /color-mix\(in srgb, var\(--user-bubble\)/.test(ruleBody('.msg-user .bubble')));
 
   ok('N7: блик сделан СЛОЁМ ФОНА (background-image), а не псевдоэлементом — псевдоэлементу нужен position: relative, а он перебивал absolute у попапов',
-    /background-image: var\(--glass-sheen\)/.test(glassArea)
+    /background-image: radial-gradient\([\s\S]{0,200}var\(--glass-spot\),[\s\S]{0,60}var\(--glass-sheen\)/.test(glassArea)
       && !/\.topbar::after/.test(css)
       && !/\.params-popover::after/.test(css)
       && !/\.palette::after/.test(css));
@@ -1346,6 +1346,78 @@ console.log('── N · стекло (Glassmorphism) ───');
       && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,260}backdrop-filter: none/.test(css)
       && /--glass: rgba\(52, 52, 70, 0\.34\)/.test(css)
       && /--ambient-1: rgba\(132, 112, 255, 0\.5\)/.test(css));
+
+  /* ── 0.100: жидкое стекло, «Что нового» и подхват в выборе модели ──
+     Жидкостью здесь названы ровно две вещи, и обе обязаны быть видны машиной:
+     блик, который ходит по панели за пальцем (--mx/--my в токене --glass-sheen),
+     и радужная кромка (--glass-prism). Дешёвость — часть требования: слушатели
+     passive, запись в переменные по одному rAF-кадру, а на пальце — только
+     касание (таскать пятно во время прокрутки значило бы платить кадром). */
+  /* Жидкий блик: gradient собран в ПРАВИЛЕ панели, а не в токене. Значение токена
+     вычисляется там, где объявлено, — var(--mx) внутри токена «запекался» на :root
+     в 50%, и блик не двигался (проверено живьём: переменные на панели стояли,
+     фон не менялся). Обе темы обязаны давать цвет пятна. */
+  ok('N26: блик читает --mx/--my самой панели (в правиле, а не в токене), и у обеих тем есть цвет пятна',
+    /background-image: radial-gradient\(\s*240px 190px at var\(--mx, 50%\) var\(--my, -30%\)/.test(glassArea)
+      && ['dark', 'light'].every((t) => {
+        const i = css.indexOf("data-theme='" + t + "'");
+        const body = i < 0 ? '' : css.slice(i, css.indexOf('\n}', i));
+        return body.includes('--glass-spot:') && body.includes('--glass-prism:');
+      })
+      && !/--glass-sheen: radial-gradient/.test(css.slice(0, css.indexOf('/* ---------- Само стекло'))),
+    'жидкий блик собран не там, где надо');
+
+
+  const liquidSrc = readFileSync('src/hooks/useLiquidGlass.ts', 'utf8');
+  ok('N27: блик ходит за пальцем дешёво — passive-слушатели, один кадр на движение, палец только касается',
+    /addEventListener\('pointermove', onMove, \{ passive: true \}\)/.test(liquidSrc)
+      && /requestAnimationFrame\(paint\)/.test(liquidSrc)
+      && /addEventListener\('pointerdown', onPointerDown, \{ passive: true \}\)/.test(liquidSrc)
+      /* Оба события: часть браузеров шлёт только одно из двух (проверено). */
+      && /addEventListener\('touchstart', onTouch, \{ passive: true \}\)/.test(liquidSrc)
+      && /prefers-reduced-motion: reduce/.test(liquidSrc)
+      && /setProperty\('--mx'/.test(liquidSrc)
+      /* Решение — по e.pointerType, а не по медиазапросу: медиазапрос врёт на
+         гибридных ноутбуках и в браузерах без мыши (проверено живьём). */
+      && /e\.pointerType === 'mouse'/.test(liquidSrc)
+      && /if \(!c\.clientX && !c\.clientY\) return/.test(liquidSrc)
+      && /if \(pt && pt !== 'mouse' && pt !== 'pen'\) return/.test(liquidSrc)
+      && !/hover: hover\) and \(pointer: fine\)/.test(liquidSrc),
+    'тип указателя берётся не из события');
+
+  ok('N28: жидкое стекло включено на всё приложение одной строкой, а не обработчиком в каждой панели',
+    /useLiquidGlass\(\)/.test(readFileSync('src/App.tsx', 'utf8')));
+
+  /* «Что нового»: экран существует, читается из своих данных, свежая запись — та,
+     что совпадает с версией продукта (забытая запись — красный тест), и точка на
+     пункте гаснет при открытии. */
+  const notesSrc = readFileSync('src/lib/release-notes.ts', 'utf8');
+  const versionSrc = readFileSync('src/lib/version.ts', 'utf8');
+  const appVer = (versionSrc.match(/APP_VERSION = '([^']+)'/) || [])[1] || '';
+  const firstVer = (notesSrc.match(/version: '([^']+)'/) || [])[1] || '';
+  ok('N29: «Что нового» знает текущую версию — свежая запись совпадает с APP_VERSION',
+    appVer === firstVer && appVer.length > 0, 'версия ' + appVer + ' против записи ' + firstVer);
+
+  const newsView = readFileSync('src/views/WhatsNewView.tsx', 'utf8');
+  const sidebarSrc = readFileSync('src/components/Sidebar.tsx', 'utf8');
+  ok('N30: «Что нового» — отдельный экран в разделах сайдбара, с точкой о непрочитанном',
+    /id: 'whatsnew', label: 'Что нового'/.test(sidebarSrc)
+      && /side-dot/.test(sidebarSrc)
+      && /newsDot/.test(readFileSync('src/App.tsx', 'utf8'))
+      && /newsSeen !== APP_VERSION/.test(readFileSync('src/App.tsx', 'utf8'))
+      && /RELEASE_NOTES\.map/.test(newsView));
+
+  /* Подхват показывается там, куда человек действительно может посмотреть:
+     в «Использовании и Лимитах». В выборе модели его нет намеренно — выбора
+     модели в продукте сейчас нет вовсе (движок отвечает сам, «Авто»). */
+  const usageView = readFileSync('src/views/UsageView.tsx', 'utf8');
+  ok('N31: подхват виден в «Использовании и Лимитах» — сколько имён переживут отказ провайдера',
+    /data\.failover/.test(usageView)
+      && /failover\.sample/.test(usageView)
+      && /Отказ провайдера не оставляет без ответа/.test(usageView)
+      && /failover,/.test(readFileSync('functions/api/usage.js', 'utf8'))
+      && !/model-failover/.test(readFileSync('src/components/ModelPicker.tsx', 'utf8')));
+
 
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
     /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)

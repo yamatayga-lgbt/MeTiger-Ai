@@ -48,6 +48,8 @@ export interface UsageSnapshot {
   totals: { attempt: number; ok: number; refused: number; dead: number }
   providers: UsageRow[]
   rate: { max: number; windowMs: number; on: boolean; why: string }
+  /** Подхват: имена моделей, живущие у двух и более провайдеров. */
+  failover?: { count: number; sample: { model: string; providers: string[] }[] }
   precision: {
     approx: boolean
     writeMs: number

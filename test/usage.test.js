@@ -317,6 +317,15 @@ console.log('W — дверь GET /api/usage');
       && data.providers.some((p) => p.id === 'github' && p.rpm === 15),
     data.providers.filter((p) => ['llm7', 'kilo', 'sambanova', 'github'].includes(p.id)).map((p) => p.id + ':' + p.rpm).join(','));
 
+  /* 0.100: подхват — имена, живущие у двух и более провайдеров. Без него блок
+     «Подхват» в панели было бы нечем наполнить, а это обещание, которое человек
+     читает: «отказ провайдера не оставит без ответа». */
+  ok('W3d: панель знает про подхват — есть имена у двух провайдеров и примеры к ним',
+    !!data.failover && data.failover.count >= 1
+      && Array.isArray(data.failover.sample) && data.failover.sample.length >= 1
+      && data.failover.sample.every((x) => x.model && Array.isArray(x.providers) && x.providers.length >= 2),
+    JSON.stringify(data.failover && { count: data.failover.count, first: data.failover.sample && data.failover.sample[0] }).slice(0, 200));
+
   const klCtx = () => ({
     env: {},
     request: new Request('https://metiger-ai.pages.dev/api/usage'),

@@ -7,6 +7,7 @@ import {
   PenLine,
   Search,
   Settings,
+  Sparkles,
   Sun,
   Trash2,
   X,
@@ -31,12 +32,17 @@ interface SidebarProps {
   resolvedTheme: 'light' | 'dark'
   onToggleTheme: () => void
   onOpenPalette: () => void
+  /** Есть непрочитанное обновление — точка на пункте «Что нового». */
+  newsDot?: boolean
 }
 
 const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
   /* Расход — пунктом раздела, а не строкой в Настройках: в Настройках он дублировал
      этот же переход, и человек искал его в двух местах вместо одного. */
   { id: 'usage', label: 'Использование и Лимиты', icon: Activity },
+  /* «Что нового» — первым пунктом: после обновления человек первым делом ищет
+     именно его, а точка на пункте говорит, что версия сменилась. */
+  { id: 'whatsnew', label: 'Что нового', icon: Sparkles },
   { id: 'settings', label: 'Настройки', icon: Settings },
 ]
 
@@ -61,6 +67,7 @@ export function Sidebar({
   resolvedTheme,
   onToggleTheme,
   onOpenPalette,
+  newsDot = false,
 }: SidebarProps) {
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -225,6 +232,9 @@ export function Sidebar({
             >
               <item.icon size={16} />
               {item.label}
+              {item.id === 'whatsnew' && newsDot ? (
+                <span className="side-dot" aria-label="есть новое" />
+              ) : null}
             </button>
           ))}
         </nav>

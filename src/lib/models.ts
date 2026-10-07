@@ -730,6 +730,8 @@ export interface ModelCatalog {
   /** чьи собственные списки прочитаны в этом обновлении */
   read?: Record<string, boolean> | null
   pools?: { provider: string; label: string; count: number }[]
+  /** id → провайдеры, у которых это имя живёт: два и больше = есть подхват. */
+  multi?: Record<string, string[]>
 }
 
 let LAST: ModelCatalog | null = null
@@ -763,6 +765,9 @@ export async function loadCatalog(opts: { force?: boolean } = {}): Promise<Model
         stale: !!d.stale,
         count: typeof d.count === 'number' ? d.count : models.length,
         catalogCount: typeof d.catalogCount === 'number' ? d.catalogCount : 0,
+        /* Карту подхвата несём дальше без разбора: она нужна только подписи в
+           выборе модели, и её отсутствие — не ошибка (старый кэш без поля). */
+        ...(d.multi && typeof d.multi === 'object' ? { multi: d.multi as Record<string, string[]> } : {}),
       }
       return LAST
     } catch {

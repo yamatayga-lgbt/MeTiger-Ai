@@ -44,6 +44,8 @@ interface Row {
   ctx: number
   tokPerSec: number
   src?: string
+  /** Кто ещё ответит этим же именем (провайдеры), если первый откажет. */
+  failover?: string[]
   canThink: boolean
   supportsEffort: boolean
 }
@@ -106,6 +108,7 @@ function build(cat: ModelCatalog | null): Row[] {
       ctx: m.ctx || 131072,
       tokPerSec: m.src === 'groq' ? 240 : m.tier === 'smart' ? 105 : 150,
       src: m.src,
+      failover: (cat.multi?.[m.id] || []).length >= 2 ? (cat.multi?.[m.id] || []).map(providerLabel) : undefined,
       canThink: think,
       supportsEffort: canModelEffort(m.id, m),
     }

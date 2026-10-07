@@ -68,6 +68,20 @@ export async function onRequestGet(context) {
   const trusted = pools.filter((p) => P[p.provider] && P[p.provider].poolFromCatalog)
     .flatMap((p) => p.fast.concat(p.smart));
 
+  /* Подхват (0.097/0.100): модель, которая живёт у двух и более провайдеров.
+     Отдаём наружу только имена с 2+ домами — иначе поле раздувало бы ответ
+     копией всего списка. Фронт подписывает этим строку выбора: «эту модель
+     ответят и вторым провайдером, если первый откажет». */
+  const multi = {};
+  for (const p of pools) {
+    for (const id of p.fast.concat(p.smart)) {
+      (multi[id] = multi[id] || []).push(p.provider);
+    }
+  }
+  for (const id of Object.keys(multi)) {
+    if (multi[id].length < 2) delete multi[id];
+  }
+
   const store = memoryStore(env);
   let cat = await modelreg.loadCatalog(store, { env, force });
   if (!cat || cat.stale || force) {
@@ -116,6 +130,8 @@ export async function onRequestGet(context) {
     verified: { at: VERIFIED.at || null, alive: VERIFIED.alive.length, dead: VERIFIED.dead.length },
     errors: cat.errors || null,
     pools: pools.map((p) => ({ provider: p.provider, label: p.label, count: p.fast.length + p.smart.length })),
+    /* { id: [провайдер, …] } — только для имён, живущих у двоих и больше. */
+    multi,
     /* чьи собственные списки реально прочитаны в этом обновлении — чтобы «в
        каталоге нет» не выглядело приговором там, где список неполный (z.ai) */
     read: cat.read || null,

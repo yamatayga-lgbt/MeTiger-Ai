@@ -97,6 +97,22 @@
      в самом тёмном углу обоев. Здесь панель светлее и плотнее прочего стекла. */
   --pane: #3e3e54;
   --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0) 52%);
+  /* Жидкий блик (0.100) — цвет пятна, которое едет за пальцем; сам градиент
+     собирается в правиле панели.
+     Почему не здесь: значение токена вычисляется ТАМ, ГДЕ ОН ОБЪЯВЛЕН, — var(--mx)
+     внутри токена подставился бы на :root (где --mx нет) и «запёкся» бы на 50%.
+     Проверено живьём: переменные на панели стояли, а фон не менялся. */
+  --glass-spot: rgba(255, 255, 255, 0.17);
+  /* Юбилейная призма (0.100): по кромке панели идёт лёгкая радуга. Статичная —
+     движение по кадру стоило бы fps, а «жидкость» уже даёт бегающий блик. */
+  --glass-prism: linear-gradient(
+    118deg,
+    rgba(132, 112, 255, 0.16) 0%,
+    rgba(92, 190, 252, 0.1) 22%,
+    rgba(255, 255, 255, 0) 46%,
+    rgba(30, 220, 190, 0.1) 74%,
+    rgba(255, 176, 92, 0.12) 100%
+  );
   /* Сияние под стеклом: три приглушённых пятна. Тише, чем может показаться нужным, —
      сквозь панели должен читаться текст, а не спорить с ним. */
   /* Сияние — это то, ЧТО показывает стекло. Тусклое сияние = «стекло пропало»,
@@ -164,6 +180,15 @@
   --glass-shadow: 0 2px 8px rgba(23, 21, 18, 0.05), 0 18px 40px rgba(23, 21, 18, 0.12);
   --pane: #ffffff;
   --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0) 55%);
+  --glass-spot: rgba(255, 255, 255, 0.92);
+  --glass-prism: linear-gradient(
+    118deg,
+    rgba(132, 112, 255, 0.14) 0%,
+    rgba(92, 190, 252, 0.1) 22%,
+    rgba(255, 255, 255, 0) 46%,
+    rgba(30, 220, 190, 0.1) 74%,
+    rgba(255, 176, 92, 0.12) 100%
+  );
   --wall-band: rgba(255, 255, 255, 0.62);
   --ambient-1: rgba(255, 150, 92, 0.5);
   --ambient-2: rgba(120, 138, 255, 0.42);
@@ -4461,17 +4486,54 @@ kbd {
 .workspace-drawer,
 .settings-card,
 .usage-card,
-.profile-card {
+.profile-card,
+.news-card,
+.news-intro {
   background-color: var(--glass);
   /* Блик — слой ФОНА, а не псевдоэлемент. Псевдоэлементу нужен position:
      relative, а он перебивал absolute у попапов (параметры и модели) и ломал
      раскладку поля ввода: попап становился обычным блоком внутри строки и
      растягивал её на пол-экрана. Слой фона не трогает положение вовсе. */
-  background-image: var(--glass-sheen);
+  /* Порядок слоёв: жидкость (пятно под пальцем) — сверху, статичный верхний блик —
+     под ней. --mx/--my ставит useLiquidGlass на саму панель, поэтому градиент
+     собран ЗДЕСЬ, а не в токене: см. пояснение у --glass-spot. */
+  background-image: radial-gradient(
+      240px 190px at var(--mx, 50%) var(--my, -30%),
+      var(--glass-spot),
+      transparent 62%
+    ),
+    var(--glass-sheen);
   border-color: var(--glass-brd);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+
+/* ---------- Жидкое стекло (0.100) ----------
+
+   «Жидкое» здесь — это не анимация ради анимации, а два свойства настоящего
+   стекла, которых не было:
+     · блик ходит по поверхности вслед за пальцем/курсором (--mx/--my в токене
+       --glass-sheen). Значения ставит useLiquidGlass: rAF-кадр на движение,
+       passive-слушатели, и только по панелям под пальцем — раскладку это не
+       трогает вовсе, перерисовывается один фон;
+     · по кромке идёт лёгкая радуга (--glass-prism) — стекло ловит не только
+       свет, но и цвет. Она статичная: движение по кадру стоило бы fps, а
+       прокрутка на телефоне и без того не бесплатна.
+
+   Призмы нет у мелких кнопок поля ввода: там блик уже лежит поверх размытой
+   полки, и второй слой цвета превратил бы кружки в цветные пятна. */
+.topbar-pill,
+.composer,
+.model-panel,
+.palette {
+  background-image: radial-gradient(
+      240px 190px at var(--mx, 50%) var(--my, -30%),
+      var(--glass-spot),
+      transparent 62%
+    ),
+    var(--glass-prism),
+    var(--glass-sheen);
 }
 
 /* Панели, которые висят НАД содержимым (палитра, попапы, меню) — плотнее:
@@ -4536,7 +4598,15 @@ kbd {
 .composer {
   position: relative;
   background-color: color-mix(in srgb, var(--pane) 46%, transparent);
-  background-image: var(--glass-sheen);
+  /* Жидкий блик собран здесь, а НЕ в общем токене: значение токена вычисляется
+     там, где объявлено, и var(--mx) внутри него «запекался» бы на :root в 50%. */
+  background-image: radial-gradient(
+      240px 190px at var(--mx, 50%) var(--my, -30%),
+      var(--glass-spot),
+      transparent 62%
+    ),
+    var(--glass-prism),
+    var(--glass-sheen);
   border-color: var(--glass-brd);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim),
     inset 0 -1px 0 color-mix(in srgb, var(--glass-rim) 30%, transparent);
@@ -4629,7 +4699,13 @@ kbd {
 .icon-btn.topbar-round,
 .side-item.active {
   background-color: var(--glass);
-  background-image: var(--glass-sheen);
+  background-image: radial-gradient(
+      240px 190px at var(--mx, 50%) var(--my, -30%),
+      var(--glass-spot),
+      transparent 62%
+    ),
+    var(--glass-prism),
+    var(--glass-sheen);
   border-color: var(--glass-brd);
   box-shadow: inset 0 1px 0 var(--glass-rim);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
@@ -4716,6 +4792,213 @@ kbd {
   .ambient i:nth-child(3) {
     animation: none;
   }
+}
+
+
+/* ---------- «Что нового» (0.100) ----------
+
+   Экран истории обновлений. Карточки — то же стекло, что и везде (класс
+   .news-card добавлен в общую группу стекла ниже), свежая версия открыта и
+   помечена юбилейной лентой. Ленты сделаны градиентом, а не картинкой: они
+   часть текста, а не украшение, которое надо грузить. */
+.news-wrap {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 18px 14px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.news-intro {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-brd);
+  background-color: var(--glass);
+  background-image: radial-gradient(
+      240px 190px at var(--mx, 50%) var(--my, -30%),
+      var(--glass-spot),
+      transparent 62%
+    ),
+    var(--glass-sheen);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
+}
+
+.news-intro-ic {
+  color: var(--text-2);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.news-intro-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.news-intro-sub {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-top: 3px;
+}
+
+.news-card {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--glass-brd);
+  background-color: var(--glass);
+  background-image: radial-gradient(
+      240px 190px at var(--mx, 50%) var(--my, -30%),
+      var(--glass-spot),
+      transparent 62%
+    ),
+    var(--glass-sheen);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
+  padding: 12px 14px 13px;
+}
+
+/* Свежая версия: чуть плотнее остальных и с лентой по левой кромке. */
+.news-card.is-current {
+  background-color: var(--glass-strong);
+}
+
+.news-card.is-current::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #8470ff, #5c84fc 45%, #1edcbe);
+}
+
+.news-card {
+  position: relative;
+}
+
+.news-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.news-ver {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--glass-brd);
+  background-color: color-mix(in srgb, var(--pane) 34%, transparent);
+}
+
+.news-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.news-mark,
+.news-now {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+  border: 1px solid transparent;
+}
+
+.news-mark {
+  color: var(--text);
+  border-color: rgba(132, 112, 255, 0.45);
+  background: linear-gradient(118deg, rgba(132, 112, 255, 0.22), rgba(30, 220, 190, 0.18));
+}
+
+.news-mark.is-fix {
+  border-color: var(--amber-border);
+  background: var(--amber-soft);
+  color: var(--text);
+}
+
+.news-now {
+  margin-left: auto;
+  color: var(--text-2);
+  border-color: var(--glass-brd);
+}
+
+.news-list {
+  list-style: none;
+  margin: 9px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.news-list li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.news-list li > span {
+  color: var(--text);
+}
+
+.news-tick {
+  color: var(--ok);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.news-foot {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 4px;
+}
+
+/* Имена моделей в строках панели: моноширинный, но переносится — длинные id
+   иначе вылезают за карточку на телефоне. */
+.settings-row .mono-line {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* Точка на пункте «Что нового»: непрочитанная версия. */
+.side-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8470ff, #1edcbe);
+  box-shadow: 0 0 0 3px color-mix(in srgb, #8470ff 22%, transparent);
+}
+
+/* Плашка подхвата в выборе модели: «эту модель ответят и вторым провайдером». */
+.model-failover {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--glass-brd);
+  background-color: var(--ok-soft);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.model-failover-ic {
+  color: var(--ok);
 }
 
 /* ---------- Уважение к настройкам системы ---------- */

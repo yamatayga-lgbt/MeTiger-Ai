@@ -198,6 +198,35 @@ export function UsageView() {
         </div>
       )}
 
+      {/* Подхват (0.100): числа, по которым видно, что отказ одного провайдера
+          не оставляет человека без ответа — то же имя спросят у второго. */}
+      {data?.failover && data.failover.count > 0 ? (
+        <div className="settings-group">
+          <div className="settings-label">Подхват · {data.failover.count} имён у двух провайдеров</div>
+          <div className="settings-card">
+            <div className="settings-row">
+              <div className="grow">
+                <div className="n">Отказ провайдера не оставляет без ответа</div>
+                <div className="d">
+                  {data.failover.count} имён моделей живут сразу у двух и более провайдеров: если один
+                  не ответит, очередь спросит то же имя у второго, а не уйдёт на чужую слабую модель.
+                </div>
+              </div>
+              <Badge tone="green">{data.failover.count}</Badge>
+            </div>
+            {data.failover.sample.map((x) => (
+              <div className="settings-row" key={x.model}>
+                <div className="grow">
+                  <div className="n mono-line">{x.model}</div>
+                  <div className="d">{x.providers.join(' · ')}</div>
+                </div>
+                <Badge tone="blue">×{x.providers.length}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="settings-group">
         <div className="settings-label">Как это считается</div>
         <div className="settings-card">

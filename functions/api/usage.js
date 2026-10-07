@@ -94,6 +94,23 @@ export async function onRequestGet(context) {
     return a.id < b.id ? -1 : 1;
   });
 
+  /* Подхват (0.100): сколько имён модели живут у ДВУХ и более провайдеров — их
+     отказ одного провайдера не роняет: очередь спросит то же имя у второго.
+     Считаем по пулам таблицы, а не по каталогу: каталожные строки бесплатны у
+     одного дома, а пул — это то, с чем движок реально ходит. */
+  const homes = {};
+  for (const id of Object.keys(P)) {
+    const cfg = P[id] || {};
+    const all = [].concat((cfg.models && cfg.models.fast) || [], (cfg.models && cfg.models.smart) || []);
+    for (const model of new Set(all)) (homes[model] = homes[model] || []).push(id);
+  }
+  const twins = Object.keys(homes).filter((m) => homes[m].length >= 2);
+  const failover = {
+    count: twins.length,
+    /* Пара примеров — по ним видно, что это за имена, без простыни на экране. */
+    sample: twins.slice(0, 4).map((m) => ({ model: m, providers: homes[m] })),
+  };
+
   const rate = limitsInfo(env, limitsStore(env));
   return json({
     ok: true,
@@ -106,6 +123,7 @@ export async function onRequestGet(context) {
     totals: snap.totals,
     providers: rows,
     rate: { max: rate.rateMax, windowMs: rate.windowMs, on: rate.on, why: rate.why || '' },
+    failover,
     /* Подпись точности — дословно та же мысль, что в engine/usage.js: изоляты
        складываются, «в минуту» — нижняя оценка. */
     precision: {

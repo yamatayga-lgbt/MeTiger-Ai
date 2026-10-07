@@ -7,7 +7,10 @@ import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
 import { SettingsView } from './views/SettingsView'
 import { UsageView } from './views/UsageView'
+import { WhatsNewView } from './views/WhatsNewView'
 import { useTheme } from './hooks/useTheme'
+import { useLiquidGlass } from './hooks/useLiquidGlass'
+import { APP_VERSION } from './lib/version'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
 import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep } from './lib/api'
@@ -32,7 +35,7 @@ import {
   type ReasoningEffort,
 } from './lib/models'
 
-export type ViewId = 'chat' | 'settings' | 'usage'
+export type ViewId = 'chat' | 'settings' | 'usage' | 'whatsnew'
 
 export interface Chat {
   id: string
@@ -45,6 +48,20 @@ const TITLES: Record<ViewId, string> = {
   chat: 'Чат',
   settings: 'Настройки',
   usage: 'Использование и Лимиты',
+  whatsnew: 'Что нового',
+}
+
+/* Прочитанные версии «Что нового» — на устройстве. Точка на пункте гаснет, как
+   только человек открыл экран: держать её «пока не понравится» значило бы
+   приучать не замечать точке вовсе. */
+const NEWS_KEY = 'mt-news-seen'
+
+function readNewsSeen(): string {
+  try {
+    return String(localStorage.getItem(NEWS_KEY) || '')
+  } catch {
+    return ''
+  }
 }
 
 let msgSeq = 0
@@ -104,6 +121,10 @@ export default function App() {
   const [user, setUser] = useState<Person>(siteUser())
 
   const { pref, resolved, setPref, toggle } = useTheme()
+  /* Жидкое стекло: блик ходит за пальцем по панелям. Один слушатель на всё
+     приложение, а не обработчик в каждой панели — см. hooks/useLiquidGlass.ts. */
+  useLiquidGlass()
+  const [newsSeen, setNewsSeen] = useState<string>(() => readNewsSeen())
 
   useEffect(() => {
     setUser(siteUser())
@@ -149,6 +170,17 @@ export default function App() {
   const stopGeneration = useCallback(() => {
     abortRef.current?.abort()
   }, [])
+
+  /* Открыли «Что нового» — считаем версию прочитанной (точка гаснет). */
+  useEffect(() => {
+    if (view !== 'whatsnew' || newsSeen === APP_VERSION) return
+    try {
+      localStorage.setItem(NEWS_KEY, APP_VERSION)
+    } catch {
+      /* приватный режим: точка просто останется — это не повод ломать экран */
+    }
+    setNewsSeen(APP_VERSION)
+  }, [view, newsSeen])
 
   const navigate = useCallback((v: ViewId) => {
     haptic('select')
@@ -431,6 +463,7 @@ export default function App() {
         resolvedTheme={resolved}
         onToggleTheme={toggle}
         onOpenPalette={() => setPaletteOpen(true)}
+        newsDot={newsSeen !== APP_VERSION}
       />
 
       <div className="main">
@@ -474,6 +507,7 @@ export default function App() {
             />
           ) : null}
           {view === 'usage' ? <UsageView /> : null}
+          {view === 'whatsnew' ? <WhatsNewView /> : null}
         </main>
       </div>
 
