@@ -41,7 +41,6 @@ export const USAGE_DAY_TTL_SEC = 2 * 24 * 3600;
  */
 export const PROVIDER_RPM = {
   gemini: 15,
-  cerebras: 30,
   groq: 30,
   mistral: 60,
   openrouter: 20,

@@ -507,7 +507,6 @@ export function modelLimitsFor(
   if (/gemini|gemma/.test(s) && src !== 'odirouter') return { rpd: 250, rpm: 15 }
   if (src === 'groq' || /gpt-oss|qwen3\.8-27b/.test(s)) return { rpd: 1000, rpm: 30 }
   if (src === 'openrouter') return { rpd: 50, rpm: 20 }
-  if (src === 'cerebras') return { rpd: 900, rpm: 30 }
   if (src === 'odirouter') return { rpd: 1000, rpm: 15 }
   if (src === 'zai' || /\bglm\b/.test(s)) return { rpd: 1000, rpm: 30 }
   if (src === 'mistral' || /ministral|codestral|devstral|mistral/.test(s)) return { rpd: 1000, rpm: 60 }
@@ -697,7 +696,6 @@ export const PROVIDER_LABEL: Record<string, string> = {
   mistral: 'Mistral',
   gemini: 'Gemini',
   zai: 'Z.AI',
-  cerebras: 'Cerebras',
   cloudflare: 'Workers AI',
   odirouter: 'OdiRouter',
   sharellm: 'ShareLLM',
@@ -835,7 +833,7 @@ export function modelOption(id: string | undefined | null): ModelOption {
     tier: c.tier === 'smart' ? 'smart' : 'fast',
     vision: c.vision === true,
     ctx: c.ctx || 131072,
-    tokPerSec: c.src === 'groq' || c.src === 'cerebras' ? 240 : c.tier === 'smart' ? 105 : 150,
+    tokPerSec: c.src === 'groq' ? 240 : c.tier === 'smart' ? 105 : 150,
     canThink: think,
     supportsEffort: canModelEffort(c.id, c),
     category: vendorCategory(c.id, c.vendor, c.name),

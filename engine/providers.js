@@ -46,17 +46,6 @@ export const TABLE = {
       smart: ["gemini-3.5-flash","gemma-4-31b-it"],
     },
   },
-  cerebras: {
-    label: "Cerebras",
-    kind: "openai",
-    base: "https://api.cerebras.ai/v1",
-    envPrefix: 'CEREBRAS',
-    limit: 900,
-    models: {
-      fast: ["qwen-3.8-27b"],
-      smart: ["gpt-oss-120b","qwen-3.8-27b"],
-    },
-  },
   groq: {
     label: "Groq",
     kind: "openai",
@@ -183,8 +172,11 @@ export const TABLE = {
 /* Порядок обхода: от самого быстрого/надёжного к запасным. Локальная голова —
    последней: она не должна вытеснять облачную, но обязана попадать в совет голосов. */
 export const ORDER = {
-  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'cerebras'],
-  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'cerebras'],
+  /* Cerebras убран целиком (0.094): провайдер стал платным, а продукт бесплатный.
+     Мёртвый провайдер в очереди — это не «на всякий случай», а лишняя попытка
+     и лишняя строка в отчёте о том, кто отказал. */
+  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter'],
+  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm'],
 };
 
 /* Картинка: зрячие первыми. */

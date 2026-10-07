@@ -9,7 +9,9 @@
  *   node test/table.test.js
  */
 import { execFileSync } from 'node:child_process';
-import { TABLE } from '../engine/providers.js';
+import { readFileSync } from 'node:fs';
+import { TABLE, buildTable } from '../engine/providers.js';
+import { poolsOf } from '../functions/api/models.js';
 import { VERIFIED } from '../engine/models-verified.js';
 import { INTENT_HEADS } from '../engine/route.js';
 
@@ -59,3 +61,33 @@ console.log('── T · TABLE против живого замера ───'
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
+
+/* ── 0.094: Cerebras убран целиком, «Локальная модель» не висит без адреса ──
+   Это не «на всякий случай»: платный провайдер в очереди — лишняя попытка и
+   лишняя строка «кто отказал» в каждом ответе, а локальная голова без
+   LOCAL_BASE_URL — обещание модели, к которой нельзя постучаться. */
+{
+  const src = readFileSync(new URL('../engine/providers.js', import.meta.url), 'utf8')
+    + readFileSync(new URL('../engine/usage.js', import.meta.url), 'utf8')
+    + readFileSync(new URL('../engine/modelreg.js', import.meta.url), 'utf8');
+  const hits = src.split('\n').filter((l) => /cerebras/i.test(l) && !/^\s*[*/]/.test(l));
+  ok('T-cerebras-1: в движке нет ни одной ЖИВОЙ строки про Cerebras (только комментарии-пояснения)',
+    hits.every((l) => /убран|платн|Cerebras убран/.test(l)), hits.join(' | ').slice(0, 160));
+
+  const P1 = buildTable({ GROQ_KEYS: 'g1' });
+  ok('T-local-1: провайдер «local» есть в таблице (чтобы человек мог его включить), но БЕЗ ключей и адреса, пока LOCAL_BASE_URL не задан',
+    !!P1.local && P1.local.keys.length === 0 && P1.local.base === '', JSON.stringify({ keys: P1.local.keys, base: P1.local.base }));
+
+  const P2 = buildTable({ LOCAL_BASE_URL: 'http://127.0.0.1:11434/v1' });
+  ok('T-local-2: с LOCAL_BASE_URL локальная голова получает адрес и ключ-заглушку, и только тогда попадает в очередь обхода',
+    P2.local.keys.length === 1 && /11434/.test(P2.local.base), JSON.stringify({ keys: P2.local.keys, base: P2.local.base }));
+}
+
+{
+  const без = poolsOf(buildTable({ GROQ_KEYS: 'g1' }));
+  const с = poolsOf(buildTable({ GROQ_KEYS: 'g1', LOCAL_BASE_URL: 'http://127.0.0.1:11434/v1' }));
+  ok('T-local-3: без LOCAL_BASE_URL «Локальная модель» НЕ показывается в списке моделей (иначе человек ищет то, чего нет)',
+    !без.pools.some((p) => p.provider === 'local'), без.pools.map((p) => p.provider).join(','));
+  ok('T-local-4: с LOCAL_BASE_URL она появляется — и её модели попадают в общий список',
+    с.pools.some((p) => p.provider === 'local') && с.ids.includes('qwen3.5-35b-a3b'), JSON.stringify(с.pools.map((p) => p.provider)));
+}

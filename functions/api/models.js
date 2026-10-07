@@ -27,13 +27,20 @@ const CORS = {
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...CORS } });
 
-/** Все id из пулов движка + к какому слою (fast/smart) они относятся. */
-function poolsOf(P) {
+/** Все id из пулов движка + к какому слою (fast/smart) они относятся.
+    Экспортируется ради теста (test/table.test.js): «локальная голова не висит
+    в списке без адреса» — правило, за которым надо следить машиной. */
+export function poolsOf(P) {
   const pools = [];
   const ids = [];
   const tierOf = Object.create(null);
   for (const pid of Object.keys(P)) {
     const cfg = P[pid];
+    /* «Локальная модель» — не наш пул, а СВОЙ сервер человека (Ollama, LM Studio,
+       llama.cpp: любой OpenAI-совместимый адрес). Пока LOCAL_BASE_URL не задан,
+       в списке висело бы обещание без адреса — модель, к которой нельзя постучаться.
+       Пустая настройка = нет строки; в списке и в счёте моделей её не показываем. */
+    if (pid === 'local' && !(cfg.keys && cfg.keys.length)) continue;
     const fast = [].concat((cfg.models && cfg.models.fast) || [], cfg.modelsLocal || []);
     const smart = [].concat((cfg.models && cfg.models.smart) || []);
     if (!fast.length && !smart.length) continue;

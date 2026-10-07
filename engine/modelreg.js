@@ -154,7 +154,7 @@ function textOut(m) {
 
 /**
  * Запись OpenAI-совместимого `/v1/models` у самого провайдера (groq, mistral,
- * cerebras, z.ai, odirouter, sharellm, atria). Имена у всех скачут, поэтому
+ * z.ai, odirouter, sharellm, atria). Имена у всех скачут, поэтому
  * читаем известные варианты, а выдумываем только то, чего провайдер не сказал.
  * Смысл не в длине списка, а в потолках: у groq есть context_window и
  * max_completion_tokens, у mistral — max_context_length и capabilities, и без
@@ -235,7 +235,6 @@ function fromGemini(m) {
 export const LIST_SOURCES = {
   groq: { url: 'https://api.groq.com/openai/v1/models', prefix: 'GROQ', priceUnknown: true },
   mistral: { url: 'https://api.mistral.ai/v1/models', prefix: 'MISTRAL', priceUnknown: true },
-  cerebras: { url: 'https://api.cerebras.ai/v1/models', prefix: 'CEREBRAS', priceUnknown: true },
   /* У z.ai все ручки POST-овые: на GET их же адрес отвечает 405, и это было видно
      в каталоге как вечная ошибка «zai: HTTP 405» (дважды — ещё и повтор был).
      Ключ на месте, модели в пуле работают; не хватало только формы запроса. */

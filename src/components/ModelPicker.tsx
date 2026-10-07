@@ -104,7 +104,7 @@ function build(cat: ModelCatalog | null): Row[] {
       prov: providerLabel(m.src),
       flags,
       ctx: m.ctx || 131072,
-      tokPerSec: m.src === 'groq' || m.src === 'cerebras' ? 240 : m.tier === 'smart' ? 105 : 150,
+      tokPerSec: m.src === 'groq' ? 240 : m.tier === 'smart' ? 105 : 150,
       src: m.src,
       canThink: think,
       supportsEffort: canModelEffort(m.id, m),
