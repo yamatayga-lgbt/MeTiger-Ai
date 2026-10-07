@@ -17,10 +17,10 @@ export function isGender(v: unknown): v is Gender {
 }
 
 /** Подписи для меню. Порядок = порядок кнопок в Segmented. */
-export const GENDER_CHOICES: { value: Gender; title: string; hint: string }[] = [
-  { value: 'auto', title: 'Авто', hint: 'агент сам определит по разговору' },
-  { value: 'male', title: 'Мужской', hint: '«я рад», «я готов»' },
-  { value: 'female', title: 'Женский', hint: '«я рада», «я готова»' },
+export const GENDER_CHOICES: { value: Gender; title: string; short: string; hint: string }[] = [
+  { value: 'auto', title: 'Авто', short: 'Авто', hint: 'агент сам определит по разговору' },
+  { value: 'male', title: 'Мужской', short: 'Муж', hint: '«я рад», «я готов»' },
+  { value: 'female', title: 'Женский', short: 'Жен', hint: '«я рада», «я готова»' },
 ]
 
 type Store = { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void }

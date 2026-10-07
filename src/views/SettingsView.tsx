@@ -215,7 +215,20 @@ export function SettingsView({
             <Segmented
               value={gender}
               onChange={setGender}
-              options={GENDER_CHOICES.map((c) => ({ value: c.value, label: c.title, title: c.hint }))}
+              options={GENDER_CHOICES.map((c) => ({
+                value: c.value,
+                /* На узком экране «Мужской/Женский» не помещаются рядом с подписью
+                   и она уезжала под переключатель (а прошлая попытка увести
+                   переключатель на свою строку раздула блок). Показываем короткие
+                   подписи — CSS выбирает, какой вариант виден (см. .seg-short). */
+                label: (
+                  <>
+                    <span className="seg-long">{c.title}</span>
+                    <span className="seg-short">{c.short}</span>
+                  </>
+                ),
+                title: c.hint,
+              }))}
             />
           </div>
         </div>

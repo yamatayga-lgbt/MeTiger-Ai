@@ -1312,12 +1312,10 @@ console.log('── N · стекло (Glassmorphism) ───');
     /\.ambient i \{[\s\S]{0,400}radial-gradient/.test(css)
       && !/\.ambient[\s\S]{0,60}filter: blur/.test(css));
 
-  ok('N9: на телефоне стекло дешевле (размытие меньше), сияние неподвижно, а карточки и меню — без размытия вовсе',
+  ok('N9: на телефоне стекло дешевле (размытие 12px, карточки без размытия), но сияние ДЫШИТ — остановленное сияние выглядело как пропавшее стекло (ошибка 0.087, отменена)',
     /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 12px/.test(css)
-      /* Специфичность в проверке та же, что и в правке: `.ambient i` проигрывает
-         `.ambient i:nth-child(N)`, и «стоп» обязан быть объявлен так же точно. */
-      && /@media \(max-width: 780px\) \{[\s\S]{0,1200}\.ambient i:nth-child\(1\),[\s\S]{0,160}animation: none/.test(css)
-      && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,200}backdrop-filter: none/.test(css));
+      && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,260}backdrop-filter: none/.test(css)
+      && !/animation: none/.test(css.slice(css.indexOf('@media (max-width: 780px)'), css.indexOf('/* Телефон, у которого мало ядер'))));
 
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
     /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)
@@ -1339,8 +1337,22 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N15: у обёртки поля ввода своё размытие выключено — иначе backdrop-filter делает её системой координат для fixed-потомков, и затемнение .model-backdrop сжимается до размеров поля (клик мимо перестаёт закрывать попап)',
     !/backdrop-filter: blur/.test(ruleBody('.composer-wrap')) && /backdrop-filter: blur/.test(ruleBody('.composer-wrap::before')));
 
-  ok('N16: на узком экране переключатель «Авто/Мужской/Женский» уходит на свою строку, а не наезжает на подпись',
-    /@media \(max-width: 460px\) \{[\s\S]{0,300}\.settings-row \.segmented[\s\S]{0,80}flex: 1 0 100%/.test(css));
+  /* Прежнее решение (переключатель на свою строку) отменено: оно раздувало блоки
+     «Тема» и «Род агента» с 56 до 102 px. Действующее: подписи короче на узком
+     экране, переключатель сжимать нельзя, подпись не обрезается. */
+  ok('N16: на узком экране переключатель остаётся в строке подписи (не сжимается), а подписи становятся короче',
+    /@media \(max-width: 460px\) \{[\s\S]{0,400}\.settings-row \.segmented \{ flex-shrink: 0/.test(css)
+      && !/flex: 1 0 100%/.test(css));
+
+
+  ok('N17: в стекле на телефоне прозрачность ОБЫЧНАЯ (--glass), а не плотная: на 0.72 карточки читались как непрозрачные плиты, и человек сказал «стекло пропало»',
+    /@media \(max-width: 780px\) \{[\s\S]{0,1200}\.settings-card,[\s\S]{0,300}background-color: var\(--glass\)/.test(css)
+      && /@media \(max-width: 780px\) \{[\s\S]{0,1200}\.chat-menu,[\s\S]{0,200}background-color: var\(--glass-strong\)/.test(css));
+
+  ok('N18: переключатели в настройках не раздувают строку (высота 60px, а не 102): блок «Тема» и «Род агента» в одну строку с подписью, подпись не обрезается многоточием',
+    /\.seg-short \{\s*display: none/.test(css)
+      && /@media \(max-width: 460px\) \{[\s\S]{0,300}\.seg-long \{ display: none/.test(css)
+      && !/\.settings-row \.segmented \{\s*flex: 1 0 100%/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')));
 
   ok('N13: системная полоса телефона идёт за темой — полупрозрачная шапка не упирается в чужой цвет',
     /id="meta-theme-color"/.test(htmlSrc)
