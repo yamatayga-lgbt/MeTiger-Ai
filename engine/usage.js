@@ -50,7 +50,6 @@ export const PROVIDER_RPM = {
   atria: 20,
   sharellm: 20,
   odirouter: 15,
-  local: 0,
 };
 
 function envNum(env, name, def, min) {

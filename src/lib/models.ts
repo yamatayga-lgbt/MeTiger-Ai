@@ -700,7 +700,6 @@ export const PROVIDER_LABEL: Record<string, string> = {
   odirouter: 'OdiRouter',
   sharellm: 'ShareLLM',
   atria: 'Atria',
-  local: 'локально',
   pool: 'наши пулы',
 }
 

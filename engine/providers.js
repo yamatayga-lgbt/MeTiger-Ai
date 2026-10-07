@@ -134,17 +134,6 @@ export const TABLE = {
       smart: ["Atria-Dawn-Preview"],
     },
   },
-  local: {
-    label: "Локальная модель",
-    kind: "openai",
-    base: "",
-    envPrefix: 'LOCAL',
-    limit: 1000000,
-    models: {
-      fast: ["qwen3.5-35b-a3b"],
-      smart: ["qwen3.5-35b-a3b"],
-    },
-  },
   sharellm: {
     label: "ShareLLM",
     kind: "openai",
@@ -205,22 +194,12 @@ export function buildTable(env) {
   const out = {};
   for (const id of Object.keys(TABLE)) {
     const c = TABLE[id];
-    const keys = id === 'local'
-      ? ((env && env.LOCAL_BASE_URL) ? [(env && env.LOCAL_KEY) || 'local'] : [])
-      : envKeys(env, c.envPrefix);
+    const keys = envKeys(env, c.envPrefix);
     out[id] = {
       id, label: c.label, kind: c.kind, keys, limit: c.limit, models: c.models,
-      base: (id === 'local') ? String((env && env.LOCAL_BASE_URL) || '').replace(/\/+$/, '') : c.base,
+      base: c.base,
       account: (env && env.CLOUDFLARE_ACCOUNT_ID) || '',
-      modelsLocal: id === 'local'
-        ? String((env && env.LOCAL_MODELS) || 'qwen3.5-35b-a3b').split(',').map((x) => x.trim()).filter(Boolean)
-        : null,
     };
-  }
-  if (env && env.LOCAL_BASE_URL) {
-    /* локалка участвует в обходе, но всегда в конце очереди */
-    ORDER.fast.indexOf('local') < 0 && ORDER.fast.push('local');
-    ORDER.smart.indexOf('local') < 0 && ORDER.smart.push('local');
   }
   return out;
 }

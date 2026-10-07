@@ -166,7 +166,7 @@ export function visionFirst(list, images) {
 }
 
 export function modelsFor(cfg, tier, intent, images, env) {
-  let list = (cfg.modelsLocal || (cfg.models && cfg.models[tier]) || (cfg.models && cfg.models.fast) || []).slice();
+  let list = ((cfg.models && cfg.models[tier]) || (cfg.models && cfg.models.fast) || []).slice();
   if (!list.length) return list;
   /* Порядок важнее состава: сначала зрение, потом «не сжигай бюджет на размышления».
      Переставить местами — и картинка уйдёт слепой модели (проверено на Yama). */

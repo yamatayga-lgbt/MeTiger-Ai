@@ -58,10 +58,7 @@ export async function onRequestGet(context) {
   const snap = usage.snapshot();
   const P = buildTable(env);
 
-  /* «Локальная модель» — не наш пул, а свой сервер человека. Пока LOCAL_BASE_URL
-     не задан, строки в панели расхода нет: иначе человек видит провайдера, у
-     которого нет ни ключа, ни адреса, и ищет, «как его получить» (0.094). */
-  const rows = Object.keys(P).filter((id) => !(id === 'local' && !(P[id] && P[id].keys && P[id].keys.length))).map((id) => {
+  const rows = Object.keys(P).map((id) => {
     const cfg = P[id] || {};
     const got = snap.providers[id] || null;
     const dayLimit = Number(cfg.limit) || 0;

@@ -36,12 +36,7 @@ export function poolsOf(P) {
   const tierOf = Object.create(null);
   for (const pid of Object.keys(P)) {
     const cfg = P[pid];
-    /* «Локальная модель» — не наш пул, а СВОЙ сервер человека (Ollama, LM Studio,
-       llama.cpp: любой OpenAI-совместимый адрес). Пока LOCAL_BASE_URL не задан,
-       в списке висело бы обещание без адреса — модель, к которой нельзя постучаться.
-       Пустая настройка = нет строки; в списке и в счёте моделей её не показываем. */
-    if (pid === 'local' && !(cfg.keys && cfg.keys.length)) continue;
-    const fast = [].concat((cfg.models && cfg.models.fast) || [], cfg.modelsLocal || []);
+    const fast = (cfg.models && cfg.models.fast) || [];
     const smart = [].concat((cfg.models && cfg.models.smart) || []);
     if (!fast.length && !smart.length) continue;
     pools.push({ provider: pid, label: cfg.label || pid, fast, smart });

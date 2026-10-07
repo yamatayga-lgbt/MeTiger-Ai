@@ -462,7 +462,7 @@ export function createEngine(opts) {
     if (pinName) {
       const owner = input.only && P[input.only] ? input.only : Object.keys(P).find((id) => {
         const m = P[id].models || {};
-        return [].concat(m.fast || [], m.smart || [], P[id].modelsLocal || []).indexOf(pinName) >= 0;
+        return [].concat(m.fast || [], m.smart || []).indexOf(pinName) >= 0;
       });
       /* Модели из живого каталога нет в наших пулах — это не повод снимать выбор:
          по данным каталога знаем, чей это id (OpenRouter или Xkiро). */
@@ -663,8 +663,7 @@ export function createEngine(opts) {
   function providerSees(id) {
     const cfg = P[id];
     if (!cfg) return false;
-    const lists = (cfg.modelsLocal && cfg.modelsLocal.length) ? cfg.modelsLocal : null;
-    const all = lists || Object.keys(cfg.models || {}).reduce((a, k) => a.concat(cfg.models[k] || []), []);
+    const all = Object.keys(cfg.models || {}).reduce((a, k) => a.concat(cfg.models[k] || []), []);
     return all.some((m) => isVision(String(m).replace(/:free$/, '')));
   }
 
@@ -836,7 +835,7 @@ function poolOf(P) {
   const out = {};
   for (const id of Object.keys(P || {})) {
     const m = (P[id] && P[id].models) || {};
-    out[id] = [].concat(m.fast || [], m.smart || [], (P[id] && P[id].modelsLocal) || []);
+    out[id] = [].concat(m.fast || [], m.smart || []);
   }
   return out;
 }
