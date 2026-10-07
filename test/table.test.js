@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { TABLE, buildTable, providerAlive, pickKey } from '../engine/providers.js';
 import * as modelreg from '../engine/modelreg.js';
 import * as shape from '../engine/shape.js';
-import { poolsOf } from '../functions/api/models.js';
+import { poolsOf, multiOf } from '../functions/api/models.js';
 import { VERIFIED } from '../engine/models-verified.js';
 import { INTENT_HEADS } from '../engine/route.js';
 
@@ -117,6 +117,15 @@ console.log('── T · TABLE против живого замера ───'
   const tr = poolsOf(live).pools.filter((p) => live[p.provider].poolFromCatalog).flatMap((p) => p.fast.concat(p.smart));
   ok('T-new-5: пометка «имена из каталога» доезжает до живого P и покрывает дубль-спасателя',
     noFlag.length === 0 && tr.includes('gpt-oss-120b'), noFlag.join(',') + ' | ' + tr.length + ' имён');
+
+  /* Подхват считается по домам, а не по строкам слоёв: имя, лежащее у провайдера
+     и в fast, и в smart, — всё равно один дом (на проде это дало «gemini + gemini»). */
+  const mPools = poolsOf(buildTable({ GEMINI_KEYS: 'g1', ODIROUTER_KEYS: 'o1', KILO_KEYS: '', OPENROUTER_KEYS: 'or' })).pools;
+  const multi = multiOf(mPools);
+  ok('T-new-6: в карте подхвата провайдер не повторяется, а имена с одним домом в неё не попадают',
+    Object.values(multi).every((list) => new Set(list).size === list.length && list.length >= 2)
+      && Object.keys(multi).some((id) => id === 'nvidia/nemotron-3-ultra-550b-a55b:free'),
+    JSON.stringify(Object.entries(multi).slice(0, 3)));
 
   const req = (env) => {
     const cfg = buildTable(env).llm7;
