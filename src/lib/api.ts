@@ -375,34 +375,20 @@ function fmtTime(ms: number): string {
  * на фронте: здесь ровно то, что посчитал сервер.
  */
 export function countersLine(models?: unknown, chat?: unknown): string {
-  const parts: string[] = []
-  const m = (models && typeof models === 'object' ? models : null) as {
-    count?: number; catalogTotal?: number; catalogCount?: number; pools?: { provider?: string; label?: string; count?: number }[]
-    updatedAt?: number | null; cached?: boolean; stale?: boolean; errors?: unknown[]
-  } | null
-  /* Считать есть что, только если сервер назвал хотя бы одно число. Иначе из `{}`
-     получилась бы строка «моделей доступно: 0» — по букве правдивая, по смыслу ложная:
-     ноль означает «не ответило», а не «моделей нет». */
-  if (m && (m.count != null || m.catalogCount != null || m.catalogTotal != null || Array.isArray(m.pools))) {
-    const total = Number(m.count) || 0
-    const cat = Number(m.catalogTotal) || Number(m.catalogCount) || 0
-    parts.push('моделей доступно: ' + total + (cat > total ? ' (в каталогах провайдеров: ' + cat + ')' : ''))
-    const pools = Array.isArray(m.pools) ? m.pools : []
-    if (pools.length) {
-      parts.push('по провайдерам: ' + pools.map((x) => (x.label || x.provider || '?') + ' ' + (Number(x.count) || 0)).join(', '))
-    }
-    parts.push(m.updatedAt ? 'каталог обновлён ' + fmtTime(Number(m.updatedAt)) : 'каталог ещё не обновлялся')
-    if (m.cached === false) parts.push('без KV список живёт до перезапуска')
-    if (m.stale) parts.push('список устарел')
-    if (Array.isArray(m.errors) && m.errors.length) parts.push('каталог: ' + m.errors.length + ' ошибок чтения')
+  /* Владелец попросил коротко: в Настройках — просто «сколько доступно моделей».
+     Раньше строка собирала ещё каталог провайдеров, разбивку по пулам, время
+     обновления и число живых провайдеров — на телефоне это превращалось в
+     колонку текста на пол-экрана. Подробности живут в ответе /api/models (и на
+     «Использовании»), а не в строке настроек. chat() в подписи и параметрах
+     оставлен для совместимости вызовов: он больше не добавляет ничего. */
+  void chat
+  const m = (models && typeof models === 'object' ? models : null) as { count?: number; catalogCount?: number; catalogTotal?: number } | null
+  /* Ноль означает «сервер не ответил», а не «моделей нет»: из пустого ответа
+     строки не делаем — вызывающая сторона скажет словами (см. fetchCounters). */
+  if (m && (m.count != null || m.catalogCount != null || m.catalogTotal != null)) {
+    return 'моделей доступно: ' + (Number(m.count) || 0)
   }
-  const c = (chat && typeof chat === 'object' ? chat : null) as { alive?: unknown[]; providers?: number } | null
-  if (c && (c.providers != null || Array.isArray(c.alive))) {
-    const alive = Array.isArray(c.alive) ? c.alive.length : 0
-    const total = Number(c.providers) || 0
-    if (total) parts.push('живых провайдеров: ' + alive + ' из ' + total)
-  }
-  return parts.join(' · ')
+  return ''
 }
 
 /** Итого счётчик для строки в Настройках: два GET, и оба необязательны. */

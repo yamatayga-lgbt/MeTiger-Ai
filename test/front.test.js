@@ -449,14 +449,15 @@ console.log('K — Настройки: счётчик моделей, адрес
      что лежит в ответах /api/models и /api/chat */
   const models = { count: 12, catalogTotal: 40, cached: true, updatedAt: 1700000000000, pools: [{ provider: 'groq', label: 'Groq', count: 5 }, { provider: 'xai', label: 'x.ai', count: 7 }] };
   const line = countersLine(models, { alive: ['groq', 'xai'], providers: 6 });
-  ok('K8: сколько моделей и по провайдерам — из ответа сервера', /моделей доступно: 12 \(в каталогах провайдеров: 40\)/.test(line) && /Groq 5, x\.ai 7/.test(line), line);
-  ok('K9: живые провайдеры считаются по aliveness-списку движка', /живых провайдеров: 2 из 6/.test(line), line);
-  ok('K10: время обновления каталога показано, а не «когда-то»', /каталог обновлён \d{2}\.\d{2} \d{2}:\d{2}/.test(line), line);
+  ok('K8: строка «Модели» — ровно «моделей доступно: 12», без каталогов и разбивки', line === 'моделей доступно: 12', line);
+  ok('K9: длинных подробностей в строке нет: по провайдерам, каталогу и времени обновления — это ответ /api/models, а не строка настроек',
+    !/провайдер|каталог|Groq|x\.ai/.test(line), line);
+  ok('K10: в строку не просочилось и число живых провайдеров (оно остаётся на «Использовании»)', !/живых/.test(line), line);
   const poor = countersLine({ count: 3, cached: false, updatedAt: null, pools: [] }, {});
-  ok('K11: без каталога и без KV строка объясняет состояние, а не врёт про 0', /моделей доступно: 3/.test(poor) && /каталог ещё не обновлялся/.test(poor) && /без KV список живёт/.test(poor) && !/из /.test(poor), poor);
+  ok('K11: без каталога и без KV строка всё равно короткая — только число', poor === 'моделей доступно: 3', poor);
   ok('K12: пустые ответы — пустая строка (UI не покажет «undefined»)', countersLine(null, null) === '' && countersLine({}, {}) === '');
   const broken = countersLine({ count: 2, pools: [], updatedAt: 1, errors: ['у', 'двух'] }, { alive: [], providers: 4 });
-  ok('K13: ошибки чтения каталога видны в строке, а не проглочены', /каталог: 2 ошибок чтения/.test(broken) && /живых провайдеров: 0 из 4/.test(broken), broken);
+  ok('K13: подробности (ошибки чтения, живые провайдеры) в строку настроек НЕ лезут — владелец попросил «просто сколько доступно моделей», описание столбцом на телефоне занимало пол-экрана', broken === 'моделей доступно: 2', broken);
 }
 {
   const p = { name: 'Иван', job: 'аналитик', about: '' };
@@ -1427,6 +1428,13 @@ console.log('── N · стекло (Glassmorphism) ───');
     /export const Markdown = memo\(/.test(readFileSync('src/components/Markdown.tsx', 'utf8'))
       && /const runOutput = useCallback\(\(t: string\) => onSend\(t\), \[onSend\]\)/.test(readFileSync('src/views/ChatView.tsx', 'utf8'))
       && /<Markdown text=\{m\.text\} onRunOutput=\{runOutput\} \/>/.test(readFileSync('src/views/ChatView.tsx', 'utf8')));
+
+  ok('N25: строки «Модели» и «Версия» в Настройках — короткие: у «Версии» только номер и кнопка (владелец попросил убрать «показывает старую версию? нажмите «Обновить»»), у «Моделей» — число без описания столбцом', 
+    !/показывает старую версию/.test(readFileSync('src/views/SettingsView.tsx', 'utf8'))
+      && /<div className="n">Версия<\/div>\s*<\/div>/.test(readFileSync('src/views/SettingsView.tsx', 'utf8'))
+      && /моделей доступно: /.test(readFileSync('src/lib/api.ts', 'utf8'))
+      && !/по провайдерам: /.test(readFileSync('src/lib/api.ts', 'utf8'))
+      && !/живых провайдеров: /.test(readFileSync('src/lib/api.ts', 'utf8')));
 
   ok('N13: системная полоса телефона идёт за темой — полупрозрачная шапка не упирается в чужой цвет',
     /id="meta-theme-color"/.test(htmlSrc)

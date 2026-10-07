@@ -339,7 +339,6 @@ export function SettingsView({
             </div>
             <div className="grow">
               <div className="n">Версия</div>
-              <div className="d">MeTiger Ai · показывает старую версию? нажмите «Обновить»</div>
             </div>
             <Badge tone="gray">{APP_VERSION}</Badge>
             <Button

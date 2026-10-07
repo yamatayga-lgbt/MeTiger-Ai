@@ -207,8 +207,12 @@ export function fit(ctx) {
   const sysRoom = Math.max(120, window - reserve - histCost(out.history) - estTokens(out.text) - estTokens(digBlock) - 16);
   const keepChars = Math.floor(sysRoom * CHARS_PER_TOKEN_CYR * 0.98);
   if (out.system.length > keepChars + 1) {
+    /* Флаг остаётся (по нему видно, что ответ шёл с подрезанным справочником),
+       а в строку примечаний под ответом это НЕ пишется: человеку не нужен
+       отчёт о внутренней кухне промпта — «подсказки в системном промпте
+       обрезаны до N знаков — иначе не влезало в окно» он увидел и попросил
+       убрать. Технический факт виден в out.cut.systemTrimmed и в логах. */
     out.cut.systemTrimmed = true;
-    notes.push('подсказки в системном промпте обрезаны до ' + keepChars + ' знаков — иначе не влезало в окно');
     out.system = out.system.slice(0, keepChars) + '…';
   }
   if (digBlock) out.system += digBlock;

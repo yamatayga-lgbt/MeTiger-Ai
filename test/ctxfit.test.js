@@ -79,7 +79,13 @@ ok('C3: clampNumber держит рамки и не боится мусора', 
   const one = fit({ system: fat, history: [{ role: 'user', content: 'контекст разговора' }], text: 'итого?', env: { CTX_WINDOW: 1500, CTX_MAX_OUT: 900 } });
   ok('C24: вопрос человека не режется никогда — резать можно только историю и хвост подсказок',
     one.text === 'итого?' && one.system.length < fat.length && one.notes.length > 0 && !one.overflow,
-    JSON.stringify({ sysLen: one.system.length, notes: one.notes.map((n) => n.slice(0, 44)), ov: one.overflow }));}
+    JSON.stringify({ sysLen: one.system.length, notes: one.notes.map((n) => n.slice(0, 44)), ov: one.overflow }));
+  /* Владелец увидел в ответе «подсказки в системном промпте обрезаны до 4515 знаков —
+     иначе не влезало в окно» и попросил убрать. Флаг остаётся (по нему видно, что
+     ответ шёл с подрезанным справочником), а в примечания не пишется. */
+  ok('C24a: подрезка внутреннего системного промпта НЕ выходит человеку в примечания (флаг cut.systemTrimmed — для логов)',
+    one.cut.systemTrimmed === true && !/системном промпте|не влезало/.test(one.notes.join(' ')),
+    JSON.stringify({ trimmed: one.cut.systemTrimmed, notes: one.notes }));}
 
 {
   ok('C25: lineOf — одна строка для диагностики', /окно 8192/.test(lineOf({})) && /выключен/.test(lineOf({ CTX_FIT: 'off' })), lineOf({}));
