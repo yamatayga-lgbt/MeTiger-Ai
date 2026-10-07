@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
@@ -517,6 +517,12 @@ export function ChatView({
   genParams = DEFAULT_GEN_PARAMS,
   onGenParamsChange,
 }: ChatViewProps) {
+  /* Стабильная ссылка на «выполнить код и вернуть вывод в чат»: Markdown
+     обёрнут в memo и сверяет props по ссылке. Без useCallback каждая буква
+     в поле ввода меняла бы onRunOutput и пересобирала разметку всей переписки —
+     ровно тот лаг, ради которого memo и поставлен. */
+  const runOutput = useCallback((t: string) => onSend(t), [onSend])
+
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
@@ -828,7 +834,7 @@ export function ChatView({
                   ) : null}
                   {Array.isArray(m.files) && m.files.length ? <WriteFilesBlock files={m.files} /> : null}
                   <div className="bubble">
-                    <Markdown text={m.text} onRunOutput={(t) => onSend(t)} />
+                    <Markdown text={m.text} onRunOutput={runOutput} />
                   </div>
                   {/* Кто ответил и что сказал совет. Это не украшение: по ней видно,
                       что ответ проверяли, а не угадали, и где его исправили. */}

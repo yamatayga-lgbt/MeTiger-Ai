@@ -1257,6 +1257,34 @@ console.log('── N · стекло (Glassmorphism) ───');
      содержат слова вроде «position:» и «backdrop-filter» — проверка на них
      спотыкалась бы о собственное объяснение. */
   const stripCssComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+  /* Эффективное значение правила: последнее объявление побеждает, и проверять
+     надо ИМЕННО его. На этом уже спотыкались: старый дубль с 62% «удерживал»
+     проверку зелёной, хотя на экране было 46%. */
+  const lastRuleBody = (sel) => {
+    /* Без регулярных выражений: они путались в соседях (.composer против
+       .composer-wrap и .composer .icon-btn) и возвращали не то правило.
+       Здесь селектор ищется как текст, а совпадением считается только то,
+       где после него стоит { или запятая списка. */
+    /* Ищем В БЛОКЕ СТЕКЛА (glassArea), а не по всему файлу: ниже лежат честные
+       откаты для «меньше прозрачности», где у .composer нарочно плотный фон, и
+       по всему файлу последним находился именно откат. */
+    const t = glassArea || stripCssComments(css);
+    let body = '';
+    let from = 0;
+    for (;;) {
+      const at = t.indexOf(sel, from);
+      if (at < 0) return body;
+      from = at + sel.length;
+      const before = at === 0 ? '\n' : t[at - 1];
+      if (!' \n\t},'.includes(before)) continue;
+      const rest = t.slice(from).match(/^\s*([{.,:])/);
+      if (!rest || (rest[1] !== '{' && rest[1] !== ',')) continue;
+      const brace = t.indexOf('{', from);
+      const close = brace < 0 ? -1 : t.indexOf('}', brace);
+      if (brace < 0 || close < 0) continue;
+      body = t.slice(brace + 1, close);
+    }
+  };
   const glassArea = start < 0 ? '' : stripCssComments(css.slice(start, fallback > start ? fallback : undefined));
   const ruleBody = (sel) => {
     const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1293,7 +1321,7 @@ console.log('── N · стекло (Glassmorphism) ───');
 
   ok('N4: поле ввода — стекло, и размывает его РОВНО одна обёртка (вложенный blur стоит как два полноэкранных композита)',
     /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(ruleBody('.composer-wrap::before'))
-      && /color-mix\(in srgb, var\(--pane\) 62%, transparent\)/.test(ruleBody('.composer'))
+      && /background-color: color-mix\(in srgb, var\(--pane\) 46%, transparent\)/.test(lastRuleBody('.composer'))
       && !/backdrop-filter/.test(ruleBody('.composer')));
 
   ok('N5: сообщения в ленте НЕ размываются — это то, что защищает прокрутку на телефоне',
@@ -1352,7 +1380,7 @@ console.log('── N · стекло (Glassmorphism) ───');
       && /--glass-strong: rgba\(42, 42, 58, 0\.5\)/.test(css)
       && /--pane: #3e3e54/.test(css)
       && /--pane: #ffffff/.test(css)
-      && /background-color: color-mix\(in srgb, var\(--pane\) 62%, transparent\)/.test(ruleBody('.composer')));
+      && /background-color: color-mix\(in srgb, var\(--pane\) 46%, transparent\)/.test(lastRuleBody('.composer')));
 
   ok('N18: переключатели в настройках не раздувают строку (высота 60px, а не 102): блок «Тема» и «Род агента» в одну строку с подписью, подпись не обрезается многоточием',
     /\.seg-short \{\s*display: none/.test(css)
@@ -1383,6 +1411,22 @@ console.log('── N · стекло (Glassmorphism) ───');
     /\.ambient:not\(\.ambient-still\) i:nth-child\(1\)/.test(css)
       && /\.ambient-still i \{\s*animation: none !important/.test(css)
       && /view === 'chat' \? 'ambient' : 'ambient ambient-still'/.test(readFileSync('src/App.tsx', 'utf8')));
+
+  ok('N22: зона ввода — стекло, а кнопки поля ввода «плавают» стеклянными кружками: заливка через --pane, кромка, блик, тень; круглыми стали «+», параметры, микрофон и отправка (квадратные 10px-скругления читались как часть пилюли, а не как отдельные кнопки)', 
+    /color-mix\(in srgb, var\(--pane\) 40%, transparent\)/.test(lastRuleBody('.composer-wrap'))
+      && /\n\.composer \.icon-btn,[\s\S]{0,120}\.composer \.params-btn \{[\s\S]{0,400}border-radius: var\(--r-full\)/.test(bareWall)
+      && /\n\.composer \.icon-btn,[\s\S]{0,120}\.composer \.params-btn \{[\s\S]{0,400}color-mix\(in srgb, var\(--pane\) 52%, transparent\)/.test(bareWall)
+      && /\n\.composer \.send-btn \{[\s\S]{0,300}border-radius: var\(--r-full\)/.test(bareWall)
+      && /\n\.composer \.send-btn \{[\s\S]{0,400}box-shadow:[\s\S]{0,200}var\(--accent\)/.test(bareWall));
+
+  ok('N23: у кнопок поля ввода НЕТ собственного backdrop-filter — четыре кружка с размытием стоили бы четырёх проходов по кадру; стекло держат заливка, кромка и блик поверх уже размытой полки', 
+    !/backdrop-filter/.test(lastRuleBody('.composer .icon-btn, .composer .params-btn'))
+      && !/backdrop-filter/.test(lastRuleBody('.composer .send-btn')));
+
+  ok('N24: разметка ответа пересобирается только при смене текста (memo), а колбэк вывода кода стабилен (useCallback): иначе каждая буква в поле ввода заново разбирала Markdown всей переписки — это и был лаг печати', 
+    /export const Markdown = memo\(/.test(readFileSync('src/components/Markdown.tsx', 'utf8'))
+      && /const runOutput = useCallback\(\(t: string\) => onSend\(t\), \[onSend\]\)/.test(readFileSync('src/views/ChatView.tsx', 'utf8'))
+      && /<Markdown text=\{m\.text\} onRunOutput=\{runOutput\} \/>/.test(readFileSync('src/views/ChatView.tsx', 'utf8')));
 
   ok('N13: системная полоса телефона идёт за темой — полупрозрачная шапка не упирается в чужой цвет',
     /id="meta-theme-color"/.test(htmlSrc)
