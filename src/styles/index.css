@@ -2187,41 +2187,45 @@ kbd {
   background: var(--bg);
 }
 
-/* ---------- Voice input ---------- */
-.voice-panel {
-  margin-bottom: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--accent-border);
-  border-radius: var(--r-md);
-  background: var(--accent-soft);
-  animation: fadeUp var(--t-fast) both;
-}
+/* ---------- Голосовой ввод: полоса над полем (0.104) ----------
 
-.voice-head {
+   Было: крупная карточка на три строки («Слушаю · 00:03», волна, подпись
+   «Говорите…») — она занимала треть экрана телефона и всё равно не показывала
+   главного, потому что черновик лежит в поле ввода, а не в карточке.
+
+   Стало: одна стеклянная полоса ростом с палец. В ней — точка записи, время,
+   живые столбики уровня, «отменить» и «готово». Текст при этом идёт прямо в
+   поле ввода: человек видит свою речь там, где она окажется после отправки. */
+.voice-strip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
+  margin-bottom: 8px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--r-full);
+  background-color: color-mix(in srgb, var(--pane) 55%, transparent);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  animation: voiceRise var(--t-fast) both;
 }
 
-.voice-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11.5px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  color: var(--accent-strong);
+@keyframes voiceRise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
-.voice-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: voicePulse 1.2s ease-in-out infinite;
-}
-
+/* Пульс точки записи. Живёт рядом с полосой, а не в старом блоке: когда панель
+   заменили полосой, кейфрейм уехал вместе с ней, а ссылка на него осталась —
+   точка просто перестала мигать, и заметить это можно было только глазами. */
 @keyframes voicePulse {
   0%,
   100% {
@@ -2234,55 +2238,135 @@ kbd {
   }
 }
 
-.voice-cancel {
-  padding: 4px 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-full);
-  background: var(--surface);
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-2);
-  transition: color var(--t-fast), border-color var(--t-fast);
+/* Точка записи: пока пишем — дышит красным, при уточнении — мерцает акцентом,
+   потому что микрофон уже выключен и «идёт запись» было бы неправдой. */
+.voice-rec {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent);
+  animation: voicePulse 1.2s ease-in-out infinite, voiceHalo 1.6s ease-out infinite;
 }
 
-.voice-cancel:hover {
+.voice-strip.is-polishing .voice-rec {
+  background: var(--accent);
+  animation: voicePulse 1s ease-in-out infinite;
+}
+
+@keyframes voiceHalo {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 9px transparent;
+  }
+}
+
+.voice-when {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Столбики уровня — настоящий сигнал микрофона, а не украшение: они растут от
+   громкости, поэтому по ним видно, слышит ли нас телефон. */
+.voice-bars {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 22px;
+  overflow: hidden;
+}
+
+.voice-bars i {
+  width: 2.5px;
+  height: 22px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #8470ff, #1edcbe);
+  opacity: 0.85;
+  transform-origin: center;
+  transition: transform 90ms linear;
+}
+
+.voice-strip.is-polishing .voice-bars i {
+  animation: voiceWait 1.1s ease-in-out infinite;
+}
+
+.voice-strip.is-polishing .voice-bars i:nth-child(2n) {
+  animation-delay: 0.12s;
+}
+
+.voice-strip.is-polishing .voice-bars i:nth-child(3n) {
+  animation-delay: 0.24s;
+}
+
+@keyframes voiceWait {
+  0%,
+  100% {
+    transform: scaleY(0.2);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(0.75);
+    opacity: 0.95;
+  }
+}
+
+/* Две кнопки полосы: крестик и галочка. Обе не меньше 34 px — по ним попадают
+   на ходу, одной рукой, не глядя. */
+.voice-ic {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-2);
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+}
+
+.voice-ic:active {
+  transform: scale(0.93);
+}
+
+.voice-ic.is-x:hover {
   color: var(--danger);
   border-color: var(--danger);
 }
 
-.voice-wave {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 24px;
-  margin: 9px 0 7px;
-}
-
-.voice-wave span {
-  width: 3px;
-  border-radius: 2px;
+.voice-ic.is-ok {
   background: var(--accent);
-  opacity: 0.85;
-  transition: height 90ms linear;
+  border-color: var(--accent);
+  color: var(--accent-fg);
 }
 
-.voice-interim {
-  min-height: 19px;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--text);
-}
-
-.voice-interim:empty::before {
-  content: 'Говорите…';
-  color: var(--text-3);
-  font-style: italic;
+.voice-ic.is-ok:disabled {
+  opacity: 0.45;
 }
 
 .voice-btn.is-on {
   background: var(--accent);
   color: var(--accent-fg);
   position: relative;
+}
+
+.voice-btn.is-wait {
+  opacity: 0.6;
+}
+
+.voice-btn.is-wait:disabled {
+  cursor: default;
 }
 
 .voice-btn.is-on::after {
@@ -2305,12 +2389,33 @@ kbd {
   }
 }
 
+/* Пояснение, а не ошибка: серый, спокойный, без красного. */
+.voice-note {
+  margin-top: 7px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  animation: fadeUp var(--t-fast) both;
+}
+
 .voice-error {
   margin-top: 7px;
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--danger);
   animation: fadeUp var(--t-fast) both;
+}
+
+/* Пока идёт речь (или едет точный текст), в поле лежит ЧЕРНОВИК: он ещё
+   изменится. Отмечаем это прозрачностью текста и лёгким свечением рамки, чтобы
+   человек не удивился, когда слова заменятся. */
+.composer.is-voice {
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim),
+    0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.composer.is-voice textarea {
+  opacity: 0.78;
 }
 
 /* Однострочная «пилюля», как у референсов: вложение слева, текст по центру,
@@ -4683,13 +4788,12 @@ kbd {
   box-shadow: inset 0 1px 0 var(--glass-rim);
 }
 
-/* Голосовая панель и «+»-меню живут поверх ленты — им тоже стекло. */
-.voice-panel {
-  background-color: var(--accent-soft);
-  background-color: color-mix(in srgb, var(--accent-soft) 70%, var(--glass));
-  box-shadow: inset 0 1px 0 var(--glass-rim);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+/* Полоса голосового ввода и «+»-меню живут поверх ленты — им тоже стекло.
+   Полоса уже описана со стеклом выше; здесь только общий список мест, куда
+   подставляется общая жидкость (--glass-sheen), чтобы не было «стекло в двух
+   местах, а в остальных — плоские плашки». */
+.voice-strip {
+  background-color: color-mix(in srgb, var(--pane) 62%, var(--glass));
 }
 
 /* Мелкие элементы — тоже стекло: капсула с названием чата, круглые кнопки в
@@ -5152,7 +5256,7 @@ kbd {
   .settings-card,
   .usage-card,
   .profile-card,
-  .voice-panel,
+  .voice-strip,
   .composer,
   .composer-wrap {
     backdrop-filter: none;
@@ -5214,7 +5318,7 @@ kbd {
     background: var(--bg);
   }
   .composer,
-  .voice-panel {
+  .voice-strip {
     background: var(--bg-elevated);
   }
   .msg-user .bubble {

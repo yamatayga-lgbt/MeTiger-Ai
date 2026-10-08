@@ -1,7 +1,7 @@
 {
   "name": "metiger-ai",
   "private": true,
-  "version": "0.103",
+  "version": "0.104",
   "type": "module",
   "description": "MeTiger Ai — универсальный ИИ-агент: один чат на сайте, тексты, код, картинки, файлы",
   "scripts": {
@@ -11,7 +11,7 @@
     "lint:skills": "node scripts/regexlint.mjs engine/skills/*.js",
     "preview": "vite preview",
     "api": "node scripts/api-dev.js",
-    "test": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/emotion.test.js && node test/gender.test.js && node test/jailbreak.test.js && node test/front.test.js && node test/msgtime.test.js && node test/sandboxrun.test.js && node test/table.test.js && node test/memory.test.js && node test/limits.test.js && node test/modelreg.test.js && node test/brave.test.js && node test/filegen.test.js && node test/skills.test.js && node test/imggen.test.js && node test/inflate.test.js && node test/docparse.test.js && node test/attach.test.js && node test/voicein.test.js && node test/ctxfit.test.js && node test/attachweb.test.js && node test/profile.test.js && node test/stream.test.js && node test/streamhttp.test.js && node test/usage.test.js",
+    "test": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/emotion.test.js && node test/gender.test.js && node test/jailbreak.test.js && node test/front.test.js && node test/msgtime.test.js && node test/sandboxrun.test.js && node test/table.test.js && node test/memory.test.js && node test/limits.test.js && node test/modelreg.test.js && node test/brave.test.js && node test/filegen.test.js && node test/skills.test.js && node test/imggen.test.js && node test/inflate.test.js && node test/docparse.test.js && node test/attach.test.js && node test/voicein.test.js && node test/stt.test.js && node test/ctxfit.test.js && node test/attachweb.test.js && node test/profile.test.js && node test/stream.test.js && node test/streamhttp.test.js && node test/usage.test.js",
     "test:engine": "node test/route.test.js && node test/chat.test.js && node test/council.test.js && node test/tools.test.js && node test/freedom.test.js && node test/jailbreak.test.js && node test/memory.test.js && node test/stream.test.js",
     "publish": "bash scripts/publish.sh",
     "publish:fast": "bash scripts/publish.sh --fast",

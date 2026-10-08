@@ -19,9 +19,9 @@ const json = (obj, status) => new Response(JSON.stringify(obj), { status: status
 /** Подделка сети: groq и openrouter отвечают по очереди ответов; вызовы пишутся в calls. */
 function net(answers) {
   const calls = [];
-  const seen = { groq: 0, openrouter: 0 };
+  const seen = { groq: 0, cloudflare: 0, openrouter: 0 };
   const fetchImpl = async (url, init) => {
-    const key = /groq/.test(url) ? 'groq' : 'openrouter';
+    const key = /groq/.test(url) ? 'groq' : (/cloudflare/.test(url) ? 'cloudflare' : 'openrouter');
     const idx = seen[key]++;
     const rec = { url, init, form: null, body: null, file: null };
     if (init && init.body instanceof FormData) {
@@ -37,7 +37,7 @@ function net(answers) {
   return { fetchImpl, calls };
 }
 
-console.log('V — расшифровка голоса: два источника, лимиты, честные причины');
+console.log('V — расшифровка голоса: три источника, лимиты, честные причины');
 {
   ok('V1: hasWords — слова есть только если есть буквы или цифры', !hasWords('') && !hasWords('   ') && !hasWords('!?!') && hasWords('привет'));
   ok('V2: точка от шума («.») ответом не считается', !hasWords('.') && !hasWords('«»') && !hasWords('a'));
@@ -52,7 +52,8 @@ console.log('V — расшифровка голоса: два источник�
 {
   const s = createStt({ env: {}, fetch: async () => json({}), log: () => {} });
   const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/ogg' });
-  ok('V6: без ключей никуда не идём, а причины названы по обоим источникам', r.ok === false && /GROQ_KEYS/.test(r.why) && /OPENROUTER_KEYS/.test(r.why), JSON.stringify(r.why));
+  ok('V6: без ключей никуда не идём, а причины названы по всем источникам',
+    r.ok === false && /GROQ_KEYS/.test(r.why) && /CLOUDFLARE_KEYS/.test(r.why) && /OPENROUTER_KEYS/.test(r.why), JSON.stringify(r.why));
   const empty = await s.transcribe({ bytes: new Uint8Array(0), mime: 'audio/ogg' });
   const tiny = await s.transcribe({ bytes: new Uint8Array(100), mime: 'audio/ogg' });
   const huge = await s.transcribe({ bytes: new Uint8Array(sttLimits.MAX_AUDIO + 10), mime: 'audio/ogg' });
@@ -136,6 +137,60 @@ console.log('V — расшифровка голоса: два источник�
   const s3 = createStt({ env: { GROQ_KEYS: 'gk1' }, fetch: n2.fetchImpl, log: () => {} });
   const r2 = await s3.transcribe({ bytes: AUDIO, mime: 'audio/ogg' });
   ok('V26: многострочный ответ не схлопывается в одну строку (переводы живы)', /\n/.test(r2.text) && r2.text.indexOf('  ') < 0, JSON.stringify(r2.text));
+}
+
+/* ── 0.104: третий источник — Cloudflare Workers AI (тот же Whisper, другой транспорт) ──
+   Он нужен как запас на день, когда у Groq выеден суточный потолок аудио: у
+   Cloudflare бесплатный запас считается нейронами (около 214 минут речи в сутки). */
+{
+  const n = net({ groq: [json({ error: { message: 'Rate limit reached' } }, 429)],
+    cloudflare: [json({ result: { text: '  Привет,  это Тигр! ', word_count: 4 }, success: true })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/webm', lang: 'ru' });
+  ok('V27: Groq в 429 — отвечает Cloudflare, и его текст чистится как у всех',
+    r.ok && r.text === 'Привет, это Тигр!' && /cloudflare\/whisper/.test(r.via), JSON.stringify(r));
+  const rec = n.calls.find((c) => /cloudflare/.test(c.url));
+  ok('V28: у Cloudflare другой транспорт — base64 в JSON, а не multipart',
+    !!rec && /acc1\/ai\/run\/@cf\/openai\/whisper-large-v3-turbo$/.test(rec.url)
+      && rec.body && typeof rec.body.audio === 'string' && rec.body.audio.length > 100
+      && rec.body.task === 'transcribe' && rec.body.vad_filter === true,
+    JSON.stringify({ url: rec && rec.url, keys: rec && rec.body && Object.keys(rec.body) }));
+  ok('V29: язык и промпт стиля уезжают в запрос, а «оглядка на прошлый текст» выключена',
+    rec.body.language === 'ru' && /пунктуацией/.test(rec.body.initial_prompt) && rec.body.condition_on_previous_text === false,
+    JSON.stringify({ lang: rec.body.language, copt: rec.body.condition_on_previous_text }));
+  ok('V30: ключ Cloudflare только в заголовке — в теле запроса его нет',
+    /^Bearer cfk$/.test(rec.init.headers.authorization) && !/cfk/.test(rec.init.body), rec.init.headers.authorization);
+}
+{
+  /* Верхняя форма ответа (result.text) и нижняя (text) — обе должны читаться. */
+  const n = net({ groq: [json({ error: { message: 'boom' } }, 500)], cloudflare: [json({ text: 'без обёртки' })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/ogg' });
+  ok('V31: текст читается и из result.text, и из верхнего text', r.ok && r.text === 'без обёртки', JSON.stringify(r));
+}
+{
+  /* «Речи не было» — не повод гонять третий источник: он разберёт ту же тишину. */
+  const n = net({ groq: [json({ error: { message: 'temp' } }, 500)],
+    cloudflare: [json({ result: { text: '  .' }, success: true })],
+    openrouter: [json({ choices: [{ message: { content: 'не должен вызываться' } }] })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1', OPENROUTER_KEYS: 'ork' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/ogg' });
+  ok('V32: Cloudflare ответил «тишина» — третий источник не гоняем', r.ok === false && /не было/.test(r.why) && n.calls.filter((c) => /openrouter/.test(c.url)).length === 0, JSON.stringify({ why: r.why, calls: n.calls.length }));
+}
+{
+  /* Порядок и полнота: без CLOUDFLARE_ACCOUNT_ID дом не зовём, но и не молчим о причине. */
+  const n = net({ groq: [json({ error: { message: 'temp' } }, 500)], openrouter: [json({ choices: [{ message: { content: 'запасной' } }] })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', OPENROUTER_KEYS: 'ork' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/ogg' });
+  ok('V33: аккаунт Cloudflare не задан — источник пропускается, причина названа, путь продолжается',
+    r.ok && r.text === 'запасной' && /нет CLOUDFLARE_ACCOUNT_ID/.test(r.why) === false && n.calls.every((c) => !/cloudflare/.test(c.url)),
+    JSON.stringify({ text: r.text, calls: n.calls.map((c) => c.url.slice(0, 40)) }));
+}
+{
+  const st = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: async () => json({}), log: () => {} }).stats();
+  ok('V34: в статистике виден запас Cloudflare и его бесплатный потолок',
+    /whisper-large-v3-turbo/.test(st.models.cloudflare) && st.free.cloudflareNeuronsPerDay === 10000 && st.free.cloudflareNeuronsPerAudioMinute === 46.63,
+    JSON.stringify(st.free));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

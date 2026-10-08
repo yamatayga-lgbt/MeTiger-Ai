@@ -33,7 +33,7 @@ import { stats as skillStats } from '../../engine/skills.js';
  */
 const PROXY_SHARED_SECRET = 'mt-proxy-v1-9f3c2a7e1b4d6f80';
 
-function realClientIp(request, env) {
+export function realClientIp(request, env) {
   const secret = (env && env.PROXY_SHARED_SECRET) || PROXY_SHARED_SECRET;
   const viaProxy = request.headers.get('x-mt-proxy-ip');
   if (viaProxy && request.headers.get('x-mt-proxy-secret') === secret) return viaProxy;
@@ -202,7 +202,11 @@ const json = (data, status = 200) =>
    Про задержку распространения: KV консервативно-согласован (запись доходит до
    других краёв до ~60 секунд), поэтому счётчик общий, но приближённый; на окне в
    минуту и карантине в 4 минуты это не враньё, а достаточная грубость. */
-const RATE_LOCAL = new Map();   /* сама карта карантина объявлена выше — она и есть общий слой между запросами */
+/* Карта локального счёта частоты. Экспортируется, потому что у голосового входа
+   (/api/stt) тот же ограничитель и тот же человек: общий ключ в хранилище уже
+   один (rl:<ip>), и своя карта на стороне голоса дала бы два разных счёта по
+   одному ключу — то есть ссору двух счётчиков вместо одного честного. */
+export const RATE_LOCAL = new Map();
 
 /** KV-байндинг в форме, нужной общему слою: JSON + TTL на запись. */
 export function limitsStore(env) {

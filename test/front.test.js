@@ -1464,6 +1464,76 @@ console.log('── N · стекло (Glassmorphism) ───');
       && !/model-failover/.test(readFileSync('src/components/ModelPicker.tsx', 'utf8')));
 
 
+  /* ── 0.104: голосовой ввод — два слоя, новая полоса, честные отказы ──
+
+     Слоёв два, и это не «сделали красивее», а разные обещания:
+       · ЧЕРНОВИК (Web Speech API) — появляется мгновенно, но ошибается в шуме;
+       · ТОЧНЫЙ ТЕКСТ (наш /api/stt → Whisper) — приходит после остановки и
+         заменяет черновик. Именно он даёт «распознавание как у ChatGPT». */
+  const voiceSrc = readFileSync('src/lib/voice.ts', 'utf8');
+  ok('N35: голос — два слоя: черновик в браузере и точный текст через наш /api/stt',
+    /MediaRecorder/.test(voiceSrc)
+      && /'\/api\/stt\?lang='/.test(voiceSrc)
+      && /onPolished/.test(voiceSrc)
+      && /POLISH_MS/.test(voiceSrc));
+
+  /* Кнопка микрофона не должна пропадать из-за одного лишь отказа распознавания:
+     записать и расшифровать на сервере можно и без него (Firefox, закрытые сети). */
+  ok('N36: микрофон доступен и без браузерного распознавания — достаточно записи',
+    /export function isVoiceSupported\(\): boolean \{\s*if \(typeof window === 'undefined'\) return false\s*return hasDraftEngine\(\) \|\| isPolishSupported\(\)/.test(voiceSrc)
+      && /export function hasDraftEngine/.test(voiceSrc)
+      && /export function isPolishSupported/.test(voiceSrc));
+
+  /* Отказ распознавания — это отказ ЧЕРНОВИКА. Раньше код гасил всю сессию, и
+     человек терял запись; теперь сессия живёт, а текст приедет точным. */
+  ok('N37: отказ распознавания не гасит сессию, а только сообщает про черновик',
+    /onDraftFail/.test(voiceSrc)
+      && !/DRAFT_DEAD/.test(voiceSrc)
+      && /const startDraft = \(\) => \{/.test(voiceSrc)
+      && /getUserMedia\(\{ audio: true \}\)/.test(voiceSrc));
+
+  /* Микрофон решает судьбу сессии, и решается это ДО распознавания: иначе отказ
+     браузерного сервиса выглядел бы как «микрофона нет». */
+  ok('N38: сначала спрашиваем микрофон, и только он может убить сессию',
+    /stream = await navigator.mediaDevices.getUserMedia/.test(voiceSrc)
+      && /NotAllowedError/.test(voiceSrc)
+      && /startRecording\(\)\s*\n\s*startMeter\(stream\)\s*\n\s*startDraft\(\)/.test(voiceSrc));
+
+  const chatSrc = readFileSync('src/views/ChatView.tsx', 'utf8');
+  ok('N39: полоса ввода — время, живые столбики, крестик и галочка; текст идёт в поле',
+    /voice-strip/.test(chatSrc)
+      && /voice-rec/.test(chatSrc)
+      && /voice-bars/.test(chatSrc)
+      && /voice-ic is-x/.test(chatSrc)
+      && /voice-ic is-ok/.test(chatSrc)
+      && /Уточняю текст/.test(chatSrc)
+      && !/voice-panel/.test(chatSrc)
+      /* Черновик виден прямо в поле: так человек читает свою речь там, где она
+         окажется после отправки, а не в отдельной карточке. */
+      && /onInterim: \(chunk\) => \{\s*interimRef.current = chunk\s*\n\s*setValue\(joinText\(baseRef.current, chunk\)\)/.test(chatSrc));
+
+  ok('N40: пока идёт речь, поле помечено как черновик — слова ещё сменятся',
+    /\.composer\.is-voice \{/.test(css)
+      && /\.composer\.is-voice textarea \{/.test(css)
+      && /\.voice-strip\.is-polishing/.test(css)
+      && /is-voice'/.test(chatSrc));
+
+  /* Тихая поломка, которую поймали живьём: ссылка на @keyframes, которого нет,
+     ничего не ломает и не пишет в консоль — анимация просто не играет. */
+  {
+    const defined = new Set((css.match(/@keyframes\s+([A-Za-z0-9_-]+)/g) || []).map((x) => x.replace(/@keyframes\s+/, '')));
+    const used = new Set();
+    for (const m of css.matchAll(/animation:\s*([^;]+);/g)) {
+      for (const part of m[1].split(',')) {
+        const w = part.trim().split(/\s+/)[0] || '';
+        if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(w) && w !== 'none') used.add(w);
+      }
+    }
+    const missing = [...used].filter((u) => !defined.has(u));
+    ok('N41: каждая анимация в CSS имеет свой @keyframes (иначе она молча не играет)',
+      missing.length === 0, missing.join(', '));
+  }
+
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
     /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)
       && /prefers-reduced-transparency: reduce/.test(css)

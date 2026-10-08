@@ -4,7 +4,7 @@ import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
-import { isVoiceSupported, startVoice, voiceLang, type VoiceSession } from '../lib/voice'
+import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, VOICE_MAX_SEC, type VoiceSession } from '../lib/voice'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
@@ -122,7 +122,9 @@ function MsgFooter({ text, time, align = 'left' }: { text: string; time: string;
   )
 }
 
-const WAVE_WEIGHTS = [0.55, 0.95, 0.7, 1, 0.55, 0.85, 0.65]
+/* Столбиков в полосе уровня. Больше — мельче и без толку, меньше — уже не видно
+   разницы между «шепчет» и «молчит». */
+const BARS = 14
 
 function BrainGlyph({ className = 'reason-brain-icon' }: { className?: string }) {
   return (
@@ -553,11 +555,18 @@ export function ChatView({
 
   // --- голосовой ввод ---
   const voiceSupported = isVoiceSupported()
+  const voicePolish = isPolishSupported()
   const [listening, setListening] = useState(false)
-  const [interim, setInterim] = useState('')
-  const [level, setLevel] = useState(0)
+  /* polishing — запись уже остановлена, точный текст ещё едет с сервера.
+     Пока он едет, черновик виден как есть: человек не сидит перед пустым полем. */
+  const [polishing, setPolishing] = useState(false)
+  const [levels, setLevels] = useState<number[]>(() => new Array(BARS).fill(0))
   const [seconds, setSeconds] = useState(0)
   const [voiceError, setVoiceError] = useState('')
+  /* Мягкая заметка о голосе: не беда, а пояснение (например, черновик не пишется,
+     но запись идёт и точный текст придёт после остановки). Красным такое красить
+     нельзя — человек решит, что всё сломалось, и бросит диктовать. */
+  const [voiceNote, setVoiceNote] = useState('')
   const sessionRef = useRef<VoiceSession | null>(null)
   const baseRef = useRef('') // подтверждённый текст (ввод + финальные куски)
   const interimRef = useRef('') // незакреплённый кусок (для синхронного чтения)
@@ -596,17 +605,22 @@ export function ChatView({
   // при уходе со экрана микрофон выключается
   useEffect(() => () => sessionRef.current?.cancel(), [])
 
+  /* Остановка записи. Черновик остаётся в поле и НЕ трогается: точный текст
+     придёт следом (onPolished) и заменит его. Если уточнять нечем (нет
+     MediaRecorder) — просто закрепляем черновик. */
   const stopVoiceInput = (): string => {
     const session = sessionRef.current
     sessionRef.current = null
-    session?.stop()
     const composed = joinText(baseRef.current, interimRef.current)
     baseRef.current = composed
     interimRef.current = ''
     setValue(composed)
-    setInterim('')
     setListening(false)
-    setLevel(0)
+    setLevels(new Array(BARS).fill(0))
+    if (session) {
+      session.stop()
+      if (voicePolish) setPolishing(true)
+    }
     haptic('light')
     return composed
   }
@@ -617,11 +631,22 @@ export function ChatView({
     baseRef.current = preVoiceRef.current
     interimRef.current = ''
     setValue(preVoiceRef.current)
-    setInterim('')
     setListening(false)
-    setLevel(0)
+    setPolishing(false)
+    setLevels(new Array(BARS).fill(0))
     setSeconds(0)
     haptic('light')
+  }
+
+  /* Ошибка уточнения — не беда: черновик на месте, и он читаемый. Говорим об этом
+     одной строкой и не пугаем красным, потому что работа уже сделана. */
+  const voicePolishFailed = (reason?: string) => {
+    setPolishing(false)
+    setVoiceError(
+      reason
+        ? `Точный текст не пришёл (${reason}) — оставил то, что записалось на лету`
+        : 'Точный текст не пришёл — оставил то, что записалось на лету',
+    )
   }
 
   const startVoiceInput = () => {
@@ -631,12 +656,12 @@ export function ChatView({
     }
     haptic('medium')
     setVoiceError('')
+    setVoiceNote('')
     preVoiceRef.current = value
     baseRef.current = value
     interimRef.current = ''
-    setInterim('')
     setSeconds(0)
-    setLevel(0)
+    setLevels(new Array(BARS).fill(0))
     setListening(true)
     const session = startVoice(
       {
@@ -644,17 +669,36 @@ export function ChatView({
           baseRef.current = joinText(baseRef.current, chunk)
           interimRef.current = ''
           setValue(baseRef.current)
-          setInterim('')
-        },
+              },
         onInterim: (chunk) => {
           interimRef.current = chunk
           setValue(joinText(baseRef.current, chunk))
-          setInterim(chunk)
         },
-        onLevel: (l) => setLevel(l),
+        /* Столбики уровня: живая история сигнала, а не выдуманная волна. */
+        onLevel: (l) => setLevels((prev) => [...prev.slice(1), l]),
         onError: (message) => {
           setVoiceError(message)
           cancelVoiceInput()
+        },
+        onDraftFail: (message) => {
+          setVoiceNote(`${message} — говорите дальше, точный текст приедет после остановки`)
+        },
+        /* Точный текст пришёл: он заменяет ВЕСЬ кусок этой сессии, а текст, что был
+           в поле до микрофона, остаётся на месте. */
+        onPolished: (text) => {
+          const composed = joinText(preVoiceRef.current, text)
+          baseRef.current = composed
+          interimRef.current = ''
+          setValue(composed)
+                setPolishing(false)
+          haptic('light')
+        },
+        onPolish: (state, reason) => {
+          if (state === 'start') setPolishing(true)
+          else voicePolishFailed(reason)
+        },
+        onCap: () => {
+          setVoiceError(`Запись остановлена сама: больше ${VOICE_MAX_SEC / 60} минут подряд не пишу`)
         },
       },
       voiceLang(user.language_code),
@@ -672,6 +716,14 @@ export function ChatView({
        клавиатура (Enter на компьютере) могла бы это сделать в обход disabled у кнопки,
        которая на это время сама превращается в «Остановить». */
     if (typing) return
+    /* Отправка во время уточнения: человек уже нажал «отправить», значит ждать
+       сервер незачем — берём черновик, а летящий запрос точного текста гасим,
+       иначе он вернётся в уже очищенное поле. */
+    if (polishing) {
+      sessionRef.current?.cancel()
+      sessionRef.current = null
+      setPolishing(false)
+    }
     const text = (listening ? stopVoiceInput() : value).trim()
     /* Картинка или файл без вопроса — это запрос «посмотри, что я прислал»: движок
        сам решит, что с этим делать. Совсем пустой ход не отправляем. */
@@ -939,23 +991,30 @@ export function ChatView({
       </div>
 
       <div className="composer-wrap">
-        {listening ? (
-          <div className="voice-panel">
-            <div className="voice-head">
-              <span className="voice-live">
-                <span className="voice-dot" />
-                Слушаю · {fmtTime(seconds)}
-              </span>
-              <button type="button" className="voice-cancel" onClick={cancelVoiceInput}>
-                Отмена
-              </button>
-            </div>
-            <div className="voice-wave" aria-hidden="true">
-              {WAVE_WEIGHTS.map((w, i) => (
-                <span key={i} style={{ height: `${3 + level * 21 * w}px` }} />
+        {listening || polishing ? (
+          <div className={'voice-strip' + (polishing ? ' is-polishing' : '')} role="status" aria-live="polite">
+            <span className="voice-rec" aria-hidden="true" />
+            <span className="voice-when">
+              {polishing ? 'Уточняю текст…' : `Слушаю · ${fmtTime(seconds)}`}
+            </span>
+            <span className="voice-bars" aria-hidden="true">
+              {levels.map((v, i) => (
+                <i key={i} style={{ transform: `scaleY(${(0.14 + v * 0.86).toFixed(3)})` }} />
               ))}
-            </div>
-            <div className="voice-interim">{interim || 'Говорите…'}</div>
+            </span>
+            <button type="button" className="voice-ic is-x" onClick={cancelVoiceInput} aria-label="Отменить запись" title="Отменить запись">
+              <X size={14} />
+            </button>
+            <button
+              type="button"
+              className="voice-ic is-ok"
+              onClick={() => stopVoiceInput()}
+              disabled={polishing}
+              aria-label="Готово"
+              title={voicePolish ? 'Готово — уточню текст и вставлю в поле' : 'Готово'}
+            >
+              <Check size={15} />
+            </button>
           </div>
         ) : null}
 
@@ -994,7 +1053,7 @@ export function ChatView({
           </div>
         ) : null}
         <form
-          className="composer"
+          className={'composer' + (listening || polishing ? ' is-voice' : '')}
           onSubmit={(e) => {
             e.preventDefault()
             submit()
@@ -1101,9 +1160,10 @@ export function ChatView({
               {voiceSupported ? (
                 <button
                   type="button"
-                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}`}
+                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}`}
                   aria-label={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
                   title={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  disabled={polishing}
                   onClick={() => (listening ? stopVoiceInput() : startVoiceInput())}
                 >
                   {listening ? <Square size={13} /> : <Mic size={17} />}
@@ -1163,6 +1223,7 @@ export function ChatView({
           ) : null}
         </form>
         {voiceError ? <div className="voice-error">{voiceError}</div> : null}
+        {voiceNote && (listening || polishing) ? <div className="voice-note">{voiceNote}</div> : null}
         <p className="composer-hint">
           <span className="composer-hint-model">MeTiger Ai</span> · ИИ может ошибаться. Проверяйте важную информацию.
         </p>

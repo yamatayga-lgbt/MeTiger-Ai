@@ -28,6 +28,11 @@ const PROMPT =
   + 'Восстанавливай пунктуацию и регистр; числа, даты, имена, термины и единицы пиши так, как произнесено.\n'
   + 'Если речи нет — верни пустую строку. Никаких пояснений, кавычек и «в аудио слышно».';
 
+/* initial_prompt у Whisper — не инструкция, а образец стиля: модель продолжает
+   его по духу. Поэтому здесь именно пример русской расшифровки с пунктуацией,
+   а не приказ «расшифруй дословно» (приказы она может прочитать вслух). */
+const STYLE_PROMPT = 'Привет! Это расшифровка речи с пунктуацией, заглавными буквами и числами.';
+
 /* Telegram носит opus в ogg; провайдеры берут не любой контейнер, поэтому формат
    подбирается по mime, а у Groq ещё и перебирается в случае отказа формата. */
 const FMT = {
@@ -102,6 +107,9 @@ export function createStt(o) {
   const on = String(env.STT || '') !== 'off';
   const groqKey = first(env.GROQ_KEYS || env.GROQ_KEY);
   const orKey = first(env.OPENROUTER_KEYS || env.OPENROUTER_KEY);
+  const cfKey = first(env.CLOUDFLARE_KEYS || env.CLOUDFLARE_KEY);
+  const cfAcc = first(env.CLOUDFLARE_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT);
+  const cfModel = String(env.STT_CF_MODEL || '@cf/openai/whisper-large-v3-turbo');
   const groqModel = String(env.STT_MODEL || 'whisper-large-v3-turbo');
   const orModel = String(env.STT_OMNI_MODEL || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free');
   const timeoutMs = Math.max(5000, Number(env.STT_TIMEOUT_MS) || CALL_MS);
@@ -114,7 +122,7 @@ export function createStt(o) {
     ]);
   };
 
-  async function viaGroq(bytes, mime) {
+  async function viaGroq(bytes, mime, lang) {
     const tries = fmtsOf(mime);
     let last = 'формат не подошёл';
     for (const fmt of tries) {
@@ -124,6 +132,9 @@ export function createStt(o) {
       fd.append('response_format', 'verbose_json');
       fd.append('temperature', '0');
       fd.append('prompt', PROMPT);
+      /* Язык подсказываем, когда знаем его точно (браузер сообщает язык пишущего):
+         на короткой фразе «спасибо» автоопределение иногда уезжает в английский. */
+      if (lang) fd.append('language', lang);
       const r = await fetchImpl('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
         headers: { authorization: 'Bearer ' + groqKey },
@@ -142,6 +153,47 @@ export function createStt(o) {
       return { ok: hasWords(text), text: hasWords(text) ? text : '', via: 'groq/' + groqModel, lang: (j && j.language) || '', why: hasWords(text) ? '' : 'речи в аудио не было' };
     }
     return { ok: false, why: last, via: 'groq' };
+  }
+
+  /**
+   * Cloudflare Workers AI, модель @cf/openai/whisper-large-v3-turbo.
+   * Отличие от Groq — только транспорт: аудио уходит не multipart-файлом, а
+   * base64 в JSON (так устроен их API). Плюс их же фильтр тишины (vad_filter):
+   * на коротких записях он убирает «галлюцинации» Whisper на паузах.
+   */
+  async function viaCloudflare(bytes, mime, lang) {
+    if (!cfAcc) return { ok: false, why: 'нет CLOUDFLARE_ACCOUNT_ID для адреса Workers AI', via: 'cloudflare' };
+    const body = {
+      audio: b64enc(bytes),
+      task: 'transcribe',
+      vad_filter: true,
+      beam_size: 5,
+      /* Отключаем «оглядку на прошлый текст»: на коротких фразах она даёт
+         зацикливание и повторы вроде «спасибо спасибо спасибо». */
+      condition_on_previous_text: false,
+      initial_prompt: STYLE_PROMPT,
+    };
+    if (lang) body.language = lang;
+    const url = 'https://api.cloudflare.com/client/v4/accounts/' + cfAcc + '/ai/run/' + cfModel;
+    const r = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + cfKey },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return { ok: false, why: await whyOf(r), via: 'cloudflare' };
+    let j = null;
+    try { j = await r.json(); } catch { return { ok: false, why: 'ответ не JSON', via: 'cloudflare' }; }
+    /* Их ответ двухслойный: { result: { text, ... }, success }. Берём и верхний
+       уровень тоже — прошлые версии API клали текст ровно в result.text, и
+       разбирать нужно обе формы, а не ту, что попалась первой. */
+    const raw = (j && ((j.result && j.result.text) || j.text)) || '';
+    const text = tidy(String(raw));
+    return {
+      ok: hasWords(text),
+      text: hasWords(text) ? text : '',
+      via: 'cloudflare/' + cfModel.split('/').pop(),
+      why: hasWords(text) ? '' : 'речи в аудио не было',
+    };
   }
 
   async function viaOpenRouter(bytes, mime) {
@@ -170,7 +222,8 @@ export function createStt(o) {
   }
 
   /**
-   * Расшифровать. src: { bytes: Uint8Array, mime }.
+   * Расшифровать. src: { bytes: Uint8Array, mime, lang }.
+   * lang — ISO-639-1 («ru»), необязательный: браузер знает язык пишущего, Telegram нет.
    * → { ok, text, via } | { ok: false, why }
    */
   async function transcribe(src) {
@@ -180,9 +233,10 @@ export function createStt(o) {
     if (bytes.length < MIN_AUDIO) return { ok: false, why: 'аудио в ' + bytes.length + ' байт — слишком короткое, чтобы там была речь' };
     if (bytes.length > MAX_AUDIO) return { ok: false, why: 'аудио ' + Math.round(bytes.length / 1024 / 1024 * 10) / 10 + ' МБ — больше ' + Math.round(MAX_AUDIO / 1024 / 1024) + ' МБ не расшифровываем' };
     const tried = [];
+    const lang = String((src && src.lang) || '').slice(0, 5).toLowerCase() || '';
     if (groqKey) {
       try {
-        const r = await withTimeout(viaGroq(bytes, src.mime), 'groq');
+        const r = await withTimeout(viaGroq(bytes, src.mime, lang), 'groq');
         if (r.ok) return r;
         /* Groq ответил, просто речи не было: второй источник ту же тишину не
            расшифрует, а лишний запрос — это секунды задержки и квота. */
@@ -190,6 +244,15 @@ export function createStt(o) {
         tried.push('groq: ' + (r.why || 'пусто'));
       } catch (e) { tried.push('groq: ' + String((e && e.message) || e).slice(0, 120)); }
     } else tried.push('groq: ключа GROQ_KEYS нет');
+    if (cfKey && cfAcc) {
+      try {
+        const r = await withTimeout(viaCloudflare(bytes, src.mime, lang), 'cloudflare');
+        if (r.ok) return r;
+        /* Ответил, но речи не было — третий источник ту же тишину не разберёт. */
+        if (/^cloudflare\//.test(String(r.via || ''))) return { ok: false, why: r.why || 'речи в аудио не было', via: r.via };
+        tried.push('cloudflare: ' + (r.why || 'пусто'));
+      } catch (e) { tried.push('cloudflare: ' + String((e && e.message) || e).slice(0, 120)); }
+    } else tried.push('cloudflare: ' + (cfKey ? 'нет CLOUDFLARE_ACCOUNT_ID' : 'ключа CLOUDFLARE_KEYS нет'));
     if (orKey) {
       try {
         const r = await withTimeout(viaOpenRouter(bytes, src.mime), 'openrouter');
@@ -207,7 +270,8 @@ export function createStt(o) {
     stats: () => ({
       on,
       keys: { groq: !!groqKey, openrouter: !!orKey },
-      models: { groq: groqKey ? groqModel : '', omni: orKey ? orModel : '' },
+      models: { groq: groqKey ? groqModel : '', cloudflare: cfKey && cfAcc ? cfModel : '', omni: orKey ? orModel : '' },
+      free: { cloudflareNeuronsPerAudioMinute: 46.63, cloudflareNeuronsPerDay: 10000, note: 'около 214 минут речи в сутки бесплатно' },
       maxBytes: MAX_AUDIO,
     }),
   };
