@@ -1736,21 +1736,27 @@ console.log('── N · стекло (Glassmorphism) ───');
       /stopSpeech\(\)/.test(readFileSync('src/lib/speech.ts', 'utf8')) && /export function stopSpeech/.test(readFileSync('src/lib/speech.ts', 'utf8')));
 
     const menu = readFileSync('src/components/AttachMenu.tsx', 'utf8')
-    ok('N66: «Отвечать голосом» — переключатель рядом с «Размышлять глубже», а не надпись',
-      /attach-menu-item attach-speak/.test(menu) && /role="menuitemcheckbox"/.test(menu)
-        && /onSpeak\?\.\(\)/.test(menu));
+    /* 0.121: пункт «Отвечать голосом» из меню «+» убран по просьбе хозяина.
+       Проверка сторожит именно удаление и смотрит на код, а не на пояснения:
+       комментарий о том, почему пункт убран, — не пункт меню. */
+    const menuCode = menu.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+    ok('N66: «Отвечать голосом» из меню «+» убрано (ни кнопки, ни ручки)',
+      !/attach-speak/.test(menuCode) && !/Отвечать голосом/.test(menuCode) && !/onSpeak/.test(menuCode)
+        && !/Volume2/.test(menuCode));
 
-    ok('N67: «Отвечать голосом» помнится в браузере, как «Размышлять глубже»',
-      /usePersistentState<boolean>\('mt-speak', false/.test(readFileSync('src/App.tsx', 'utf8')));
+    ok('N67: авточтения ответов в приложении не осталось',
+      !/'mt-speak'/.test(readFileSync('src/App.tsx', 'utf8'))
+        && !/speakOn/.test(chatVoice) && !/озвученRef/.test(chatVoice)
+        && /attach-menu-item attach-deep/.test(menu));
 
-    ok('N68: новый ответ читается вслух только после окончания потока (не по кускам)',
-      /if \(!speakOn \|\| typing\) return/.test(chatVoice)
-        && /озвученRef\.current = последний\.text/.test(chatVoice));
+    /* Озвучка не пропала вместе с переключателем: её зовут кнопкой у ответа. */
+    ok('N68: ответ по-прежнему читается вслух — кнопкой «озвучить» у самого ответа',
+      /canSpeak voice=\{voice\}/.test(chatVoice) && /await speak\(text, \{ gender: voice/.test(chatVoice));
 
     ok('N69: голос для озвучки выбирается и помнится в браузере',
       /usePersistentState<'female' \| 'male'>\(\s*'mt-voice'/.test(readFileSync('src/App.tsx', 'utf8'))
         && /aria-label="Женский голос"/.test(menu) && /aria-label="Мужской голос"/.test(menu)
-        && /gender: voice, onState/.test(chatVoice) && /speak\(последний\.text, \{ gender: voice \}\)/.test(chatVoice));
+        && /gender: voice, onState/.test(chatVoice));
 
     ok('N70: кнопки голоса не растягиваются на всю строку — меню не распухает',
       /\.attach-menu-voice \{[^}]*display: flex/.test(css)

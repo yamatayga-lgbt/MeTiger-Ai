@@ -1,0 +1,79 @@
+name: Deploy
+
+# Выкладка на Cloudflare Pages из GitHub — тот же результат, что у `npm run publish`,
+# но глазами раннера GitHub: у него полный интернет, поэтому Cloudflare API доступен
+# там, где он закрыт (например, из песочницы агента открыты только github/npm/pypi).
+#
+# Зачем вообще: прод-сайт metiger-ai.pages.dev выкладывается только заливкой сборки
+# (git-интеграции у проекта нет). Раньше это умел ровно один скрипт и только из
+# машины с доступом к api.cloudflare.com. Теперь то же самое умеет кнопка в GitHub:
+# Actions → Deploy → Run workflow (можно прямо с телефона).
+#
+# Секреты репозитория: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# (Settings → Secrets and variables → Actions). Значения — те же, что в
+# keys/.secrets.env (в git этот файл не попадает).
+#
+# Что проверяется до заливки: полный набор тестов и сборка. Кривой код на прод
+# не уедет — упадёт раньше.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Куда выкладывать'
+        type: choice
+        options: [production, preview]
+        default: production
+  push:
+    # main — обычный путь. Ветки arena/** — рабочие ветки агентов: их пуш тоже
+    # должен попадать на прод сразу, иначе «выложил» живёт только в git.
+    branches: [main, 'arena/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  # Выкладки не идут вперемешку: два деплоя одновременно затирали бы друг друга.
+  group: deploy-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Тесты
+        run: npm test
+      - name: Сборка
+        run: npm run build
+      - name: Выкладка на Cloudflare Pages
+        # Доступов нет — выкладку не делаем и красным не пугаем: прогон остаётся
+        # зелёным с честной пометкой. Появятся секреты — тот же пуш (или «Re-run»)
+        # выложит прод этим же шагом.
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Ветка 3 — как в scripts/publish.sh: wrangler@latest требует Node >= 22,
+          # а здесь Node 20 (и так же у половины CI).
+          wranglerVersion: '3.114.17'
+          # Прод — это --branch main; так делает и publish.sh. Превью зовётся вручную.
+          command: >-
+            pages deploy dist --commit-dirty=true --project-name metiger-ai
+            --branch ${{ github.event.inputs.mode == 'preview' && 'preview' || 'main' }}
+
+      - name: Доступов Cloudflare нет — выкладка пропущена
+        if: env.CLOUDFLARE_API_TOKEN == ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "::notice title=Выкладка пропущена::В репозитории нет секретов CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID."
+          echo "Добавь их в Settings → Secrets and variables → Actions, затем перезапусти (Re-run) этот прогон — прод обновится без правок кода."

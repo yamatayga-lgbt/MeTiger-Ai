@@ -11,7 +11,7 @@
  * браузер) + кнопка «Загрузить файлы» для нового файла.
  */
 import { useEffect, useState } from 'react'
-import { Camera, ChevronLeft, FileText, Gauge, Image as ImageIcon, Paperclip, Puzzle, Upload, Volume2 } from 'lucide-react'
+import { Camera, ChevronLeft, FileText, Gauge, Image as ImageIcon, Paperclip, Puzzle, Upload } from 'lucide-react'
 import { fileHref, fileSize } from '../lib/api'
 import { listHistory, type HistoryItem } from '../lib/attachHistory'
 import { haptic } from '../lib/haptic'
@@ -26,9 +26,6 @@ interface AttachMenuProps {
   /** Выбор голоса: женский или мужской (состояние живёт в App). */
   voice?: 'female' | 'male'
   onVoice?: (v: 'female' | 'male') => void
-  /** «Отвечать голосом»: ответы агента читаются вслух (состояние живёт в App). */
-  speak?: boolean
-  onSpeak?: () => void
   onDeep?: () => void
   onClose: () => void
 }
@@ -44,7 +41,7 @@ function timeAgo(ms: number): string {
   return `${d} дн назад`
 }
 
-export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, speak = false, onSpeak, voice = 'female', onVoice, onClose }: AttachMenuProps) {
+export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, voice = 'female', onVoice, onClose }: AttachMenuProps) {
   const [view, setView] = useState<'menu' | 'files'>('menu')
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
 
@@ -145,21 +142,9 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, de
         Размышлять глубже
         <span className="attach-switch" aria-hidden="true" />
       </button>
-      {/* «Отвечать голосом» рядом с «Размышлять глубже»: это второй переключатель
-          того же рода — просьба, которая действует до выключения. */}
-      <button
-        type="button"
-        className={`attach-menu-item attach-speak${speak ? ' is-on' : ''}`}
-        role="menuitemcheckbox"
-        aria-checked={speak}
-        aria-label="Отвечать голосом"
-        title={speak ? 'Отвечать голосом: включено' : 'Отвечать голосом'}
-        onClick={() => { haptic('light'); onSpeak?.() }}
-      >
-        <span className="attach-menu-icon"><Volume2 size={18} /></span>
-        Отвечать голосом
-        <span className="attach-switch" aria-hidden="true" />
-      </button>
+      {/* «Отвечать голосом» здесь было — и убрано по просьбе хозяина (0.121):
+          читать вслух каждый новый ответ оказалось лишним пунктом в меню.
+          Озвучка осталась там, где её и зовут: кнопка «озвучить» у самого ответа. */}
       {/* Выбор голоса: две кнопки вместо списка — голосов всего два, и человек
           слышит разницу сразу. Без пояснений: подпись «Голос» и сами кнопки. */}
       <div className="attach-menu-voice" role="group" aria-label="Голос">
