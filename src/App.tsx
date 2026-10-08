@@ -140,6 +140,11 @@ export default function App() {
      умолчанию, и помнится в браузере: человек, которому так удобно (за рулём,
      с закрытыми глазами), не должен включать её каждый раз заново. */
   const [speakOn, setSpeakOn] = usePersistentState<boolean>('mt-speak', false, (v): v is boolean => typeof v === 'boolean')
+  /* Какой голос читает ответы: женский или мужской. Выбор помнится в браузере —
+     он про человека («мне привычнее этот голос»), а не про текущий разговор. */
+  const [voice, setVoice] = usePersistentState<'female' | 'male'>(
+    'mt-voice', 'female', (v): v is 'female' | 'male' => v === 'female' || v === 'male',
+  )
   /* параметры генерации: temperature, max_tokens, top_p, presence/frequency penalty */
   const [genParamsRaw, setGenParams] = usePersistentState<GenParams>(
     'mt-params',
@@ -547,6 +552,8 @@ export default function App() {
                 onDeep={() => setDeep((v) => !v)}
                 speakOn={speakOn}
                 onSpeak={() => setSpeakOn((v) => !v)}
+                voice={voice}
+                onVoice={setVoice}
                 onSend={sendMessage}
                 onStop={stopGeneration}
                 genParams={genParams}

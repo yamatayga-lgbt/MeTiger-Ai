@@ -1728,7 +1728,7 @@ console.log('── N · стекло (Glassmorphism) ───');
     /* ── 0.115: голос в обратную сторону ── */
     const chatVoice = readFileSync('src/views/ChatView.tsx', 'utf8')
     ok('N64: у ответа агента есть кнопка «озвучить», у вопроса — нет',
-      /canSpeak \/>/.test(chatVoice) && /canSpeak = false/.test(chatVoice)
+      /canSpeak[^>]*\/>/.test(chatVoice) && /canSpeak = false/.test(chatVoice)
         && /aria-label=\{speaking \? 'Остановить озвучку' : 'Озвучить ответ'\}/.test(chatVoice),
       JSON.stringify(chatVoice.slice(0, 0)));
 
@@ -1746,6 +1746,16 @@ console.log('── N · стекло (Glassmorphism) ───');
     ok('N68: новый ответ читается вслух только после окончания потока (не по кускам)',
       /if \(!speakOn \|\| typing\) return/.test(chatVoice)
         && /озвученRef\.current = последний\.text/.test(chatVoice));
+
+    ok('N69: голос для озвучки выбирается и помнится в браузере',
+      /usePersistentState<'female' \| 'male'>\(\s*'mt-voice'/.test(readFileSync('src/App.tsx', 'utf8'))
+        && /aria-label="Женский голос"/.test(menu) && /aria-label="Мужской голос"/.test(menu)
+        && /gender: voice, onState/.test(chatVoice) && /speak\(последний\.text, \{ gender: voice \}\)/.test(chatVoice));
+
+    ok('N70: кнопки голоса не растягиваются на всю строку — меню не распухает',
+      /\.attach-menu-voice \{[^}]*display: flex/.test(css)
+        && !/\.attach-menu-voice[^{]*\{[^}]*flex: 1 0 100%/.test(css)
+        && /\.attach-voice-btn \{[^}]*min-width: 52px/.test(css));
 
     ok('N62: «*» и «_» внутри формулы не становятся разметкой Markdown',
       !/<em>/.test(starHtml) && /math-fx/.test(starHtml) && /math-sub/.test(starHtml)

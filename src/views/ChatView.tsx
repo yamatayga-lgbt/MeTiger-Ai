@@ -101,12 +101,14 @@ async function copyText(text: string): Promise<boolean> {
 /** Строка под пузырём: копировать + «N минут назад» (у ответа — ещё и сколько
     он шёл). Иконка меняется на галочку на полторы секунды после удачного
     копирования — обратная связь без тоста, который на телефоне лишний. */
-function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
+function MsgFooter({ text, time, align = 'left', canSpeak = false, voice = 'female' }: {
   text: string
   time: string
   align?: 'left' | 'right'
   /** Озвучка есть только у ответов агента: свой вопрос человек и так только что сказал. */
   canSpeak?: boolean
+  /** Каким голосом читать: выбор человека, помнится в браузере. */
+  voice?: 'female' | 'male'
 }) {
   const [copied, setCopied] = useState(false)
   /* Озвучка: «играет» держим на самой кнопке, а общий звук — один на приложение
@@ -137,7 +139,7 @@ function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
             haptic('light')
             if (speaking) { stopSpeech(); setSpeaking(false); return }
             setSpeaking(true)
-            await speak(text, { onState: (состояние) => setSpeaking(состояние === 'play') })
+            await speak(text, { gender: voice, onState: (состояние) => setSpeaking(состояние === 'play') })
           }}
         >
           {speaking ? <Square size={13} /> : <Volume2 size={14} />}
@@ -531,6 +533,9 @@ interface ChatViewProps {
   /** «Отвечать голосом»: новые ответы читаются вслух (состояние живёт в App). */
   speakOn?: boolean
   onSpeak?: () => void
+  /** Каким голосом читать: женским или мужским (выбор помнится в браузере). */
+  voice?: 'female' | 'male'
+  onVoice?: (v: 'female' | 'male') => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
@@ -552,6 +557,8 @@ export function ChatView({
   onDeep,
   speakOn = false,
   onSpeak,
+  voice = 'female',
+  onVoice,
   onSend,
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
@@ -573,8 +580,8 @@ export function ChatView({
     const последний = [...messages].reverse().find((m) => m.role === 'assistant' && m.text)
     if (!последний || последний.text === озвученRef.current) return
     озвученRef.current = последний.text
-    void speak(последний.text)
-  }, [speakOn, typing, messages])
+    void speak(последний.text, { gender: voice })
+  }, [speakOn, typing, messages, voice])
 
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
@@ -1020,7 +1027,7 @@ export function ChatView({
                     </div>
                   ) : null}
                   {m.text ? (
-                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} canSpeak />
+                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} canSpeak voice={voice} />
                   ) : null}
                 </div>
               </div>
@@ -1302,6 +1309,8 @@ export function ChatView({
                 deep={deep}
                 onDeep={onDeep}
                 speak={speakOn}
+                voice={voice}
+                onVoice={onVoice}
                 onSpeak={onSpeak}
                 onClose={() => setAddMenuOpen(false)}
               />

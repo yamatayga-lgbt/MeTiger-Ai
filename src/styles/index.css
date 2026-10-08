@@ -3295,6 +3295,36 @@ kbd {
   transition: transform var(--t-spring), background-color var(--t-med);
 }
 
+/* Выбор голоса в меню «+»: подпись и две кнопки в одну строку. Кнопки по своей
+   ширине — растягивать их на всю строку нельзя, меню от этого распухает. */
+.attach-menu-voice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 12px;
+}
+.attach-menu-voice-label {
+  flex: 1;
+  font-size: 13px;
+  opacity: 0.62;
+}
+.attach-voice-btn {
+  min-width: 52px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.28);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.attach-voice-btn.is-on {
+  border-color: rgba(120, 200, 255, 0.85);
+  background: rgba(120, 200, 255, 0.24);
+  font-weight: 600;
+}
 .attach-menu-item.attach-deep.is-on {
   color: var(--text);
 }

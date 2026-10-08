@@ -23,6 +23,9 @@ interface AttachMenuProps {
   onPickHistory: (item: HistoryItem) => void
   /** «Размышлять глубже»: включено ли и как переключить (состояние живёт в App). */
   deep?: boolean
+  /** Выбор голоса: женский или мужской (состояние живёт в App). */
+  voice?: 'female' | 'male'
+  onVoice?: (v: 'female' | 'male') => void
   /** «Отвечать голосом»: ответы агента читаются вслух (состояние живёт в App). */
   speak?: boolean
   onSpeak?: () => void
@@ -41,7 +44,7 @@ function timeAgo(ms: number): string {
   return `${d} дн назад`
 }
 
-export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, speak = false, onSpeak, onClose }: AttachMenuProps) {
+export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, speak = false, onSpeak, voice = 'female', onVoice, onClose }: AttachMenuProps) {
   const [view, setView] = useState<'menu' | 'files'>('menu')
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
 
@@ -157,6 +160,31 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, de
         Отвечать голосом
         <span className="attach-switch" aria-hidden="true" />
       </button>
+      {/* Выбор голоса: две кнопки вместо списка — голосов всего два, и человек
+          слышит разницу сразу. Без пояснений: подпись «Голос» и сами кнопки. */}
+      <div className="attach-menu-voice" role="group" aria-label="Голос">
+        <span className="attach-menu-voice-label">Голос</span>
+        <button
+          type="button"
+          className={'attach-voice-btn' + (voice === 'female' ? ' is-on' : '')}
+          role="menuitemradio"
+          aria-checked={voice === 'female'}
+          aria-label="Женский голос"
+          onClick={() => { haptic('light'); onVoice?.('female') }}
+        >
+          Жен
+        </button>
+        <button
+          type="button"
+          className={'attach-voice-btn' + (voice === 'male' ? ' is-on' : '')}
+          role="menuitemradio"
+          aria-checked={voice === 'male'}
+          aria-label="Мужской голос"
+          onClick={() => { haptic('light'); onVoice?.('male') }}
+        >
+          Муж
+        </button>
+      </div>
     </div>
   )
 }

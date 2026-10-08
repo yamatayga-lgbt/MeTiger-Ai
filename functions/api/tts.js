@@ -108,6 +108,6 @@ export async function onRequestGet(context) {
     accepts: 'POST { text, gender }',
     maxChars: textLimit(env),
     voices: { ru: ['ru-RU-DmitryNeural', 'ru-RU-SvetlanaNeural'], en: ['en-US-AndrewNeural', 'en-US-AriaNeural'] },
-    example: speechText('Корень \\(\\sqrt{2}\\) — иррациональное число.'),
+    example: speechText('\\(\\sqrt{2}\\) — иррациональное число.'),
   });
 }
