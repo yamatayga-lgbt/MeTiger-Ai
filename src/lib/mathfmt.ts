@@ -48,6 +48,9 @@ export type MathNode =
   | { k: 'rowbreak' }
   /** Пробел: \, \; \quad \qquad — ширина в em. */
   | { k: 'space'; v: number }
+  /** Кусок, который переносится целиком: выражение вместе со своей пунктуацией.
+      Ставится не разбором, а рисованием (Formula.tsx) — разбору это не нужно. */
+  | { k: 'glue'; v: MathNode[] }
   /** Непонятая команда. Показываем как есть — врать про неё нельзя. */
   | { k: 'raw'; v: string }
 
@@ -593,6 +596,7 @@ export function toPlain(nodes: MathNode[]): string {
         return toPlain(n.v)
       case 'accent': return toPlain(n.v) + n.mark
       case 'box': return toPlain(n.v)
+      case 'glue': return n.v.map((x) => toPlain([x])).join('')
       case 'rows': return n.rows.map((row) => toPlain(row)).join('; ')
       case 'rowbreak': return ' '
       case 'frac': return toPlain(n.a) + '/' + toPlain(n.b)

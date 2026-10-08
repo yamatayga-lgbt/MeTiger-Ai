@@ -1718,6 +1718,13 @@ console.log('── N · стекло (Glassmorphism) ───');
 
     /* Звёздочки внутри формулы раньше уходили в разметку и делали курсив. */
     const starHtml = htmlOf('Произведение \\(a*b*c\\) и индекс \\(x_1\\) — всё на месте.')
+    /* Прод 0.112: длинная выкладка переносилась по строкам, и завершающая точка
+       оставалась одна на пустой строке — читается как ошибка в ответе. */
+    const glueHtml = htmlOf('Формула \\( x=\\frac{-a}{2b}, \\) и дальше текст.')
+    ok('N63: запятая и точка держатся за своё выражение, а не уезжают на пустую строку',
+      /math-glue"><span class="math-frac"/.test(glueHtml) && /math-fx/.test(glueHtml),
+      JSON.stringify(glueHtml.slice(0, 140)));
+
     ok('N62: «*» и «_» внутри формулы не становятся разметкой Markdown',
       !/<em>/.test(starHtml) && /math-fx/.test(starHtml) && /math-sub/.test(starHtml)
         && plain(starHtml).indexOf('a*b*c') >= 0,

@@ -2205,6 +2205,14 @@ kbd {
   transform-origin: center;
 }
 
+/* Выражение со своей пунктуацией: переносится целиком, чтобы точка не уезжала на
+   пустую строку (живой снимок прода 0.112). */
+.math-glue {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
 /* Перенос строки вне окружения. */
 .math-br {
   flex-basis: 100%;

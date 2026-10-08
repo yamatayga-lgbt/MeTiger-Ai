@@ -32,15 +32,48 @@ export function Formula({ latex, block = false }: Props) {
       role="math"
       aria-label={latex.trim()}
     >
-      {nodes.map((n, i) => (
+      {withGlued(nodes).map((n, i) => (
         <Node key={i} node={n} />
       ))}
     </span>
   )
 }
 
+/**
+ * Знак препинания не должен уезжать от того, к чему относится.
+ *
+ * Живой снимок прода (0.112, ответ про квадратное уравнение): длинная выкладка
+ * переносилась по строкам, и завершающая точка осталась одна на пустой строке —
+ * выглядит как ошибка в ответе. Склеиваем «.,;:!?» с предыдущим куском: вместе они
+ * переносятся, а не разъезжаются. Пунктуация, стоящая отдельным куском в середине
+ * формулы, склейке не мешает — она просто едет вместе с соседом слева.
+ */
+const GLUE = /^[\s.,;:!?)\]}]+$/
+
+function withGlued(nodes: MathNode[]): MathNode[] {
+  const out: MathNode[] = []
+  for (const n of nodes) {
+    const пунктуация = n.k === 'text' && GLUE.test(n.v)
+    const prev = out[out.length - 1]
+    if (пунктуация && prev && prev.k !== 'rowbreak') {
+      out[out.length - 1] = { k: 'glue', v: [prev, n] }
+      continue
+    }
+    out.push(n)
+  }
+  return out
+}
+
 function Node({ node }: { node: MathNode }) {
   switch (node.k) {
+    case 'glue':
+      return (
+        <span className="math-glue">
+          {node.v.map((н, i) => (
+            <Node key={i} node={н} />
+          ))}
+        </span>
+      )
     case 'text':
       return <>{node.v}</>
     case 'var':
