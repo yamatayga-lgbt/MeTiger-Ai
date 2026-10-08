@@ -78,8 +78,11 @@ export async function onRequestPost(context) {
   const res = await synthesize(text, { voice, gender, env, debug });
   if (!res.ok) {
     /* 200 с причиной, а не 5xx: это не сбой нашего входа, а «голос сейчас не
-       ответил», и клиенту по этой причине надо перейти на речь устройства. */
-    return json({ ok: false, error: res.why || 'голос не ответил' }, 200);
+       ответил», и клиенту по этой причине надо перейти на речь устройства.
+       С ?debug=1 причина едет вместе с разбором кадров (иначе разбор некуда девать). */
+    const отказ = { ok: false, error: res.why || 'голос не ответил' };
+    if (debug && res.debug) отказ.debug = res.debug;
+    return json(отказ, 200);
   }
   const bytes = res.audio;
   return new Response(bytes, {

@@ -253,6 +253,46 @@ console.log('W — вход /api/tts');
   ok('W4: GET рассказывает, что принимает вход, и какими голосами говорит',
     и.ok && и.maxChars > 1000 && Array.isArray(и.voices.ru) && и.voices.ru.length === 2
       && /иррациональное число/.test(и.example), JSON.stringify(и).slice(0, 120));
+
+  /* На проде разбор не доезжал до ответа: вход звал synthesize с debug, но в
+     отказ его не кладёл — и ?debug=1 выглядел так, будто разбора нет вовсе.
+     Здесь ловим это на живом пути входа: fetch подменяем на «соединение есть,
+     кадров нет», и разбор обязан оказаться в ответе. */
+  const настоящийFetch = globalThis.fetch;
+  /* Своё подставное соединение: у W-блока своя область, чужое не видно. */
+  const подставное = () => {
+    const слушатели = { message: [], close: [], error: [] };
+    const событие = (имя, ev) => (слушатели[имя] || []).forEach((f) => f(ev));
+    return {
+      accept() {}, close() {},
+      addEventListener(имя, f) { (слушатели[имя] = слушатели[имя] || []).push(f); },
+      событие,
+      send() {},
+    };
+  };
+  let заголовки = null;
+  globalThis.fetch = async (url, init) => {
+    заголовки = { url: String(url), ...(init && init.headers) };
+    const ws = подставное();
+    ws.send = function (текст) {
+      if (/Path:ssml/.test(текст)) setTimeout(() => ws.событие('message', { data: 'Path:turn.end\r\n\r\n' }), 0);
+    };
+    return { status: 101, webSocket: ws };
+  };
+  const разбор = await onRequestPost(ctx({ text: 'Проверка разбора' }, 'https://a/api/tts?debug=1'));
+  const разборТел = await разбор.json();
+  const безФлага = await onRequestPost(ctx({ text: 'Проверка разбора' }));
+  const безФлагТел = await безФлага.json();
+  globalThis.fetch = настоящийFetch;
+  ok('W5: соединение открывается по https с Upgrade вместо wss (так требует рантайм)',
+    заголовки && заголовки.url.startsWith('https://') && заголовки.Upgrade === 'websocket',
+    JSON.stringify(заголовки && заголовки.url));
+  ok('W6: ?debug=1 отдаёт разбор прямо в отказе — иначе им некуда смотреть',
+    разборТел.ok === false && разборТел.debug && разборТел.debug.текстовых >= 1,
+    JSON.stringify(разборТел).slice(0, 160));
+  ok('W7: без ?debug=1 отказ остаётся коротким — разбор наружу не течёт',
+    безФлагТел.ok === false && безФлагТел.debug === undefined && /не прислала звук/.test(безФлагТел.error),
+    JSON.stringify(безФлагТел));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
