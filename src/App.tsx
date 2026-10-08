@@ -136,6 +136,10 @@ export default function App() {
      квоту). Хранится в браузере: человек, которому режим нужен по работе, не
      должен включать его заново после каждой перезагрузки. */
   const [deep, setDeep] = usePersistentState<boolean>('mt-deep', false, (v): v is boolean => typeof v === 'boolean')
+  /* «Отвечать голосом»: ответы читаются вслух. Это тоже просьба, а не режим по
+     умолчанию, и помнится в браузере: человек, которому так удобно (за рулём,
+     с закрытыми глазами), не должен включать её каждый раз заново. */
+  const [speakOn, setSpeakOn] = usePersistentState<boolean>('mt-speak', false, (v): v is boolean => typeof v === 'boolean')
   /* параметры генерации: temperature, max_tokens, top_p, presence/frequency penalty */
   const [genParamsRaw, setGenParams] = usePersistentState<GenParams>(
     'mt-params',
@@ -541,6 +545,8 @@ export default function App() {
                 draftWebSteps={draftWebSteps}
                 deep={deep}
                 onDeep={() => setDeep((v) => !v)}
+                speakOn={speakOn}
+                onSpeak={() => setSpeakOn((v) => !v)}
                 onSend={sendMessage}
                 onStop={stopGeneration}
                 genParams={genParams}

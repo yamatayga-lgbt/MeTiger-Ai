@@ -4318,6 +4318,30 @@ kbd {
   background: var(--surface-hover);
 }
 
+/* Кнопка «озвучить ответ». Та же мера, что у копирования: в строке под пузырём
+   два одинаковых значка рядом, и различает их только назначение, а не размер.
+   Пока голос звучит — кнопка горит акцентом и показывает остановку. */
+.msg-speak-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm, 6px);
+  color: var(--text-3);
+  transition: color var(--t-fast), background-color var(--t-fast);
+}
+
+.msg-speak-btn:hover {
+  color: var(--text-2);
+  background: var(--surface-hover);
+}
+
+.msg-speak-btn.is-on {
+  color: var(--accent, #7c9cff);
+  background: color-mix(in srgb, var(--accent, #7c9cff) 14%, transparent);
+}
+
 .msg-time {
   font-size: 11px;
   color: var(--text-3);

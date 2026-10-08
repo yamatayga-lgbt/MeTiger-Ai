@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
+import { speak, stopSpeech } from '../lib/speech'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
@@ -100,8 +101,17 @@ async function copyText(text: string): Promise<boolean> {
 /** Строка под пузырём: копировать + «N минут назад» (у ответа — ещё и сколько
     он шёл). Иконка меняется на галочку на полторы секунды после удачного
     копирования — обратная связь без тоста, который на телефоне лишний. */
-function MsgFooter({ text, time, align = 'left' }: { text: string; time: string; align?: 'left' | 'right' }) {
+function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
+  text: string
+  time: string
+  align?: 'left' | 'right'
+  /** Озвучка есть только у ответов агента: свой вопрос человек и так только что сказал. */
+  canSpeak?: boolean
+}) {
   const [copied, setCopied] = useState(false)
+  /* Озвучка: «играет» держим на самой кнопке, а общий звук — один на приложение
+     (второй ответ, озвученный поверх первого, — это два голоса разом). */
+  const [speaking, setSpeaking] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
   const onCopy = async () => {
@@ -117,6 +127,22 @@ function MsgFooter({ text, time, align = 'left' }: { text: string; time: string;
       <button type="button" className="msg-copy-btn" onClick={onCopy} aria-label="Скопировать текст">
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
+      {canSpeak ? (
+        <button
+          type="button"
+          className={`msg-speak-btn${speaking ? ' is-on' : ''}`}
+          aria-label={speaking ? 'Остановить озвучку' : 'Озвучить ответ'}
+          title={speaking ? 'Остановить озвучку' : 'Озвучить ответ'}
+          onClick={async () => {
+            haptic('light')
+            if (speaking) { stopSpeech(); setSpeaking(false); return }
+            setSpeaking(true)
+            await speak(text, { onState: (состояние) => setSpeaking(состояние === 'play') })
+          }}
+        >
+          {speaking ? <Square size={13} /> : <Volume2 size={14} />}
+        </button>
+      ) : null}
       {time ? <span className="msg-time">{time}</span> : null}
     </div>
   )
@@ -502,6 +528,9 @@ interface ChatViewProps {
   /** «Размышлять глубже»: состояние и переключение (живёт в App, хранится в браузере) */
   deep?: boolean
   onDeep?: () => void
+  /** «Отвечать голосом»: новые ответы читаются вслух (состояние живёт в App). */
+  speakOn?: boolean
+  onSpeak?: () => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
@@ -521,6 +550,8 @@ export function ChatView({
   draftWebSteps = [],
   deep = false,
   onDeep,
+  speakOn = false,
+  onSpeak,
   onSend,
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
@@ -531,6 +562,19 @@ export function ChatView({
      в поле ввода меняла бы onRunOutput и пересобирала разметку всей переписки —
      ровно тот лаг, ради которого memo и поставлен. */
   const runOutput = useCallback((t: string) => onSend(t), [onSend])
+
+  /* «Отвечать голосом»: читаем вслух новый готовый ответ. Ждём окончания потока
+     (typing === false): читать по кускам — значит слышать фразу по мере набора,
+     а так звучит целое предложение. Последний озвученный текст помним, чтобы
+     перерисовка не читала один и тот же ответ заново. */
+  const озвученRef = useRef('')
+  useEffect(() => {
+    if (!speakOn || typing) return
+    const последний = [...messages].reverse().find((m) => m.role === 'assistant' && m.text)
+    if (!последний || последний.text === озвученRef.current) return
+    озвученRef.current = последний.text
+    void speak(последний.text)
+  }, [speakOn, typing, messages])
 
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
@@ -976,7 +1020,7 @@ export function ChatView({
                     </div>
                   ) : null}
                   {m.text ? (
-                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} />
+                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} canSpeak />
                   ) : null}
                 </div>
               </div>
@@ -1257,6 +1301,8 @@ export function ChatView({
                 onPickHistory={addFromHistory}
                 deep={deep}
                 onDeep={onDeep}
+                speak={speakOn}
+                onSpeak={onSpeak}
                 onClose={() => setAddMenuOpen(false)}
               />
             </>

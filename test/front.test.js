@@ -1725,6 +1725,28 @@ console.log('── N · стекло (Glassmorphism) ───');
       /math-glue"><span class="math-frac"/.test(glueHtml) && /math-fx/.test(glueHtml),
       JSON.stringify(glueHtml.slice(0, 140)));
 
+    /* ── 0.115: голос в обратную сторону ── */
+    const chatVoice = readFileSync('src/views/ChatView.tsx', 'utf8')
+    ok('N64: у ответа агента есть кнопка «озвучить», у вопроса — нет',
+      /canSpeak \/>/.test(chatVoice) && /canSpeak = false/.test(chatVoice)
+        && /aria-label=\{speaking \? 'Остановить озвучку' : 'Озвучить ответ'\}/.test(chatVoice),
+      JSON.stringify(chatVoice.slice(0, 0)));
+
+    ok('N65: озвучка — одна на приложение: второй ответ останавливает первый',
+      /stopSpeech\(\)/.test(readFileSync('src/lib/speech.ts', 'utf8')) && /export function stopSpeech/.test(readFileSync('src/lib/speech.ts', 'utf8')));
+
+    const menu = readFileSync('src/components/AttachMenu.tsx', 'utf8')
+    ok('N66: «Отвечать голосом» — переключатель рядом с «Размышлять глубже», а не надпись',
+      /attach-menu-item attach-speak/.test(menu) && /role="menuitemcheckbox"/.test(menu)
+        && /onSpeak\?\.\(\)/.test(menu));
+
+    ok('N67: «Отвечать голосом» помнится в браузере, как «Размышлять глубже»',
+      /usePersistentState<boolean>\('mt-speak', false/.test(readFileSync('src/App.tsx', 'utf8')));
+
+    ok('N68: новый ответ читается вслух только после окончания потока (не по кускам)',
+      /if \(!speakOn \|\| typing\) return/.test(chatVoice)
+        && /озвученRef\.current = последний\.text/.test(chatVoice));
+
     ok('N62: «*» и «_» внутри формулы не становятся разметкой Markdown',
       !/<em>/.test(starHtml) && /math-fx/.test(starHtml) && /math-sub/.test(starHtml)
         && plain(starHtml).indexOf('a*b*c') >= 0,
