@@ -26,6 +26,10 @@ const CALL_MS = 90000;
 const PROMPT =
   'Ты — точная стенограмма. Расшифруй аудио ДОСЛОВНО, на языке оригинала (не переводи и не перефразируй).\n'
   + 'Восстанавливай пунктуацию и регистр; числа, даты, имена, термины и единицы пиши так, как произнесено.\n'
+  /* Словарь продукта. Whisper пишет имена так, как слышит, и «MeTiger» на слух
+     превращается в «Митигер», «Тигр» — в «Сибирь». Список короткий и только про
+     то, что человек в этой диктовке почти наверняка назовёт. */
+  + 'Имена собственные, которые могут встретиться: MeTiger (может звучать как «тигр»), Whisper, Groq, Cloudflare, OpenRouter, Telegram.\n'
   + 'Если речи нет — верни пустую строку. Никаких пояснений, кавычек и «в аудио слышно».';
 
 /* initial_prompt у Whisper — не инструкция, а образец стиля: модель продолжает
@@ -222,8 +226,10 @@ export function createStt(o) {
   }
 
   /**
-   * Расшифровать. src: { bytes: Uint8Array, mime, lang }.
+   * Расшифровать. src: { bytes: Uint8Array, mime, lang, via }.
    * lang — ISO-639-1 («ru»), необязательный: браузер знает язык пишущего, Telegram нет.
+   * via — прогнать ровно через этот источник (groq | cloudflare | openrouter);
+   *       без него — обычный порядок.
    * → { ok, text, via } | { ok: false, why }
    */
   async function transcribe(src) {
@@ -234,7 +240,12 @@ export function createStt(o) {
     if (bytes.length > MAX_AUDIO) return { ok: false, why: 'аудио ' + Math.round(bytes.length / 1024 / 1024 * 10) / 10 + ' МБ — больше ' + Math.round(MAX_AUDIO / 1024 / 1024) + ' МБ не расшифровываем' };
     const tried = [];
     const lang = String((src && src.lang) || '').slice(0, 5).toLowerCase() || '';
-    if (groqKey) {
+    /* via — служебный выбор источника («проверь именно этот»). Нужен не для
+       красоты: без него запасную ветку нельзя проверить живьём, пока работает
+       первая, и «код написан, но ни разу не отвечал» остаётся догадкой. */
+    const via = String((src && src.via) || '').toLowerCase();
+    const want = (name) => !via || via === name;
+    if (groqKey && want('groq')) {
       try {
         const r = await withTimeout(viaGroq(bytes, src.mime, lang), 'groq');
         if (r.ok) return r;
@@ -243,8 +254,8 @@ export function createStt(o) {
         if (/^groq\//.test(String(r.via || ''))) return { ok: false, why: r.why || 'речи в аудио не было', via: r.via };
         tried.push('groq: ' + (r.why || 'пусто'));
       } catch (e) { tried.push('groq: ' + String((e && e.message) || e).slice(0, 120)); }
-    } else tried.push('groq: ключа GROQ_KEYS нет');
-    if (cfKey && cfAcc) {
+    } else if (want('groq')) tried.push('groq: ключа GROQ_KEYS нет');
+    if (cfKey && cfAcc && want('cloudflare')) {
       try {
         const r = await withTimeout(viaCloudflare(bytes, src.mime, lang), 'cloudflare');
         if (r.ok) return r;
@@ -252,14 +263,15 @@ export function createStt(o) {
         if (/^cloudflare\//.test(String(r.via || ''))) return { ok: false, why: r.why || 'речи в аудио не было', via: r.via };
         tried.push('cloudflare: ' + (r.why || 'пусто'));
       } catch (e) { tried.push('cloudflare: ' + String((e && e.message) || e).slice(0, 120)); }
-    } else tried.push('cloudflare: ' + (cfKey ? 'нет CLOUDFLARE_ACCOUNT_ID' : 'ключа CLOUDFLARE_KEYS нет'));
-    if (orKey) {
+    } else if (want('cloudflare')) tried.push('cloudflare: ' + (cfKey ? 'нет CLOUDFLARE_ACCOUNT_ID' : 'ключа CLOUDFLARE_KEYS нет'));
+    if (orKey && want('openrouter')) {
       try {
         const r = await withTimeout(viaOpenRouter(bytes, src.mime), 'openrouter');
         if (r.ok) return r;
         tried.push('openrouter: ' + (r.why || 'пусто'));
       } catch (e) { tried.push('openrouter: ' + String((e && e.message) || e).slice(0, 120)); }
-    } else if (orModel) tried.push('openrouter: ключа OPENROUTER_KEYS нет');
+    } else if (orModel && want('openrouter')) tried.push('openrouter: ключа OPENROUTER_KEYS нет');
+    if (via && !tried.length && !['groq', 'cloudflare', 'openrouter'].includes(via)) tried.push('неизвестный источник: ' + via);
     const why = tried.join(' · ');
     log('stt', 'fail', why.slice(0, 160));
     return { ok: false, why };
@@ -269,7 +281,7 @@ export function createStt(o) {
     transcribe,
     stats: () => ({
       on,
-      keys: { groq: !!groqKey, openrouter: !!orKey },
+      keys: { groq: !!groqKey, cloudflare: !!(cfKey && cfAcc), openrouter: !!orKey },
       models: { groq: groqKey ? groqModel : '', cloudflare: cfKey && cfAcc ? cfModel : '', omni: orKey ? orModel : '' },
       free: { cloudflareNeuronsPerAudioMinute: 46.63, cloudflareNeuronsPerDay: 10000, note: 'около 214 минут речи в сутки бесплатно' },
       maxBytes: MAX_AUDIO,

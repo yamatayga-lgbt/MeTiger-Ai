@@ -43,6 +43,9 @@ console.log('V — расшифровка голоса: три источник�
   ok('V2: точка от шума («.») ответом не считается', !hasWords('.') && !hasWords('«»') && !hasWords('a'));
   ok('V3: переносы и двойные пробелы вычищаются, перевод строк живой', hasWords('раз\nдва  три'));
   ok('V4: лимиты наружу есть, и они не меняются', sttLimits.MAX_AUDIO === 8 * 1024 * 1024 && sttLimits.MIN_AUDIO === 400 && /ДОСЛОВНО/.test(sttLimits.PROMPT));
+  /* Словарь продукта: без подсказки Whisper пишет «MeTiger» как слышит — «Митигер». */
+  ok('V4b: в промпте есть словарь имён продукта (иначе своё имя писалось бы как слышится)',
+    /MeTiger/.test(sttLimits.PROMPT) && /Whisper/.test(sttLimits.PROMPT) && /Groq/.test(sttLimits.PROMPT));
 }
 {
   const s = createStt({ env: { STT: 'off', GROQ_KEYS: 'gk1' }, fetch: async () => json({}), log: () => {} });
@@ -191,6 +194,23 @@ console.log('V — расшифровка голоса: три источник�
   ok('V34: в статистике виден запас Cloudflare и его бесплатный потолок',
     /whisper-large-v3-turbo/.test(st.models.cloudflare) && st.free.cloudflareNeuronsPerDay === 10000 && st.free.cloudflareNeuronsPerAudioMinute === 46.63,
     JSON.stringify(st.free));
+}
+
+{
+  /* Служебный выбор источника. Нужен ровно затем, чтобы запасную ветку можно было
+     подтвердить живьём, а не «по коду»: пока Groq отвечает, Cloudflare не вызвать. */
+  const n = net({ cloudflare: [json({ result: { text: 'из клауда' }, success: true })], groq: [json({ text: 'не должен' })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/wav', lang: 'ru', via: 'cloudflare' });
+  ok('V35: ?via=cloudflare идёт ровно в Cloudflare и не трогает Groq',
+    r.ok && r.text === 'из клауда' && /cloudflare/.test(r.via) && n.calls.every((c) => !/groq/.test(c.url)),
+    JSON.stringify({ r, calls: n.calls.map((c) => c.url.slice(0, 30)) }));
+  const st = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: async () => json({}), log: () => {} }).stats();
+  ok('V36: в статистике видно готовность всех трёх источников',
+    st.keys.groq === true && st.keys.cloudflare === true && st.keys.openrouter === false, JSON.stringify(st.keys));
+  const flat = createStt({ env: { GROQ_KEYS: 'gk1' }, fetch: async () => json({}), log: () => {} }).stats();
+  ok('V37: Cloudflare без ключа или без аккаунта честно показан как неготовый',
+    flat.keys.cloudflare === false && flat.models.cloudflare === '', JSON.stringify(flat.keys));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

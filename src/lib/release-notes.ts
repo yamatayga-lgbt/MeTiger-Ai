@@ -26,6 +26,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.105',
+    title: 'Голос: словарь имён и проверка запаса',
+    items: [
+      'Распознавание знает имена продукта: MeTiger, Whisper, Groq, Cloudflare, Telegram — и пишет их правильно, а не как слышится.',
+      'Запасной распознаватель (Cloudflare) теперь можно проверить отдельно — раньше это было нельзя, пока работает первый.',
+    ],
+  },
+  {
     version: '0.104',
     title: 'Голосовой ввод — новый: говорит, печатает, уточняет',
     items: [
