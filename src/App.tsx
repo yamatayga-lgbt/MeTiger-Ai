@@ -8,9 +8,11 @@ import { ChatView } from './views/ChatView'
 import { SettingsView } from './views/SettingsView'
 import { UsageView } from './views/UsageView'
 import { WhatsNewView } from './views/WhatsNewView'
+import { WhatsNewModal } from './components/WhatsNewModal'
 import { useTheme } from './hooks/useTheme'
 import { useLiquidGlass } from './hooks/useLiquidGlass'
 import { APP_VERSION } from './lib/version'
+import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
 import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep } from './lib/api'
@@ -62,6 +64,31 @@ function readNewsSeen(): string {
   } catch {
     return ''
   }
+}
+
+function writeNewsSeen(version: string): void {
+  try {
+    localStorage.setItem(NEWS_KEY, version)
+  } catch {
+    /* приватный режим: окошко просто вернётся — это не повод ломать экран */
+  }
+}
+
+/**
+ * Показывать ли окошко «Что нового» при запуске.
+ *
+ * Показываем, только если на устройстве запомнена ДРУГАЯ версия, — то есть был
+ * факт обновления. На первом заходе (запомненной версии нет вовсе) окошко молчит
+ * и текущая версия сразу помечается прочитанной: встречать нового человека
+ * списком изменений невежливо, ему нужен чат, а не релиз-ноты.
+ */
+function shouldShowNews(): boolean {
+  const seen = readNewsSeen()
+  if (!seen) {
+    writeNewsSeen(APP_VERSION)
+    return false
+  }
+  return seen !== APP_VERSION && !!noteFor(APP_VERSION)
 }
 
 let msgSeq = 0
@@ -125,6 +152,10 @@ export default function App() {
      приложение, а не обработчик в каждой панели — см. hooks/useLiquidGlass.ts. */
   useLiquidGlass()
   const [newsSeen, setNewsSeen] = useState<string>(() => readNewsSeen())
+  /* Окошко «что нового после обновления». Решение принимается один раз при
+     запуске: версия запомнена другой — значит человек только что обновился. */
+  const [newsOpen, setNewsOpen] = useState<boolean>(() => shouldShowNews())
+  const newsNote = noteFor(APP_VERSION)
 
   useEffect(() => {
     setUser(siteUser())
@@ -174,13 +205,17 @@ export default function App() {
   /* Открыли «Что нового» — считаем версию прочитанной (точка гаснет). */
   useEffect(() => {
     if (view !== 'whatsnew' || newsSeen === APP_VERSION) return
-    try {
-      localStorage.setItem(NEWS_KEY, APP_VERSION)
-    } catch {
-      /* приватный режим: точка просто останется — это не повод ломать экран */
-    }
+    writeNewsSeen(APP_VERSION)
     setNewsSeen(APP_VERSION)
   }, [view, newsSeen])
+
+  /* Закрыли окошко любым из способов (крестик, кнопка, клик мимо, Escape) —
+     версия прочитана, и до следующего обновления окошко не появится. */
+  const closeNews = useCallback(() => {
+    writeNewsSeen(APP_VERSION)
+    setNewsSeen(APP_VERSION)
+    setNewsOpen(false)
+  }, [])
 
   const navigate = useCallback((v: ViewId) => {
     haptic('select')
@@ -515,6 +550,10 @@ export default function App() {
         open={workspaceOpen}
         onClose={() => setWorkspaceOpen(false)}
       />
+
+      {/* Окошко поверх всего: человек вернулся в обновлённое приложение и первым
+          делом видит, что изменилось. Крестик закрывает. */}
+      {newsOpen && newsNote ? <WhatsNewModal note={newsNote} onClose={closeNews} /> : null}
 
       <CommandPalette
         open={paletteOpen}

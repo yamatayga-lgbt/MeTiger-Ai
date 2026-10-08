@@ -1400,12 +1400,52 @@ console.log('── N · стекло (Glassmorphism) ───');
 
   const newsView = readFileSync('src/views/WhatsNewView.tsx', 'utf8');
   const sidebarSrc = readFileSync('src/components/Sidebar.tsx', 'utf8');
-  ok('N30: «Что нового» — отдельный экран в разделах сайдбара, с точкой о непрочитанном',
+  /* appSrc объявлен в начале этого блока (там же читается версия) */
+  const modalSrc = readFileSync('src/components/WhatsNewModal.tsx', 'utf8');
+
+  /* 0.102: раздел показывает РОВНО текущую версию. Список прошлых версий убран
+     намеренно — после обновления человеку нужно «что поменялось у меня», а не
+     история продукта (она живёт в README). */
+  ok('N30: «Что нового» — раздел про текущую версию, без списка прошлых',
     /id: 'whatsnew', label: 'Что нового'/.test(sidebarSrc)
       && /side-dot/.test(sidebarSrc)
-      && /newsDot/.test(readFileSync('src/App.tsx', 'utf8'))
-      && /newsSeen !== APP_VERSION/.test(readFileSync('src/App.tsx', 'utf8'))
-      && /RELEASE_NOTES\.map/.test(newsView));
+      && /noteFor\(APP_VERSION\)/.test(newsView)
+      && !/RELEASE_NOTES\.map/.test(newsView)
+      && /newsDot/.test(appSrc)
+      && /newsSeen !== APP_VERSION/.test(appSrc));
+
+  /* Окошко после обновления. Три правила, каждое важно:
+       · показывается, только когда запомнена ДРУГАЯ версия (факт обновления);
+       · на первом заходе молчит и сразу помечает текущую прочитанной — встречать
+         нового человека списком изменений невежливо;
+       · закрывается всеми путями (крестик, кнопка, клик мимо, Escape) и после
+         закрытия пишет версию, иначе окошко вернётся на следующем же кадре. */
+  ok('N32: окошко «Что нового» всплывает после ОБНОВЛЕНИЯ, а не на первом заходе',
+    /function shouldShowNews\(\)/.test(appSrc)
+      && /if \(!seen\) \{\s*writeNewsSeen\(APP_VERSION\)/.test(appSrc)
+      && /return seen !== APP_VERSION && !!noteFor\(APP_VERSION\)/.test(appSrc)
+      && /newsOpen && newsNote \? <WhatsNewModal/.test(appSrc),
+    'нет правила показа окошка');
+
+  ok('N33: окошко закрывается крестиком (и кликом мимо, и Escape), а закрытие помечает версию прочитанной',
+    /news-modal-x/.test(modalSrc)
+      && /aria-label="Закрыть"/.test(modalSrc)
+      && /e\.target === e\.currentTarget/.test(modalSrc)
+      /* Escape — на документе: обработчик на самом окошке ждал бы фокуса внутри
+         него, а окошко фокус не забирает (проверено живьём: не закрывалось). */
+      && /document\.addEventListener\('keydown', onKey\)/.test(modalSrc)
+      && /e\.key === 'Escape'/.test(modalSrc)
+      && !/onKeyDown=/.test(modalSrc)
+      && /writeNewsSeen\(APP_VERSION\)/.test(appSrc)
+      && /const closeNews = useCallback/.test(appSrc)
+      && /\.news-modal-x \{/.test(css));
+
+  ok('N34: в окошке видны только пункты текущей версии, и первый запуск не показывает окно',
+    /note\.items\.map/.test(modalSrc)
+      && !/RELEASE_NOTES/.test(modalSrc)
+      && /aria-modal="true"/.test(modalSrc)
+      && /В окошке — точка-буллет/.test(css)
+      && /\.news-bullet \{/.test(css));
 
   /* Подхват показывается там, куда человек действительно может посмотреть:
      в «Использовании и Лимитах». В выборе модели его нет намеренно — выбора
