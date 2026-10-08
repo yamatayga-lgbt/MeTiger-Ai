@@ -1648,6 +1648,82 @@ console.log('── N · стекло (Glassmorphism) ───');
       && /\{m\.warn \? <div className="msg-warn">\{m\.warn\}<\/div> : null\}/.test(chatSrc)
       && /\/\*\* Ответ неполный: поток оборвался, хвоста нет\. Строка под пузырём, не вместо ответа\. \*\//.test(readFileSync('src/lib/mock.ts', 'utf8')));
 
+  /* ── 0.112: формулы ──
+     Проверяется НАСТОЯЩИЙ путь: тот же Markdown-компонент, что в приложении, с тем же
+     плагином. Пересказ разбора тут не годится: ошибка была именно в сборке цепочки
+     (Markdown съедал слэши `\(` до плагина), а не в чистой функции. */
+  {
+    /* react и react-dom берём здесь заново: блок G со своим импортом закрылся выше,
+       и внутри этого блока те имена уже не видны (на этом проверка и упала). */
+    const ReactN = await import('react')
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const cssMath = readFileSync('src/styles/index.css', 'utf8')
+    const mdDir = join(process.cwd(), 'node_modules', '.cache', 'metiger-md')
+    mkdirSync(mdDir, { recursive: true })
+    execFileSync(bin, ['src/components/Markdown.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
+      '--outfile=' + join(mdDir, 'md.mjs'), '--loader:.tsx=tsx', '--loader:.ts=ts', '--log-level=error'], { stdio: 'inherit' })
+    const { Markdown } = await import(join(mdDir, 'md.mjs'))
+    const htmlOf = (t) => renderToStaticMarkup(ReactN.createElement(Markdown, { text: t }))
+    const plain = (h) => h.replace(/<[^>]+>/g, '')
+
+    const mathHtml = htmlOf('Доказательство: \\(\\sqrt{2}=\\frac{p}{q}\\) для \\(p,q\\in\\mathbb Z\\).')
+    const mathText = plain(mathHtml)
+    ok('N54: формула рисуется, а не показывается текстом со слэшами',
+      /math-fx/.test(mathHtml) && /math-frac/.test(mathHtml) && /math-sqrt/.test(mathHtml)
+        && mathText.indexOf('√') >= 0 && mathText.indexOf('ℤ') >= 0
+        && mathText.indexOf('\\frac') < 0 && mathText.indexOf('\\sqrt') < 0,
+      JSON.stringify(mathText.slice(0, 90)));
+
+    const blockHtml = htmlOf('Разложение [ \\sqrt{2}=\\frac{p}{q}, ] верно.')
+    ok('N55: выключная формула (модель пишет её в квадратных скобках) — отдельной строкой',
+      /math-fx is-block/.test(blockHtml) && plain(blockHtml).indexOf('\\sqrt') < 0,
+      JSON.stringify(plain(blockHtml).slice(0, 70)));
+
+    const codeHtml = htmlOf('Код:\n```python\nprint("\\frac{a}{b}")\n```\nИ текст \\(x^2\\).')
+    ok('N56: в блоке кода LaTeX остаётся кодом, а текстовая формула рядом всё равно рисуется',
+      /\\frac\{a\}\{b\}/.test(codeHtml) && /math-sup/.test(codeHtml),
+      JSON.stringify(plain(codeHtml).slice(0, 80)));
+
+    const priceHtml = htmlOf('Стоит $5 и ещё $10 — обычная цена.')
+    ok('N57: цены в долларах не превращаются в формулы',
+      !/math-fx/.test(priceHtml) && plain(priceHtml).indexOf('$5') >= 0);
+
+    ok('N58: у формул есть стили — дробь, корень, степени, и ничего лишнего',
+      /\.math-frac \{/.test(cssMath) && /\.math-den \{/.test(cssMath)
+        && /\.math-radicand \{/.test(cssMath) && /\.math-sup \{/.test(cssMath)
+        && /\.math-fx\.is-block \{/.test(cssMath));
+
+    /* Индексы и степени: формула собрана flex-строкой, а у flex-элементов
+       `vertical-align` не действует — на снимке «x^2» выходило «x2». Сдвиг обязан
+       быть через `position`, иначе правка откатится молча. */
+    ok('N59: сдвиг индекса и степени — через position, а не vertical-align (в flex он мёртв)',
+      /\.math-sup \{ position: relative; top: -/.test(cssMath)
+        && /\.math-sub \{ position: relative; top: /.test(cssMath)
+        && !/\.math-sup \{ vertical-align/.test(cssMath));
+
+    /* Настоящий ответ модели с выравниванием вне окружения и переносом с отступом:
+       на снимке прода это выходило «Δ&=b²-4ac … [4pt]√Δ &= 1». */
+    const alignHtml = htmlOf('Считаем: \\[ \\Delta &= b^{2}-4ac = 25-24 = 1, \\\\[4pt] \\sqrt{\\Delta} &= 1. \\] Готово.')
+    const alignText = plain(alignHtml)
+    ok('N60: выравнивание «&» и перенос «\\\\[4pt]» не показываются человеку мусором',
+      alignText.indexOf('&') < 0 && alignText.indexOf('4pt') < 0
+        && alignText.indexOf('\\sqrt') < 0 && /math-fx/.test(alignHtml),
+      JSON.stringify(alignText.slice(0, 90)));
+
+    const casesHtml = htmlOf('Система: \\[ \\begin{cases} x+y=5 \\\\ x-y=1 \\end{cases} \\] решается сложением.')
+    ok('N61: система уравнений — двумя строками с фигурной скобкой, а не строкой LaTeX',
+      /math-rows/.test(casesHtml) && (casesHtml.match(/math-row/g) || []).length >= 2
+        && plain(casesHtml).indexOf('\\begin') < 0 && plain(casesHtml).indexOf('cases') < 0,
+      JSON.stringify(plain(casesHtml).slice(0, 80)));
+
+    /* Звёздочки внутри формулы раньше уходили в разметку и делали курсив. */
+    const starHtml = htmlOf('Произведение \\(a*b*c\\) и индекс \\(x_1\\) — всё на месте.')
+    ok('N62: «*» и «_» внутри формулы не становятся разметкой Markdown',
+      !/<em>/.test(starHtml) && /math-fx/.test(starHtml) && /math-sub/.test(starHtml)
+        && plain(starHtml).indexOf('a*b*c') >= 0,
+      JSON.stringify(plain(starHtml).slice(0, 80)));
+  }
+
   ok('N52: время ответа продлевается, пока поток живой, а молчание и общий потолок остаются',
     /const onAlive = \(\) => \{/.test(apiDeep)
       && /readDraftStream\(res, opts\.onDraft, opts\.onReasoning, opts\.onWebSteps, onAlive, partial\)/.test(apiDeep)

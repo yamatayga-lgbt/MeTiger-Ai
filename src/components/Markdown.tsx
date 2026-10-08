@@ -1,8 +1,11 @@
 import { memo } from 'react'
 import type { ReactNode } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CodeRunner } from './CodeRunner'
+import { Formula } from './Formula'
+import { remarkMathLite } from '../lib/remarkMath'
+import { protectMath } from '../lib/mathfmt'
 import { runnable, engineLabel } from '../lib/sandbox'
 
 /* ============================================================
@@ -19,6 +22,12 @@ import { runnable, engineLabel } from '../lib/sandbox'
    Дерево рендерится React-элементами напрямую (никакого dangerouslySetInnerHTML
    нигде) — безопасно по умолчанию, ссылки — обычные <a>, ни один тег вида
    <img onerror=...> не может исполнить код.
+
+   Формулы (0.112): до этого ответ с `\\(\\sqrt{2}=\\frac{p}{q}\\)` показывался человеку
+   ровно так — со слэшами и фигурными скобками. Теперь их находит и рисует свой
+   плагин (src/lib/remarkMath.ts) с разбором на чистой функции (src/lib/mathfmt.ts):
+   дроби стоят друг над другом, корень — со знаком √ и чертой. Блоки кода плагин
+   не трогает по устройству дерева — `\\frac{a}{b}` в примере кода остаётся кодом.
    ============================================================ */
 
 interface Props {
@@ -33,14 +42,18 @@ interface Props {
    Сравнение идёт по тексту и функции вывода; функцию вызывающая сторона держит
    стабильной (useCallback), иначе memo бесполезен. */
 export const Markdown = memo(function Markdown({ text, onRunOutput }: Props) {
+  /* Формулы уходят из текста ДО разбора: на месте каждой остаётся метка, а сам LaTeX
+     лежит в `hidden.items` и попадает в дерево как есть — ни разбор Markdown, ни его
+     экранирование в него больше не вмешиваются (см. protectMath). */
+  const hidden = protectMath(text)
   return (
     <div className="msg-text">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMathLite(hidden.items)]}
         components={{
           /* Блок кода: та же карточка, что была раньше — язык, бейдж
              «песочница»/«demo», и сама песочница, если язык исполняемый. */
-          pre({ children }) {
+          pre({ children }: { children?: ReactNode }) {
             const codeEl = Array.isArray(children) ? children[0] : children
             const props = (codeEl && typeof codeEl === 'object' && 'props' in codeEl
               ? (codeEl as { props?: { className?: string; children?: ReactNode } }).props
@@ -62,24 +75,30 @@ export const Markdown = memo(function Markdown({ text, onRunOutput }: Props) {
             )
           },
           /* Инлайн-код (не внутри pre) — одно слово/вставка посреди строки. */
-          code({ children }) {
+          code({ children }: { children?: ReactNode }) {
             return <code className="inline">{children}</code>
           },
           /* Внешние ссылки — в новой вкладке и без доступа к window.opener. */
-          a({ href, children }) {
+          a({ href, children }: { href?: string; children?: ReactNode }) {
             return (
               <a href={href} target="_blank" rel="noopener noreferrer">
                 {children}
               </a>
             )
           },
-          img({ src, alt }) {
+          /* Формула: узел своего типа из remarkMathLite. Источник — в свойствах,
+             потому что дети этого элемента нужны лишь как запасной текст. */
+          mathlite(props: { node?: { properties?: Record<string, unknown> } }) {
+            const p = (props.node && props.node.properties) || {}
+            return <Formula latex={String(p.latex || '')} block={String(p.block) === 'true'} />
+          },
+          img({ src, alt }: { src?: string; alt?: string }) {
             // eslint-disable-next-line jsx-a11y/alt-text
             return <img src={src} alt={alt || ''} loading="lazy" className="md-img" />
           },
-        }}
+        } as Components}
       >
-        {text}
+        {hidden.text}
       </ReactMarkdown>
     </div>
   )

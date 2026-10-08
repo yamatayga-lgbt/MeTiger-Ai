@@ -2043,6 +2043,200 @@ kbd {
 }
 
 /* ── источники ответа: проверенные ссылки из веб-поиска / вики / новостей ── */
+/* ---------- Формулы в ответе (0.112) ----------
+   До этого `\(\sqrt{2}=\frac{p}{q}\)` человек видел как текст со слэшами и
+   фигурными скобками — на снимке экрана это выглядело как сломанный Markdown,
+   хотя модель написала обычный LaTeX. Здесь только вид: разбор — в
+   src/lib/mathfmt.ts, рисование — src/components/Formula.tsx.
+
+   Всё на em и на текущем шрифте ответа: формула должна расти вместе с текстом
+   и одинаково читаться в обеих темах. Никаких внешних шрифтов — их нет. */
+.math-fx {
+  font-family: 'STIX Two Text', 'Cambria Math', 'DejaVu Serif', Georgia, serif;
+  /* Формула целиком переносится по строкам, но не рвётся внутри дроби: разорванная
+     дробь читается хуже, чем перенос целиком. Внутри `wrap` живёт и перенос строки
+     из LaTeX (`\\`): он растягивается на всю ширину и уводит остаток вниз. */
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.06em;
+  white-space: nowrap;
+  line-height: 1.25;
+  vertical-align: -0.16em;
+}
+
+/* Выключная формула — отдельной строкой по центру, как в учебнике. */
+.math-fx.is-block {
+  display: flex;
+  justify-content: center;
+  margin: 0.55em 0;
+  padding: 0.35em 0.2em;
+}
+
+/* Единственная непонятая команда: показываем её как текст, но помечаем цветом —
+   видно, что это не наша выдумка, а то, что прислала модель. */
+.math-fx.is-raw {
+  font-family: var(--font-mono);
+  font-size: 0.94em;
+  color: var(--text-2);
+}
+
+.math-var {
+  font-style: italic;
+  /* Кириллица в формулах — не переменная, курсив к ней не применяем. */
+}
+.math-var:lang(ru) { font-style: normal; }
+
+.math-up { font-style: normal; }
+.math-op { font-size: 1.25em; line-height: 1; padding: 0 0.06em; }
+.math-unknown { font-family: var(--font-mono); font-size: 0.92em; color: var(--text-2); }
+.math-gap { display: inline-block; }
+
+/* Степень и индекс. Размер мельче, чем у браузерного <sup>: на телефоне 0.72em
+   читается как обычная цифра, и «x^2» выглядит как «x2» — замер на снимке экрана.
+   Сдвиг — в em от базовой линии, а не браузерный `super`: он зависит от шрифта и
+   в дроби уезжает вверх вместе с числителем. */
+.math-sup,
+.math-sub {
+  font-size: 0.62em;
+  line-height: 1;
+}
+
+/* Сдвиг через `position: relative`, а не `vertical-align`: формула собрана flex-строкой
+   (`.math-fx` — inline-flex), а у flex-элементов `vertical-align` не действует вовсе —
+   на снимке «x^2» выходило «x2», полноразмерной цифрой на базовой линии. Замер (0.112):
+   после правки индекс поднят на 5px и меньше основного текста. */
+.math-sup { position: relative; top: -0.45em; }
+.math-sub { position: relative; top: 0.3em; }
+
+/* Дробь: числитель над знаменателем, черта между ними. */
+.math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 0.12em;
+  font-size: 0.98em;
+}
+
+.math-frac.is-small { font-size: 0.82em; }
+
+.math-num {
+  padding: 0 0.18em 0.06em;
+  line-height: 1.1;
+}
+
+.math-den {
+  padding: 0.06em 0.18em 0;
+  border-top: 1px solid currentColor;
+  line-height: 1.1;
+}
+
+/* Корень: знак √ с чертой над подкоренным. Черта — рамка, а не символ: она
+   тянется ровно на ширину выражения, как бы оно ни выросло. */
+.math-sqrt {
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0 0.06em;
+}
+
+.math-radical {
+  font-size: 1.08em;
+  line-height: 1;
+  align-self: flex-end;
+  padding-bottom: 0.02em;
+}
+
+.math-radicand {
+  border-top: 1px solid currentColor;
+  padding: 0.06em 0.1em 0 0.12em;
+  margin-top: 0.12em;
+  align-self: center;
+}
+
+.math-sqrt-n {
+  font-size: 0.6em;
+  align-self: flex-start;
+  margin-right: -0.34em;
+  margin-top: -0.1em;
+  z-index: 1;
+}
+
+/* Биномиальный коэффициент: скобки вокруг дроби без черты. */
+.math-binom { display: inline-flex; align-items: center; }
+.math-binom-open,
+.math-binom-close {
+  font-size: 1.6em;
+  line-height: 0.7;
+  font-weight: 300;
+}
+
+/* Надчёркивание (отрезок AB) и подчёркивание. */
+.math-over { border-top: 1px solid currentColor; padding-top: 0.02em; }
+.math-under { border-bottom: 1px solid currentColor; padding-bottom: 0.02em; }
+
+/* Система уравнений и матрицы: строки друг под другом, слева фигурная скобка. */
+.math-rows {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.16em;
+  margin: 0 0.1em;
+}
+
+.math-rows-body {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.22em;
+}
+
+.math-row {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Скобка-«крыло»: масштабируем обычный символ, своей картинки не рисуем. */
+.math-brace {
+  font-size: 2.1em;
+  line-height: 0.9;
+  font-weight: 300;
+  transform: scaleY(1.15);
+  transform-origin: center;
+}
+
+/* Перенос строки вне окружения. */
+.math-br {
+  flex-basis: 100%;
+  height: 0;
+}
+
+/* Рамка вокруг итога (\boxed): модели обводят ею ответ, и это стоит показать. */
+.math-box {
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0.12em 0.34em;
+  margin: 0 0.1em;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Значок над буквой живёт в отдельном слое: он не должен менять высоту строки. */
+.math-accent { position: relative; display: inline-block; }
+.math-accent-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -0.62em;
+  text-align: center;
+  font-size: 0.9em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Блок кода с формулой остаётся кодом: `.math-fx` внутри pre не появляется,
+   плагин туда не заходит (см. remarkMath.ts). */
+
 .msg-sources {
   display: flex;
   flex-wrap: wrap;
