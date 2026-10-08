@@ -139,28 +139,8 @@ export const TABLE = {
      они добавлены: у одного и того же имени модели теперь ДВА дома. Упал один
      провайдер на gpt-oss или nemotron — то же имя спросим у второго, а не уйдём
      на чужую слабую модель. Ни у кого из этих пулов не нужна карта: LLM7 и
-     Kilo Gateway работают вообще без ключа, GitHub Models — от токена GitHub,
-     а SambaNova ждёт ключа (её бесплатный слой требует карту — держим наготове).
+     Kilo Gateway работают вообще без ключа вовсе.
      ------------------------------------------------------------------ */
-
-  /* GitHub Models: бесплатно любому аккаунту GitHub (доступ у человека уже есть),
-     ключ — персональный токен с правом models:read. Потолки скромные
-     (15 запросов/мин и 150 в день на дешёвом слое, 10/50 на дорогом),
-     поэтому это не «главная голова», а запасная: когда облачные пулы выдохлись
-     за сутки, она всё ещё отвечает. Имена моделей уточняются по каталогу
-     провайдера сразу после первого запроса с ключом. */
-  github: {
-    label: "GitHub Models",
-    kind: "openai",
-    base: "https://models.github.ai/inference",
-    envPrefix: 'GITHUB',
-    limit: 150,
-    poolFromCatalog: true,
-    models: {
-      fast: ["openai/gpt-4.1-mini", "openai/gpt-4o-mini"],
-      smart: ["openai/gpt-4.1", "deepseek/DeepSeek-R1", "meta/Llama-4-Scout-17B-16E-Instruct"],
-    },
-  },
 
   /* LLM7: бесплатный шлюз, ключ не нужен вовсе — без него он держит около
      15 запросов в минуту на адрес (дальше «Rate limit exceeded. Retry after 3
@@ -199,24 +179,6 @@ export const TABLE = {
     },
   },
 
-  /* SambaNova: 20 запросов в минуту, но всего 20 в сутки на бесплатном слое.
-     Держим в конце очереди: этого хватает, чтобы ответить, когда остальные
-     пулы уже выдохлись, и не хватает, чтобы быть первой головой. */
-  sambanova: {
-    label: "SambaNova",
-    kind: "openai",
-    base: "https://api.sambanova.ai/v1",
-    envPrefix: 'SAMBANOVA',
-    limit: 20,
-    /* gpt-oss-120b у SambaNova — тот самый дубль, ради которого пул и добавлен:
-       у Groq это имя значится мёртвым, здесь оно в живом каталоге провайдера. */
-    poolFromCatalog: true,
-    models: {
-      fast: ["Meta-Llama-3.3-70B-Instruct", "gemma-4-31B-it"],
-      smart: ["gpt-oss-120b", "DeepSeek-V3.1", "MiniMax-M3"],
-    },
-  },
-
   sharellm: {
     label: "ShareLLM",
     kind: "openai",
@@ -245,10 +207,11 @@ export const TABLE = {
    последней: она не должна вытеснять облачную, но обязана попадать в совет голосов. */
 export const ORDER = {
   /* Cerebras убран целиком (0.094): провайдер стал платным, а продукт бесплатный.
-     Мёртвый провайдер в очереди — это не «на всякий случай», а лишняя попытка
-     и лишняя строка в отчёте о том, кто отказал. */
-  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'kilo', 'llm7', 'sambanova', 'github'],
-  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'kilo', 'llm7', 'sambanova', 'github'],
+     Тем же правилом ушли NVIDIA и OVHcloud (0.099, «нужна карта») и SambaNova с
+     GitHub Models (0.103). Мёртвый провайдер в очереди — это не «на всякий
+     случай», а лишняя попытка и лишняя строка в отчёте о том, кто отказал. */
+  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'kilo', 'llm7'],
+  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'kilo', 'llm7'],
 };
 
 /* Картинка: зрячие первыми. */

@@ -244,14 +244,12 @@ export const LIST_SOURCES = {
   atria: { url: 'https://api.atria-asi.ai/v1/models', prefix: 'ATRIA', priceUnknown: true },
   gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', prefix: 'GEMINI', kind: 'gemini', priceUnknown: true },
   /* 0.097/0.099. Каталоги новых пулов проверены живой пробой: у LLM7 и Kilo
-     они читаются вовсе без ключа (keyless), у SambaNova — с её ключом, у GitHub —
-     с токеном. priceUnknown намеренно НЕ стоит у llm7 и kilo: их каталоги полны
+     они читаются вовсе без ключа (keyless). priceUnknown намеренно НЕ стоит
+     у llm7 и kilo: их каталоги полны
      платных моделей, и пометка «цена неизвестна = бесплатно» вытащила бы claude
      и gpt в список выбора. Берём оттуда только то, что провайдер сам зовёт free. */
   llm7: { url: 'https://api.llm7.io/v1/models', prefix: 'LLM7', keyless: true },
   kilo: { url: 'https://api.kilo.ai/api/gateway/models', prefix: 'KILO', keyless: true },
-  sambanova: { url: 'https://api.sambanova.ai/v1/models', prefix: 'SAMBANOVA', priceUnknown: true },
-  github: { url: 'https://models.github.ai/catalog/models', prefix: 'GITHUB', priceUnknown: true },
 };
 
 /** Какие нативные списки вообще можно спросить в этом окружении. */
@@ -648,8 +646,9 @@ export function showcase(cat, opts = {}) {
   const ver = opts.verified || CHECKED || {};
   const alive = new Set(ver.alive || []);
   /* trusted — имена, которые провайдер сам назвал в своём каталоге (пулы с
-     poolFromCatalog). Замер живости судит имя вообще, и «gpt-oss-120b мёртв»
-     верно для Groq, но не для SambaNova: там это имя живёт в её каталоге. */
+     poolFromCatalog). Замер живости судит имя вообще, а не пару «имя +
+     провайдер»: «имя X мёртво» может быть верно для одного дома и неверно для
+     другого, а каталог — это ответ самого дома. */
   const trusted = new Set(opts.trusted || []);
   const dead = new Set(ver.dead || []);
   const audited = !!(ver.alive || []).length || !!(ver.dead || []).length;

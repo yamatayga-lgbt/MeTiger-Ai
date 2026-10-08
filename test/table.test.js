@@ -10,7 +10,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { TABLE, buildTable, providerAlive, pickKey } from '../engine/providers.js';
+import { TABLE, ORDER, buildTable, providerAlive, pickKey } from '../engine/providers.js';
 import * as modelreg from '../engine/modelreg.js';
 import * as shape from '../engine/shape.js';
 import { poolsOf, multiOf } from '../functions/api/models.js';
@@ -42,8 +42,8 @@ console.log('── T · TABLE против живого замера ───'
     broken.length === 0, broken.join(', '));
 
   /* Пулы с poolFromCatalog вне сравнения: их имена пришли из живого каталога самого
-     провайдера, а замер судит имя как таковое (gpt-oss-120b мёртв у Groq и жив у
-     SambaNova). То же правило у scripts/table-prune.mjs — иначе вечный красный тест. */
+     провайдера, а замер судит имя как таковое (имя, мёртвое у одного дома, живёт
+     у другого). То же правило у scripts/table-prune.mjs — иначе вечный красный тест. */
   const withLive = Object.entries(TABLE)
     .filter(([, def]) => !def.poolFromCatalog)
     .filter(([, def]) => namesOf(def).some((id) => alive.has(id)));
@@ -76,31 +76,38 @@ console.log('── T · TABLE против живого замера ───'
      · провайдер без ключа вовсе (keyless: LLM7, Kilo) — живой: он обязан
        попадать в очередь и не слать заголовок авторизации, пока ключа нет. */
 {
-  /* SambaNova и GitHub ждут ключей; LLM7 и Kilo работают вообще без них. */
-  const P = buildTable({ SAMBANOVA_KEYS: 'sn-1', GITHUB_KEYS: 'gh1' });
-  const ids4 = ['sambanova', 'github', 'llm7', 'kilo'];
-  const missing = ids4.filter((id) => !P[id] || !P[id].models.fast.length || !P[id].models.smart.length);
-  ok('T-new-1: четыре новых пула на месте и дают имена в обоих слоях', missing.length === 0, missing.join(', '));
+  /* 0.099: два пула волны. Ключа у них нет вовсе — и это их обычный режим. */
+  const P = buildTable({});
+  const ids2 = ['llm7', 'kilo'];
+  const missing = ids2.filter((id) => !P[id] || !P[id].models.fast.length || !P[id].models.smart.length);
+  ok('T-new-1: оба keyless-пула на месте и дают имена в обоих слоях', missing.length === 0, missing.join(', '));
 
-  /* Четыре пула волны — из живых каталогов провайдеров, у llm7 и kilo ключа нет вовсе. */
-  ok('T-new-1b: LLM7 и Kilo живут без ключей (keyless), SambaNova без ключа выпадает',
-    providerAlive(P, 'llm7', {}) && providerAlive(P, 'kilo', {}) && pickKey(P, 'llm7', {}) === 0
-      && !providerAlive(buildTable({}), 'sambanova', {}) && !providerAlive(buildTable({}), 'github', {}),
-    'llm7=' + providerAlive(P, 'llm7', {}) + ' sambanova=' + providerAlive(P, 'sambanova', {}));
+  ok('T-new-1b: LLM7 и Kilo живут без ключей (keyless) — пустой env их не выключает',
+    providerAlive(P, 'llm7', {}) && providerAlive(P, 'kilo', {}) && pickKey(P, 'llm7', {}) === 0,
+    'llm7=' + providerAlive(P, 'llm7', {}) + ' kilo=' + providerAlive(P, 'kilo', {}));
+
+  /* 0.103: ушедшие провайдеры не должны вернуться ни в таблицу, ни в очередь.
+     Владелец убрал их прямым указанием, и «ну а вдруг пригодится» тут не работает:
+     строка в очереди — это живая попытка запроса к чужому платному API. */
+  const gone = ['sambanova', 'github', 'cerebras', 'nvidia', 'ovh'];
+  ok('T-new-1c: ушедшие провайдеры не вернулись ни в таблицу, ни в очередь',
+    gone.every((id) => !P[id] && !ORDER.fast.includes(id) && !ORDER.smart.includes(id))
+      && !Object.keys(TABLE).some((id) => gone.includes(id)),
+    'вернулись: ' + gone.filter((id) => P[id] || ORDER.fast.includes(id) || TABLE[id]).join(', '));
 
   const { pools, ids } = poolsOf(P);
   /* Дубли считаются по ТОЧНОМУ имени: оно и есть адрес модели у провайдера, и
-     «Meta-Llama-3.3-70B-Instruct» у SambaNova — не то же имя, что
-     «Meta-Llama-3_3-70B-Instruct» у OVHcloud (подчёркивание вместо точки).
-     Свести их к одной строке значило бы послать одному из двоих чужое имя. */
+     схожие имена у разных домов не сводятся к одной строке: свели бы — послали
+     бы одному из двоих чужое имя, и он ответил бы отказом. */
   const inTwo = ids.filter((id) => pools.filter((p) => p.fast.concat(p.smart).includes(id)).length >= 2);
   /* nemotron-3-ultra-550b-a55b:free живёт у Kilo и у OpenRouter — тот самый дубль. */
   ok('T-new-2: модель, живущая у двух провайдеров, — одна строка в списке (без дублей)',
     inTwo.includes('nvidia/nemotron-3-ultra-550b-a55b:free') && inTwo.every((id) => ids.filter((x) => x === id).length === 1),
     'живут у двоих: ' + inTwo.join(', ') + '; ids=' + ids.length);
 
-  /* Замер живости (снимок 2026-10-03) зовёт gpt-oss-120b мёртвым. Для пула из
-     каталога SambaNova это неправда, и витрина обязана оставить строку. */
+  /* Замер живости (снимок 2026-10-03) зовёт gpt-oss-120b мёртвым. Для пула,
+     чьё имя пришло из живого каталога самого провайдера, это неправда — и
+     витрина обязана оставить строку. */
   const dead = { at: '2026-10-03', alive: ['free-qwen3.5-plus'], dead: ['gpt-oss-120b'] };
   const withoutTrust = modelreg.showcase({ updatedAt: 1, models: [], byId: {} },
     { pickIds: ['gpt-oss-120b'], curatedIds: ['gpt-oss-120b'], verified: dead, tierOf: () => 'smart' });
@@ -110,13 +117,16 @@ console.log('── T · TABLE против живого замера ───'
     withoutTrust.length === 0 && withTrust.length === 1, `без пометки ${withoutTrust.length}, с пометкой ${withTrust.length}`);
 
   /* Флаг обязан доехать до живого P: без него /api/models считает trusted пустым,
-     и gpt-oss-120b (мёртвый по общему замеру) исчезает из выбора совсем — на проде
-     это и случилось в 0.097, пока флаг не прокинули через buildTable. */
-  const live = buildTable({ SAMBANOVA_KEYS: 'sn-1', GITHUB_KEYS: 'gh1' });
-  const noFlag = ids4.filter((id) => !live[id].poolFromCatalog);
+     и имя из каталога провайдера, мёртвое по общему замеру, исчезает из выбора
+     совсем — на проде это и случилось в 0.097, пока флаг не прокинули. */
+  /* Пример из живого: minimax-m3 общий замер зовёт мёртвым, а у LLM7 это имя
+     отвечает и пришло из каталога самого LLM7 — витрина обязана его оставить. */
+  const live = buildTable({});
+  const noFlag = ids2.filter((id) => !live[id].poolFromCatalog);
   const tr = poolsOf(live).pools.filter((p) => live[p.provider].poolFromCatalog).flatMap((p) => p.fast.concat(p.smart));
   ok('T-new-5: пометка «имена из каталога» доезжает до живого P и покрывает дубль-спасателя',
-    noFlag.length === 0 && tr.includes('gpt-oss-120b'), noFlag.join(',') + ' | ' + tr.length + ' имён');
+    noFlag.length === 0 && tr.includes('minimax-m3') && tr.includes('nvidia/nemotron-3-ultra-550b-a55b:free'),
+    noFlag.join(',') + ' | ' + tr.length + ' имён');
 
   /* Подхват считается по домам, а не по строкам слоёв: имя, лежащее у провайдера
      и в fast, и в smart, — всё равно один дом (на проде это дало «gemini + gemini»). */

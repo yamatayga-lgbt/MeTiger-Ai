@@ -313,9 +313,10 @@ console.log('W — дверь GET /api/usage');
   ok('W3b: у пулов-дублёров 0.099 свои ставки в панели, а не чужие',
     data.providers.some((p) => p.id === 'llm7' && p.rpm === 15)
       && data.providers.some((p) => p.id === 'kilo' && p.rpm === 10)
-      && data.providers.some((p) => p.id === 'sambanova' && p.rpm === 20)
-      && data.providers.some((p) => p.id === 'github' && p.rpm === 15),
-    data.providers.filter((p) => ['llm7', 'kilo', 'sambanova', 'github'].includes(p.id)).map((p) => p.id + ':' + p.rpm).join(','));
+      /* 0.103: SambaNova и GitHub Models убраны из продукта целиком — их не должно
+         быть ни в списке провайдеров, ни в счётчиках. */
+      && !data.providers.some((p) => ['sambanova', 'github'].includes(p.id)),
+    data.providers.filter((p) => ['llm7', 'kilo'].includes(p.id)).map((p) => p.id + ':' + p.rpm).join(','));
 
   /* 0.100: подхват — имена, живущие у двух и более провайдеров. Без него блок
      «Подхват» в панели было бы нечем наполнить, а это обещание, которое человек

@@ -505,13 +505,11 @@ export function modelLimitsFor(
   if (!id) return { rpd: 5000, rpm: 60 }
   const s = `${id} ${src || ''}`.toLowerCase()
   /* Провайдеры 0.097/0.099 — раньше общих правил: у них самые скромные потолки
-     (LLM7 ~15 запросов в минуту на адрес, Kilo — 10, SambaNova — 20 в сутки,
-     GitHub — 150 в день), и «1000 в день» тут было бы неправдой. */
+     (LLM7 ~15 запросов в минуту на адрес, Kilo — 10), и «1000 в день» тут было
+     бы неправдой. */
   if (src === 'llm7') return { rpd: 1000, rpm: 15 }
   if (src === 'kilo') return { rpd: 1000, rpm: 10 }
-  if (src === 'sambanova') return { rpd: 20, rpm: 20 }
-  if (src === 'github') return { rpd: 150, rpm: 15 }
-  if (/gemini|gemma/.test(s) && src !== 'odirouter' && src !== 'sambanova' && src !== 'llm7') return { rpd: 250, rpm: 15 }
+  if (/gemini|gemma/.test(s) && src !== 'odirouter' && src !== 'llm7') return { rpd: 250, rpm: 15 }
   if (src === 'groq' || /gpt-oss|qwen3\.8-27b/.test(s)) return { rpd: 1000, rpm: 30 }
   if (src === 'openrouter') return { rpd: 50, rpm: 20 }
   if (src === 'odirouter') return { rpd: 1000, rpm: 15 }
@@ -707,8 +705,6 @@ export const PROVIDER_LABEL: Record<string, string> = {
   odirouter: 'OdiRouter',
   sharellm: 'ShareLLM',
   atria: 'Atria',
-  github: 'GitHub Models',
-  sambanova: 'SambaNova',
   llm7: 'LLM7',
   kilo: 'Kilo',
   pool: 'наши пулы',

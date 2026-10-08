@@ -90,6 +90,16 @@ function ProviderBlock({ row, now }: { row: UsageRow; now: number }) {
   )
 }
 
+/** Русское число с существительным: «1 имя», «2 имени», «5 имён». */
+function plural(n: number, one: string, few: string, many: string): string {
+  const t = n % 100
+  if (t >= 11 && t <= 14) return many
+  const d = n % 10
+  if (d === 1) return one
+  if (d >= 2 && d <= 4) return few
+  return many
+}
+
 export function UsageView() {
   const { data, error, at, loading, refresh } = useUsageLive(true, EVERY_MS)
   /* Секундная стрелка нужна только подписям «обновлено N с назад» и «пауза ещё N»:
@@ -105,6 +115,10 @@ export function UsageView() {
   const minuteSum = rows.reduce((a, r) => a + (r.minute || 0), 0)
   const totals = data?.totals || { attempt: 0, ok: 0, refused: 0, dead: 0 }
   const workRows = rows.filter((r) => r.live)
+  /* «С ключом» — буквально: у LLM7 и Kilo ключа нет вовсе, и звать их ключевыми
+     значило бы написать в панели неправду. Считаем отдельно. */
+  const keyed = workRows.filter((r) => (r.keys || 0) > 0).length
+  const keyless = workRows.length - keyed
 
   return (
     <div className="container view">
@@ -182,7 +196,9 @@ export function UsageView() {
         </div>
       ) : (
         <div className="settings-group">
-          <div className="settings-label">Провайдеры · {workRows.length} с ключом</div>
+          <div className="settings-label">
+            Провайдеры · {keyed} с ключом{keyless > 0 ? ` и ${keyless} без ключа` : ''}
+          </div>
           <div className="settings-card">
             {rows.length === 0 ? (
               <div className="settings-row">
@@ -198,73 +214,18 @@ export function UsageView() {
         </div>
       )}
 
-      {/* Подхват (0.100): числа, по которым видно, что отказ одного провайдера
-          не оставляет человека без ответа — то же имя спросят у второго. */}
+      {/* Подхват (0.100, сокращён в 0.103): одна строка со счётчиком.
+          Перечисление имён моделей убрано по просьбе владельца — здесь важен сам
+          факт «ответ не пропадёт», а имена уместны в списке моделей, не тут.
+          Число по-прежнему приходит из /api/usage (failover.count). */}
       {data?.failover && data.failover.count > 0 ? (
         <div className="settings-group">
-          <div className="settings-label">Подхват · {data.failover.count} имён у двух провайдеров</div>
-          <div className="settings-card">
-            <div className="settings-row">
-              <div className="grow">
-                <div className="n">Отказ провайдера не оставляет без ответа</div>
-                <div className="d">
-                  {data.failover.count} имён моделей живут сразу у двух и более провайдеров: если один
-                  не ответит, очередь спросит то же имя у второго, а не уйдёт на чужую слабую модель.
-                </div>
-              </div>
-              <Badge tone="green">{data.failover.count}</Badge>
-            </div>
-            {data.failover.sample.map((x) => (
-              <div className="settings-row" key={x.model}>
-                <div className="grow">
-                  <div className="n mono-line">{x.model}</div>
-                  <div className="d">{x.providers.join(' · ')}</div>
-                </div>
-                <Badge tone="blue">×{x.providers.length}</Badge>
-              </div>
-            ))}
+          <div className="settings-label">
+            Подхват · {data.failover.count} {plural(data.failover.count, 'имя', 'имени', 'имён')} у двух
+            провайдеров
           </div>
         </div>
       ) : null}
-
-      <div className="settings-group">
-        <div className="settings-label">Как это считается</div>
-        <div className="settings-card">
-          <div className="settings-row">
-            <div className="grow">
-              <div className="n">Точность</div>
-              <div className="d">
-                {data?.precision.note || 'изоляты складывают числа в общее хранилище'}
-                {data?.precision.writeCap
-                  ? ` · не больше ${data.precision.writeCap} записей в KV на изолят за сутки, чтобы счётчик не съел чужую квоту`
-                  : ''}
-              </div>
-            </div>
-            <Badge tone="gray">≈</Badge>
-          </div>
-          <div className="settings-row">
-            <div className="grow">
-              <div className="n">Потолок на человека</div>
-              <div className="d">
-                {data
-                  ? `${data.rate.max} запросов за ${Math.round(data.rate.windowMs / 1000)} с с одного адреса — дальше движок просит подождать`
-                  : 'считается ограничителем частоты'}
-              </div>
-            </div>
-            <Badge tone={data?.rate.on ? 'green' : 'gray'}>{data?.rate.on ? 'включён' : 'память'}</Badge>
-          </div>
-          <div className="settings-row">
-            <div className="grow">
-              <div className="n">Свои запросы</div>
-              <div className="d">
-                «На этом устройстве» — счёт этого браузера, он мгновенный; серверный счёт общий для
-                всех и доезжает до хранилища раз в {Math.round((data?.precision.writeMs || 60000) / 1000)} с.
-              </div>
-            </div>
-            <Badge tone="blue">{device.minutes} в мин</Badge>
-          </div>
-        </div>
-      </div>
 
       <div className="app-foot">
         Сутки — по UTC, как у провайдеров: сброс в 00:00 UTC (03:00 по Минску).

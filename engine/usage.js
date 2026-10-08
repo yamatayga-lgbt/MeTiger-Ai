@@ -52,11 +52,9 @@ export const PROVIDER_RPM = {
   odirouter: 15,
   /* 0.099. LLM7 без ключа держит около 15 запросов в минуту на адрес
      («Retry after 3 seconds» — из живых проб). Kilo лимит не публикует, ставим
-     осторожные 10. SambaNova — 20 в минуту, GitHub Models — 15. */
+     осторожные 10. */
   llm7: 15,
   kilo: 10,
-  sambanova: 20,
-  github: 15,
 };
 
 function envNum(env, name, def, min) {
