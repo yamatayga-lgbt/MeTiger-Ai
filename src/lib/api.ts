@@ -82,6 +82,10 @@ export interface ChatResult {
   streamError?: string
   /** Что модель написала себе перед ответом (у упрямых провайдеров — в отдельном поле). */
   reasoning?: string
+  /** Отвечала ли модель, которую движок считает думающей (режим «Размышлять глубже»). */
+  deep?: boolean
+  /** «Глубже» просили, а ответила не думающая модель: ответ верный, но без размышлений. */
+  deepPlain?: boolean
   /** Запрос оборвал человек кнопкой «Остановить» — это не сбой сети и не таймаут,
       UI не должен показывать это как ошибку движка. */
   stopped?: boolean
@@ -425,6 +429,12 @@ export async function sendChat(
     /** Живые шаги поиска в интернете (Searched for / Fetched) по мере работы инструментов. */
     onWebSteps?: (steps: WebStep[]) => void
     /**
+     * «Размышлять глубже» (меню «+»): очередь становится smart, думающие модели —
+     * в голову пула, провайдеры с сильными рассуждениями идут первыми, а потолок
+     * времени на ответ выше (думать дольше — это и есть просьба).
+     */
+    deep?: boolean
+    /**
      * Явный запрос глубокого поиска («поиск» в панели ввода): принудительно зовёт
      * web-search и читает первую найденную страницу, даже без слова «погугли».
      */
@@ -449,7 +459,9 @@ export async function sendChat(
   } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
-  const timer = setTimeout(() => ac.abort(), 75_000)
+  /* Глубокий режим думает дольше — и обрывать его на 75-й секунде значит отвечать
+     «ответ оборвался» ровно там, где человек попросил не спешить. */
+  const timer = setTimeout(() => ac.abort(), opts.deep ? 120_000 : 75_000)
   if (opts.signal) opts.signal.addEventListener('abort', () => ac.abort(), { once: true })
   try {
     const res = await fetch(ENDPOINT, {
@@ -475,6 +487,7 @@ export async function sendChat(
         presencePenalty: typeof opts.presencePenalty === 'number' ? opts.presencePenalty : undefined,
         frequencyPenalty: typeof opts.frequencyPenalty === 'number' ? opts.frequencyPenalty : undefined,
         reasoningEffort: opts.reasoningEffort || undefined,
+        deep: opts.deep ? true : undefined,
         /* кто пишет: по этому ключу бэкенд держит память и профиль. Без него весь
            веб делил одну память на всех незнакомцев */
         userId: currentUserId(),
@@ -562,7 +575,7 @@ export function adviceLine(r: ChatResult): { text: string; tone: AdviceTone } | 
 }
 
 /** Короткая строка «кто ответил» — для отладочной подписи под сообщением. */
-const TOOL_RU: Record<string, string> = {
+export const TOOL_RU: Record<string, string> = {
   'web-search': 'веб-поиск',
   news: 'новости',
   wikipedia: 'вики',
@@ -599,6 +612,8 @@ export function sourceLine(r: ChatResult): string {
   return (
     `${r.provider} · ${r.model || '?'} · ${r.intent || '?'}/${r.tier || '?'} · ${r.ms ?? 0} мс` +
     (r.pinMiss && r.pinned ? ` · ${r.pinned} не ответил` : '') +
+    /* режим «глубже»: видно, дошла ли просьба до думающей модели или ответила обычная */
+    (r.deep ? (r.deepPlain ? ' · глубже: без размышлений' : ' · глубже') : '') +
     (tools.length ? ` · данные: ${tools.join(', ')}` : '') +
     /* навыки — чем модель себя правила; коротко, чтобы строка не расползалась */
     ((r.skills || []).length ? ` · навыки: ${(r.skills || []).slice(0, 3).join(', ')}${(r.skills || []).length > 3 ? ' +' + ((r.skills || []).length - 3) : ''}` : '') +

@@ -12,7 +12,24 @@
 
 import { cached as catalogCached, ceilings as catalogCeilings } from './modelreg.js';
 
-export const THINK_TAG = /<\s*(think(?:ing)?|reasoning)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi;
+/**
+ * Имя «тега размышлений». Латинские think/thinking/reasoning — то, о чём мы сами
+ * просим модель (см. thinkHint в chat.js). Но модель, отвечающая по-русски, иногда
+ * переводит тег: на проде пришёл ответ, начинавшийся с `<вкладка:thinking>` — тег
+ * не совпал с разбором, и человек увидел ход мыслей как обычный текст ответа
+ * («We need to prove that sqrt(2) is irrational…»). Поэтому разбор терпимый:
+ * принимаем и русские имена, и любую приставку перед «:thinking» — это не
+ * догадка о смысле, а признак того же самого тега с другим именем.
+ */
+const THINK_NAME_SRC = '(?:[a-zа-яё0-9_.\-]{0,24}\s*:\s*(?:think(?:ing)?|reasoning)|think(?:ing)?|reasoning|мысл(?:и|ей|ь)|мышлени[ея]|размышлени[ея]|думаю|думать|вкладка)';
+export const THINK_NAME = THINK_NAME_SRC;
+export const THINK_TAG = new RegExp('<\\s*(' + THINK_NAME_SRC + ')[^>]*>([\\s\\S]*?)<\\s*\\/\\s*(?:' + THINK_NAME_SRC + ')\\s*>', 'gi');
+/** Открывающий тег в самом начале ответа — поток читает его первым. */
+export const THINK_OPEN = new RegExp('^<\\s*(' + THINK_NAME_SRC + ')[^>]*>', 'i');
+/** Закрывающий тег где угодно — по нему ход мыслей заканчивается и начинается ответ. */
+export const THINK_CLOSE = new RegExp('<\\s*\\/\\s*(?:' + THINK_NAME_SRC + ')\\s*>', 'i');
+/** Неполный тег на конце куска: `<вкл`, `</think` — его нельзя показывать, пока не ясно, тег это или текст. */
+export const THINK_OPEN_PARTIAL = /^<\s*\/?\s*[a-zа-яё0-9_.:\-]{0,32}$/i;
 
 /** data:image/png;base64,... → { mime, data }. Чужой формат — null, не исключение. */
 export function parseDataUrl(src) {

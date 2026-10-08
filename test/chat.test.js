@@ -447,6 +447,33 @@ console.log('W — ответ, проверенный калькулятором
     r2.ok === true && f2.calls.length > 1, JSON.stringify({ calls: f2.calls.length, ens: r2.ensemble, skip: r2.ensembleSkip }));
 }
 
+console.log('G2 — «Размышлять глубже»: просьба человека доезжает до движка и не врёт о себе (0.109)');
+{
+  const rq = (o) => new Request('http://x/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });
+  const gs = globalThis.fetch;
+  globalThis.fetch = fakeFetch(() => ({ body: chat('Короткий ответ.') }));
+
+  const j1 = await (await onRequestPost({ request: rq({ text: 'привет', deep: true }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0' } })).json();
+  ok('G2a: «глубже» поднимает короткий вопрос до рассуждения и smart-очереди (иначе режим отвечал бы самой быстрой моделью)',
+    j1.ok === true && j1.intent === 'reasoning' && j1.tier === 'smart' && j1.deep === true,
+    JSON.stringify({ ok: j1.ok, intent: j1.intent, tier: j1.tier, deep: j1.deep }));
+
+  const j2 = await (await onRequestPost({ request: rq({ text: 'привет' }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0' } })).json();
+  ok('G2b: без просьбы то же сообщение остаётся болтовнёй в быстрой очереди — режим не включён по умолчанию',
+    j2.intent === 'fast' && j2.tier === 'fast' && !j2.deep,
+    JSON.stringify({ intent: j2.intent, tier: j2.tier, deep: j2.deep }));
+
+  const j3 = await (await onRequestPost({
+    request: rq({ text: 'привет', deep: true, provider: 'mistral', model: 'ministral-14b-2512' }),
+    env: { MISTRAL_KEYS: 'm1', RATE_LIMIT: '0' },
+  })).json();
+  ok('G2c: ответила не думающая модель — ответ отдан, и помечено, что размышлений не было',
+    j3.ok === true && j3.deep === true && j3.deepPlain === true,
+    JSON.stringify({ ok: j3.ok, deep: j3.deep, plain: j3.deepPlain, model: j3.model }));
+
+  globalThis.fetch = gs;
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
 

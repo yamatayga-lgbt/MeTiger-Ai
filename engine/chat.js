@@ -13,7 +13,7 @@
 import {
   buildTable, providerAlive, pickKey, orderFor, ORDER, MIN_INTERVAL, TIMEOUT, MAX_IMAGES,
 } from './providers.js';
-import { classifyTask, tierFor, modelsFor, isVision, visionFirst, preferHeads } from './route.js';
+import { classifyTask, tierFor, modelsFor, isVision, isReasoning, visionFirst, preferHeads } from './route.js';
 import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, streamCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
@@ -225,7 +225,15 @@ export function createEngine(opts) {
     const deadline = started + Math.max(5000, Number(input.deadlineMs) || 45000);
     const text = String(input.text || '');
     const images = Array.isArray(input.images) ? input.images.slice(0, MAX_IMAGES) : [];
-    const intent = input.intent || classifyTask(text, images);
+    let intent = input.intent || classifyTask(text, images);
+    /* «Думать глубже» (0.109) — просьба человека, а не догадка классификатора.
+       Короткий вопрос («докажи, что √2 иррационально», 28 знаков) сам по себе
+       классифицируется как болтовня и уходит в fast-очередь, где думающие модели
+       стоят последними — то есть режим «думай глубже» отвечал бы быстрее всех.
+       Поэтому в этой просьбе: код и математику не трогаем (у них свои головы),
+       болтовню и творчество поднимаем до рассуждения, а очередь становится smart. */
+    const deep = input.deep === true;
+    if (deep && (intent === 'fast' || intent === 'creative')) intent = 'reasoning';
     const tier = input.tier || tierFor(intent);
     let history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || 8));
     /* Инструменты агента: внешние данные (поиск, новости, курсы, погода…) ложатся
@@ -382,6 +390,13 @@ export function createEngine(opts) {
     async function withMeta(out) {
       if (!out) return out;
       out.gender = genderVal;
+      /* «Глубже» просили, а ответила не думающая модель. Это не ошибка — ответ
+         верный и человеку он нужен, — но и молчать об этом нельзя: иначе режим
+         выглядит сломанным («включил, а мыслей нет»). Флаг уезжает в строку
+         источника; отдельной надписи в пузыре нет намеренно — в 0.089 решили,
+         что модель/провайдер/режим в интерфейсе не показываем. */
+      if (deep && out.ok && out.model && !isReasoning(out.model)) out.deepPlain = true;
+      if (deep && out.ok) out.deep = true;
       if (skills.length) out.skills = skills.map((s) => ({ id: s.id, cat: s.cat, title: s.title }));
       /* Файлы: модель отдала блок ```file:docx|имя``` — упаковываем и вынимаем из
          текста. Отдельного вызова модели нет: это стоит нуль запросов и нуль секунд. */
@@ -487,7 +502,7 @@ export function createEngine(opts) {
       if (q && !allBad) { tried.push({ provider: id, why: 'в карантине: ' + q.why }); continue; }
       let models = modelreg.prune(
         modelreg.cached(), id,
-        pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images, env));
+        pin && pin.id === id ? [pin.model] : modelsFor(cfg, tier, intent, images, env, deep));
       /* Выбор модели из пула: на острой теме вперёд те, про кого каталог знает
          «без купюр», а внутри — по рейтингу смелых. Порядок, не состав: резать
          пул нельзя, иначе на пустом каталоге запрос умрёт вместо того, чтобы

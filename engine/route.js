@@ -47,6 +47,21 @@ export function isReasoning(model) {
   return REASON_HINT.test(String(model || ''));
 }
 
+/**
+ * «Думающий» для режима «глубже».
+ *
+ * Шире, чем REASON_HINT, и это не небрежность. REASON_HINT отвечает на другой
+ * вопрос: «не сожжёт ли модель бюджет токенов на внутренние рассуждения и не
+ * оборвётся ли на первых словах» — поэтому в нём нет ни `deepseek-v4`, ни `glm-5`:
+ * они отвечают быстро и до конца. Но на вопрос «кто лучше решает трудное» ответ
+ * другой, и он измеряется: у DeepSeek замерены 2,9–3,4 с и верный 391 на 17×23,
+ * у glm-5 и qwen3.x — то же семейство, что стоит в головах математики.
+ */
+export const DEEP_HINT = new RegExp(REASON_HINT.source + '|deepseek-v[34]|glm-5|gemini-3', 'i');
+export function isDeepThinker(model) {
+  return DEEP_HINT.test(String(model || ''));
+}
+
 /** code | math | reasoning | vision | creative | fast — по тексту и наличию картинки. */
 /**
  * Задача, у которой есть верный ответ, записанный числом: «съели / осталось /
@@ -121,6 +136,12 @@ export function tierFor(intent) {
 export const INTENT_HEADS = {
   math: ['deepseek-v4-flash', 'deepseek-v4-pro'],
   code: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  /* «Думать глубже» (0.109). Это тот же приём, что и на математике, но включается
+     не классификатором, а просьбой человека: он сам сказал, что цена секунды здесь
+     ниже цены ошибки. Без головы режим был бы косметикой — короткий вопрос уходил
+     в fast-очередь, где «думающие» стоят ПОСЛЕДНИМИ, и просьба «думай глубже»
+     приводила бы к ответу самой быстрой модели пула. */
+  reasoning: ['deepseek-v4-pro', 'deepseek-v4-flash'],
 };
 
 /**
@@ -139,11 +160,11 @@ export function preferHeads(order, pools, intent, env) {
 
 /** Головы для интента: конфиг человека важнее дефолта, пустой список — не наше дело. */
 export function headsFor(intent, env) {
-  const key = intent === 'math' || intent === 'code' ? intent : '';
+  const key = intent === 'math' || intent === 'code' || intent === 'reasoning' ? intent : '';
   if (!key) return [];
   const e = env || {};
   if (String(e.INTENT_HEADS || '') === 'off') return [];
-  const own = e[key === 'math' ? 'MATH_HEADS' : 'CODE_HEADS'];
+  const own = e[key === 'math' ? 'MATH_HEADS' : key === 'code' ? 'CODE_HEADS' : 'DEEP_HEADS'];
   const list = own ? String(own).split(',') : INTENT_HEADS[key];
   return list.map((s) => String(s).trim()).filter(Boolean).slice(0, 6);
 }
@@ -165,16 +186,22 @@ export function visionFirst(list, images) {
   return see.concat(arr.filter((m) => see.indexOf(m) < 0));
 }
 
-export function modelsFor(cfg, tier, intent, images, env) {
+export function modelsFor(cfg, tier, intent, images, env, deep) {
   let list = ((cfg.models && cfg.models[tier]) || (cfg.models && cfg.models.fast) || []).slice();
   if (!list.length) return list;
   /* Порядок важнее состава: сначала зрение, потом «не сжигай бюджет на размышления».
      Переставить местами — и картинка уйдёт слепой модели (проверено на Yama). */
   list = visionFirst(list, images);
-  const keepThinkers = intent === 'code' || intent === 'math' || intent === 'reasoning' || intent === 'vision';
+  const deepOn = deep === true;
+  const keepThinkers = deepOn || intent === 'code' || intent === 'math' || intent === 'reasoning' || intent === 'vision';
   if (!keepThinkers) {
     const calm = list.filter((m) => !isReasoning(m));
     if (calm.length) list = calm.concat(list.filter((m) => calm.indexOf(m) < 0));
+  } else if (deepOn && !(images && images.length)) {
+    /* «Глубже» — это не «пусть думающая модель не последняя», а «пусть она первая».
+       Картинок нет — значит видеть никого не надо и ломать visionFirst нечего. */
+    const think = list.filter((m) => isDeepThinker(m));
+    if (think.length) list = think.concat(list.filter((m) => think.indexOf(m) < 0));
   }
   /* Головы — последним шагом и только когда картинок нет: зрение важнее марки модели,
      а переставлять список, в котором нужной модели нет, значит просто шуметь. */

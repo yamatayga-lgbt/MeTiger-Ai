@@ -265,5 +265,72 @@ console.log('── H · SSE-обёртка двери /api/chat ───');
   });
 
 
+/* ── Тег размышлений, названный моделью по-своему ─────────────────────────
+   Живой случай с прода: ответ начинался с `<вкладка:thinking> We need to prove that
+   sqrt(2) is irrational…` — модель перевела имя тега. Прежний разбор знал только
+   латинские think/thinking/reasoning, тег не совпал, и человек увидел ход мыслей
+   как текст ответа (видно было на снимке экрана, а не в тестах). Теперь правило
+   одно на поток и на обычный ответ — в engine/shape.js. */
+{
+  await withFetch(async () => {
+    const tOpen = '<' + 'вкладка:thinking>';
+    const tClose = '<' + '/вкладка:thinking>';
+    globalThis.fetch = async () => {
+      const rows = [
+        { choices: [{ delta: { content: tOpen + 'We need to prove ' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'that sqrt(2) ' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'is irrational.' + tClose + '\nГотово: ' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'число иррационально.' }, finish_reason: 'stop' }] },
+      ];
+      const rs = new ReadableStream({
+        start(c) {
+          for (const x of rows) c.enqueue(enc.encode('data: ' + JSON.stringify(x) + '\n\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      });
+      return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+    };
+    const res = await post({ text: 'докажи, что корень из двух иррационален', chatId: 'sse12', showReasoning: true }, SSE);
+    const { events: ev } = await drain(res);
+    const reason = ev.filter((e) => e.kind === 'draft' && e.channel === 'reasoning');
+    const answer = ev.filter((e) => e.kind === 'draft' && !e.channel);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    const ответ = answer.map((e) => e.text).join('');
+    ok('H16: тег размышлений с чужим именем (<вкладка:thinking>) уходит в канал reasoning, а не в ответ',
+      /We need to prove that sqrt\(2\) is irrational\./.test(reason.map((e) => e.text).join(''))
+        && ответ.indexOf('sqrt') < 0
+        && ответ.indexOf('вкладка') < 0
+        && fin.payload.reply === 'Готово: число иррационально.'
+        && /We need to prove/.test(fin.payload.reasoning),
+      JSON.stringify({ r: reason.map((e) => e.text).join('').slice(0, 60), a: ответ.slice(0, 60), fin: fin && fin.payload.reply }));
+  });
+
+  /* Кусок может оборвать тег посреди слова: человек в этот момент не должен видеть
+     ни куска тега, ни (хуже) полтекста мыслей под видом ответа. */
+  await withFetch(async () => {
+    globalThis.fetch = async () => {
+      const rows = [
+        { choices: [{ delta: { content: '<вкл' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'адка:thin' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: 'king>думаю' }, finish_reason: '' }] },
+      ];
+      const rs = new ReadableStream({
+        start(c) {
+          for (const x of rows) c.enqueue(enc.encode('data: ' + JSON.stringify(x) + '\n\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      });
+      return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+    };
+    const res = await post({ text: 'привет', chatId: 'sse13', showReasoning: true }, SSE);
+    const { events: ev } = await drain(res);
+    const answer = ev.filter((e) => e.kind === 'draft' && !e.channel).map((e) => e.text).join('');
+    ok('H17: разорванный по кускам тег не показывается текстом — ни «<вкл», ни «адка:thin»',
+      answer.indexOf('вкл') < 0 && answer.indexOf('адка') < 0, JSON.stringify(answer.slice(0, 60)));
+  });
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

@@ -9,7 +9,7 @@ import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
 import { Markdown } from '../components/Markdown'
-import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 import { enterKeySends } from '../lib/platform'
@@ -212,7 +212,9 @@ function ReasoningViewport({ text, live = false }: { text: string; live?: boolea
 
 function CollapsedThought({ reasoning, sec }: { reasoning: string; sec?: number }) {
   const duration = Math.max(1, sec || Math.max(1, Math.round(reasoning.length / 180)))
-  const label = `Thought for ${duration} second${duration === 1 ? '' : 's'}`
+  /* Подпись по-русски: интерфейс наш, и «Thought for 4 seconds» в нём было
+     заимствованием у референса, а не решением. */
+  const label = `Думал ${duration} с`
   return (
     <details className="msg-reason">
       <summary title="думал вслух" aria-label={`думал вслух · ${label}`}>
@@ -232,9 +234,9 @@ function ToolUsedBadge({ tools, ms }: { tools: string[]; ms?: number }) {
     <details className="msg-tool-used">
       <summary>
         <TerminalGlyph />
-        <span className="tool-used-label">used {tools.join(', ')}</span>
+        <span className="tool-used-label">использовал {tools.map((t) => TOOL_RU[t] || t).join(', ')}</span>
         <span className="tool-used-check" aria-hidden="true">✓</span>
-        <span className="tool-used-ms">{toolMs}ms</span>
+        <span className="tool-used-ms">{toolMs} мс</span>
         <ChevronDown size={13} className="tool-used-chev" />
       </summary>
       <div className="msg-tool-details">
@@ -497,6 +499,9 @@ interface ChatViewProps {
   /** Переключатель глубокого поиска («поиск») в панели ввода */
   searchOn?: boolean
   onToggleSearch?: () => void
+  /** «Размышлять глубже»: состояние и переключение (живёт в App, хранится в браузере) */
+  deep?: boolean
+  onDeep?: () => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
@@ -514,6 +519,8 @@ export function ChatView({
   draftReasoning,
   draftThinkingSec = 1,
   draftWebSteps = [],
+  deep = false,
+  onDeep,
   onSend,
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
@@ -992,7 +999,7 @@ export function ChatView({
                   <div className="msg-reason msg-reason-live" aria-live="polite" aria-label="Модель думает вслух">
                     <div className="thinking-live-head">
                       <BrainGlyph className="reason-brain-icon is-pulsing" />
-                      <span className="thinking-word">Thinking...</span>
+                      <span className="thinking-word">Думаю…</span>
                     </div>
                     {draftReasoning ? (
                       <ReasoningViewport text={draftReasoning} live />
@@ -1136,7 +1143,7 @@ export function ChatView({
             <div className="composer-foot-left">
               <button
                 type="button"
-                className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}`}
+                className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}${deep ? ' is-deep' : ''}`}
                 aria-label="Добавить"
                 aria-expanded={addMenuOpen}
                 onClick={() => {
@@ -1145,6 +1152,9 @@ export function ChatView({
                 }}
               >
                 <Plus size={20} />
+                {/* Метка режима: включено «глубже» или нет. Без неё человек,
+                    закрыв меню, не видит, что просьба ещё действует. */}
+                {deep ? <span className="plus-dot" aria-hidden="true" /> : null}
               </button>
               {/* Камера — снимок сразу с устройства (capture заставляет открыть именно камеру, не выбор приложения). */}
               <input
@@ -1242,6 +1252,8 @@ export function ChatView({
                 onPhoto={() => photoRef.current?.click()}
                 onUploadFiles={() => uploadRef.current?.click()}
                 onPickHistory={addFromHistory}
+                deep={deep}
+                onDeep={onDeep}
                 onClose={() => setAddMenuOpen(false)}
               />
             </>

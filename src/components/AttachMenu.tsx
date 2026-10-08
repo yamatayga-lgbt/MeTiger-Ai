@@ -1,8 +1,10 @@
 /**
  * Меню «+» в композере: Камера / Фото / Файлы / Плагины / Размышлять глубже —
- * как у референсов. Работают первые три; последние два — заготовки на будущее
- * (плагинов и отдельного «глубокого» режима у агента пока нет, он и так всегда
- * думает, когда это уместно), помечены «скоро» и неактивны.
+ * как у референсов. Работают все, кроме «Плагинов» (заготовка, помечена «скоро»).
+ *
+ * «Размышлять глубже» с 0.109 — переключатель, а не надпись «скоро»: он поднимает
+ * очередь до smart, ставит думающие модели в голову пула и даёт ответу больше
+ * времени. Состояние видно переключателем, а не словами: включено — ползунок справа.
  *
  * «Файлы» не открывает системный диалог сразу, а раскрывает второй экран того
  * же окна: что человек уже прикладывал раньше (из src/lib/attachHistory, этот
@@ -19,6 +21,9 @@ interface AttachMenuProps {
   onPhoto: () => void
   onUploadFiles: () => void
   onPickHistory: (item: HistoryItem) => void
+  /** «Размышлять глубже»: включено ли и как переключить (состояние живёт в App). */
+  deep?: boolean
+  onDeep?: () => void
   onClose: () => void
 }
 
@@ -33,7 +38,7 @@ function timeAgo(ms: number): string {
   return `${d} дн назад`
 }
 
-export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, onClose }: AttachMenuProps) {
+export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, onClose }: AttachMenuProps) {
   const [view, setView] = useState<'menu' | 'files'>('menu')
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
 
@@ -118,10 +123,21 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, on
         Плагины
         <span className="attach-menu-soon">скоро</span>
       </button>
-      <button type="button" className="attach-menu-item is-soon" role="menuitem" disabled aria-disabled="true" title="Агент и так думает, когда это нужно">
+      {/* Окно не закрывается: переключатель без своего состояния на глазах —
+          это кнопка «нажал и не понял, включилось ли». Человек видит ползунок
+          и сам решает, когда закрыть меню. */}
+      <button
+        type="button"
+        className={`attach-menu-item attach-deep${deep ? ' is-on' : ''}`}
+        role="menuitemcheckbox"
+        aria-checked={deep}
+        aria-label="Размышлять глубже"
+        title={deep ? 'Размышлять глубже: включено' : 'Размышлять глубже'}
+        onClick={() => { haptic('light'); onDeep?.() }}
+      >
         <span className="attach-menu-icon"><Gauge size={18} /></span>
         Размышлять глубже
-        <span className="attach-menu-soon">скоро</span>
+        <span className="attach-switch" aria-hidden="true" />
       </button>
     </div>
   )

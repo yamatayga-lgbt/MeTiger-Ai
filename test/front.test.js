@@ -1086,13 +1086,14 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         onSend() {},
       }),
     );
-    ok('M32: живой блок мыслей со значком Мозг, анимацией «Thinking...», инлайн-кодом и авто-сворачиванием в «Thought for 4 seconds» + used tool',
+    ok('M32: живой блок мыслей со значком Мозг, анимацией «Думаю…», инлайн-кодом и авто-сворачиванием в «Думал 4 с» + использованный инструмент — по-русски',
       /class="reason-brain-icon is-pulsing"/.test(htmlLiveThink)
-        && /<span class="thinking-word">Thinking\.\.\.<\/span>/.test(htmlLiveThink)
+        && /<span class="thinking-word">Думаю…<\/span>/.test(htmlLiveThink)
         && /<code class="reason-inline-code">rollback<\/code>/.test(htmlLiveThink)
         && /class="stream-dot"/.test(htmlLiveThink)
-        && /Thought for 4 seconds/.test(htmlAutoCollapsed)
-        && /used web-search/.test(htmlAutoCollapsed)
+        && /Думал 4 с/.test(htmlAutoCollapsed)
+        && /использовал веб-поиск/.test(htmlAutoCollapsed)
+        && /tool-used-ms">\d+ мс/.test(htmlAutoCollapsed)
         && cssSrc.includes('@keyframes thinkingShimmer')
         && cssSrc.includes('mask-image: linear-gradient'));
 
@@ -1580,6 +1581,37 @@ console.log('── N · стекло (Glassmorphism) ───');
       && /peакOf|peakOf\(all\) < SILENCE_PEAK/.test(voiceSrc)
       && /liveOk \? 'оставил уточнённое на лету'/.test(voiceSrc)
       && /'Уточняю текст…'/.test(chatSrc));
+
+  /* ── 0.109: «Размышлять глубже» — просьба человека, а не режим по умолчанию ── */
+  const deepMenu = readFileSync('src/components/AttachMenu.tsx', 'utf8');
+  const appDeep = readFileSync('src/App.tsx', 'utf8');
+  const apiDeep = readFileSync('src/lib/api.ts', 'utf8');
+
+  ok('N48: пункт «Размышлять глубже» — рабочий переключатель, а не надпись «скоро»',
+    /attach-deep/.test(deepMenu)
+      && /role="menuitemcheckbox"/.test(deepMenu)
+      && /aria-checked=\{deep\}/.test(deepMenu)
+      && !/title="Агент и так думает, когда это нужно"/.test(deepMenu)
+      /* «Плагины» остаются заготовкой — проверяем, что не сняли «скоро» сразу у двух */
+      && /attach-menu-item is-soon/.test(deepMenu));
+
+  ok('N49: состояние режима видно и в меню, и на кнопке «+» — закрыв меню, человек не теряет его из виду',
+    /attach-switch/.test(deepMenu)
+      && /\.attach-switch \{/.test(css)
+      && /attach-menu-item\.attach-deep\.is-on \.attach-switch \{/.test(css)
+      && /plus-btn\$\{addMenuOpen \? ' is-open' : ''\}\$\{deep \? ' is-deep' : ''\}/.test(chatSrc)
+      && /<span className="plus-dot"/.test(chatSrc)
+      && /\.plus-dot \{/.test(css));
+
+  ok('N50: включённый режим доезжает до сервера и поднимает усилие рассуждения',
+    /usePersistentState<boolean>\('mt-deep'/.test(appDeep)
+      && /deep: deep \|\| undefined,/.test(appDeep)
+      && /reasoningEffort: deep \? 'high' : effort,/.test(appDeep)
+      && /deep: opts\.deep \? true : undefined,/.test(apiDeep));
+
+  ok('N51: «глубже» не обрывается на 75-й секунде — человек просил не спешить',
+    /opts\.deep \? 120_000 : 75_000/.test(apiDeep)
+      && /deadlineMs: Number\(env\.CHAT_DEADLINE_MS \|\| \(wantDeep \? 75000 : 50000\)\)/.test(readFileSync('functions/api/chat.js', 'utf8')));
 
   ok('N47: видно, что уточнение идёт прямо сейчас (иначе слова меняются «сами»)',
     /voice-tag/.test(chatSrc) && /\.voice-tag \{/.test(css) && /liveBusy/.test(chatSrc));

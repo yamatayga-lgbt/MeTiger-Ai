@@ -4,8 +4,8 @@
  * Запуск: node test/route.test.js
  */
 import assert from 'node:assert';
-import { INTENT_HEADS, classifyTask, headsFor, isVision, modelsFor, preferHeads, tierFor, visionFirst } from '../engine/route.js';
-import { buildRequest, isProviderError, isRefusal, stripThinkTags } from '../engine/shape.js';
+import { INTENT_HEADS, classifyTask, headsFor, isDeepThinker, isReasoning, isVision, modelsFor, preferHeads, tierFor, visionFirst } from '../engine/route.js';
+import { buildRequest, isProviderError, isRefusal, stripThinkTags, THINK_OPEN_PARTIAL } from '../engine/shape.js';
 import { buildTable } from '../engine/providers.js';
 
 let pass = 0, fail = 0;
@@ -19,6 +19,17 @@ const ENV = {
   OPENROUTER_KEYS: 'or1', GEMINI_KEYS: 'gm1',
 };
 const P = buildTable(ENV);
+
+/* «Думающий» для режима «глубже» — шире, чем «не сожжёт ли бюджет на размышления».
+   DeepSeek V4 и GLM-5 отвечают быстро и до конца, поэтому в REASON_HINT их нет,
+   но на вопрос «кто лучше решает трудное» они — первые. Если это правило
+   потеряется, «Размышлять глубже» начнёт выбирать ту же модель, что и обычный
+   запрос: режим останется, разницы не будет. */
+ok('D1: deep-думающими считаются deepseek-v4, glm-5 и gemini-3, которых REASON_HINT не ловит',
+  isDeepThinker('deepseek-v4-pro') && isDeepThinker('glm-5.3') && isDeepThinker('gemini-3.5-flash')
+    && !isReasoning('deepseek-v4-pro') && !isReasoning('glm-5.3'));
+ok('D2: обычные модели думающими не объявлены — иначе «глубже» переставлял бы всё подряд',
+  !isDeepThinker('llama-3.3-70b-instruct') && !isDeepThinker('ministral-14b-2512') && !isDeepThinker('gpt-4o-mini'));
 
 console.log('A — куда уходит задача (роутер перенесён вместе с порядком проверок)');
 ok('A1: «напиши код факториала» → code', classifyTask('напиши код факториала на python') === 'code');
@@ -174,12 +185,57 @@ console.log('F — порядок в пулах groq: первая быстра�
     take.indexOf('allam-2-7b') < 0 && take.indexOf('groq/compound-mini') < 0, JSON.stringify(take));
 }
 
+console.log('D — «Размышлять глубже»: кто отвечает и в каком порядке (0.109)');
+{
+  const cfg = { models: { smart: ['llama-3.3-70b-instruct', 'ministral-14b-2512', 'deepseek-v4-pro', 'glm-5.3'] } };
+  const plain = modelsFor(cfg, 'smart', 'reasoning', null, {}, false);
+  const deep = modelsFor(cfg, 'smart', 'reasoning', null, {}, true);
+  ok('D3: без режима вперёд идёт только голова интента — думающая, но не голова, стоит где стояла',
+    plain.join() === 'deepseek-v4-pro,llama-3.3-70b-instruct,ministral-14b-2512,glm-5.3', plain.join());
+  ok('D4: в режиме «глубже» думающие модели уходят в НАЧАЛО пула, а не просто не в конец',
+    deep.slice(0, 2).join() === 'deepseek-v4-pro,glm-5.3' && deep.length === 4, deep.join());
+  const vision = modelsFor(cfg, 'smart', 'vision', ['data:image/png;base64,AA'], {}, true);
+  ok('D5: с картинкой режим не ломает зрение — слепая думающая модель картинку не увидит',
+    vision.length === 4, vision.join());
+  const fast = modelsFor({ models: { fast: ['deepseek-v4-pro', 'llama-3.3-70b-instruct'] } }, 'fast', 'fast', null, {}, true);
+  ok('D6: «глубже» не выбрасывает из пула обычные модели — если думающая откажет, ответит она',
+    fast.join() === 'deepseek-v4-pro,llama-3.3-70b-instruct', fast.join());
+}
+
+/* Тег размышлений, названный по-своему, — тот же тег. Живой случай с прода:
+   `<вкладка:thinking> We need to prove…` уехал человеку текстом ответа, потому что
+   разбор знал только латинские имена. Правило теперь одно на поток и на обычный
+   ответ (engine/shape.js). */
+console.log('T — ход мыслей не показывается ответом, каким бы именем модель его ни назвала');
+{
+  const t1 = stripThinkTags('<вкладка:thinking>We need to prove that sqrt(2) is irrational.</вкладка:thinking>\nЧисло иррационально.');
+  ok('T1: чужое имя тега («вкладка:thinking») уводит мысли в reasoning, а не в ответ',
+    t1.text === 'Число иррационально.' && /sqrt\(2\)/.test(t1.reasoning), JSON.stringify(t1));
+  const t2 = stripThinkTags('<мысли>считаю шаги</мысли>Ответ.');
+  ok('T2: русское имя тега тоже понимается', t2.text === 'Ответ.' && t2.reasoning === 'считаю шаги', JSON.stringify(t2));
+  const t3 = stripThinkTags('<think>обычный</think>Ответ');
+  ok('T3: прежнее поведение не сломано — <think> режется как резался', t3.text === 'Ответ' && t3.reasoning === 'обычный', JSON.stringify(t3));
+  const t4 = stripThinkTags('<div class="x">код html</div> и текст');
+  ok('T4: чужой тег (html в примере кода) ответом не считается — ложных срабатываний нет',
+    t4.reasoning === '' && /код html/.test(t4.text), JSON.stringify(t4));
+  ok('T5: неполный тег узнаётся — поток может оборвать кусок посреди имени',
+    THINK_OPEN_PARTIAL.test('<вкл') && THINK_OPEN_PARTIAL.test('</think') && !THINK_OPEN_PARTIAL.test('<div class='));
+}
+
 console.log('R — головы интента: кому считать математику и писать код (INTENT_HEADS)');
 {
   ok('R1: дефолт короток и честен — только то, что реально отвечает бесплатно',
     INTENT_HEADS.math.join() === 'deepseek-v4-flash,deepseek-v4-pro' && INTENT_HEADS.code.join() === INTENT_HEADS.math.join(), INTENT_HEADS.math.join());
-  ok('R2: головы есть только у math и code — на болтовне порядок не трогаем',
-    headsFor('chat', {}).length === 0 && headsFor('reasoning', {}).length === 0 && headsFor('math', {}).length === 2, JSON.stringify(headsFor('vision', {})));
+  ok('R2: головы есть только у math, code и «глубже» — на болтовне и зрении порядок не трогаем',
+    headsFor('chat', {}).length === 0 && headsFor('vision', {}).length === 0 && headsFor('math', {}).length === 2,
+    JSON.stringify({ chat: headsFor('chat', {}), vision: headsFor('vision', {}) }));
+  ok('R2b: «глубже» ведёт к сильным рассуждениям, а не к самой быстрой модели пула',
+    headsFor('reasoning', {}).join() === 'deepseek-v4-pro,deepseek-v4-flash', headsFor('reasoning', {}).join());
+  ok('R2c: DEEP_HEADS человека важнее дефолта, INTENT_HEADS=off выключает всё',
+    headsFor('reasoning', { DEEP_HEADS: 'glm-5.3, ' }).join() === 'glm-5.3'
+      && headsFor('reasoning', { INTENT_HEADS: 'off' }).length === 0);
+  ok('R2d: провайдер с головой «глубже» идёт вперёд очереди',
+    preferHeads(['groq', 'zai', 'odirouter'], { groq: ['openai/gpt-oss-120b'], zai: ['glm-4.5-flash'], odirouter: ['deepseek-v4-pro'] }, 'reasoning', {})[0] === 'odirouter');
   ok('R3: MATH_HEADS человека важнее дефолта, пустые имена отбрасываются',
     headsFor('math', { MATH_HEADS: 'одна, ,две' }).join() === 'одна,две', JSON.stringify(headsFor('math', { MATH_HEADS: 'одна, ,две' })));
   ok('R4: потолок шесть голов — очередь и промпт не распухают', headsFor('math', { MATH_HEADS: 'a,b,c,d,e,f,g,h' }).length === 6);

@@ -131,6 +131,11 @@ export default function App() {
   const model = ''
   const reasoningOn = true
   const effort: ReasoningEffort = 'medium'
+  /* «Размышлять глубже» — просьба человека, а не режим по умолчанию: включённая
+     всегда, она бы превратила каждый «привет» в работу сильной модели (и в её
+     квоту). Хранится в браузере: человек, которому режим нужен по работе, не
+     должен включать его заново после каждой перезагрузки. */
+  const [deep, setDeep] = usePersistentState<boolean>('mt-deep', false, (v): v is boolean => typeof v === 'boolean')
   /* параметры генерации: temperature, max_tokens, top_p, presence/frequency penalty */
   const [genParamsRaw, setGenParams] = usePersistentState<GenParams>(
     'mt-params',
@@ -335,6 +340,7 @@ export default function App() {
           gender: genderForRequest(readGender()),
           /* ответ показывается по мере чтения провайдера; null — попытка ушла в запасной
              пул, обрывки с экрана убираем */
+          deep: deep || undefined,
           onDraft: (t) => setDraft(t),
           onWebSteps: (steps) => setDraftWebSteps(steps),
           ...(allowThink
@@ -348,7 +354,9 @@ export default function App() {
                   }
                   setDraftReasoning(t)
                 },
-                reasoningEffort: effort,
+                /* Глубже — это не только «кто отвечает», но и «сколько думать»:
+                   усилие рассуждения поднимается до высокого. */
+                reasoningEffort: deep ? 'high' : effort,
               }
             : {}),
           temperature: genParams.temperature,
@@ -434,7 +442,7 @@ export default function App() {
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
       })()
     },
-    [activeChatId, chats, model, reasoningOn, effort, genParams],
+    [activeChatId, chats, model, reasoningOn, effort, deep, genParams],
   )
   // ⌘K — палитра, ⌘N — новый чат, Esc — закрыть оверлеи
   useEffect(() => {
@@ -526,6 +534,8 @@ export default function App() {
                 draftReasoning={draftReasoning}
                 draftThinkingSec={draftThinkingSec}
                 draftWebSteps={draftWebSteps}
+                deep={deep}
+                onDeep={() => setDeep((v) => !v)}
                 onSend={sendMessage}
                 onStop={stopGeneration}
                 genParams={genParams}

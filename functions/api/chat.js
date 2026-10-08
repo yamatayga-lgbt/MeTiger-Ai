@@ -11,6 +11,10 @@
  * попыток — фронт по нему и решает, показывать моку или честное «сервис не отвечает».
  */
 import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/chat.js';
+/* Разбор тегов размышлений — одним правилом с engine/shape.js: раньше здесь были
+   свои regex, и стоило модели назвать тег иначе («<вкладка:thinking>»), как ход
+   мыслей уезжал человеку обычным текстом ответа. */
+import { THINK_OPEN, THINK_CLOSE, THINK_OPEN_PARTIAL } from '../../engine/shape.js';
 import * as genderLayer from '../../engine/gender.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import { createBrave } from '../../engine/brave.js';
@@ -343,6 +347,10 @@ async function handlePost(context) {
      рассуждения в потоке не нужны: это килобайты текста, которые никто не увидит,
      а лимиты и тариф провайдера считаются по нему так же, как по ответу. */
   const wantReasoning = !!(body && body.showReasoning === true);
+  /* «Думать глубже» — явная просьба человека из меню «+» (0.109). В движке она
+     поднимает очередь до smart, ставит думающие модели в голову пула и уводит
+     провайдеров с сильными рассуждениями вперёд. Без неё поведение прежнее. */
+  const wantDeep = !!(body && body.deep === true);
   /* Потоковый разделитель <think>...</think>: если модель шлёт рассуждения тегом
      внутри обычного content (а не отдельным reasoning_content), перенаправляем
      содержимое <think>...</think> в живой канал reasoning в реальном времени, а
@@ -376,13 +384,12 @@ async function handlePost(context) {
         thinkBuf = '';
         return;
       }
-      const openMatch = /^<\s*(think(?:ing)?|reasoning)\b[^>]*>/i.exec(trimmed);
+      const openMatch = THINK_OPEN.exec(trimmed);
       if (openMatch) {
         thinkMode = 'think';
         thinkBuf = trimmed.slice(openMatch[0].length).replace(/^\r?\n/, '');
       } else {
-        const isPrefix = trimmed.length <= 14
-          && /^<\s*(?:t(?:h(?:i(?:n(?:k(?:i(?:n(?:g)?)?)?)?)?)?)?|r(?:e(?:a(?:s(?:o(?:n(?:i(?:n(?:g)?)?)?)?)?)?)?)?)?$/i.test(trimmed);
+        const isPrefix = THINK_OPEN_PARTIAL.test(trimmed);
         if (isPrefix) return;
         thinkMode = 'text';
         context.__send({ kind: 'draft', provider, model, text: thinkBuf });
@@ -391,7 +398,7 @@ async function handlePost(context) {
       }
     }
     if (thinkMode === 'think') {
-      const closeMatch = /<\s*\/\s*(think(?:ing)?|reasoning)\s*>/i.exec(thinkBuf);
+      const closeMatch = THINK_CLOSE.exec(thinkBuf);
       if (closeMatch) {
         const before = thinkBuf.slice(0, closeMatch.index);
         const after = thinkBuf.slice(closeMatch.index + closeMatch[0].length).replace(/^\s*\r?\n/, '');
@@ -402,11 +409,7 @@ async function handlePost(context) {
         return;
       }
       const lastLt = thinkBuf.lastIndexOf('<');
-      if (
-        lastLt >= 0
-        && thinkBuf.length - lastLt <= 14
-        && /^<\s*\/?\s*(?:t(?:h(?:i(?:n(?:k(?:i(?:n(?:g)?)?)?)?)?)?)?|r(?:e(?:a(?:s(?:o(?:n(?:i(?:n(?:g)?)?)?)?)?)?)?)?)?$/i.test(thinkBuf.slice(lastLt))
-      ) {
+      if (lastLt >= 0 && THINK_OPEN_PARTIAL.test(thinkBuf.slice(lastLt))) {
         const safe = thinkBuf.slice(0, lastLt);
         thinkBuf = thinkBuf.slice(lastLt);
         if (safe) context.__send({ kind: 'draft', channel: 'reasoning', provider, model, text: safe });
@@ -482,6 +485,7 @@ async function handlePost(context) {
     frequencyPenalty: norm.frequencyPenalty,
     reasoningEffort: norm.reasoningEffort,
     showReasoning: wantReasoning,
+    deep: wantDeep || undefined,
     system: norm.system || PERSONA_SYSTEM,
     /* Род агента — настройка человека из приложения (Авто/М/Ж). Сюда идёт pick(), а
        не normalize(): распознанное значение едет в движок, пустое и мусорное — не
@@ -495,7 +499,10 @@ async function handlePost(context) {
     /* Явный запрос глубокого поиска («поиск» в панели ввода): принудительно зовёт
        web-search и читает первую найденную страницу, даже если в вопросе нет слова «погугли». */
     webSearch: body && body.webSearch === true ? true : undefined,
-    deadlineMs: Number(env.CHAT_DEADLINE_MS || 50000),
+    /* Глубокий режим думает дольше — и это ровно то, о чём человек попросил.
+       Потолок времени поднимаем только ему: обычный вопрос, который ждёт ответа
+       секунду, не должен получить право висеть полторы минуты. */
+    deadlineMs: Number(env.CHAT_DEADLINE_MS || (wantDeep ? 75000 : 50000)),
   });
 
   /* Наказания, набранные в этом ответе, уходят в общее хранилище уже после того,
@@ -546,6 +553,10 @@ async function handlePost(context) {
     /* выбранная модель не смогла ответить — фронт подписывает это словами,
        чтобы «я выбрал X, а ответил Y» не выглядело поломкой выбора */
     pinned: r.pinned, pinMiss: !!r.pinMiss,
+    /* «Размышлять глубже»: отвечала ли думающая модель. deepPlain — просьба была,
+       но ответила обычная: фронт видит это в строке источника, а curl — здесь. */
+    deep: r.deep || undefined,
+    deepPlain: r.deepPlain || undefined,
     /* Как ответили — родом и (по желанию) наблюдением о состоянии собеседника.
        Фронт показывает род в подписи, emotion — только если включён EMOTION_LABEL. */
     gender: r.gender, emotion: r.emotion || undefined,
