@@ -18,6 +18,7 @@
     "publish:bump": "bash scripts/publish.sh --bump",
     "kv:onboard": "bash scripts/kv-onboard.sh",
     "publish:proxy": "wrangler deploy --config proxy-worker/wrangler.toml",
+    "verify:prod": "node scripts/verify-prod.mjs",
     "ask": "node scripts/ask.js"
   },
   "dependencies": {
