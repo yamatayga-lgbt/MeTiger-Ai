@@ -26,7 +26,7 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: '0.115',
+    version: '0.116',
     title: 'Ответы можно слушать',
     items: [
       'У каждого ответа агента появилась кнопка «озвучить»: нажал — ответ читается вслух живым голосом. Пока читается, кнопка показывает остановку.',

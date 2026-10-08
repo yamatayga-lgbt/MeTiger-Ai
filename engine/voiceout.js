@@ -305,14 +305,27 @@ export async function synthesize(text, opts = {}) {
   }
 
   const куски = [];
+  /* Разбор при неполадке: сколько кадров пришло и какими они были. Без этого
+     «не прислала звук» одинаково выглядит и при молчании службы, и при том, что
+     кадры пришли, но разобрались как чужие (например, сжатые). */
+  const счёт = { кадров: 0, текстовых: 0, бинарных: 0, аудио: 0, конец: 0, первых: '' };
   const ждём = new Promise((resolve) => {
     const таймер = setTimeout(() => { try { ws.close(); } catch { /* уже закрыто */ } resolve(); }, opts.timeoutMs || TTS_LIMITS.TIMEOUT_MS);
     const закончить = () => { clearTimeout(таймер); resolve(); };
     const onMessage = (ev) => {
       try {
-        const кадр = parseFrame(typeof ev.data === 'string' ? ev.data : ev.data);
-        if (кадр.kind === 'audio' && кадр.audio) куски.push(кадр.audio);
-        if (кадр.kind === 'end') { try { ws.close(); } catch { /* уже закрыто */ } закончить(); }
+        счёт.кадров++;
+        const данные = ev.data;
+        if (typeof данные === 'string') счёт.текстовых++;
+        else счёт.бинарных++;
+        if (счёт.первых.length < 48 && данные && typeof данные !== 'string') {
+          /* Первые байты первого бинарного кадра: по ним видно, наши это байты или чужой формат. */
+          счёт.первых = [...new Uint8Array(данные.slice ? данные.slice(0, 12) : данные).slice(0, 12)]
+            .map((б) => б.toString(16).padStart(2, '0')).join(' ');
+        }
+        const кадр = parseFrame(данные);
+        if (кадр.kind === 'audio' && кадр.audio) { куски.push(кадр.audio); счёт.аудио++; }
+        if (кадр.kind === 'end') { счёт.конец++; try { ws.close(); } catch { /* уже закрыто */ } закончить(); }
       } catch { /* битый кадр — пропускаем, речь из-за него не срываем */ }
     };
     ws.addEventListener('message', onMessage);
@@ -333,7 +346,14 @@ export async function synthesize(text, opts = {}) {
 
   await ждём;
   const всего = concat(куски);
-  if (!всего.length) return { ok: false, why: 'служба голоса не прислала звук' };
+  if (!всего.length) {
+    /* Причина словами + разбор, если он запрошен: у службы бывает по-разному —
+       и «молчит вовсе», и «прислала кадры, но не звук» (это разные болезни). */
+    const причина = счёт.аудио || счёт.конец ? 'служба голоса не прислала звук' : 'служба голоса молчит';
+    return opts.debug
+      ? { ok: false, why: причина, debug: { ...счёт, url: url.slice(0, 96) + '…', voice, заголовки: Object.keys(headers) } }
+      : { ok: false, why: причина };
+  }
   return { ok: true, audio: всего, mime: 'audio/mpeg', voice, cut, chars: forVoice.length };
 }
 

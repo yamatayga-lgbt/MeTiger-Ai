@@ -72,7 +72,10 @@ export async function onRequestPost(context) {
 
   const gender = body && body.gender === 'male' ? 'male' : 'female';
   const voice = (body && String(body.voice || '')) || pickVoice(text, gender);
-  const res = await synthesize(text, { voice, gender, env });
+  /* ?debug=1 — служебный разбор: сколько кадров пришло и что в них было. Нужен,
+     чтобы отличать «служба молчит» от «кадры пришли, но разобрались как чужие». */
+  const debug = url.searchParams.get('debug') === '1';
+  const res = await synthesize(text, { voice, gender, env, debug });
   if (!res.ok) {
     /* 200 с причиной, а не 5xx: это не сбой нашего входа, а «голос сейчас не
        ответил», и клиенту по этой причине надо перейти на речь устройства. */

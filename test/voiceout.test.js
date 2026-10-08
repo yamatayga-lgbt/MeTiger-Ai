@@ -145,6 +145,8 @@ console.log('T — синтез на подставном соединении (
   function подставное() {
     const отправлено = [];
     const слушатели = { message: [], close: [], error: [] };
+    /* Событие наружу: подставному соединению нужно уметь «прислать» кадр. */
+    const событие = (имя, ev) => (слушатели[имя] || []).forEach((f) => f(ev));
     const ws = {
       accept() {},
       close() { слушатели.close.forEach((f) => f()); },
@@ -163,6 +165,7 @@ console.log('T — синтез на подставном соединении (
         }
       },
       addEventListener(имя, f) { (слушатели[имя] = слушатели[имя] || []).push(f); },
+      событие,
       отправлено,
     };
     return ws;
@@ -186,7 +189,26 @@ console.log('T — синтез на подставном соединении (
   ws2.send = function () { /* молчит: ни кадров, ни конца */ };
   const молчит = await synthesize('Тишина', { connect: async () => ws2, timeoutMs: 60 });
   ok('T4: если служба молчит — понятная причина, а не пустой звук',
-    !молчит.ok && /не прислала звук/.test(молчит.why), JSON.stringify(молчит));
+    !молчит.ok && /молчит/.test(молчит.why), JSON.stringify(молчит));
+
+  /* Разные болезни — разные слова: «молчит вовсе» и «прислала кадры, но без звука»
+     (второе видели на проде: соединение есть, кадры есть, аудио нет). */
+  const ws3 = подставное();
+  ws3.send = function (текст) {
+    if (/Path:ssml/.test(текст)) setTimeout(() => ws3.событие('message', { data: 'Path:turn.end\r\n\r\n' }), 0);
+  };
+  const безЗвука = await synthesize('Проверка', { connect: async () => ws3, timeoutMs: 500 });
+  ok('T4б: кадры пришли, а звука нет — сказано именно это, с разбором по ?debug=1',
+    !безЗвука.ok && /не прислала звук/.test(безЗвука.why), JSON.stringify(безЗвука));
+
+  const ws4 = подставное();
+  ws4.send = function (текст) {
+    if (/Path:ssml/.test(текст)) setTimeout(() => ws4.событие('message', { data: 'Path:turn.end\r\n\r\n' }), 0);
+  };
+  const сРазбором = await synthesize('Проверка', { connect: async () => ws4, timeoutMs: 500, debug: true });
+  ok('T4в: с ?debug=1 видно, сколько кадров пришло и чем они были',
+    !сРазбором.ok && сРазбором.debug && сРазбором.debug.кадров >= 1 && сРазбором.debug.конец >= 1,
+    JSON.stringify(сРазбором.debug));
 
   const нет = await synthesize('Текст', { connect: async () => { throw new Error('сети нет'); } });
   ok('T5: недоступная служба — причина словами', !нет.ok && /недоступна/.test(нет.why), JSON.stringify(нет));
