@@ -387,14 +387,17 @@ export default function App() {
           1,
           Math.round(((thinkEndedAt || Date.now()) - startedAt) / 1000),
         )
+        /* Неполный ответ (поток оборвался, но текст успел прийти) показываем как
+           есть: он настоящий, человек его уже читал. Пометка об обрыве уходит
+           отдельной строкой под пузырём — не вместо ответа. */
         const reply =
-          r.ok && r.reply
+          r.reply && (r.ok || r.partial)
             ? r.reply
             : import.meta.env.DEV
               ? generateReply(text) + '\n\n_демо-ответ: /api/chat не ответил (' + (r.error || 'нет связи') + ')_'
               : '⚠️ ' + (r.error || 'сервис не отвечает') + '. Это не ответ агента — движок сейчас недоступен.'
         const advice = r.ok ? adviceLine(r) : null
-        const meta = r.ok
+        const meta = r.ok || r.partial
           ? {
               src: sourceLine(r),
               advice: advice?.text || '',
@@ -403,6 +406,8 @@ export default function App() {
                  localStorage кончает квоту молча и ломает сохранение всего чата */
               files: r.files && r.files.length ? r.files : undefined,
               fileError: r.fileError || undefined,
+              /* обрыв потока: текст оставляем, про неполноту говорим снизу */
+              warn: r.partial ? '⚠️ Ответ неполный: ' + (r.error || 'хвост не пришёл') : undefined,
               skills: r.skills && r.skills.length ? r.skills : undefined,
               tools: r.tools && r.tools.length ? r.tools : undefined,
               ms: r.ms,
@@ -414,8 +419,8 @@ export default function App() {
               notes: r.ok ? notesLine(r) || undefined : undefined,
               /* что модель передумала по дороге — над ответом, автоматически свёрнуто в <details>:
                  думать вслух — постоянная функция для думающих моделей */
-              reasoning: r.ok && allowThink && r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
-              thinkingSec: r.ok && allowThink && r.reasoning ? finalThinkSec : undefined,
+              reasoning: (r.ok || r.partial) && allowThink && r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
+              thinkingSec: (r.ok || r.partial) && allowThink && r.reasoning ? finalThinkSec : undefined,
               /* проверенные ссылки из поиска/вики/новостей — кликабельны под ответом */
               sources: r.ok && Array.isArray(r.sources) && r.sources.length ? r.sources.slice(0, 8) : undefined,
               /* шаги веб-поиска (Searched for / Fetched) для блока Searching the web */

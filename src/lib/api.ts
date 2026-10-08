@@ -89,6 +89,8 @@ export interface ChatResult {
   /** Запрос оборвал человек кнопкой «Остановить» — это не сбой сети и не таймаут,
       UI не должен показывать это как ошибку движка. */
   stopped?: boolean
+  /** Поток оборвался, но текст успел прийти: ответ неполный, хвоста нет. */
+  partial?: boolean
 }
 
 export interface SseEvent {
@@ -133,6 +135,13 @@ export function parseSse(buf: string): { events: SseEvent[]; rest: string } {
 }
 
 /** Читает поток ответа, показывает черновик и возвращает финальный payload (или null). */
+/** Что человек уже успел прочитать в оборвавшемся потоке. Пусто — значит не пришло
+ *  ни слова, и тогда честнее сказать «ответ оборвался», а не показывать пустоту. */
+export interface PartialDraft {
+  text: string
+  reasoning: string
+}
+
 async function readDraftStream(
   res: Response,
   onDraft?: (text: string | null) => void,
@@ -140,6 +149,8 @@ async function readDraftStream(
   onWebSteps?: (steps: WebStep[]) => void,
   /** Поток жив: каждое прочитанное событие — повод перенастроить сторожок времени. */
   onAlive?: () => void,
+  /** Куда положить прочитанное, если финала не будет (см. PartialDraft). */
+  out?: PartialDraft,
 ): Promise<Partial<ChatResult> | null> {
   const rd = res.body && typeof res.body.getReader === 'function' ? res.body.getReader() : null
   if (!rd) return null
@@ -179,6 +190,12 @@ async function readDraftStream(
         final = ev.payload as Partial<ChatResult>
       }
     }
+  }
+  /* Поток кончился без финала. Выбрасывать накопленное нельзя: человек это уже
+     читал на экране, и потерять написанное из-за обрыва связи — худшее из решений. */
+  if (!final && out) {
+    out.text = draft || ''
+    out.reasoning = reason || ''
   }
   return final
 }
@@ -523,13 +540,18 @@ export async function sendChat(
     if ((opts.onDraft || opts.onReasoning) && (res.headers.get('content-type') || '').indexOf('text/event-stream') >= 0) {
       // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
       // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
-      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, onAlive)) as Partial<ChatResult> | null
+      const partial: PartialDraft = { text: '', reasoning: '' }
+      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, onAlive, partial)) as Partial<ChatResult> | null
       if (!fin) {
         // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
-        // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост
+        // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост.
+        // Текст, который уже был на экране, остаётся ответом: он настоящий, его
+        // потерять дороже, чем признать, что хвоста нет.
         return {
           ok: false,
-          reply: '',
+          reply: partial.text,
+          reasoning: partial.reasoning || undefined,
+          partial: !!partial.text,
           error: alive
             ? 'связь оборвалась на середине ответа — повторите запрос'
             : 'ответ оборвался на середине',

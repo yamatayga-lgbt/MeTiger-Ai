@@ -20,6 +20,8 @@ export interface ChatMessage {
   files?: { name: string; mime: string; size: number; b64: string; kind?: string; source?: string; lines?: number }[]
   /** Причина, по которой картинка или документ не пришли, — словами источника. */
   fileError?: string
+  /** Ответ неполный: поток оборвался, хвоста нет. Строка под пузырём, не вместо ответа. */
+  warn?: string
   /** Навыки, включившиеся по смыслу этого вопроса. */
   skills?: string[]
   /* Файлы, которые приложил человек: только имя и вес. Base64 в localStorage
