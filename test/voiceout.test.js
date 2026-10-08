@@ -187,7 +187,7 @@ console.log('T — синтез на подставном соединении (
 
   const ws2 = подставное();
   ws2.send = function () { /* молчит: ни кадров, ни конца */ };
-  const молчит = await synthesize('Тишина', { connect: async () => ws2, timeoutMs: 60 });
+  const молчит = await synthesize('Тишина', { attempts: 1, connect: async () => ws2, timeoutMs: 60 });
   ok('T4: если служба молчит — понятная причина, а не пустой звук',
     !молчит.ok && /молчит/.test(молчит.why), JSON.stringify(молчит));
 
@@ -197,7 +197,7 @@ console.log('T — синтез на подставном соединении (
   ws3.send = function (текст) {
     if (/Path:ssml/.test(текст)) setTimeout(() => ws3.событие('message', { data: 'Path:turn.end\r\n\r\n' }), 0);
   };
-  const безЗвука = await synthesize('Проверка', { connect: async () => ws3, timeoutMs: 500 });
+  const безЗвука = await synthesize('Проверка', { attempts: 1, connect: async () => ws3, timeoutMs: 500 });
   ok('T4б: кадры пришли, а звука нет — сказано именно это, с разбором по ?debug=1',
     !безЗвука.ok && /не прислала звук/.test(безЗвука.why), JSON.stringify(безЗвука));
 
@@ -205,7 +205,7 @@ console.log('T — синтез на подставном соединении (
   ws4.send = function (текст) {
     if (/Path:ssml/.test(текст)) setTimeout(() => ws4.событие('message', { data: 'Path:turn.end\r\n\r\n' }), 0);
   };
-  const сРазбором = await synthesize('Проверка', { connect: async () => ws4, timeoutMs: 500, debug: true });
+  const сРазбором = await synthesize('Проверка', { attempts: 1, connect: async () => ws4, timeoutMs: 500, debug: true });
   ok('T4в: с ?debug=1 видно, сколько кадров пришло и чем они были',
     !сРазбором.ok && сРазбором.debug && сРазбором.debug.кадров >= 1 && сРазбором.debug.конец >= 1,
     JSON.stringify(сРазбором.debug));
@@ -254,7 +254,27 @@ console.log('T — синтез на подставном соединении (
     чужаяФорма.ok === true || (чужаяФорма.debug && typeof чужаяФорма.debug.форма === 'string'),
     JSON.stringify(чужаяФорма.debug && чужаяФорма.debug.форма));
 
-  const код = await synthesize('```js\nlet a = 1;\n```', { connect: async () => { throw new Error('нет'); } });
+  /* Служба изредка отбивает запрос молчанием — на проде так было дважды подряд,
+     а через минуту тот же запрос проходил. Один повтор закрывает эту случайность. */
+  let заходов = 0;
+  const сПовтором = await synthesize('Повтор после молчания', {
+    connect: async () => { заходов++; return заходов === 1 ? молчащее() : службаС('blob'); },
+    timeoutMs: 200,
+  });
+  ok('T10: молчание службы — одна повторная попытка, и звук есть',
+    сПовтором.ok && заходов === 2 && сПовтором.audio.length === 6 && сПовтором.заход === 2,
+    JSON.stringify({ ok: сПовтором.ok, заходов, заход: сПовтором.заход }));
+  let зряХодили = 0;
+  const безПовтора = await synthesize('🔥🎉✅', { connect: async () => { зряХодили++; return молчащее(); }, timeoutMs: 200 });
+  ok('T11: «нечего читать» не повторяем и не соединяемся зря',
+    !безПовтора.ok && безПовтора.why === 'нечего читать' && зряХодили === 0, JSON.stringify(безПовтора));
+
+  function молчащее() {
+    const ws = подставное();
+    ws.send = function () { /* ни кадра, ни конца */ };
+    return ws;
+  }
+  const код = await synthesize('```js\nlet a = 1;\n```', { attempts: 1, connect: async () => { throw new Error('нет'); } });
   ok('T7: ответ из одного блока кода читается пометкой «Пример кода», а не кодом',
     !код.ok && /недоступна/.test(код.why), JSON.stringify(код));
 }

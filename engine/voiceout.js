@@ -306,7 +306,23 @@ async function wsConnect(url, headers) {
  * Синтез речи: текст → mp3 (Promise<ArrayBuffer> в обёртке с причиной).
  * `connect` можно подменить — так проверки гоняют протокол без сети.
  */
+/**
+ * Синтез с одной повторной попыткой. Служба голоса изредка отбивает запрос
+ * молчанием — на проде это видели дважды подряд, а через минуту тот же запрос
+ * проходил (32 976 Б, байт в байт). Один повтор закрывает такую случайность;
+ * «нечего читать» не повторяем — от повтора лучше не станет.
+ */
 export async function synthesize(text, opts = {}) {
+  const попыток = Math.max(1, Number(opts.attempts) || 2);
+  let итог = null;
+  for (let заход = 1; заход <= попыток; заход++) {
+    итог = await синтезОдин(text, opts, заход);
+    if (итог.ok || !итог.повтор) return итог;
+  }
+  return итог;
+}
+
+async function синтезОдин(text, opts = {}, заход = 1) {
   const speech = speechText(text);
   if (speech.length < TTS_LIMITS.MIN_CHARS) return { ok: false, why: 'нечего читать' };
   const { text: forVoice, cut } = clampSpeech(speech, opts.maxChars || TTS_LIMITS.MAX_CHARS);
@@ -333,7 +349,7 @@ export async function synthesize(text, opts = {}) {
   try {
     ws = await connect(url, headers);
   } catch (e) {
-    return { ok: false, why: 'служба голоса недоступна: ' + short(e) };
+    return { ok: false, why: 'служба голоса недоступна: ' + short(e), повтор: true, заход };
   }
 
   const куски = [];
@@ -400,10 +416,10 @@ export async function synthesize(text, opts = {}) {
        и «молчит вовсе», и «прислала кадры, но не звук» (это разные болезни). */
     const причина = счёт.аудио || счёт.конец ? 'служба голоса не прислала звук' : 'служба голоса молчит';
     return opts.debug
-      ? { ok: false, why: причина, debug: { ...счёт, url: url.slice(0, 96) + '…', voice, заголовки: Object.keys(headers) } }
-      : { ok: false, why: причина };
+      ? { ok: false, why: причина, повтор: true, заход, debug: { ...счёт, заходов: заход, url: url.slice(0, 96) + '…', voice, заголовки: Object.keys(headers) } }
+      : { ok: false, why: причина, повтор: true, заход };
   }
-  return { ok: true, audio: всего, mime: 'audio/mpeg', voice, cut, chars: forVoice.length };
+  return { ok: true, audio: всего, mime: 'audio/mpeg', voice, cut, chars: forVoice.length, заход };
 }
 
 function short(e) {
