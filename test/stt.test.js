@@ -106,5 +106,37 @@ console.log('STT — голосовой ввод приложения: вход,
     res.status === 200 && d.ok === true && d.maxBytes === 8 * 1024 * 1024 && !!d.sources && !!d.sources.models, JSON.stringify(d).slice(0, 160));
 }
 
+{
+  /* Проверка одного источника наружу: ?via=cloudflare обязан дойти до движка.
+     Этот тест появился не зря — первая версия правки молча НЕ применилась (текст
+     не совпал, замены не было), и заметить это можно было только живым запросом:
+     /api/stt продолжал ходить в Groq, как будто никакого via нет. */
+  const realFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (u, i) => { calls.push(String(u)); return json({ result: { text: 'из клауда' }, success: true }) }
+  try {
+    const res = await onRequestPost({
+      request: req(AUDIO, { query: '?lang=ru&via=cloudflare' }),
+      env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1', RATE_LIMIT: '0' },
+    })
+    const d = await res.json()
+    ok('S11: ?via=cloudflare доходит до движка — запрос идёт в Cloudflare, а не в Groq',
+      calls.length === 1 && /cloudflare\.com/.test(calls[0]) && /cloudflare/.test(String(d.provider)),
+      JSON.stringify({ calls: calls.map((c) => c.slice(0, 46)), provider: d.provider }));
+  } finally { globalThis.fetch = realFetch }
+}
+{
+  /* Мусор в via не должен ломать путь: это служебный ключ, а не команда. */
+  const realFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (u) => { calls.push(String(u)); return json({ text: 'обычный путь' }) }
+  try {
+    const res = await onRequestPost({ request: req(AUDIO, { query: '?via=сломай-всё' }), env: { GROQ_KEYS: 'gk1', RATE_LIMIT: '0' } })
+    const d = await res.json()
+    ok('S12: неизвестное значение via игнорируется — идём обычным порядком',
+      d.ok === true && /groq/.test(String(d.provider)) && calls.length === 1, JSON.stringify(d));
+  } finally { globalThis.fetch = realFetch }
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exitCode = 1;

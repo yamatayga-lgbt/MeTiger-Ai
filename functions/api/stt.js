@@ -62,7 +62,16 @@ export async function onRequestPost(context) {
   }
 
   const stt = createStt({ env, log: () => {} });
-  const res = await stt.transcribe({ bytes, mime: mimeOf(request), lang: url.searchParams.get('lang') || '' });
+  /* ?via=groq|cloudflare|openrouter — служебная проверка одного источника. Без неё
+     запасной путь нельзя подтвердить живьём, пока первый отвечает: остаётся
+     «написано и покрыто заглушками», а это не проверка. */
+  const via = String(url.searchParams.get('via') || '').toLowerCase();
+  const res = await stt.transcribe({
+    bytes,
+    mime: mimeOf(request),
+    lang: url.searchParams.get('lang') || '',
+    via: ['groq', 'cloudflare', 'openrouter'].includes(via) ? via : '',
+  });
   if (!res.ok) return json({ ok: false, error: res.why || 'речь не разобрал' }, 200);
   return json({ ok: true, text: res.text, provider: res.via || '' });
 }
