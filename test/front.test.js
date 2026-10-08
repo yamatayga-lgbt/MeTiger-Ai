@@ -648,6 +648,19 @@ console.log('L2 — песочница: Python через Pyodide (второй 
 
   {
     const saved = globalThis.fetch;
+    try {
+      /* Ни одного куска: это «ответ оборвался на середине» без слова про связь —
+         здесь соединение и правда молчало с самого начала. */
+      let первый = true;
+      globalThis.fetch = async () => (первый ? (первый = false, sseRes(['data: {"kind":"fin'])) : sseRes(['data: {"kind":"fin']));
+      const r = await sendChat('текст', [], { onDraft: () => {} });
+      ok('M9c: поток без единого события — это «ответ оборвался», а не «связь оборвалась»',
+        r.ok === false && r.error === 'ответ оборвался на середине', JSON.stringify(r));
+    } finally { globalThis.fetch = saved }
+  }
+
+  {
+    const saved = globalThis.fetch;
     const seen = [];
     try {
       globalThis.fetch = async (url, init) => {
@@ -689,7 +702,15 @@ console.log('L2 — песочница: Python через Pyodide (второй 
       globalThis.fetch = async () => sseRes([draftEv('начало'), 'data: {"kind":"fin']);
       const r = await sendChat('текст', [], { onDraft: () => {} });
       ok('M9: поток закрыли без финала — отказ назван, а не показан пустой ответ',
-        r.ok === false && /оборвался/.test(r.error || ''), JSON.stringify(r).slice(0, 140));
+        r.ok === false && /оборвал(ся|ась)/.test(r.error || ''), JSON.stringify(r).slice(0, 140));
+      /* Поток, который успел прислать куски и оборвался, и поток, который не прислал
+         ничего, — разные беды: в первом случае соединение жило (текст уже был на
+         экране), во втором молчал с самого начала. Одна надпись на оба случая
+         говорила бы человеку «движок недоступен» там, где движок работал. */
+      const r2 = await sendChat('текст', [], { onDraft: () => {} });
+      ok('M9b: живой поток, оборвавшийся на середине, называется связью — а не поломкой движка',
+        /связь оборвалась/.test(r && r.error || '') && /повторите запрос/.test(r && r.error || ''),
+        JSON.stringify(r && r.error));
     } finally { globalThis.fetch = saved }
   }
 
@@ -1612,6 +1633,17 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N51: «глубже» не обрывается на 75-й секунде — человек просил не спешить',
     /opts\.deep \? 120_000 : 75_000/.test(apiDeep)
       && /deadlineMs: Number\(env\.CHAT_DEADLINE_MS \|\| \(wantDeep \? 75000 : 50000\)\)/.test(readFileSync('functions/api/chat.js', 'utf8')));
+
+  /* Сторожок времени: раньше он убивал живой поток. На проде ответ собирался 83 с,
+     на 75-й клиент обрывал связь, и человек читал «ответ оборвался на середине» —
+     при том что модель продолжала писать. Теперь продлевается, пока идут события. */
+  ok('N52: время ответа продлевается, пока поток живой, а молчание и общий потолок остаются',
+    /const onAlive = \(\) => \{/.test(apiDeep)
+      && /onAlive\)\) as Partial<ChatResult> \| null/.test(apiDeep)
+      && /if \(got\.events\.length && onAlive\) onAlive\(\)/.test(apiDeep)
+      && /SILENCE_MS = 45_000/.test(apiDeep)
+      && /CEILING_MS = opts\.deep \? 150_000 : 120_000/.test(apiDeep)
+      && /'связь оборвалась на середине ответа — повторите запрос'/.test(apiDeep));
 
   ok('N47: видно, что уточнение идёт прямо сейчас (иначе слова меняются «сами»)',
     /voice-tag/.test(chatSrc) && /\.voice-tag \{/.test(css) && /liveBusy/.test(chatSrc));

@@ -14,7 +14,7 @@ import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil } from '../../engine/c
 /* Разбор тегов размышлений — одним правилом с engine/shape.js: раньше здесь были
    свои regex, и стоило модели назвать тег иначе («<вкладка:thinking>»), как ход
    мыслей уезжал человеку обычным текстом ответа. */
-import { THINK_OPEN, THINK_CLOSE, THINK_OPEN_PARTIAL } from '../../engine/shape.js';
+import { THINK_OPEN, THINK_CLOSE, THINK_OPEN_PARTIAL, stripThinkTags } from '../../engine/shape.js';
 import * as genderLayer from '../../engine/gender.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import { createBrave } from '../../engine/brave.js';
@@ -439,6 +439,12 @@ async function handlePost(context) {
             context.__send({ kind: 'web', step: ev.step });
             return;
           }
+          /* Новая генерация после обрыва по лимиту токенов: состояние тега сбрасывается.
+             Иначе продолжение начинается с `<think>`, а разбор ждёт тег только в начале. */
+          if (ev.kind === 'reset') {
+            resetThink();
+            return;
+          }
           if (ev.kind === 'reason') {
             if (!wantReasoning) return;
             context.__send({ kind: 'draft', channel: 'reasoning', provider: ev.provider, model: ev.model, text: ev.text || '' });
@@ -464,7 +470,7 @@ async function handlePost(context) {
     }
   }
 
-  const r = await engine.run({
+  const r0 = await engine.run({
     /* нормализованные поля, а не сырые из тела: иначе потолок из env на «system»
        и «text» был бы просто украшением, а provider с путью дошёл бы до выбора */
     text: norm.text || text, history,
@@ -504,6 +510,23 @@ async function handlePost(context) {
        секунду, не должен получить право висеть полторы минуты. */
     deadlineMs: Number(env.CHAT_DEADLINE_MS || (wantDeep ? 75000 : 50000)),
   });
+  /* Тег размышлений не показывается человеку ни в каком виде: ни закрытый посреди
+     ответа, ни незакрытый хвостом. В потоке разбор чистит его по ходу (feedDelta),
+     но середина ответа и продолжение оборванного ответа проходят мимо — поэтому
+     последняя проверка стоит здесь, на финальном тексте, и она же кормит `reasoning`,
+     чтобы ничего не потерялось молча. */
+  const r = r0 && r0.ok
+    ? (() => {
+        const cut = stripThinkTags(r0.reply);
+        return cut.text === r0.reply
+          ? r0
+          : Object.assign({}, r0, {
+              reply: cut.text,
+              reasoning: [r0.reasoning || '', cut.reasoning || ''].filter(Boolean).join('\n').trim(),
+            });
+      })()
+    : r0;
+
 
   /* Наказания, набранные в этом ответе, уходят в общее хранилище уже после того,
      как человек получил свой текст: одна запись не должна добавлять ему секунд. */

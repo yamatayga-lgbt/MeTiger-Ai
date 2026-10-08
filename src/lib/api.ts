@@ -138,6 +138,8 @@ async function readDraftStream(
   onDraft?: (text: string | null) => void,
   onReasoning?: (text: string | null) => void,
   onWebSteps?: (steps: WebStep[]) => void,
+  /** Поток жив: каждое прочитанное событие — повод перенастроить сторожок времени. */
+  onAlive?: () => void,
 ): Promise<Partial<ChatResult> | null> {
   const rd = res.body && typeof res.body.getReader === 'function' ? res.body.getReader() : null
   if (!rd) return null
@@ -153,6 +155,9 @@ async function readDraftStream(
     buf += dec.decode(r.value, { stream: true })
     const got = parseSse(buf)
     buf = got.rest
+    /* «Живой» — только по разобранному событию: байты без содержания (обрывок
+       события, служебная строка) не доказывают, что ответ ещё пишется. */
+    if (got.events.length && onAlive) onAlive()
     for (const ev of got.events) {
       if (ev.kind === 'web' && ev.step) {
         webSteps.push(ev.step)
@@ -459,9 +464,28 @@ export async function sendChat(
   } = {},
 ): Promise<ChatResult> {
   const ac = new AbortController()
-  /* Глубокий режим думает дольше — и обрывать его на 75-й секунде значит отвечать
-     «ответ оборвался» ровно там, где человек попросил не спешить. */
-  const timer = setTimeout(() => ac.abort(), opts.deep ? 120_000 : 75_000)
+  /* Сторожок времени — не «сколько всего может длиться ответ», а «сколько ждать
+     тишины». Прежний жёсткий таймер убивал живой поток: замер на проде — ответ
+     собирался 83 секунды, на 75-й клиент оборвал соединение, и человек прочитал
+     «ответ оборвался на середине» при том, что модель ещё писала (та же ветка
+     давала «движок недоступен» — самая честная надпись врала). Правило теперь:
+     пока поток присылает события, время продлевается; молчание дольше SILENCE
+     или общий потолок CEILING — это уже не медленная модель, а оборванная связь.
+     Глубокий режим думает дольше — и потолок у него выше (движок даёт ему 75 с). */
+  const SILENCE_MS = 45_000
+  const CEILING_MS = opts.deep ? 150_000 : 120_000
+  const startedAt = Date.now()
+  let timer = 0
+  let alive = false
+  const arm = (ms: number) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => ac.abort(), Math.max(1_000, ms))
+  }
+  arm(opts.deep ? 120_000 : 75_000)
+  const onAlive = () => {
+    alive = true
+    arm(Math.min(SILENCE_MS, CEILING_MS - (Date.now() - startedAt)))
+  }
   if (opts.signal) opts.signal.addEventListener('abort', () => ac.abort(), { once: true })
   try {
     const res = await fetch(ENDPOINT, {
@@ -499,11 +523,17 @@ export async function sendChat(
     if ((opts.onDraft || opts.onReasoning) && (res.headers.get('content-type') || '').indexOf('text/event-stream') >= 0) {
       // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
       // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
-      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps)) as Partial<ChatResult> | null
+      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, onAlive)) as Partial<ChatResult> | null
       if (!fin) {
         // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
         // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост
-        return { ok: false, reply: '', error: 'ответ оборвался на середине' }
+        return {
+          ok: false,
+          reply: '',
+          error: alive
+            ? 'связь оборвалась на середине ответа — повторите запрос'
+            : 'ответ оборвался на середине',
+        }
       }
       data = fin
     } else {

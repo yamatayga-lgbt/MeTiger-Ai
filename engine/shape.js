@@ -37,16 +37,40 @@ export function parseDataUrl(src) {
   return m ? { mime: m[1], data: m[2] } : null;
 }
 
+/** Незакрытый тег размышлений: модель начала думать вслух и не закрыла блок
+ *  (обрыв по лимиту токенов или повторное размышление посреди ответа). Проверено
+ *  на живом ответе: за доказательством шло `We need to advise on architecture
+ *  choice…` без закрывающего тега — человек читал это как ответ.
+ *
+ *  Порядок важен: сначала вынимаются ЗАКРЫТЫЕ блоки, и только в оставшемся тексте
+ *  ищется незакрытый хвост. Наоборот — незакрытое правило съедало закрытый блок
+ *  целиком (проверено: `<вкладка:thinking>мысли</вкладка:thinking>Ответ` отдавало
+ *  пустой ответ). */
+const THINK_TAIL = new RegExp('<\\s*(' + THINK_NAME_SRC + ')[^>]*>[\\s\\S]*$', 'i');
+
 /** Ход мыслей не должен попадать в ответ: это разные поля и разная цена. */
 export function stripThinkTags(text) {
   const t = String(text == null ? '' : text);
   THINK_TAG.lastIndex = 0;
-  if (!THINK_TAG.test(t)) return { text: t.trim(), reasoning: '' };
+  const found = t.match(THINK_TAG) || [];
+  const reasoning = found.map((seg) => seg.replace(THINK_TAG, '$2')).join('\n').trim();
+  let body = t.replace(THINK_TAG, ' ');
+  /* Незакрытый хвост режется только когда он идёт от начала строки: так выглядит
+     настоящее размышление. `<think>` внутри строки кода — не он, и трогать его
+     нельзя (T4: html-пример остаётся ответом). */
+  THINK_TAIL.lastIndex = 0;
+  const tail = THINK_TAIL.exec(body);
+  let tailReason = '';
+  if (tail && (tail.index === 0 || /\n\s*$/.test(body.slice(0, tail.index)))) {
+    tailReason = body.slice(tail.index).replace(/^<\s*[^>]*>/, '').trim();
+    body = body.slice(0, tail.index);
+  }
   return {
-    text: t.replace(THINK_TAG, ' ').replace(/\s*\n\s*\n\s*/g, '\n\n').trim(),
-    reasoning: (t.match(THINK_TAG) || []).map((seg) => seg.replace(THINK_TAG, '$2')).join('\n').trim(),
+    text: body.replace(/\s*\n\s*\n\s*/g, '\n\n').trim(),
+    reasoning: (reasoning + (tailReason ? (reasoning ? '\n' : '') + tailReason : '')).trim(),
   };
 }
+
 
 /**
  * Ответ, который на деле является ошибкой провайдера или отказом.

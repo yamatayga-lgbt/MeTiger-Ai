@@ -218,6 +218,12 @@ console.log('T — ход мыслей не показывается ответ�
   const t4 = stripThinkTags('<div class="x">код html</div> и текст');
   ok('T4: чужой тег (html в примере кода) ответом не считается — ложных срабатываний нет',
     t4.reasoning === '' && /код html/.test(t4.text), JSON.stringify(t4));
+  const t6 = stripThinkTags('Доказательство: √2 иррационально.\n<think>We need to advise on architecture choice and weigh factors');
+  ok('T6: незакрытый хвост размышлений режется, а его текст уходит в reasoning, а не пропадает',
+    t6.text === 'Доказательство: √2 иррационально.' && /We need to advise/.test(t6.reasoning), JSON.stringify(t6));
+  const t7 = stripThinkTags('Вот пример: `и тег <think>` в тексте протокола');
+  ok('T7: тег внутри строки не режет ответ — незакрытое правило смотрит на начало строки',
+    /и тег <think>/.test(t7.text) && t7.reasoning === '', JSON.stringify(t7));
   ok('T5: неполный тег узнаётся — поток может оборвать кусок посреди имени',
     THINK_OPEN_PARTIAL.test('<вкл') && THINK_OPEN_PARTIAL.test('</think') && !THINK_OPEN_PARTIAL.test('<div class='));
 }

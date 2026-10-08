@@ -332,5 +332,72 @@ console.log('── H · SSE-обёртка двери /api/chat ───');
   });
 }
 
+/* ── Тег посреди ответа и продолжение оборванного ответа ────────────────────
+   Живой случай: после 40 секунд размышления в пузыре стояло `<think> We need to
+   advise on architecture choice…` — модель начала вторую порцию размышлений уже
+   ПОСЛЕ ответа, а разбор ждёт тег только в начале. Вторая дорога туда же: движок
+   досылает оборванный по лимиту токенов ответ второй генерацией, и она снова
+   начинается с `<think>`. Правило: в финальном тексте тега быть не может. */
+{
+  await withFetch(async () => {
+    const tOpen = '<' + 'think>';
+    globalThis.fetch = async () => {
+      const rows = [
+        { choices: [{ delta: { content: 'Ответ: монолит.' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: '\n' + tOpen + ' We need to advise on architecture choice' }, finish_reason: '' }] },
+        { choices: [{ delta: { content: ' and weigh factors…' }, finish_reason: 'stop' }] },
+      ];
+      const rs = new ReadableStream({
+        start(c) {
+          for (const x of rows) c.enqueue(enc.encode('data: ' + JSON.stringify(x) + '\n\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      });
+      return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+    };
+    const res = await post({ text: 'что лучше: монолит или микросервисы', chatId: 'sse14', showReasoning: true }, SSE);
+    const { events: ev } = await drain(res);
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H18: незакрытый тег размышлений посреди ответа не доходит до человека, а его текст не теряется',
+      fin.payload.reply === 'Ответ: монолит.'
+        && /We need to advise on architecture choice/.test(fin.payload.reasoning),
+      JSON.stringify({ reply: fin.payload.reply, reasoning: (fin.payload.reasoning || '').slice(0, 60) }));
+  });
+
+  /* Продолжение — новая генерация: сигнал reset сбрасывает состояние тега, и мысли
+     второй генерации уходят в канал reasoning, а не в текст ответа. */
+  await withFetch(async () => {
+    let call = 0;
+    globalThis.fetch = async () => {
+      call++;
+      const tOpen = '<' + 'think>';
+      const tClose = '<' + '/think>';
+      const rows = call === 1
+        ? [{ choices: [{ delta: { content: 'Начало ответа' }, finish_reason: 'length' }] }]
+        : [
+            { choices: [{ delta: { content: tOpen + 'теперь продолжу с того места' + tClose + ', где оборвался: и закончу мысль.' }, finish_reason: '' }] },
+            { choices: [{ delta: { content: ' Точка.' }, finish_reason: 'stop' }] },
+          ];
+      const rs = new ReadableStream({
+        start(c) {
+          for (const x of rows) c.enqueue(enc.encode('data: ' + JSON.stringify(x) + '\n\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      });
+      return new Response(rs, { status: 200, headers: { 'content-type': SSE } });
+    };
+    const res = await post({ text: 'расскажи подробно', chatId: 'sse15', showReasoning: true }, SSE);
+    const { events: ev } = await drain(res);
+    const answer = ev.filter((e) => e.kind === 'draft' && !e.channel).map((e) => e.text).join('');
+    const fin = ev.filter((e) => e.kind === 'final').pop();
+    ok('H19: продолжение оборванного ответа не выкладывает размышления текстом (сигнал reset сбрасывает разбор)',
+      answer.indexOf('теперь продолжу') < 0 && answer.indexOf('Начало ответа') >= 0
+        && fin.payload.reply.indexOf('<') < 0 && /и закончу мысль/.test(fin.payload.reply),
+      JSON.stringify({ a: answer.slice(0, 80), reply: fin.payload.reply }));
+  });
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

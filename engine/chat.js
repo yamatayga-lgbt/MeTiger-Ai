@@ -561,6 +561,14 @@ export function createEngine(opts) {
           /* Обрыв на лимите токенов: одна допылка у того же провайдера, не молча обрывать. */
           let reply = r.reply;
           if (r.finish === 'length' && input.continueOnTruncate !== false) {
+            /* Продолжение — новая генерация той же модели: она снова может начать
+               с блока размышлений. Разбор потока обязан это знать, иначе тег и
+               английские мысли уезжают человеку обычным текстом ответа (живой
+               случай: `<think> We need to advise on architecture choice…` в
+               пузыре после 40-секундного размышления). Клиент этот сигнал не
+               видит — он ничего не показывает, только сбрасывает своё состояние
+               тега (functions/api/chat.js). */
+            if (onDelta) { try { onDelta({ kind: 'reset', provider: id, model }); } catch (e) { /* наблюдатель упал — поток не его вина */ } }
             const more = await run({
               ...input, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-900),
               history: [], system: 'Ты продолжаешь оборванный ответ.', providerOrder: [id], continueOnTruncate: false,
