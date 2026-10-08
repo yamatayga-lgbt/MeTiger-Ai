@@ -2320,6 +2320,21 @@ kbd {
   }
 }
 
+/* Отметка «уточняю»: короткая, приглушённая, рядом со временем. Она нужна ровно
+   затем, чтобы появление слов в поле во время речи не выглядело чудом. */
+.voice-tag {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--accent-strong);
+  animation: fadeUp var(--t-fast) both;
+}
+
 /* Две кнопки полосы: крестик и галочка. Обе не меньше 34 px — по ним попадают
    на ходу, одной рукой, не глядя. */
 .voice-ic {

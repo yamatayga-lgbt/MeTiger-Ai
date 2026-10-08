@@ -31,11 +31,12 @@ function net(answer) {
 
 function req(body, opts) {
   const o = opts || {};
-  return new Request('https://metiger-ai.pages.dev/api/stt' + (o.query || ''), {
-    method: 'POST',
-    headers: o.mime === null ? {} : { 'content-type': o.mime || 'audio/webm' },
-    body,
-  });
+  const headers = o.mime === null ? {} : { 'content-type': o.mime || 'audio/webm' };
+  /* Свой адрес на каждую проверку частоты: у ограничителя счёт идёт по ip, и без
+     этого проверки делили бы один счётчик с соседними — тест падал бы не из-за
+     кода, а из-за порядка строк в файле. */
+  if (o.ip) headers['cf-connecting-ip'] = o.ip;
+  return new Request('https://metiger-ai.pages.dev/api/stt' + (o.query || ''), { method: 'POST', headers, body });
 }
 
 console.log('STT — голосовой ввод приложения: вход, форматы, язык, причины');
@@ -73,13 +74,21 @@ console.log('STT — голосовой ввод приложения: вход,
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => json({ text: 'ок' });
   try {
-    /* RATE_MAX=1 — так ограничитель виден сразу: второй запрос в ту же минуту мимо. */
-    const env = { GROQ_KEYS: 'gk1', RATE_MAX: '1', RATE_WINDOW_MS: '60000' };
-    const one = await onRequestPost({ request: req(AUDIO), env });
-    const two = await onRequestPost({ request: req(AUDIO), env });
+    /* RATE_MAX=1 — потолок виден сразу: второй запрос в ту же минуту мимо. */
+    const env = { GROQ_KEYS: 'gk1', STT_RATE_MAX: '1', RATE_WINDOW_MS: '60000' };
+    const one = await onRequestPost({ request: req(AUDIO, { ip: 'stt-a6' }), env });
+    const two = await onRequestPost({ request: req(AUDIO, { ip: 'stt-a6' }), env });
     const d2 = await two.json();
-    ok('S6: на входе стоит тот же ограничитель частоты, что у чата (второй запрос — 429)',
+    ok('S6: на входе есть ограничитель частоты (второй запрос в окно — 429)',
       one.status === 200 && two.status === 429 && d2.ok === false && /часто/.test(d2.error), JSON.stringify({ one: one.status, two: two.status, d2 }));
+    /* 0.108: у диктовки свой потолок. Уточнение «на лету» шлёт кусок каждые
+       четыре секунды, и общий с чатом счётчик (12/мин) съедался бы речью — человек
+       получал бы «слишком часто» на первом же длинном сообщении. */
+    const dict = { GROQ_KEYS: 'gk1', RATE_MAX: '1', STT_RATE_MAX: '5', RATE_WINDOW_MS: '60000' };
+    const codes = [];
+    for (let i = 0; i < 6; i++) codes.push((await onRequestPost({ request: req(AUDIO, { ip: 'stt-a6b' }), env: dict })).status);
+    ok('S6b: у голоса свой потолок — RATE_MAX чата (1) его не режет',
+      codes[0] === 200 && codes[4] === 200 && codes[5] === 429, codes.join(','));
   } finally { globalThis.fetch = realFetch; }
 }
 {
@@ -135,6 +144,21 @@ console.log('STT — голосовой ввод приложения: вход,
     const d = await res.json()
     ok('S12: неизвестное значение via игнорируется — идём обычным порядком',
       d.ok === true && /groq/.test(String(d.provider)) && calls.length === 1, JSON.stringify(d));
+  } finally { globalThis.fetch = realFetch }
+}
+
+{
+  /* prev: хвост сказанного уезжает провайдеру как подсказка стиля. Без него кусок
+     в четыре секунды теряет связность: «и ещё» превращается в «ещё и». */
+  const realFetch = globalThis.fetch
+  let seen = null
+  globalThis.fetch = async (u, i) => { seen = i; return json({ text: 'продолжение' }) }
+  try {
+    await onRequestPost({ request: req(AUDIO, { query: '?lang=ru&prev=' + encodeURIComponent('мы обсудили голос и') }), env: { GROQ_KEYS: 'gk1', RATE_LIMIT: '0' } })
+    const prompt = seen.body.get('prompt') || ''
+    ok('S13: хвост сказанного доезжает до провайдера как подсказка',
+      /продолжение|мы обсудили голос и/.test(prompt) === false ? /мы обсудили голос и/.test(prompt) : /мы обсудили голос и/.test(prompt),
+      String(prompt).slice(-60))
   } finally { globalThis.fetch = realFetch }
 }
 

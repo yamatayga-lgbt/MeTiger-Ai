@@ -1497,7 +1497,11 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N38: сначала спрашиваем микрофон, и только он может убить сессию',
     /stream = await navigator.mediaDevices.getUserMedia/.test(voiceSrc)
       && /NotAllowedError/.test(voiceSrc)
-      && /startRecording\(\)\s*\n\s*startMeter\(stream\)\s*\n\s*startDraft\(\)/.test(voiceSrc));
+      /* Микрофон спрашивают ДО всего остального: запись кусками и черновик — уже
+         после того, как он открылся. Иначе отказ браузерного сервиса выглядел бы
+         как «микрофона нет». */
+      && voiceSrc.indexOf('await navigator.mediaDevices.getUserMedia') < voiceSrc.indexOf('createPcmTap(')
+      && /startDraft\(\)\n  \}\)\(\)/.test(voiceSrc));
 
   const chatSrc = readFileSync('src/views/ChatView.tsx', 'utf8');
   ok('N39: полоса ввода — время, живые столбики, крестик и галочка; текст идёт в поле',
@@ -1510,7 +1514,7 @@ console.log('── N · стекло (Glassmorphism) ───');
       && !/voice-panel/.test(chatSrc)
       /* Черновик виден прямо в поле: так человек читает свою речь там, где она
          окажется после отправки, а не в отдельной карточке. */
-      && /onInterim: \(chunk\) => \{\s*interimRef.current = chunk\s*\n\s*setValue\(joinText\(baseRef.current, chunk\)\)/.test(chatSrc));
+      && /onInterim: \(chunk\) => \{\s*if \(liveOnRef\.current\) return\s*\n\s*interimRef\.current = chunk\s*\n\s*setValue\(joinText\(baseRef\.current, chunk\)\)/.test(chatSrc));
 
   ok('N40: пока идёт речь, поле помечено как черновик — слова ещё сменятся',
     /\.composer\.is-voice \{/.test(css)
@@ -1533,6 +1537,52 @@ console.log('── N · стекло (Glassmorphism) ───');
     ok('N41: каждая анимация в CSS имеет свой @keyframes (иначе она молча не играет)',
       missing.length === 0, missing.join(', '));
   }
+
+  /* ── 0.108: уточнение НА ЛЕТУ — пока человек говорит, текст уже верный ── */
+  const pcmSrc = readFileSync('src/lib/pcm.ts', 'utf8');
+  ok('N42: звук режется на самостоятельные куски (WAV), а не на куски webm',
+    /encodeWav/.test(pcmSrc)
+      && /WHISPER_RATE = 16000/.test(pcmSrc)
+      && /LIVE_SEC = 4/.test(pcmSrc)
+      /* Именно поэтому нельзя было обойтись MediaRecorder: во webm заголовок
+         только в первом куске, и «последние четыре секунды» оттуда не достать.
+         Проверяем именно КОД: в комментарии это имя стоит по делу. */
+      && !/new MediaRecorder|MediaRecorder\(/.test(pcmSrc));
+
+  ok('N43: кусок уходит на уточнение сам, без остановки записи',
+    /const flushLive = async \(\) => \{/.test(voiceSrc)
+      && /if \(pendingLen < LIVE_SEC \* WHISPER_RATE\) return/.test(voiceSrc)
+      && /onLive\?\.\(text\)/.test(voiceSrc)
+      && /askServer\(chunk, ac\.signal, true\)/.test(voiceSrc));
+
+  /* Квота и уважение к тишине: кусок молчания — это не запрос. Whisper на тишине
+     выдумывает слова, а бесплатные лимиты тратятся впустую. */
+  ok('N44: тишина куском не отправляется, а отказы отключают слой после двух подряд',
+    /peakOf\(chunk\) < SILENCE_PEAK/.test(voiceSrc)
+      && /LIVE_FAILS_MAX = 2/.test(voiceSrc)
+      && /liveFails >= LIVE_FAILS_MAX && !liveOk/.test(voiceSrc)
+      && /onLiveOff\?\./.test(voiceSrc));
+
+  /* Серверный текст главнее браузерного: иначе одни и те же слова стояли бы в
+     поле дважды — черновик браузера и уточнённый кусок про одни и те же секунды. */
+  ok('N45: серверный кусок вытесняет браузерный черновик, а не соседствует с ним',
+    /if \(liveOnRef\.current\) return \/\/ серверный текст уже главнее/.test(chatSrc)
+      && /if \(liveOnRef\.current\) return\n          interimRef\.current = chunk/.test(chatSrc)
+      && /baseRef\.current = preVoiceRef\.current\n            interimRef\.current = ''/.test(chatSrc)
+      && /joinLive\(baseRef\.current, text\)/.test(chatSrc));
+
+  /* Полный проход по всей записи остаётся: у модели на руках весь контекст, и это
+     самый верный вариант из трёх. Если он не удался, а на лету текст был — надо
+     сказать именно это, а не «не получилось уточнить» (человек видит текст и не
+     понимает, чего от него хотят). */
+  ok('N46: в конце — полный проход по записи, и отказ назван честно, если текст уже есть',
+    /const askAccurate = async \(\) => \{/.test(voiceSrc)
+      && /peакOf|peakOf\(all\) < SILENCE_PEAK/.test(voiceSrc)
+      && /liveOk \? 'оставил уточнённое на лету'/.test(voiceSrc)
+      && /'Уточняю текст…'/.test(chatSrc));
+
+  ok('N47: видно, что уточнение идёт прямо сейчас (иначе слова меняются «сами»)',
+    /voice-tag/.test(chatSrc) && /\.voice-tag \{/.test(css) && /liveBusy/.test(chatSrc));
 
   ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
     /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)

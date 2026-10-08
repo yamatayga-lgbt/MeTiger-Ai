@@ -1,15 +1,19 @@
 /* ============================================================
-   Голосовой ввод — два слоя, как у больших ассистентов.
+   Голосовой ввод — три слоя, как у больших ассистентов.
 
    1. ЧЕРНОВИК НА ЛЕТУ. Пока человек говорит, текст пишет Web Speech API браузера
       и отдаёт его кусками — он появляется в поле ввода сразу, за десятые доли
       секунды. Это дешёвый черновик: он быстрый, но в шуме и на именах ошибается.
 
-   2. ТОЧНЫЙ ТЕКСТ ПО ОКОНЧАНИИ. Параллельно пишется сама речь (MediaRecorder с
-      того же микрофона), и на остановке запись уходит на наш /api/stt — там
-      Whisper large-v3-turbo (Groq, а если он выдохся — Cloudflare Workers AI).
-      Возвращённый текст заменяет черновик целиком: это уже «как у ChatGPT»,
-      потому что это тот же класс модели, что стоит там.
+   2. УТОЧНЕНИЕ НА ЛЕТУ (0.108). Параллельно пишется сама речь, и каждые четыре
+      секунды накопленный кусок уходит на наш /api/stt — там Whisper
+      large-v3-turbo. Ответ заменяет черновик: пока человек говорит, текст уже
+      становится точным, а не ждёт остановки. Кусок — самостоятельный WAV
+      (src/lib/pcm.ts), поэтому пересылать всю запись не приходится.
+
+   3. ТОЧНЫЙ ТЕКСТ ПО ОКОНЧАНИИ. На остановке вся запись уходит на /api/stt
+      одним файлом и заменяет всё, что было раньше: у модели на руках весь
+      контекст целиком, поэтому это самый верный вариант из трёх.
 
    Почему не только второй слой: он отвечает через секунду-две после остановки.
    Без черновика человек не видел бы, что его слышат, и решил бы, что ввод сломан.
@@ -17,6 +21,31 @@
    Всё чистится при остановке/отмене/размонтировании: микрофон не остаётся
    включённым, летящий запрос обрывается AbortController'ом.
    ============================================================ */
+
+import { createPcmTap, encodeWav, peakOf, LIVE_SEC, WHISPER_RATE } from './pcm'
+
+/**
+ * Склейка соседних кусков. Куски идут встык, и на стыке одно и то же слово
+ * попадает в оба: Whisper слышит «привет мир» и «мир как дела». Убираем ведущие
+ * слова нового куска, пока они совпадают с хвостом сказанного, — иначе в поле
+ * появлялись бы «мир мир».
+ */
+export function joinLive(prev: string, next: string): string {
+  const clean = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+  const prevWords = prev.trim().split(/\s+/).filter(Boolean).map(clean)
+  const nextWords = next.trim().split(/\s+/).filter(Boolean)
+  let drop = 0
+  /* До трёх слов: на стыке повторяется слово или короткая фраза, не больше. */
+  for (let k = Math.min(3, prevWords.length, nextWords.length); k >= 1; k--) {
+    const tail = prevWords.slice(prevWords.length - k).join(' ')
+    const head = nextWords.slice(0, k).map(clean).join(' ')
+    if (tail === head) {
+      drop = k
+      break
+    }
+  }
+  return nextWords.slice(drop).join(' ').trim()
+}
 
 interface SpeechResultLike {
   isFinal: boolean
@@ -118,6 +147,15 @@ const ERROR_RU: Record<string, string> = {
 /** Потолок одной записи: 3 минуты. Дольше — это уже не «сказать запрос». */
 export const VOICE_MAX_SEC = 180
 
+/** Сколько ждём ответ на кусок «на лету», прежде чем считать его потерянным. */
+const LIVE_MS = 12000
+
+/** Сколько раз подряд можно не получить ответ, прежде чем выключить слой. */
+const LIVE_FAILS_MAX = 2
+
+/** Тишина громче этого пика куском не считается — квоту на неё не тратим. */
+const SILENCE_PEAK = 0.02
+
 /** Сколько ждём точную расшифровку, прежде чем оставить черновик как есть. */
 const POLISH_MS = 25000
 
@@ -139,6 +177,14 @@ export interface VoiceHandlers {
   onDraftFail?: (message: string) => void
   /** Точный текст на всю сессию: заменяет черновик целиком. */
   onPolished?: (text: string) => void
+  /** Кусок, уточнённый НА ЛЕТУ: добавляется к сказанному, черновик вытесняет. */
+  onLive?: (text: string) => void
+  /** Идёт запрос за куском — можно показать, что уточнение работает. */
+  onLiveBusy?: (busy: boolean) => void
+  /** Слой уточнения на лету выключился (частые отказы) — дальше только черновик. */
+  onLiveOff?: (reason: string) => void
+  /** Хвост уже подтверждённого текста — для связности соседних кусков. */
+  liveContext?: () => string
   /** Ход уточнения: 'start' — пошёл запрос, 'fail' — не вышло, с причиной. */
   onPolish?: (state: 'start' | 'fail', reason?: string) => void
   /** Запись сама остановилась на потолке длины (дальше уточнение). */
@@ -152,20 +198,6 @@ export interface VoiceSession {
   cancel: () => void
 }
 
-/** Формат записи: что браузер умеет, в порядке предпочтения. */
-function pickMime(): string {
-  const MR = (window as unknown as { MediaRecorder?: { isTypeSupported?: (m: string) => boolean } }).MediaRecorder
-  if (!MR || typeof MR.isTypeSupported !== 'function') return ''
-  for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']) {
-    try {
-      if (MR.isTypeSupported(m)) return m
-    } catch {
-      /* some browsers throw on odd types */
-    }
-  }
-  return ''
-}
-
 export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession | null {
   const w = window as unknown as Record<string, unknown>
   const Ctor = (w.SpeechRecognition || w.webkitSpeechRecognition) as
@@ -175,134 +207,146 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
   let stopped = false
   let cancelled = false
   let srDead = false
-  let asked = false // запрос точной расшифровки уже ушёл или отправляется
+  let asked = false // запрос точного текста по всей записи уже ушёл
   let abortRef: AbortController | null = null
   let rec: RecognitionLike | null = null
 
   if (!navigator.mediaDevices?.getUserMedia) return null
 
-  // --- микрофон: один поток и на уровень, и на запись ---
   let stream: MediaStream | null = null
-  let audioCtx: AudioContext | null = null
-  let rafId = 0
-  let lastEmit = 0
-  let smoothed = 0
-
   const stopMic = () => {
-    if (rafId) cancelAnimationFrame(rafId)
-    rafId = 0
-    try {
-      void audioCtx?.close()
-    } catch {
-      /* noop */
-    }
-    audioCtx = null
     stream?.getTracks().forEach((t) => t.stop())
     stream = null
   }
 
-  // --- запись речи для точной расшифровки ---
-  let mr: MediaRecorder | null = null
-  const parts: Blob[] = []
-  let mime = ''
+  // --- слой 2: запись кусками и уточнение на лету ---
+  const pcm: Int16Array[] = [] // вся запись — для точного текста в конце
+  let pcmLen = 0
+  let pending: Int16Array[] = [] // то, что ещё не отправлено на уточнение
+  let pendingLen = 0
+  let inFlight = false
+  let liveFails = 0
+  let liveOk = false
+  let liveOff = false
+  let tap: { stop: () => void } | null = null
 
-  /** Отправка записи на наш /api/stt. */
-  const askAccurate = async (blob: Blob) => {
+  const flushLive = async () => {
+    if (liveOff || inFlight || cancelled) return
+    if (pendingLen < LIVE_SEC * WHISPER_RATE) return
+    const chunk = concat(pending)
+    const keep = pending[pending.length - 1]?.length || 0
+    pending = []
+    pendingLen = 0
+    if (peakOf(chunk) < SILENCE_PEAK) return // была тишина — молчим и дальше
+    inFlight = true
+    handlers.onLiveBusy?.(true)
+    const ac = new AbortController()
+    const tm = setTimeout(() => ac.abort(), LIVE_MS)
+    try {
+      const text = await askServer(chunk, ac.signal, true)
+      if (cancelled) return
+      liveFails = 0
+      if (text) {
+        liveOk = true
+        handlers.onLive?.(text)
+      }
+    } catch {
+      liveFails++
+      if (liveFails >= LIVE_FAILS_MAX && !liveOk) {
+        liveOff = true
+        handlers.onLiveOff?.('куски не расшифровываются')
+      }
+    } finally {
+      clearTimeout(tm)
+      inFlight = false
+      handlers.onLiveBusy?.(false)
+    }
+    void keep
+  }
+
+  /** Общий путь отправки: и кусок, и вся запись. */
+  const askServer = async (samples: Int16Array, signal?: AbortSignal, live?: boolean): Promise<string> => {
+    const blob = encodeWav(samples)
+    const tail = String((live && handlers.liveContext && handlers.liveContext()) || '').slice(-120)
+    const url = '/api/stt?lang=' + encodeURIComponent(lang.split('-')[0]) + (tail ? '&prev=' + encodeURIComponent(tail) : '')
+    const ac = signal ? null : new AbortController()
+    const tm = live ? null : setTimeout(() => ac?.abort(), POLISH_MS)
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'audio/wav' },
+        body: blob,
+        signal: signal || ac?.signal,
+      })
+      const j = (await r.json().catch(() => null)) as { ok?: boolean; text?: string; error?: string } | null
+      const text = j && j.ok && typeof j.text === 'string' ? j.text.trim() : ''
+      if (!text && !live) throw new Error((j && j.error) || 'речь не разобрал')
+      if (!text && live) throw new Error((j && j.error) || 'пусто')
+      return text
+    } finally {
+      if (tm) clearTimeout(tm)
+    }
+  }
+
+  /** Слой 3: вся запись целиком — самый верный текст. */
+  const askAccurate = async () => {
     if (asked || cancelled) return
     asked = true
+    const all = concat(pcm)
+    if (!all.length || peakOf(all) < SILENCE_PEAK) {
+      handlers.onPolish?.('fail', 'записи нет')
+      return
+    }
     handlers.onPolish?.('start')
     const ac = new AbortController()
     abortRef = ac
-    const tm = setTimeout(() => ac.abort(), POLISH_MS)
     try {
-      const r = await fetch('/api/stt?lang=' + encodeURIComponent(lang.split('-')[0]), {
-        method: 'POST',
-        headers: { 'content-type': blob.type || 'audio/webm' },
-        body: blob,
-        signal: ac.signal,
-      })
-      const j = (await r.json().catch(() => null)) as { ok?: boolean; text?: string; error?: string } | null
+      const text = await askServer(all, ac.signal, false)
       if (cancelled) return
-      const text = j && j.ok && typeof j.text === 'string' ? j.text.trim() : ''
-      if (text) handlers.onPolished?.(text)
-      else handlers.onPolish?.('fail', (j && j.error) || 'речь не разобрал')
+      handlers.onPolished?.(text)
     } catch {
-      /* Оборвали сами (отмена) — молчим. Иначе честно говорим, что не вышло. */
-      if (!cancelled) handlers.onPolish?.('fail', 'связь не дала уточнить')
-    } finally {
-      clearTimeout(tm)
-    }
-  }
-
-  const startRecording = () => {
-    const MR = (window as unknown as { MediaRecorder?: new (s: MediaStream, o?: MediaRecorderOptions) => MediaRecorder }).MediaRecorder
-    if (!MR || !stream) return
-    mime = pickMime()
-    try {
-      mr = new MR(stream, mime ? { mimeType: mime } : undefined)
-    } catch {
-      try {
-        mr = new MR(stream)
-      } catch {
-        mr = null
-        return
+      if (!cancelled) {
+        handlers.onPolish?.(
+          'fail',
+          /* Если на лету уже был текст — он остаётся, и человеку важно это знать. */
+          liveOk ? 'оставил уточнённое на лету' : 'связь не дала уточнить',
+        )
       }
     }
-    mr.ondataavailable = (e: BlobEvent) => {
-      if (e.data && e.data.size) parts.push(e.data)
+  }
+
+  const concat = (parts: Int16Array[]): Int16Array => {
+    let n = 0
+    for (const p of parts) n += p.length
+    const out = new Int16Array(n)
+    let off = 0
+    for (const p of parts) {
+      out.set(p, off)
+      off += p.length
     }
-    mr.onstop = () => {
-      const type = (mr && mr.mimeType) || mime || 'audio/webm'
-      const blob = new Blob(parts, { type })
-      parts.length = 0
-      if (cancelled || !blob.size) return
-      void askAccurate(blob)
+    return out
+  }
+
+  // --- уровень сигнала: берём прямо из кусков, отдельный анализатор не нужен ---
+  let lastEmit = 0
+  let smoothed = 0
+  const emitLevel = (samples: Int16Array) => {
+    let sum = 0
+    for (let i = 0; i < samples.length; i++) {
+      const v = samples[i] / 0x8000
+      sum += v * v
     }
-    try {
-      /* Кусок раз в секунду: так к моменту остановки почти всё уже в памяти, и
-         ждать «допишу файл» не приходится. */
-      mr.start(1000)
-    } catch {
-      mr = null
+    const rms = Math.sqrt(sum / Math.max(1, samples.length))
+    const target = Math.min(1, rms * 4.2)
+    smoothed = smoothed * 0.72 + target * 0.28
+    const now = performance.now()
+    if (now - lastEmit > 85) {
+      lastEmit = now
+      handlers.onLevel(smoothed)
     }
   }
 
-  const startMeter = (s: MediaStream) => {
-    try {
-      const Ctx =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!Ctx) return
-      audioCtx = new Ctx()
-      const source = audioCtx.createMediaStreamSource(s)
-      const analyser = audioCtx.createAnalyser()
-      analyser.fftSize = 256
-      source.connect(analyser)
-      const buf = new Uint8Array(analyser.fftSize)
-      const tick = () => {
-        if (stopped) return
-        analyser.getByteTimeDomainData(buf)
-        let sum = 0
-        for (let i = 0; i < buf.length; i++) {
-          const v = (buf[i] - 128) / 128
-          sum += v * v
-        }
-        const rms = Math.sqrt(sum / buf.length)
-        const target = Math.min(1, rms * 4.2)
-        smoothed = smoothed * 0.72 + target * 0.28
-        const now = performance.now()
-        if (now - lastEmit > 85) {
-          lastEmit = now
-          handlers.onLevel(smoothed)
-        }
-        rafId = requestAnimationFrame(tick)
-      }
-      rafId = requestAnimationFrame(tick)
-    } catch {
-      /* без уровня всё остальное работает */
-    }
-  }
-
+  // --- слой 1: черновик браузером (пока сервер не догнал) ---
   const startDraft = () => {
     if (!Ctor || srDead) return
     rec = new Ctor()
@@ -323,11 +367,7 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
 
     rec.onerror = (ev) => {
       const code = ev?.error || ''
-      if (code === 'no-speech' || code === 'aborted') return // молчание/отмена — не ошибка
-      /* ЛЮБОЙ отказ распознавания — это отказ ЧЕРНОВИКА, и только его. Микрофон
-         проверяется отдельно (getUserMedia выше): если он жив, запись идёт и
-         точный текст приедет после остановки. Раньше отказ 'audio-capture'
-         гасил всю сессию — и человек терял и запись, и текст. */
+      if (code === 'no-speech' || code === 'aborted') return
       if (!srDead) {
         srDead = true
         handlers.onDraftFail?.(
@@ -339,7 +379,6 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
     }
 
     rec.onend = () => {
-      // Chrome сам завершает сессию после паузы — при ручном «включено» стартуем снова
       if (stopped || srDead) return
       try {
         rec?.start()
@@ -366,12 +405,10 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
       } catch {
         /* noop */
       }
-      try {
-        if (mr && mr.state !== 'inactive') mr.stop()
-      } catch {
-        /* noop */
-      }
+      tap?.stop()
       stopMic()
+      void flushLive()
+      void askAccurate()
     },
     cancel() {
       cancelled = true
@@ -387,19 +424,15 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
       } catch {
         /* noop */
       }
-      try {
-        if (mr && mr.state !== 'inactive') mr.stop()
-      } catch {
-        /* noop */
-      }
+      tap?.stop()
       stopMic()
+      pcm.length = 0
+      pending.length = 0
     },
   }
 
   /* Порядок важен: сначала СПРАШИВАЕМ МИКРОФОН, и только он решает, жива ли
-     сессия. Отказ в доступе или отсутствие устройства — вот это фатально, и об
-     этом надо сказать сразу. Всё остальное (запись, уровень, черновик) —
-     надстройка, каждая со своим правом упасть. */
+     сессия. Всё остальное — надстройка, каждая со своим правом упасть. */
   void (async () => {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -419,13 +452,28 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
       stopMic()
       return
     }
-    startRecording()
-    startMeter(stream)
+    tap = createPcmTap(stream, {
+      onSamples: (samples) => {
+        if (stopped) return
+        pcm.push(samples)
+        pcmLen += samples.length
+        /* Всю запись храним до трёх минут: 16 кГц × 2 байта × 180 с ≈ 5,8 МБ. */
+        if (pcmLen > VOICE_MAX_SEC * WHISPER_RATE + WHISPER_RATE) {
+          /* Больше потолка не копим — лишнее просто не путешествует на сервер. */
+          pcmLen -= samples.length
+          pcm.pop()
+        }
+        pending.push(samples)
+        pendingLen += samples.length
+        emitLevel(samples)
+        void flushLive()
+      },
+      onFail: (why) => handlers.onLiveOff?.(why),
+    })
     startDraft()
   })()
 
-  /* Потолок длины: на трёх минутах останавливаемся сами. Человек может молчать в
-     кармане — запись на час не должна ни ждать, ни стоить квоты. */
+  /* Потолок длины: на трёх минутах останавливаемся сами. */
   const capId = setTimeout(() => {
     if (stopped) return
     handlers.onCap?.()

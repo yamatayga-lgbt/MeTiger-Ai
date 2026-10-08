@@ -4,7 +4,7 @@ import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
-import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, VOICE_MAX_SEC, type VoiceSession } from '../lib/voice'
+import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, joinLive, VOICE_MAX_SEC, type VoiceSession } from '../lib/voice'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
@@ -560,6 +560,13 @@ export function ChatView({
   /* polishing — запись уже остановлена, точный текст ещё едет с сервера.
      Пока он едет, черновик виден как есть: человек не сидит перед пустым полем. */
   const [polishing, setPolishing] = useState(false)
+  /* Ждём ответ за очередной кусок — по этому признаку видно, что уточнение идёт
+     прямо во время речи, а не только после остановки. */
+  const [liveBusy, setLiveBusy] = useState(false)
+  /* Слой «на лету» заработал хоть раз: с этого момента серверный текст главнее
+     браузерного черновика, и черновик больше не подмешивается (иначе одни и те же
+     слова стояли бы в поле дважды). */
+  const liveOnRef = useRef(false)
   const [levels, setLevels] = useState<number[]>(() => new Array(BARS).fill(0))
   const [seconds, setSeconds] = useState(0)
   const [voiceError, setVoiceError] = useState('')
@@ -657,6 +664,7 @@ export function ChatView({
     haptic('medium')
     setVoiceError('')
     setVoiceNote('')
+    liveOnRef.current = false
     preVoiceRef.current = value
     baseRef.current = value
     interimRef.current = ''
@@ -666,11 +674,13 @@ export function ChatView({
     const session = startVoice(
       {
         onFinal: (chunk) => {
+          if (liveOnRef.current) return // серверный текст уже главнее
           baseRef.current = joinText(baseRef.current, chunk)
           interimRef.current = ''
           setValue(baseRef.current)
               },
         onInterim: (chunk) => {
+          if (liveOnRef.current) return
           interimRef.current = chunk
           setValue(joinText(baseRef.current, chunk))
         },
@@ -680,6 +690,28 @@ export function ChatView({
           setVoiceError(message)
           cancelVoiceInput()
         },
+        /* Кусок, уточнённый на лету. Первый такой кусок вытесняет браузерный
+           черновик целиком: он был всего лишь заглушкой на время ожидания. */
+        onLive: (text) => {
+          if (!liveOnRef.current) {
+            liveOnRef.current = true
+            /* Черновик браузера перекрыт серверным текстом: то, что он успел
+               написать, относится к тем же секундам — оставляем только сервер. */
+            baseRef.current = preVoiceRef.current
+            interimRef.current = ''
+            setVoiceNote('')
+          }
+          const merged = joinLive(baseRef.current, text)
+          baseRef.current = joinText(baseRef.current, merged)
+          setValue(baseRef.current)
+        },
+        onLiveBusy: (busy) => setLiveBusy(busy),
+        onLiveOff: (why) => {
+          /* Слой уточнения на лету не поехал — говорим мягко и не мешаем диктовать:
+             текст всё равно придёт точным после остановки. */
+          if (!liveOnRef.current) setVoiceNote(`Точный текст на лету не идёт (${why}) — придёт после остановки`)
+        },
+        liveContext: () => baseRef.current,
         onDraftFail: (message) => {
           setVoiceNote(`${message} — говорите дальше, точный текст приедет после остановки`)
         },
@@ -997,6 +1029,9 @@ export function ChatView({
             <span className="voice-when">
               {polishing ? 'Уточняю текст…' : `Слушаю · ${fmtTime(seconds)}`}
             </span>
+            {/* Видно, что уточнение идёт прямо сейчас: без этой отметки человек не
+                понимает, отчего слова в поле меняются сами. */}
+            {listening && liveBusy ? <span className="voice-tag">уточняю</span> : null}
             <span className="voice-bars" aria-hidden="true">
               {levels.map((v, i) => (
                 <i key={i} style={{ transform: `scaleY(${(0.14 + v * 0.86).toFixed(3)})` }} />

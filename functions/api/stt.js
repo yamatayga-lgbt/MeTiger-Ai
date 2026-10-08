@@ -19,7 +19,18 @@
  */
 import { createStt, sttLimits } from '../../engine/voicein.js';
 import { cfgOf as limitsCfg, createRateLimiter } from '../../engine/limits.js';
-import { limitsStore, realClientIp, RATE_LOCAL } from './chat.js';
+import { limitsStore, realClientIp } from './chat.js';
+
+/*
+ * Своя карта частоты и свой потолок — в отличие от 0.104, когда счёт был общим с
+ * чатом. Причина поменялась вместе с устройством ввода: уточнение «на лету»
+ * отправляет кусок каждые четыре секунды, то есть одна диктовка — это десяток
+ * запросов. Общий счётчик в 12 запросов в минуту съедался бы речью, и человек
+ * получал бы «слишком часто» на первом же длинном сообщении, ещё даже не отправив
+ * его. Голос и текст считаются порознь; оба потолка настоящие.
+ */
+const RATE_LOCAL = new Map();
+const STT_RATE_DEFAULT = 30;
 
 const json = (body, status) =>
   new Response(JSON.stringify(body), {
@@ -38,11 +49,16 @@ export async function onRequestPost(context) {
   const { request, env } = context;
   const url = new URL(request.url);
 
-  /* Тот же ограничитель частоты, что у чата, — намеренно тот же: ключ в
-     хранилище один (rl:<ip>), и человек у нас один. Своя карта на стороне голоса
-     дала бы два счётчика по одному ключу, которые спорят друг с другом. */
+  /* Ограничитель частоты — как у чата, но с СВОИМ потолком (STT_RATE_MAX, 30 по
+     умолчанию): уточнение на лету шлёт кусок каждые четыре секунды, и общий
+     потолок в 12 запросов в минуту съедался бы речью — человек получал бы
+     «слишком часто» на первом же длинном сообщении. */
   if (env.RATE_LIMIT !== '0') {
-    const rate = createRateLimiter({ store: limitsStore(env), cfg: limitsCfg(env), base: RATE_LOCAL });
+    const cfg = limitsCfg(env);
+    const max = Math.max(1, Number(env.STT_RATE_MAX) || STT_RATE_DEFAULT);
+    /* Потолок поднимаем только здесь: окно и запись в хранилище берём те же —
+       иначе получились бы две несовместимые политики на одних и тех же ключах. */
+    const rate = createRateLimiter({ store: limitsStore(env), cfg: { ...cfg, rateMax: max }, base: RATE_LOCAL });
     const r = await rate.check(realClientIp(request, env));
     if (r.limited) return json({ ok: false, error: 'слишком часто — подожди минуту' }, 429);
   }
@@ -70,6 +86,8 @@ export async function onRequestPost(context) {
     bytes,
     mime: mimeOf(request),
     lang: url.searchParams.get('lang') || '',
+    /* prev — хвост уже сказанного: с ним соседние куски диктовки держат нить. */
+    prev: url.searchParams.get('prev') || '',
     via: ['groq', 'cloudflare', 'openrouter'].includes(via) ? via : '',
   });
   if (!res.ok) return json({ ok: false, error: res.why || 'речь не разобрал' }, 200);

@@ -126,7 +126,7 @@ export function createStt(o) {
     ]);
   };
 
-  async function viaGroq(bytes, mime, lang) {
+  async function viaGroq(bytes, mime, lang, prev) {
     const tries = fmtsOf(mime);
     let last = 'формат не подошёл';
     for (const fmt of tries) {
@@ -135,7 +135,10 @@ export function createStt(o) {
       fd.append('model', groqModel);
       fd.append('response_format', 'verbose_json');
       fd.append('temperature', '0');
-      fd.append('prompt', PROMPT);
+      /* Хвост уже сказанного подсказываем вместе с промптом: кусок в четыре
+         секунды без контекста теряет связность («и ещё» превращается в «ещё и»),
+         а с хвостом модель держит нить. prev — не команда, а образец стиля. */
+      fd.append('prompt', prev ? PROMPT + '\n\n' + prev : PROMPT);
       /* Язык подсказываем, когда знаем его точно (браузер сообщает язык пишущего):
          на короткой фразе «спасибо» автоопределение иногда уезжает в английский. */
       if (lang) fd.append('language', lang);
@@ -169,7 +172,7 @@ export function createStt(o) {
    * есть, права на Workers AI — нет) и было неясно, дело в форме или в правах.
    * Пробовать стоит: вторая форма — это ещё один шанс ответить, а не гадание.
    */
-  async function viaCloudflare(bytes, mime, lang) {
+  async function viaCloudflare(bytes, mime, lang, prev) {
     if (!cfAcc) return { ok: false, why: 'нет CLOUDFLARE_ACCOUNT_ID для адреса Workers AI', via: 'cloudflare' };
     const base = 'https://api.cloudflare.com/client/v4/accounts/' + cfAcc + '/ai';
     const tries = [];
@@ -190,7 +193,7 @@ export function createStt(o) {
         /* Отключаем «оглядку на прошлый текст»: на коротких фразах она даёт
            зацикливание и повторы вроде «спасибо спасибо спасибо». */
         condition_on_previous_text: false,
-        initial_prompt: STYLE_PROMPT,
+        initial_prompt: prev ? STYLE_PROMPT + ' ' + prev : STYLE_PROMPT,
       };
       if (lang) body.language = lang;
       const r = await fetchImpl(base + '/run/' + cfModel, {
@@ -213,6 +216,7 @@ export function createStt(o) {
       fd.append('file', new Blob([bytes], { type: mime || 'audio/wav' }), 'voice.wav');
       fd.append('model', cfModel);
       if (lang) fd.append('language', lang);
+      if (prev) fd.append('prompt', prev);
       const r = await fetchImpl(base + '/v1/audio/transcriptions', {
         method: 'POST',
         headers: { authorization: 'Bearer ' + cfKey },
@@ -230,14 +234,14 @@ export function createStt(o) {
     return { ok: false, why: tries.join(' · '), via: 'cloudflare' };
   }
 
-  async function viaOpenRouter(bytes, mime) {
+  async function viaOpenRouter(bytes, mime, lang, prev) {
     const fmt = fmtsOf(mime)[0] === 'opus' ? 'ogg' : fmtsOf(mime)[0];
     const body = {
       model: orModel,
       max_tokens: 900,
       temperature: 0,
       messages: [{ role: 'user', content: [
-        { type: 'text', text: PROMPT },
+        { type: 'text', text: prev ? PROMPT + '\n\nУже сказано: ' + prev : PROMPT },
         { type: 'input_audio', input_audio: { data: 'data:' + (mime || 'audio/ogg') + ';base64,' + b64enc(bytes), format: fmt } },
       ] }],
     };
@@ -274,10 +278,13 @@ export function createStt(o) {
        красоты: без него запасную ветку нельзя проверить живьём, пока работает
        первая, и «код написан, но ни разу не отвечал» остаётся догадкой. */
     const via = String((src && src.via) || '').toLowerCase();
+    /* prev — хвост уже подтверждённого текста (для кусков «на лету»). Он короткий:
+       длинная подсказка сама начинает «дописывать» текст, которого не было. */
+    const prev = String((src && src.prev) || '').slice(0, 160);
     const want = (name) => !via || via === name;
     if (groqKey && want('groq')) {
       try {
-        const r = await withTimeout(viaGroq(bytes, src.mime, lang), 'groq');
+        const r = await withTimeout(viaGroq(bytes, src.mime, lang, prev), 'groq');
         if (r.ok) return r;
         /* Groq ответил, просто речи не было: второй источник ту же тишину не
            расшифрует, а лишний запрос — это секунды задержки и квота. */
@@ -287,7 +294,7 @@ export function createStt(o) {
     } else if (want('groq')) tried.push('groq: ключа GROQ_KEYS нет');
     if (cfKey && cfAcc && want('cloudflare')) {
       try {
-        const r = await withTimeout(viaCloudflare(bytes, src.mime, lang), 'cloudflare');
+        const r = await withTimeout(viaCloudflare(bytes, src.mime, lang, prev), 'cloudflare');
         if (r.ok) return r;
         /* Ответил, но речи не было — третий источник ту же тишину не разберёт. */
         if (/^cloudflare\//.test(String(r.via || ''))) return { ok: false, why: r.why || 'речи в аудио не было', via: r.via };
@@ -296,7 +303,7 @@ export function createStt(o) {
     } else if (want('cloudflare')) tried.push('cloudflare: ' + (cfKey ? 'нет CLOUDFLARE_ACCOUNT_ID' : 'ключа CLOUDFLARE_KEYS нет'));
     if (orKey && want('openrouter')) {
       try {
-        const r = await withTimeout(viaOpenRouter(bytes, src.mime), 'openrouter');
+        const r = await withTimeout(viaOpenRouter(bytes, src.mime, lang, prev), 'openrouter');
         if (r.ok) return r;
         tried.push('openrouter: ' + (r.why || 'пусто'));
       } catch (e) { tried.push('openrouter: ' + String((e && e.message) || e).slice(0, 120)); }
