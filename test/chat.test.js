@@ -4,7 +4,7 @@
  * Запуск: node test/chat.test.js
  */
 import { buildTable, providerAlive, pickKey } from '../engine/providers.js';
-import { createEngine } from '../engine/chat.js';
+import { createEngine, PERSONA_SYSTEM } from '../engine/chat.js';
 import * as ensemble from '../engine/ensemble.js';
 import { onRequestPost, onRequestGet } from '../functions/api/chat.js';
 
@@ -514,6 +514,20 @@ console.log('V — картинка не должна доставаться с�
   ok('V5: тот же пин без картинки работает как работал — отказа про зрение нет',
     res5.status === 200 && !j5.blindVision, JSON.stringify({ s: res5.status, e: j5.error }));
   globalThis.fetch = gs;
+}
+
+/* 0.114: формулы рисуются (0.112), но только если модель их прислала формулами.
+   Живая проба на проде: часть бесплатных моделей пишет математику простым текстом
+   («x + y = 5»), и рисовать тогда нечего — поэтому просьба про LaTeX едет в базовой
+   подсказке, рядом с просьбой про fence. */
+{
+  const просьба = 'формулами LaTeX'
+  const есть = PERSONA_SYSTEM.indexOf(просьба) >= 0
+  ok('P1: базовая подсказка просит писать математику формулами LaTeX', есть,
+    JSON.stringify(PERSONA_SYSTEM.slice(PERSONA_SYSTEM.indexOf(просьба) - 60, PERSONA_SYSTEM.indexOf(просьба) + 90)))
+  ok('P2: в подсказке названы и строка, и выключная формула, и системы',
+    PERSONA_SYSTEM.indexOf('\\( ... \\)') >= 0 && PERSONA_SYSTEM.indexOf('\\[ ... \\]') >= 0
+      && PERSONA_SYSTEM.indexOf('\\begin{cases}') >= 0)
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
