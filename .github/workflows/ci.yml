@@ -19,3 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # Тесты на pull request — то место, где красный прогон ещё никому не мешает:
+      # в main они уже воротами перед выкладкой (см. deploy.yml), а здесь видно
+      # поломку до того, как ветка уехала.
+      - run: npm test

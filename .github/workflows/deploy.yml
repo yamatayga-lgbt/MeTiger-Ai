@@ -1,0 +1,127 @@
+name: Deploy
+
+# Автоматическая выкладка на прод.
+#
+# Зачем это тут, если есть scripts/publish.sh. Скрипт делает то же самое, но
+# запускается руками с машины, где лежит папка keys/ с доступами. С телефона так
+# не выйдет, а прод должен обновляться сам после каждого изменения в main —
+# иначе «выложил или нет» превращается в отдельную работу, которую легко забыть.
+#
+# Пайплайн повторяет четыре шага скрипта в том же порядке:
+#   тесты → сборка → выкладка с --branch main → проверка живого адреса.
+# Порядок не переставлять: выкладка идёт ТОЛЬКО после зелёных тестов. Красный
+# прогон оставляет прод на прежнем билде — это лучше, чем выложить и узнать.
+#
+# Ручной запуск: вкладка Actions → Deploy → Run workflow. Оттуда же можно
+# выложить не в прод, а в превью (адрес вида https://preview-N.metiger-ai.pages.dev),
+# чтобы посмотреть глазами, не трогая живой сайт.
+#
+# Что должно быть настроено один раз (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN  — токен с правом Cloudflare Pages: Edit
+#   CLOUDFLARE_ACCOUNT_ID — a3201d8becdf5704ac8e4cdf0e1332eb
+# Пока секреты не заданы, всё до выкладки проходит, а сама выкладка пропускается
+# с предупреждением — сборка не падает красным из-за отсутствия доступов.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Куда выкладывать
+        type: choice
+        options: [production, preview]
+        default: production
+      skip_tests:
+        description: Пропустить тесты (только для срочной починки прода)
+        type: boolean
+        default: false
+
+# Два push подряд не должны выкладываться наперегонки: новый прогон отменяет
+# предыдущий, и на прод уезжает последний коммит, а не позавчерашний.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 20, не 22: wrangler@latest требует ≥22 и в проекте сознательно
+      # пришпилен wrangler@3 — та же грабля, что описана в scripts/publish.sh.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Тесты
+        if: ${{ inputs.skip_tests != true }}
+        run: npm test
+
+      - name: Сборка
+        run: npm run build
+
+      - name: Куда выкладываем
+        id: mode
+        run: |
+          M='${{ inputs.mode }}'
+          [ -z "$M" ] && M=production
+          echo "mode=$M" >> "$GITHUB_OUTPUT"
+          if [ "$M" = production ]; then
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=preview-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Есть ли доступы Cloudflare
+        id: gate
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -n "$CF_TOKEN" ]; then
+            echo "ready=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=0" >> "$GITHUB_OUTPUT"
+            echo "::warning title:Выкладка пропущена::Секреты Cloudflare не заданы. Settings → Secrets and variables → Actions → CLOUDFLARE_API_TOKEN и CLOUDFLARE_ACCOUNT_ID."
+          fi
+
+      # --branch main обязателен: без него деплой уходит в preview, прод остаётся
+      # на старом билде и это выглядит как «выложил, а изменений нет».
+      # --commit-dirty=true потому что npm run build правит public/sw.js
+      # (scripts/stamp-sw.mjs вписывает версию), и дерево после сборки не чистое.
+      - name: Выкладка на Cloudflare Pages
+        if: steps.gate.outputs.ready == '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@3 pages deploy dist \
+            --project-name metiger-ai \
+            --branch "${{ steps.mode.outputs.branch }}" \
+            --commit-dirty=true
+
+      # Живая проверка после выкладки — то же, что делает publish.sh. Свежий
+      # деплой отдаёт функции не мгновенно, поэтому не один запрос, а попытки
+      # с паузой: 404 сразу после выкладки — это прогрев, а не поломка.
+      - name: Проверка живого адреса
+        if: steps.gate.outputs.ready == '1' && steps.mode.outputs.mode == 'production'
+        run: |
+          URL=https://metiger-ai.pages.dev
+          for i in $(seq 1 12); do
+            CODE=$(curl -s -m 20 -o /tmp/skills.json -w '%{http_code}' "$URL/api/skills" || true)
+            if [ "$CODE" = "200" ]; then
+              node -e "const d=require('/tmp/skills.json');console.log('прод отвечает: '+d.total+' навыков, включено '+d.on)", 2>/dev/null || echo "прод отвечает 200"
+              exit 0
+            fi
+            echo "попытка $i: /api/skills → $CODE, ждём…"
+            sleep 10
+          done
+          echo "::error title:Прод не ответил::/api/skills не отдал 200 за две минуты после выкладки"
+          exit 1
