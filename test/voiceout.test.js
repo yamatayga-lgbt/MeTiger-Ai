@@ -219,6 +219,41 @@ console.log('T — синтез на подставном соединении (
   ok('T6: из одних значков читать нечего — соединение не открывается',
     !пусто.ok && пусто.why === 'нечего читать', JSON.stringify(пусто));
 
+  /* На проде бинарные кадры приходят Blob-ом, и старый разбор не читал ни одного:
+     49 кадров, 0 байт звука. Ловим это здесь — сразу в трёх видах кадра. */
+  function службаС(вид) {
+    const ws = подставное();
+    ws.send = function (текст) {
+      if (/Path:ssml/.test(текст)) {
+        const кусок = new Uint8Array([0xFF, 0xF3, 0x64, 0xC4, 0x11, 0x22]);
+        const заголовок = new TextEncoder().encode('X-RequestId:1\r\nPath:audio\r\n');
+        const длина = 2 + заголовок.length;
+        const кадр = new Uint8Array(длина + 2 + кусок.length);
+        кадр[0] = (длина >> 8) & 0xFF; кадр[1] = длина & 0xFF;
+        кадр.set(заголовок, 2); кадр.set(кусок, длина + 2);
+        const как = вид === 'blob' ? new Blob([кадр])
+          : вид === 'вид' ? кадр
+          : new Response(кадр).body;
+        setTimeout(() => ws.событие('message', { data: как }), 0);
+        setTimeout(() => ws.событие('message', { data: 'Path:turn.end\r\n\r\n' }), 1);
+      }
+    };
+    return ws;
+  }
+  for (const [вид, имя] of [['blob', 'Blob'], ['вид', 'Uint8Array'], ['поток', 'поток']]) {
+    const итог = await synthesize('Звук приходит как ' + имя, { connect: async () => службаС(вид) });
+    ok('T8: кадр в виде «' + имя + '» всё равно читается как звук',
+      итог.ok && итог.audio.length === 6 && итог.audio[0] === 0xFF,
+      JSON.stringify({ ok: итог.ok, len: итог.audio && итог.audio.length }));
+  }
+  const чужаяФорма = await synthesize('Чужая форма', {
+    connect: async () => службаС('blob'),
+    debug: true,
+  });
+  ok('T9: разбор называет форму кадров словами — по нему и нашли прод',
+    чужаяФорма.ok === true || (чужаяФорма.debug && typeof чужаяФорма.debug.форма === 'string'),
+    JSON.stringify(чужаяФорма.debug && чужаяФорма.debug.форма));
+
   const код = await synthesize('```js\nlet a = 1;\n```', { connect: async () => { throw new Error('нет'); } });
   ok('T7: ответ из одного блока кода читается пометкой «Пример кода», а не кодом',
     !код.ok && /недоступна/.test(код.why), JSON.stringify(код));

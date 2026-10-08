@@ -76,7 +76,39 @@ export function parseFrame(data) {
     const tail = data.indexOf('\r\n\r\n') >= 0 ? data.slice(data.indexOf('\r\n\r\n') + 4) : '';
     return { kind: path.trim() === 'turn.end' ? 'end' : 'meta', path: path.trim(), text: tail };
   }
-  const buf = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+  if (data instanceof ArrayBuffer) return разобратьБайты(new Uint8Array(data));
+  if (ArrayBuffer.isView(data)) return разобратьБайты(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  /* Сюда попадает всё остальное (Blob, поток): их надо сначала превратить в байты
+     — этим занимается toBytes в самом синтезе, а не разбор кадра. */
+  return { kind: 'плохой' };
+}
+
+/** Форма кадра словами — для разбора неполадок: рантаймы присылают по-разному. */
+export function frameShape(data) {
+  if (typeof data === 'string') return 'строка';
+  if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) return 'ArrayBuffer';
+  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(data)) return (data.constructor && data.constructor.name) || 'вид массива';
+  if (typeof Blob !== 'undefined' && data instanceof Blob) return 'Blob';
+  if (typeof ReadableStream !== 'undefined' && data instanceof ReadableStream) return 'поток';
+  if (data && typeof data.arrayBuffer === 'function') return 'arrayBuffer()';
+  return typeof data;
+}
+
+/** Кадр в байты: в проде бинарные кадры приходят Blob-ом, а не ArrayBuffer — их надо прочитать. */
+export async function toBytes(data) {
+  if (data == null) return new Uint8Array(0);
+  if (typeof data === 'string') return new TextEncoder().encode(data);
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (typeof Blob !== 'undefined' && data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+  if (typeof ReadableStream !== 'undefined' && data instanceof ReadableStream) {
+    return new Uint8Array(await new Response(data).arrayBuffer());
+  }
+  if (typeof data.arrayBuffer === 'function') return new Uint8Array(await data.arrayBuffer());
+  return new Uint8Array(0);
+}
+
+function разобратьБайты(buf) {
   if (buf.length < 2) return { kind: 'плохой' };
   const headerLength = (buf[0] << 8) | buf[1];
   if (headerLength > buf.length) return { kind: 'плохой' };
@@ -305,28 +337,34 @@ export async function synthesize(text, opts = {}) {
   }
 
   const куски = [];
+  const обещания = [];
   /* Разбор при неполадке: сколько кадров пришло и какими они были. Без этого
      «не прислала звук» одинаково выглядит и при молчании службы, и при том, что
      кадры пришли, но разобрались как чужие (например, сжатые). */
-  const счёт = { кадров: 0, текстовых: 0, бинарных: 0, аудио: 0, конец: 0, первых: '' };
+  const счёт = { кадров: 0, текстовых: 0, бинарных: 0, аудио: 0, конец: 0, форма: '', первых: '' };
   const ждём = new Promise((resolve) => {
     const таймер = setTimeout(() => { try { ws.close(); } catch { /* уже закрыто */ } resolve(); }, opts.timeoutMs || TTS_LIMITS.TIMEOUT_MS);
     const закончить = () => { clearTimeout(таймер); resolve(); };
+    /* Кадры со звуком разные рантаймы отдают по-разному: в wrangler это
+       ArrayBuffer, а в проде — Blob. Своё «читаем как байты» делать нечем
+       синхронно, поэтому бинарные кадры копим обещаниями и разбираем их
+       по порядку после конца разговора: иначе куски звука схлопнутся не в том
+       порядке, а на Blob-е не разберётся ни один кадр вовсе — так и вышло на
+       проде: 49 бинарных кадров, 0 байт звука. */
     const onMessage = (ev) => {
-      try {
-        счёт.кадров++;
-        const данные = ev.data;
-        if (typeof данные === 'string') счёт.текстовых++;
-        else счёт.бинарных++;
-        if (счёт.первых.length < 48 && данные && typeof данные !== 'string') {
-          /* Первые байты первого бинарного кадра: по ним видно, наши это байты или чужой формат. */
-          счёт.первых = [...new Uint8Array(данные.slice ? данные.slice(0, 12) : данные).slice(0, 12)]
-            .map((б) => б.toString(16).padStart(2, '0')).join(' ');
-        }
-        const кадр = parseFrame(данные);
-        if (кадр.kind === 'audio' && кадр.audio) { куски.push(кадр.audio); счёт.аудио++; }
-        if (кадр.kind === 'end') { счёт.конец++; try { ws.close(); } catch { /* уже закрыто */ } закончить(); }
-      } catch { /* битый кадр — пропускаем, речь из-за него не срываем */ }
+      счёт.кадров++;
+      const данные = ev.data;
+      if (typeof данные === 'string') {
+        счёт.текстовых++;
+        try {
+          const кадр = parseFrame(данные);
+          if (кадр.kind === 'end') { счёт.конец++; try { ws.close(); } catch { /* уже закрыто */ } закончить(); }
+        } catch { /* битый кадр — пропускаем */ }
+        return;
+      }
+      счёт.бинарных++;
+      if (!счёт.форма) счёт.форма = frameShape(данные);
+      обещания.push(toBytes(данные));
     };
     ws.addEventListener('message', onMessage);
     ws.addEventListener('close', закончить);
@@ -345,6 +383,17 @@ export async function synthesize(text, opts = {}) {
   });
 
   await ждём;
+  for (const обещание of обещания) {
+    let buf;
+    try { buf = await обещание; } catch { continue; }
+    if (!счёт.первых && buf.length) {
+      /* Первые байты первого кадра со звуком: по ним видно, наши это байты
+         (0xff 0xf3 — начало mp3) или что-то чужое. */
+      счёт.первых = [...buf.slice(0, 12)].map((б) => б.toString(16).padStart(2, '0')).join(' ');
+    }
+    const кадр = parseFrame(buf);
+    if (кадр.kind === 'audio' && кадр.audio && кадр.audio.length) { куски.push(кадр.audio); счёт.аудио++; }
+  }
   const всего = concat(куски);
   if (!всего.length) {
     /* Причина словами + разбор, если он запрошен: у службы бывает по-разному —
