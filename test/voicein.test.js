@@ -213,5 +213,33 @@ console.log('V — расшифровка голоса: три источник�
     flat.keys.cloudflare === false && flat.models.cloudflare === '', JSON.stringify(flat.keys));
 }
 
+{
+  /* Живая находка: на проде первая форма Cloudflare отвечала 401 («токен есть,
+     права на Workers AI — нет»), и было неясно, дело в форме или в правах.
+     Поэтому форм теперь две, и вторая обязана быть попробована. */
+  const n = net({ groq: [json({ error: { message: 'nope' } }, 500)],
+    cloudflare: [json({ success: false, errors: [{ code: 10000, message: 'Authentication error' }] }, 401),
+      json({ text: '  вторая форма ответила  ', word_count: 3 })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1', CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/wav', lang: 'ru' });
+  const cfCalls = n.calls.filter((c) => /cloudflare/.test(c.url));
+  ok('V38: первая форма Cloudflare отказала — пробуем совместимую с OpenAI и берём её текст',
+    r.ok && r.text === 'вторая форма ответила' && cfCalls.length === 2
+      && /\/ai\/run\//.test(cfCalls[0].url) && /audio\/transcriptions$/.test(cfCalls[1].url),
+    JSON.stringify({ ok: r.ok, text: r.text, calls: cfCalls.map((c) => c.url.split('/ai/')[1]) }));
+  ok('V39: во второй форме файл уходит multipart и модель указана моделью, а не именем файла',
+    cfCalls[1] && cfCalls[1].init.body instanceof FormData
+      && cfCalls[1].init.body.get('model') === '@cf/openai/whisper-large-v3-turbo'
+      && cfCalls[1].init.body.get('language') === 'ru', 'form');
+}
+{
+  /* Обе формы отказали — причина должна собрать ОБЕ, иначе непонятно, куда идти. */
+  const n = net({ cloudflare: [json({ success: false, errors: [{ message: 'нет прав' }] }, 401), json({ success: false, errors: [{ message: 'и тут нет прав' }] }, 403)] });
+  const s = createStt({ env: { CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/wav', via: 'cloudflare' });
+  ok('V40: отказ обеих форм виден целиком, с обеими причинами',
+    r.ok === false && /\/ai\/run/.test(r.why) && /audio\/transcriptions/.test(r.why), r.why.slice(0, 160));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exitCode = 1;

@@ -161,43 +161,73 @@ export function createStt(o) {
 
   /**
    * Cloudflare Workers AI, модель @cf/openai/whisper-large-v3-turbo.
-   * Отличие от Groq — только транспорт: аудио уходит не multipart-файлом, а
-   * base64 в JSON (так устроен их API). Плюс их же фильтр тишины (vad_filter):
-   * на коротких записях он убирает «галлюцинации» Whisper на паузах.
+   *
+   * Форм запроса у Cloudflare две, и какая откроется — зависит от прав токена:
+   *   · /ai/run — «своя» форма: base64 в JSON;
+   *   · /ai/v1/audio/transcriptions — совместимая с OpenAI: multipart-файл.
+   * Пробуем обе, потому что живая проверка на проде дала 401 на первой (токен
+   * есть, права на Workers AI — нет) и было неясно, дело в форме или в правах.
+   * Пробовать стоит: вторая форма — это ещё один шанс ответить, а не гадание.
    */
   async function viaCloudflare(bytes, mime, lang) {
     if (!cfAcc) return { ok: false, why: 'нет CLOUDFLARE_ACCOUNT_ID для адреса Workers AI', via: 'cloudflare' };
-    const body = {
-      audio: b64enc(bytes),
-      task: 'transcribe',
-      vad_filter: true,
-      beam_size: 5,
-      /* Отключаем «оглядку на прошлый текст»: на коротких фразах она даёт
-         зацикливание и повторы вроде «спасибо спасибо спасибо». */
-      condition_on_previous_text: false,
-      initial_prompt: STYLE_PROMPT,
+    const base = 'https://api.cloudflare.com/client/v4/accounts/' + cfAcc + '/ai';
+    const tries = [];
+
+    const readJson = (j) => {
+      /* Ответ бывает двухслойный: { result: { text } } и просто { text }. */
+      const raw = (j && ((j.result && j.result.text) || j.text)) || '';
+      return tidy(String(raw));
     };
-    if (lang) body.language = lang;
-    const url = 'https://api.cloudflare.com/client/v4/accounts/' + cfAcc + '/ai/run/' + cfModel;
-    const r = await fetchImpl(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + cfKey },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) return { ok: false, why: await whyOf(r), via: 'cloudflare' };
-    let j = null;
-    try { j = await r.json(); } catch { return { ok: false, why: 'ответ не JSON', via: 'cloudflare' }; }
-    /* Их ответ двухслойный: { result: { text, ... }, success }. Берём и верхний
-       уровень тоже — прошлые версии API клали текст ровно в result.text, и
-       разбирать нужно обе формы, а не ту, что попалась первой. */
-    const raw = (j && ((j.result && j.result.text) || j.text)) || '';
-    const text = tidy(String(raw));
-    return {
-      ok: hasWords(text),
-      text: hasWords(text) ? text : '',
-      via: 'cloudflare/' + cfModel.split('/').pop(),
-      why: hasWords(text) ? '' : 'речи в аудио не было',
-    };
+
+    // Форма 1: своя (base64 в JSON)
+    try {
+      const body = {
+        audio: b64enc(bytes),
+        task: 'transcribe',
+        vad_filter: true,
+        beam_size: 5,
+        /* Отключаем «оглядку на прошлый текст»: на коротких фразах она даёт
+           зацикливание и повторы вроде «спасибо спасибо спасибо». */
+        condition_on_previous_text: false,
+        initial_prompt: STYLE_PROMPT,
+      };
+      if (lang) body.language = lang;
+      const r = await fetchImpl(base + '/run/' + cfModel, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + cfKey },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        let j = null;
+        try { j = await r.json(); } catch { return { ok: false, why: 'ответ не JSON', via: 'cloudflare' }; }
+        const text = readJson(j);
+        return { ok: hasWords(text), text: hasWords(text) ? text : '', via: 'cloudflare/' + cfModel.split('/').pop(), why: hasWords(text) ? '' : 'речи в аудио не было' };
+      }
+      tries.push('/ai/run: ' + (await whyOf(r)));
+    } catch (e) { tries.push('/ai/run: ' + String((e && e.message) || e).slice(0, 100)); }
+
+    // Форма 2: совместимая с OpenAI (multipart)
+    try {
+      const fd = new FormData();
+      fd.append('file', new Blob([bytes], { type: mime || 'audio/wav' }), 'voice.wav');
+      fd.append('model', cfModel);
+      if (lang) fd.append('language', lang);
+      const r = await fetchImpl(base + '/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + cfKey },
+        body: fd,
+      });
+      if (r.ok) {
+        let j = null;
+        try { j = await r.json(); } catch { return { ok: false, why: 'ответ не JSON', via: 'cloudflare' }; }
+        const text = readJson(j);
+        return { ok: hasWords(text), text: hasWords(text) ? text : '', via: 'cloudflare/' + cfModel.split('/').pop(), why: hasWords(text) ? '' : 'речи в аудио не было' };
+      }
+      tries.push('audio/transcriptions: ' + (await whyOf(r)));
+    } catch (e) { tries.push('audio/transcriptions: ' + String((e && e.message) || e).slice(0, 100)); }
+
+    return { ok: false, why: tries.join(' · '), via: 'cloudflare' };
   }
 
   async function viaOpenRouter(bytes, mime) {
