@@ -286,7 +286,7 @@ ok('F13: донорский блок про род возвращается то
     const spy = fakeFetch(() => ({ body: chat(ANSWER) }));
     const eng = createEngine({ env: Object.assign({ GROQ_KEYS: 'g1' }, env), fetch: spy, sleep: async () => {} });
     const r = await eng.run(Object.assign({ noCouncils: true }, input));
-    return { r, bodies: spy.calls.map((c) => JSON.stringify(c.body || {})) };
+    return { r, bodies: spy.calls.map((c) => JSON.stringify(c.body || {})).filter((b) => !b.includes('browser_search')) };
   };
 
   const a = await run({ FREEDOM_MODE: 'auto' }, { text: 'расскажи, как проходит дождь над морем' });

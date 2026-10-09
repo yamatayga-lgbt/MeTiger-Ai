@@ -959,7 +959,7 @@ export function ChatView({
                   ) : null}
                   {Array.isArray(m.files) && m.files.length ? <WriteFilesBlock files={m.files} /> : null}
                   <div className="bubble">
-                    <LazyBoundary fallback={<div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>}><Markdown text={m.text} onRunOutput={runOutput} /></LazyBoundary>
+                    <LazyBoundary fallback={<div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>}><Markdown text={m.text} onRunOutput={runOutput} sources={m.sources} /></LazyBoundary>
                   </div>
                   {/* Кто ответил и что сказал совет. Это не украшение: по ней видно,
                       что ответ проверяли, а не угадали, и где его исправили. */}

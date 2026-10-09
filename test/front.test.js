@@ -1959,7 +1959,7 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N24: разметка ответа пересобирается только при смене текста (memo), а колбэк вывода кода стабилен (useCallback): иначе каждая буква в поле ввода заново разбирала Markdown всей переписки — это и был лаг печати', 
     /export const Markdown = memo\(/.test(readFileSync('src/components/Markdown.tsx', 'utf8'))
       && /const runOutput = useCallback\(\(t: string\) => onSend\(t\), \[onSend\]\)/.test(readFileSync('src/views/ChatView.tsx', 'utf8'))
-      && /<Markdown text=\{m\.text\} onRunOutput=\{runOutput\} \/>/.test(readFileSync('src/views/ChatView.tsx', 'utf8')));
+      && /<Markdown text=\{m\.text\} onRunOutput=\{runOutput\} sources=\{m\.sources\} \/>/.test(readFileSync('src/views/ChatView.tsx', 'utf8')));
 
   ok('N25: строки «Модели» и «Версия» в Настройках — короткие: у «Версии» только номер и кнопка (владелец попросил убрать «показывает старую версию? нажмите «Обновить»»), у «Моделей» — число без описания столбцом', 
     !/показывает старую версию/.test(readFileSync('src/views/SettingsView.tsx', 'utf8'))

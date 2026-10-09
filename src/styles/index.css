@@ -5583,3 +5583,13 @@ kbd {
 @media (pointer: coarse) {
   input, textarea, select, .composer textarea { font-size: 16px !important; }
 }
+
+/* 0.133: сноски [n] в тексте ответа — маленький чип-ссылка на источник. */
+.msg-text a.cite {
+  display: inline-block; min-width: 1.35em; padding: 0 .35em; margin: 0 .1em;
+  font-size: .72em; line-height: 1.45; vertical-align: super; text-align: center;
+  border-radius: 999px; text-decoration: none; font-weight: 600;
+  background: color-mix(in srgb, var(--accent, #f59e0b) 18%, transparent);
+  color: var(--accent, #f59e0b);
+}
+.msg-text a.cite:hover { background: color-mix(in srgb, var(--accent, #f59e0b) 32%, transparent); }

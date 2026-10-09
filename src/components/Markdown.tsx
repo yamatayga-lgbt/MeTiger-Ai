@@ -30,18 +30,24 @@ import { runnable, engineLabel } from '../lib/sandbox'
    не трогает по устройству дерева — `\\frac{a}{b}` в примере кода остаётся кодом.
    ============================================================ */
 
+import { linkCitations } from '../lib/cite'
 interface Props {
   text: string
   /** Передать вывод исполненного кода обратно в чат (кнопка в CodeRunner). */
   onRunOutput?: (text: string) => void
+  /** Источники ответа: сноски [n] в тексте становятся ссылками на sources[n-1] (0.133). */
+  sources?: { url: string; title?: string }[]
 }
+
+
 
 /* memo — не украшение, а лечение лага печати: без него каждая буква в поле
    ввода пересобирала разметку ВСЕЙ переписки заново (разбор Markdown дорогой).
    Замер до: печать в поле — 42 fps в светлой теме и 33 в тёмной, кадры до 83 мс.
    Сравнение идёт по тексту и функции вывода; функцию вызывающая сторона держит
    стабильной (useCallback), иначе memo бесполезен. */
-export const Markdown = memo(function Markdown({ text, onRunOutput }: Props) {
+export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sources }: Props) {
+  const text = linkCitations(rawText, sources)
   /* Формулы уходят из текста ДО разбора: на месте каждой остаётся метка, а сам LaTeX
      лежит в `hidden.items` и попадает в дерево как есть — ни разбор Markdown, ни его
      экранирование в него больше не вмешиваются (см. protectMath). */
@@ -80,6 +86,12 @@ export const Markdown = memo(function Markdown({ text, onRunOutput }: Props) {
           },
           /* Внешние ссылки — в новой вкладке и без доступа к window.opener. */
           a({ href, children }: { href?: string; children?: ReactNode }) {
+            const t = flattenText(children)
+            const cite = /^\[(\d{1,2})\]$/.exec(t)
+            if (cite) {
+              const src = (sources || [])[Number(cite[1]) - 1]
+              return <a className="cite" href={href} target="_blank" rel="noopener noreferrer" title={(src && src.title) || href}>{cite[1]}</a>
+            }
             return (
               <a href={href} target="_blank" rel="noopener noreferrer">
                 {children}
