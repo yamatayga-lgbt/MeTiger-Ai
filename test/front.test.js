@@ -1847,6 +1847,9 @@ console.log('── N · стекло (Glassmorphism) ───');
         && /let checkDone = false/.test(engineDeep) && /&& !checkDone/.test(engineDeep)
         /* куцый или упавший досыл ответ не подменяет */
         && /String\(fixed\.reply\)\.trim\(\)\.length >= 40/.test(engineDeep)
+        /* досыл не зовёт инструменты заново и не начинается впритык к потолку */
+        && /useTools: false, webSearch: false, chatId: undefined/.test(engineDeep)
+        && /if \(left < 12000\)/.test(engineDeep)
         && /catch \(e\) \{ fixed = null; \}/.test(engineDeep)
         /* слой выключается одной переменной */
         && /mode !== 'off'/.test(checkEngine));

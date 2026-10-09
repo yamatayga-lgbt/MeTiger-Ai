@@ -516,6 +516,17 @@ console.log('G4 — самопроверка ответа: агент сверя
   ok('G4h: досыл несёт вопрос, собственный ответ и зацепки — голова чинит своё, а не пишет заново',
     repairs === 1, 'счётчик досылов: ' + repairs);
 
+  /* Впритык к потолку досыл не начинается: не успеть и отдать пустой ответ хуже,
+     чем честно показать зацепку. */
+  let lateRepairs = 0;
+  const e7 = createEngine({ env: ENV, fetch: fakeFetch(() => ({ body: chat('Коротко про одно.') })), sleep: async () => {}, quarantine: new Map(),
+    repair: async () => { lateRepairs++; return { ok: true, reply: 'Дописанный ответ длиной больше сорока знаков, чтобы его взяли.' } } });
+  const r7 = await e7.run({ text: Q, deadlineMs: 5000 });
+  ok('G4i: на починку не осталось времени — досыла нет, зацепка показана с причиной',
+    r7.ok === true && lateRepairs === 0 && r7.check && r7.check.fixed === false
+      && /не осталось времени/.test(r7.check.skipped || ''),
+    JSON.stringify({ lateRepairs, check: r7.check }));
+
   /* Куцый досыл ответ не улучшает: написанное дороже правки. */
   const e5 = createEngine({ env: ENV, fetch: fakeFetch(() => ({ body: chat('Коротко про одно.') })), sleep: async () => {}, quarantine: new Map(),
     repair: async () => ({ ok: true, reply: 'ок' }) });

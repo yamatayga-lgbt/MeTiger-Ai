@@ -493,7 +493,13 @@ export function createEngine(opts) {
           });
           checkVerdict = { on: dec.on, notes: dec.notes, fixed: false, skipped: '' };
           if (dec.needFix && dec.notes.length) {
-            const left = Math.max(6000, (input.deadlineMs || 45000) - (Date.now() - started));
+            /* Досыл стоит секунд, поэтому он не делается впритык к потолку:
+               начать его, не успеть и отдать пустой ответ — хуже, чем честно
+               показать зацепку. Пол — 12 секунд живого времени. */
+            const left = (Number(input.deadlineMs) || 45000) - (Date.now() - started);
+            if (left < 12000) {
+              checkVerdict.skipped = 'на починку не осталось времени (' + Math.max(0, Math.round(left / 1000)) + ' с)';
+            } else {
             const repair = o.repair
               || ((extra) => run({
                 ...input,
@@ -504,7 +510,10 @@ export function createEngine(opts) {
                 history: [{ role: 'assistant', content: String(out.reply).slice(-3500) }],
                 providerOrder: out.provider ? [out.provider] : input.providerOrder,
                 noCouncils: true, noCheck: true, allowReframe: false,
-                webSearch: false, chatId: undefined,
+                /* Инструменты на досыле выключены: данные уже собраны первым
+                   проходом, а второй поиск в сети стоил бы 10–20 секунд на ответ,
+                   который и так ждёт человека. */
+                useTools: false, webSearch: false, chatId: undefined,
                 deadlineMs: left,
               }));
             let fixed = null;
@@ -517,6 +526,9 @@ export function createEngine(opts) {
               checkVerdict.fixed = true;
               /* Провайдера и модель НЕ подменяем: досыл шёл той же головой, а
                  подпись ответа обязана показывать того, кто ответил человеку. */
+            } else {
+              checkVerdict.skipped = 'починка не удалась — ответ оставлен как есть';
+            }
             }
           }
         } catch (e) {
