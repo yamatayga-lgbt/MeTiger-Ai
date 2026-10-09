@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { groupChats } from '../lib/chatGroups'
 import {
   Activity,
   Check,
@@ -46,11 +47,6 @@ const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
   { id: 'settings', label: 'Настройки', icon: Settings },
 ]
 
-function startOfDay(): number {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d.getTime()
-}
 
 export function Sidebar({
   open,
@@ -78,10 +74,7 @@ export function Sidebar({
     if (editingId) inputRef.current?.focus()
   }, [editingId])
 
-  const dayStart = startOfDay()
-  const byRecent = (a: Chat, b: Chat) => b.updatedAt - a.updatedAt
-  const today = chats.filter((c) => c.updatedAt >= dayStart).sort(byRecent)
-  const older = chats.filter((c) => c.updatedAt < dayStart).sort(byRecent)
+  const groups = groupChats(chats)
 
   const beginRename = (chat: Chat) => {
     setMenu(null)
@@ -106,7 +99,7 @@ export function Sidebar({
               ref={inputRef}
               className="rename-input"
               value={draft}
-              maxLength={48}
+              maxLength={50}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={commitRename}
               onKeyDown={(e) => {
@@ -244,19 +237,12 @@ export function Sidebar({
             <div className="history-empty">Пока пусто — начните новый чат</div>
           ) : null}
 
-          {today.length > 0 ? (
-            <>
-              <div className="history-label">Сегодня</div>
-              {today.map(renderChat)}
-            </>
-          ) : null}
-
-          {older.length > 0 ? (
-            <>
-              <div className="history-label">Раньше</div>
-              {older.map(renderChat)}
-            </>
-          ) : null}
+          {groups.map((g) => (
+            <div key={g.label} className="history-group">
+              <div className="history-label">{g.label}</div>
+              {g.items.map(renderChat)}
+            </div>
+          ))}
         </div>
 
         <div className="side-foot-row">

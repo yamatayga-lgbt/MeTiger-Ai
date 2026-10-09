@@ -96,6 +96,17 @@ const nextId = () => `m${++msgSeq}-${Date.now()}`
 const newChatId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 
 const NEW_CHAT_TITLE = 'Новый чат'
+/** Название чата — не длиннее 50 символов (просьба владельца, 0.135). */
+const TITLE_MAX = 50
+/** Автоназвание из первого сообщения: одна строка, обрезка по слову, «…» в конце. */
+function titleFromText(text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim()
+  if (!t) return NEW_CHAT_TITLE
+  if (t.length <= TITLE_MAX) return t
+  const cut = t.slice(0, TITLE_MAX - 1)
+  const sp = cut.lastIndexOf(' ')
+  return (sp > 25 ? cut.slice(0, sp) : cut).replace(/[\s,.;:—-]+$/, '') + '…'
+}
 
 const emptyChat = (): Chat => ({
   id: newChatId(),
@@ -257,7 +268,7 @@ export default function App() {
   const renameChat = useCallback((id: string, title: string) => {
     const t = title.trim()
     if (!t) return
-    setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title: t } : c)))
+    setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title: t.slice(0, TITLE_MAX) } : c)))
   }, [])
 
   const deleteChat = useCallback(
@@ -304,6 +315,7 @@ export default function App() {
           c.id === chatId
             ? {
                 ...c,
+                title: c.messages.length === 0 && c.title === NEW_CHAT_TITLE ? titleFromText(text || (attachments && attachments[0] ? attachments[0].name : '')) : c.title,
                 messages: [...c.messages, {
                   id: nextId(),
                   role: 'user',
