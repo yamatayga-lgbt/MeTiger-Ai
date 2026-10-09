@@ -34,7 +34,7 @@ async function fetchT(fi, url, init, ms) {
 export async function geminiSearch({ q, env, fetch: fi, ms }) {
   const keys = envKeys(env, 'GEMINI');
   if (!keys.length) return { ok: false, why: 'нет ключа Gemini' };
-  const models = String((env && env.SEARCH_GEMINI_MODELS) || 'gemini-2.5-flash,gemini-2.5-flash-lite').split(',').map((s) => s.trim()).filter(Boolean);
+  const models = String((env && env.SEARCH_GEMINI_MODELS) || 'gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-2.5-flash').split(',').map((s) => s.trim()).filter(Boolean);
   const today = new Date().toISOString().slice(0, 10);
   const prompt = `Сегодня ${today}. Найди в интернете самую свежую и точную информацию по запросу и изложи найденные факты: `
     + `коротко, пунктами (до 10), с цифрами, датами и названиями, без воды и без советов. Если источники расходятся — скажи. `
@@ -50,18 +50,18 @@ export async function geminiSearch({ q, env, fetch: fi, ms }) {
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             tools: [{ google_search: {} }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 900, thinkingConfig: { thinkingBudget: 0 } },
+            generationConfig: Object.assign({ temperature: 0.2, maxOutputTokens: 900 }, /2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           }),
         }, ms || 9000);
         const txt = await r.text();
-        if (r.status === 429 || r.status === 403 || r.status === 401) { last = 'gemini ' + model + ' http ' + r.status; continue; }
-        if (r.status >= 400) { last = 'gemini ' + model + ' http ' + r.status + ' ' + txt.slice(0, 80); break; }
+        if (r.status === 429 || r.status === 403 || r.status === 401) { last += 'gemini ' + model + ' http ' + r.status + ' ' + txt.slice(0, 120).replace(/\s+/g, ' ') + '; '; continue; }
+        if (r.status >= 400) { last += 'gemini ' + model + ' http ' + r.status + ' ' + txt.slice(0, 120).replace(/\s+/g, ' ') + '; '; break; }  /* 404 — модель снята, пробуем следующую */
         const d = JSON.parse(txt);
         const c = (d.candidates || [])[0] || {};
         const text = ((c.content && c.content.parts) || []).map((p) => p.text || '').join('').trim();
         const gm = c.groundingMetadata || {};
         const chunks = (gm.groundingChunks || []).map((x) => x.web).filter(Boolean);
-        if (!text || !chunks.length) { last = 'gemini ' + model + ': без источников'; break; }
+        if (!text || !chunks.length) { last += 'gemini ' + model + ': без источников; '; break; }
         keyTurn++;
         const sources = await resolveAll(fi, chunks.map((w) => ({ title: clean(w.title), url: w.uri })));
         return { ok: true, engine: 'google', model, summary: text, queries: gm.webSearchQueries || [], sources };

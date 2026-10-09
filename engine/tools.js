@@ -455,6 +455,7 @@ export const TOOLS = [
       try {
         const full = clean(String(text || '')).slice(0, 220);
         const sr = await smartSearch({ q: full || q, env, fetch: fi, deep });
+        if (!(sr && sr.ok)) console.log('[smart-search] fail:', sr && sr.why);
         if (sr && sr.ok && sr.sources.length) return searchBlock(full || q, sr) + '\n\nПравило ответа: ' + SEARCH_DIRECTIVE;
       } catch { /* поисковик упал — идём старым путём */ }
       const out = [];

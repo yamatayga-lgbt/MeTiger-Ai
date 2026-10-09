@@ -26,6 +26,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '0.134',
+    title: 'Поиск в интернете — исправление',
+    items: [
+      'Поиск через Google переведён на актуальные модели Gemini: старые сняты.',
+      'Если лимит поиска кончился, агент быстро переключается на запасной путь и не ждёт.',
+    ],
+    mark: 'fix',
+  },
+  {
     version: '0.133',
     title: 'Поиск в интернете — как у Perplexity',
     items: [
