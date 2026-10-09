@@ -1822,6 +1822,41 @@ console.log('── N · стекло (Glassmorphism) ───');
         && /msg-speak-btn/.test(chatVoice),
       'остатки: ' + JSON.stringify((appSrcVoice + chatVoiceBare).match(/mt-voice|onVoice|setVoice/g) || []));
 
+    /* ── 0.124: самопроверка ответа — агент сверяет написанное с вопросом ──
+       Слой живёт в engine/check.js (свои проверки — test/check.test.js), а здесь
+       сторожится обвязка: поля доезжают до человека, и прежние правила движка
+       (пин модели, ответ проверенный инструментом, головы совета) не сломаны. */
+    const checkEngine = readFileSync('engine/check.js', 'utf8');
+    const entryCheck = readFileSync('functions/api/chat.js', 'utf8');
+
+    ok('N71: зацепки самопроверки видны человеку словами в подписи ответа',
+      /checkNotes\?: string\[\]/.test(apiDeep) && /checkFixed\?: boolean/.test(apiDeep)
+        && /r\.checkNotes \|\| \[\]/.test(apiDeep) && /самопроверка: дописано/.test(apiDeep)
+        && /checkNotes: \(r\.check && Array\.isArray\(r\.check\.notes\)/.test(entryCheck)
+        && /checkFixed: r\.check \? !!r\.check\.fixed : undefined/.test(entryCheck),
+      'нет полей самопроверки в подписи или в payload');
+
+    ok('N72: самопроверка не спорит с прежними правилами движка',
+      /* ответ, подтверждённый инструментом, не чинится: калькулятор сильнее голоса */
+      /!out\.toolProof/.test(engineDeep)
+        /* выбор человека модели не подменяется досылом от её имени */
+        && /!pin/.test(engineDeep)
+        /* головы совета голосуют, а не чинят: иначе по досылу на каждый голос */
+        && /noCheck: true/.test(engineDeep)
+        /* ровно один досыл на запрос, даже если попыток было несколько */
+        && /let checkDone = false/.test(engineDeep) && /&& !checkDone/.test(engineDeep)
+        /* куцый или упавший досыл ответ не подменяет */
+        && /String\(fixed\.reply\)\.trim\(\)\.length >= 40/.test(engineDeep)
+        && /catch \(e\) \{ fixed = null; \}/.test(engineDeep)
+        /* слой выключается одной переменной */
+        && /mode !== 'off'/.test(checkEngine));
+
+    ok('N73: починка не подменяет того, кто ответил — провайдер и модель в подписи прежние',
+      /out\.reply = fixed\.reply/.test(engineDeep)
+        && !/out\.model = fixed\.model/.test(engineDeep)
+        && !/out\.provider = fixed\.provider/.test(engineDeep),
+      'досыл переписывает автора ответа');
+
     ok('N62: «*» и «_» внутри формулы не становятся разметкой Markdown',
       !/<em>/.test(starHtml) && /math-fx/.test(starHtml) && /math-sub/.test(starHtml)
         && plain(starHtml).indexOf('a*b*c') >= 0,

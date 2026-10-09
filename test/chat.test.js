@@ -474,6 +474,69 @@ console.log('G2 — «Размышлять глубже»: просьба чел
   globalThis.fetch = gs;
 }
 
+console.log('G4 — самопроверка ответа: агент сверяет написанное с вопросом (0.124, engine/check.js)');
+{
+  const rq = (o) => new Request('http://x/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });
+  const gs = globalThis.fetch;
+  globalThis.fetch = fakeFetch(() => ({ body: chat('Ответ агента на один из трёх вопросов.') }));
+
+  const Q = 'Сравни SQLite и Postgres? Чем они отличаются? Что выбрать для мобильного приложения?';
+  const j1 = await (await onRequestPost({ request: rq({ text: Q }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0' }, waitUntil: () => {} })).json();
+  ok('G4a: неполный ответ самопроверка ловит и называет зацепки словами в payload',
+    j1.ok === true && Array.isArray(j1.checkNotes) && j1.checkNotes.length > 0
+      && /спрошено/.test(j1.checkNotes.join(' ')),
+    JSON.stringify(j1.checkNotes));
+
+  ok('G4b: зацепки читаются человеком — ни кодов слоя, ни имён переменных',
+    (j1.checkNotes || []).every((n) => typeof n === 'string' && n.length > 6 && !/CHECK|coveredShare|askedPoints/i.test(n)),
+    JSON.stringify(j1.checkNotes));
+
+  globalThis.fetch = fakeFetch(() => ({ body: chat('SQLite встраивается в приложение и хранится файлом, Postgres требует сервера. Отличаются масштабом и конкуренцией за запись. Для мобильного приложения выбрать стоит SQLite.') }));
+  const j2 = await (await onRequestPost({ request: rq({ text: Q }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0' }, waitUntil: () => {} })).json();
+  ok('G4c: полный ответ зацепок не даёт — ложная тревога стоила бы лишнего прогона',
+    j2.ok === true && (j2.checkNotes === undefined || j2.checkNotes.length === 0) && !j2.checkFixed,
+    JSON.stringify(j2.checkNotes));
+
+  const j3 = await (await onRequestPost({ request: rq({ text: Q }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0', CHECK: 'off' }, waitUntil: () => {} })).json();
+  ok('G4d: CHECK=off выключает слой целиком — поведение прежнее',
+    j3.ok === true && (j3.checkNotes === undefined || j3.checkNotes.length === 0),
+    JSON.stringify(j3.checkNotes));
+
+  /* Починка: движок зовёт того же агента ещё раз и берёт дописанный ответ. */
+  const f4 = fakeFetch(() => ({ body: chat('Коротко про одно.') }));
+  let repairs = 0;
+  const e4 = createEngine({ env: ENV, fetch: f4, sleep: async () => {}, quarantine: new Map(),
+    repair: async (extra) => { repairs++; return { ok: true, reply: 'Дописанный ответ: сравниваем SQLite и Postgres, отличия в масштабе, для мобильного приложения берём SQLite.', provider: 'groq', model: 'm', extra } } });
+  const r4 = await e4.run({ text: Q });
+  ok('G4e: найденную зацепку агент чинит РОВНО одним досылом — и в ответе недостающее',
+    r4.ok === true && /Дописанный ответ/.test(r4.reply) && r4.check && r4.check.fixed === true
+      && repairs === 1,
+    JSON.stringify({ repairs, check: r4.check, reply: r4.reply.slice(0, 40) }));
+
+  ok('G4h: досыл несёт вопрос, собственный ответ и зацепки — голова чинит своё, а не пишет заново',
+    repairs === 1, 'счётчик досылов: ' + repairs);
+
+  /* Куцый досыл ответ не улучшает: написанное дороже правки. */
+  const e5 = createEngine({ env: ENV, fetch: fakeFetch(() => ({ body: chat('Коротко про одно.') })), sleep: async () => {}, quarantine: new Map(),
+    repair: async () => ({ ok: true, reply: 'ок' }) });
+  const r5 = await e5.run({ text: Q });
+  ok('G4f: пустой или куцый досыл ответ не подменяет — зацепка остаётся видна',
+    r5.ok === true && /Коротко про одно/.test(r5.reply) && r5.check && r5.check.fixed === false
+      && r5.check.notes.length > 0,
+    JSON.stringify({ check: r5.check, reply: r5.reply.slice(0, 40) }));
+
+  /* Слой не имеет права стоить ответа: починка упала — ответ цел. */
+  const e6 = createEngine({ env: ENV, fetch: fakeFetch(() => ({ body: chat('Коротко про одно.') })), sleep: async () => {}, quarantine: new Map(),
+    repair: async () => { throw new Error('голова недоступна') } });
+  const r6 = await e6.run({ text: Q });
+  ok('G4g: упавшая починка не роняет ответ — зацепки видны, текст прежний',
+    r6.ok === true && /Коротко про одно/.test(r6.reply) && r6.check && r6.check.notes.length > 0,
+    JSON.stringify(r6.check));
+
+  globalThis.fetch = gs;
+}
+
+
 console.log('G3 — глубину выбирает агент, а не переключатель (0.123, engine/depth.js)');
 {
   const rq = (o) => new Request('http://x/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });

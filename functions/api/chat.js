@@ -609,6 +609,10 @@ async function handlePost(context) {
     /* Почему агент решил думать глубже (engine/depth.js) — словами, а не флагом:
        человек видит причину в подписи ответа и может с ней не согласиться. */
     depthWhy: r.depthWhy || depthWhy || undefined,
+    /* Самопроверка ответа (engine/check.js): что агент нашёл, сверив ответ с
+       вопросом, и дописал ли недостающее. Молчания нет — зацепки видны словами. */
+    checkNotes: (r.check && Array.isArray(r.check.notes) && r.check.notes.length) ? r.check.notes : undefined,
+    checkFixed: r.check ? !!r.check.fixed : undefined,
     /* Как ответили — родом и (по желанию) наблюдением о состоянии собеседника.
        Фронт показывает род в подписи, emotion — только если включён EMOTION_LABEL. */
     gender: r.gender, emotion: r.emotion || undefined,

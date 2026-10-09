@@ -34,6 +34,7 @@ import * as modelreg from './modelreg.js';
 import * as vcouncil from './vcouncil.js';
 import { detectLang, langMind } from './langmind.js';
 import * as depth from './depth.js';
+import * as check from './check.js';
 
 export const PERSONA_SYSTEM =
   'Ты — MeTiger Ai, свободная открытая система для любого общения в одном чате. '
@@ -250,6 +251,11 @@ export function createEngine(opts) {
        «человек попросил глубже» — поймано проверкой H23 на первой же сборке. */
     let deep = input.deep === true;
     let depthWhy = deep ? String(input.depthWhy || '') : '';
+    /* Самопроверка живёт в области ОДНОГО run(): withMeta зовётся на каждой удачной
+       попытке (основной ход, уход от отказа, продолжение обрыва), и без этого счётчика
+       агент чинил ответ по разу на каждую попытку — три досыла вместо одного. */
+    let checkVerdict = null;
+    let checkDone = false;
     depthVerdict = null;
     if (!deep || !depthWhy) {
       const asked = deep && !depthWhy;
@@ -467,6 +473,60 @@ export function createEngine(opts) {
           noteLog('imggen', 'pack error', String((e && e.message) || e).slice(0, 120));
         }
       }
+      /* ── Самопроверка ответа (0.124): агент сверяет то, что написал, с тем, о чём
+         просили. Бесплатный разбор всегда; платная починка — одним проходом той же
+         головы и только когда нашлась конкретная зацепка и бюджет разрешает.
+         Молчания здесь нет: зацепки уезжают в подпись ответа словами. */
+      /* Три случая, когда починка запрещена, и все три — прежние правила движка:
+         • человек выбрал модель сам (pin) — досыл от её имени подменил бы выбор
+           («я выбрал X, а ответил Y»), как это уже сделано для совета голов;
+         • ответ подтверждён инструментом (toolProof) — калькулятор сильнее голоса,
+           и второй прогон стоит секунд без выигрыша (замер W7: 4,5 с против 14,1 с);
+         • внутренний вызов сам попросил не проверять (noCouncils/noCheck). */
+      const checkWanted = out.ok && out.reply && !input.noCheck && !pin && !out.toolProof && !checkDone;
+      if (checkWanted) {
+        checkDone = true;
+        try {
+          const dec = check.decide({
+            text, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
+            ok: out.ok, spent: 0, env,
+          });
+          checkVerdict = { on: dec.on, notes: dec.notes, fixed: false, skipped: '' };
+          if (dec.needFix && dec.notes.length) {
+            const left = Math.max(6000, (input.deadlineMs || 45000) - (Date.now() - started));
+            const repair = o.repair
+              || ((extra) => run({
+                ...input,
+                text: extra,
+                /* Досыл — не новый ход разговора: те же приёмы, что у продолжения
+                   оборванного ответа (иначе память писала бы транскрипт дважды, а
+                   на досыл вставал бы отдельный совет голов). */
+                history: [{ role: 'assistant', content: String(out.reply).slice(-3500) }],
+                providerOrder: out.provider ? [out.provider] : input.providerOrder,
+                noCouncils: true, noCheck: true, allowReframe: false,
+                webSearch: false, chatId: undefined,
+                deadlineMs: left,
+              }));
+            let fixed = null;
+            try { fixed = await repair(check.repairPrompt({ text, reply: out.reply, notes: dec.notes })); }
+            catch (e) { fixed = null; }
+            /* Чиним только вперёд: пустой или куцый досыл ответ не улучшает, и
+               терять написанное ради него нельзя. */
+            if (fixed && fixed.ok && fixed.reply && String(fixed.reply).trim().length >= 40) {
+              out.reply = fixed.reply;
+              checkVerdict.fixed = true;
+              /* Провайдера и модель НЕ подменяем: досыл шёл той же головой, а
+                 подпись ответа обязана показывать того, кто ответил человеку. */
+            }
+          }
+        } catch (e) {
+          /* Самопроверка не имеет права стоить ответа: не разобралась — молчит. */
+          checkVerdict = null;
+        }
+      }
+      /* Вердикт уезжает в ответ целиком: finish() собирает объект заново и сам по
+         себе это поле не переносит, а без него вход отдавал payload без зацепок. */
+      if (checkVerdict) out.check = checkVerdict;
       return out;
     }
 
@@ -604,7 +664,7 @@ export function createEngine(opts) {
                  наследует chatId: память писала транскрипт дважды за один вопрос
                  («Продолжи ровно с того места…» уезжало в профиль как реплика человека,
                  turns росло на 2), и на пустяковый дозапрос вставал отдельный совет. */
-              noCouncils: true, chatId: undefined,
+              noCouncils: true, noCheck: true, chatId: undefined,
               maxTokens: Math.max(Number(input.maxTokens) || 1200, 1800),
             });
             if (more && more.reply && more.reply.length > 20) {
@@ -752,6 +812,10 @@ export function createEngine(opts) {
       text: textOverride != null ? textOverride : inp.text,
       providerOrder: [provider],
       noCouncils: true,
+      /* Голова совета отвечает не человеку, а в голосование: самопроверка с досылом
+         на каждой голове означала бы по одной починке на голос (три досыла вместо
+         одного — поймано проверкой G4e) и жгла бы квоту бесплатных ключей впустую. */
+      noCheck: true,
       allowReframe: false,
       webSearch: false,
       deadlineMs: Math.max(3500, wall - Date.now()),
@@ -848,6 +912,17 @@ export function createEngine(opts) {
       sources: hit && Array.isArray(hit.sources) ? hit.sources : [],
       reframed: hit ? !!hit.reframed : false,
       freedomCleaned: hit ? !!hit.freedomCleaned : false,
+      /* Ответ подтверждён инструментом: по нему и совет голов пропускается, и
+         самопроверка не зовёт починку (см. withMeta). */
+      toolProof: hit ? (hit.toolProof || '') : '',
+      /* Поля, которые withMeta ставит поверх результата: finish() собирает объект
+         ЗАНОВО, поэтому без этих строк глубина и самопроверка терялись по дороге
+         ко входу (payload приходил без deep и без checkNotes — поймано проверкой
+         G4a на первой же сборке слоя). Значения здесь перезапишутся в withMeta. */
+      deep: hit ? hit.deep : undefined,
+      deepPlain: hit ? hit.deepPlain : undefined,
+      depthWhy: hit ? hit.depthWhy : undefined,
+      check: hit ? hit.check : undefined,
       ensemble: hit ? hit.ensemble : null, ensembleSkip: hit ? (hit.ensembleSkip || '') : '',
       ensembleApplied: hit ? !!hit.ensembleApplied : false,
       vision: hit ? hit.vision : null, visionSkip: hit ? (hit.visionSkip || '') : '',
