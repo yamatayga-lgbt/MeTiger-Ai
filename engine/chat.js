@@ -80,21 +80,35 @@ function scrubToolMarkers(s) {
  * обход всё равно попробует их, а не умрёт с пустыми руками.
  */
 export const MODEL_COOL = new Map();
-/** Порядок пула с учётом остывания: свежие — вперёд, остывшие — в конец. */
+/* Счётчик ротации ключей на изолят: без него каждый запрос начинал с ключа №1, и
+   второй/третий ключ работали только как запасные после 429. */
+export const KEY_TURN = new Map();
+/**
+ * Остывание после 429 — на паре МОДЕЛЬ+КЛЮЧ: лимиты бесплатных тарифов считаются на
+ * ключ, и 429 на первом ключе не значит, что второй тоже упрётся. Модель «остыла»,
+ * только когда остыла на всех ключах провайдера.
+ */
 function coolApi(map) {
-  const cooling = (id, model) => {
-    const k = id + '::' + model;
+  const k3 = (id, model, key) => id + '::' + model + '::' + key;
+  const keyCooling = (id, model, key) => {
+    const k = k3(id, model, key);
     const until = map.get(k);
     if (!until) return false;
     if (until <= Date.now()) { map.delete(k); return false; }
     return true;
   };
+  const nKeys = (cfg) => Math.max(1, (cfg && cfg.keys && cfg.keys.length) || 1);
+  const cooling = (id, model, cfg) => {
+    for (let i = 0; i < nKeys(cfg); i++) if (!keyCooling(id, model, i)) return false;
+    return true;
+  };
   return {
+    keyCooling,
     cooling,
-    cool: (id, model, ms) => { if (map.size > 500) map.clear(); map.set(id + '::' + model, Date.now() + ms); },
-    order: (id, models) => {
+    cool: (id, model, key, ms) => { if (map.size > 1000) map.clear(); map.set(k3(id, model, key), Date.now() + ms); },
+    order: (id, models, cfg) => {
       const fresh = [], cold = [];
-      for (const m of models) (cooling(id, m) ? cold : fresh).push(m);
+      for (const m of models) (cooling(id, m, cfg) ? cold : fresh).push(m);
       return fresh.concat(cold);
     },
   };
@@ -143,6 +157,24 @@ export function createEngine(opts) {
   const quar = o.quarantine || new Map();
   /* Прод передаёт модульную MODEL_COOL (общая на изолят), тесты — свою чистую. */
   const mcool = coolApi(o.modelCool || new Map());
+  const keyTurn = o.keyTurn || new Map();
+  /** Ключ для модели: по кругу между запросами, мимо мёртвых и остывших на этой модели. */
+  function chooseKey(id, model, skip) {
+    const cfg = P[id];
+    const n = (cfg && cfg.keys && cfg.keys.length) || 0;
+    if (n <= 1) return skip && skip.size ? -1 : pickKey(P, id, health);
+    const start = (keyTurn.get(id) || 0) % n;
+    keyTurn.set(id, start + 1);
+    for (let s = 0; s < n; s++) {
+      const i = (start + s) % n;
+      if (skip && skip.has(i)) continue;
+      const h = health[id] && health[id][i];
+      if (h && h.state === 'invalid') continue;
+      if (mcool.keyCooling(id, model, i)) continue;
+      return i;
+    }
+    return skip && skip.size ? -1 : pickKey(P, id, health);
+  }
   const QUARANTINE_MS = Math.max(60000, Number(env.QUARANTINE_MS) || 240000);
   function punish(id, why, ms) {
     quar.set(id, { until: Date.now() + (ms || QUARANTINE_MS), why: String(why || '').slice(0, 140) });
@@ -207,7 +239,7 @@ export function createEngine(opts) {
     }
     if (res.status === 429) {
       markKey(id, req.keyIdx, { state: 'cool', until: Date.now() + 60000 });
-      mcool.cool(id, model, Math.max(5000, Number(env.MODEL_COOL_MS) || 45000));
+      mcool.cool(id, model, req.keyIdx || 0, Math.max(5000, Number(env.MODEL_COOL_MS) || 45000));
       note(id, 'dead');
       /* 429 с текстом про баланс — не «подожди минуту», а «счёта нет» (так
          отвечает z.ai). Minute-long cool-down здесь лишь заново жжёт запросы. */
@@ -647,11 +679,11 @@ export function createEngine(opts) {
       models = visionFirst(models, images);
       /* Остывшие после 429 — в конец (выбор человека не трогаем). */
       if ((!pin || pin.id !== id) && !images.length) {
-        models = mcool.order(id, models);
+        models = mcool.order(id, models, cfg);
         /* Остыли все модели провайдера, а дальше в очереди есть кто-то живой — не
            тратим круг на заведомый 429, сразу к следующему. Последнего не пропускаем. */
         const rest = order.slice(order.indexOf(id) + 1).filter((x) => P[x] && !punished(x));
-        if (models.length && rest.length && models.every((m) => mcool.cooling(id, m))) {
+        if (models.length && rest.length && models.every((m) => mcool.cooling(id, m, cfg))) {
           tried.push({ provider: id, why: 'остывает после 429' });
           continue;
         }
@@ -671,7 +703,7 @@ export function createEngine(opts) {
       for (const model of models.slice(0, n)) {
         const left = deadline - Date.now();
         if (left < 2500) { tried.push({ provider: id, model, why: 'вышел бюджет времени' }); return await withMeta(finish(null, tried, started, intent, tier, 'время вышло')); }
-        const keyIdx = pickKey(P, id, health);
+        let keyIdx = chooseKey(id, model);
         if (keyIdx < 0) { tried.push({ provider: id, why: 'ключи исчерпаны' }); break; }
         const okPace = await pace(id, left);
         if (!okPace) { tried.push({ provider: id, why: 'пауза тарифа длиннее бюджета' }); break; }
@@ -690,7 +722,23 @@ export function createEngine(opts) {
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
-        const r = await attemptOne(id, model, req, left);
+        let r = await attemptOne(id, model, req, left);
+        /* 429 на этом ключе — та же модель сразу на другом ключе того же провайдера:
+           лимит считается на ключ, а модель уже выбрана как лучшая для задачи. */
+        const keysUsed = new Set([keyIdx]);
+        while (!r.ok && r.status === 429 && (deadline - Date.now()) >= 2500) {
+          const nk = chooseKey(id, model, keysUsed);
+          if (nk < 0) break;
+          tried.push({ provider: id, model, why: 'rate-limit на ключе ' + (keyIdx + 1) + ', беру ключ ' + (nk + 1), status: 429 });
+          keyIdx = nk; keysUsed.add(nk);
+          const req2 = buildRequest({
+            cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
+            maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
+            presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
+          });
+          req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent;
+          r = await attemptOne(id, model, req2, deadline - Date.now());
+        }
         /* Не сошлось — черновик, который уже потёк в окно, надо убрать, а не бросать
            посреди экрана: следующая голова отвечает совсем другим текстом. */
         if (!r.ok && onDelta) onDelta({ kind: 'drop', provider: id, model });

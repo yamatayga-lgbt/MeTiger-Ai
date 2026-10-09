@@ -220,8 +220,8 @@ console.log('K — математика едет к тому DeepSeek, кото�
     },
   });
   const r1 = await e1b.run({ text: 'реши уравнение 3x+7=2x+11 и проверь корень', noCouncils: true });
-  ok('K1: на настоящей математике первым спрашивают OdiRouter с deepseek-v4-flash',
-    r1.ok === true && seen[0] === 'odirouter/deepseek-v4-flash' && r1.provider === 'odirouter', JSON.stringify(seen.slice(0, 3)));
+  ok('K1 (0.129): на настоящей математике первым спрашивают быстрый gpt-oss-120b на Groq',
+    r1.ok === true && seen[0] === 'groq/openai/gpt-oss-120b' && r1.provider === 'groq', JSON.stringify(seen.slice(0, 3)));
   const seen2 = [];
   const e2 = createEngine({
     env: ENVDS, sleep: async () => {},

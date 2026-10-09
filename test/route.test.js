@@ -230,10 +230,10 @@ console.log('T — ход мыслей не показывается ответ�
 
 console.log('R — головы интента: кому считать математику и писать код (INTENT_HEADS)');
 {
-  ok('R1: дефолт короток и честен — только то, что реально отвечает бесплатно',
-    INTENT_HEADS.math.join() === 'deepseek-v4-flash,deepseek-v4-pro' && INTENT_HEADS.code.join() === INTENT_HEADS.math.join(), INTENT_HEADS.math.join());
+  ok('R1: дефолт (0.129): первым быстрый gpt-oss-120b на Groq, DeepSeek — вторая голова',
+    INTENT_HEADS.math.join() === 'openai/gpt-oss-120b,deepseek-v4-flash,deepseek-v4-pro' && INTENT_HEADS.code.join() === INTENT_HEADS.math.join(), INTENT_HEADS.math.join());
   ok('R2: головы есть только у math, code и «глубже» — на болтовне и зрении порядок не трогаем',
-    headsFor('chat', {}).length === 0 && headsFor('vision', {}).length === 0 && headsFor('math', {}).length === 2,
+    headsFor('chat', {}).length === 0 && headsFor('vision', {}).length === 0 && headsFor('math', {}).length === 3,
     JSON.stringify({ chat: headsFor('chat', {}), vision: headsFor('vision', {}) }));
   ok('R2b: «глубже» ведёт к сильным рассуждениям, а не к самой быстрой модели пула',
     headsFor('reasoning', {}).join() === 'deepseek-v4-pro,deepseek-v4-flash', headsFor('reasoning', {}).join());
@@ -246,9 +246,9 @@ console.log('R — головы интента: кому считать мате
     headsFor('math', { MATH_HEADS: 'одна, ,две' }).join() === 'одна,две', JSON.stringify(headsFor('math', { MATH_HEADS: 'одна, ,две' })));
   ok('R4: потолок шесть голов — очередь и промпт не распухают', headsFor('math', { MATH_HEADS: 'a,b,c,d,e,f,g,h' }).length === 6);
   const pools = { groq: ['openai/gpt-oss-120b'], odirouter: ['free-gemini-3-flash-preview', 'deepseek-v4-flash'], zai: ['glm-4.5-flash'] };
-  ok('R5: первым идёт провайдер, у которого голова в пуле',
-    preferHeads(['groq', 'odirouter', 'zai'], pools, 'math', {}).join() === 'odirouter,groq,zai',
-    preferHeads(['groq', 'odirouter', 'zai'], pools, 'math', {}).join());
+  ok('R5: вперёд идут провайдеры с головой в пуле, без головы — назад',
+    preferHeads(['groq', 'zai', 'odirouter'], pools, 'math', {}).join() === 'groq,odirouter,zai',
+    preferHeads(['groq', 'zai', 'odirouter'], pools, 'math', {}).join());
   ok('R6: нет головы ни у кого — порядок остаётся как был', preferHeads(['groq', 'zai'], { groq: ['a'], zai: ['b'] }, 'math', {}).join() === 'groq,zai');
   ok('R7: INTENT_HEADS=off снимает и головы пула, и очередь провайдеров',
     preferHeads(['groq', 'odirouter'], pools, 'math', { INTENT_HEADS: 'off' }).join() === 'groq,odirouter'
@@ -306,6 +306,35 @@ console.log('R127 — «план» внутри «планеты» и остыв
     !cur('Объясни, что такое рекурсия') && !cur('Записался на курсы английского') && !cur('Курсовая по истории') && !cur('Расскажи про Европу'));
   ok('R128b: а настоящие вопросы про валюту — ловит',
     cur('Какой курс доллара?') && cur('Сколько 100 евро в рублях') && cur('курс биткоина') && cur('конвертируй 50 долларов'));
+}
+
+{
+  const { createEngine } = await import('../engine/chat.js');
+  const auths = [];
+  let n = 0;
+  const fake = async (url, init) => {
+    const a = String((init && init.headers && (init.headers.Authorization || init.headers.authorization)) || '');
+    auths.push(a.slice(-2));
+    n++;
+    if (n === 1) return new Response('{"error":"rate"}', { status: 429 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ок' }, finish_reason: 'stop' }] }), { status: 200 });
+  };
+  const env = { GROQ_KEYS: 'k_A1,k_B2,k_C3', COUNCIL_BUDGET: '0', CHECK: 'off', ENSEMBLE: 'off' };
+  const turn = new Map(), cool = new Map();
+  const mk = () => createEngine({ env, fetch: fake, keyTurn: turn, modelCool: cool, sleep: async () => {} });
+  const r = await mk().run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'] });
+  ok('R129a: 429 на ключе — та же модель сразу на другом ключе, без ухода к другой модели',
+    r.ok && auths.length === 2 && auths[0] !== auths[1], JSON.stringify(auths));
+  auths.length = 0;
+  await mk().run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'] });
+  await mk().run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'] });
+  ok('R129b: ключи ходят по кругу между запросами, а не всегда с первого',
+    new Set(auths).size === 2, JSON.stringify(auths));
+  let calls1 = 0;
+  const one = async () => { calls1++; return new Response('{"error":"rate"}', { status: 429 }); };
+  await createEngine({ env: { GROQ_KEYS: 'solo', COUNCIL_BUDGET: '0', CHECK: 'off' }, fetch: one, sleep: async () => {} })
+    .run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'], modelsPerProvider: 1, deadlineMs: 8000 });
+  ok('R129c: при одном ключе 429 не повторяется по кругу до конца бюджета', calls1 === 1, String(calls1));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

@@ -10,7 +10,7 @@
  * Ошибку не прячем: если ни один провайдер не ответил, приходит 503 со списком
  * попыток — фронт по нему и решает, показывать моку или честное «сервис не отвечает».
  */
-import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil, MODEL_COOL } from '../../engine/chat.js';
+import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil, MODEL_COOL, KEY_TURN } from '../../engine/chat.js';
 /* Разбор тегов размышлений — одним правилом с engine/shape.js: раньше здесь были
    свои regex, и стоило модели назвать тег иначе («<вкладка:thinking>»), как ход
    мыслей уезжал человеку обычным текстом ответа. */
@@ -429,7 +429,7 @@ async function handlePost(context) {
     }
   };
   const engine = createEngine({
-    env, fetch: (u, i) => fetch(u, i), quarantine, modelCool: MODEL_COOL, memory, brave,
+    env, fetch: (u, i) => fetch(u, i), quarantine, modelCool: MODEL_COOL, keyTurn: KEY_TURN, memory, brave,
     /* Куски ответа летят в браузер по мере чтения провайдера. Без
        `accept: text/event-stream` колбэка нет — движок идёт ровно прежним путём,
        поэтому curl, бот и дымовой тест публикации ничего не замечают. */
