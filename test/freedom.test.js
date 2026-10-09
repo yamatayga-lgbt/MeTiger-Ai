@@ -227,7 +227,7 @@ console.log('D — врезка в движок: спасение ответа �
     'найдено: ' + (data.FREEDOM_ALL.match(/undefined|\[object|\$\{/g) || []).slice(0, 3).join(','));
 
   ok('E7: русская речь на месте, азиатские иероглифы не приехали из донора',
-    /взрослый дееспособный человек/.test(data.FREEDOM_ALL)
+    /Не предполагай возраст собеседника/.test(data.FREEDOM_ALL)
       && !/[\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]/.test(data.FREEDOM_ALL + data.BYPASS_SYSTEM + data.ADULT_SYSTEM));
 
   ok('E8: размер полной пачки в ожидаемых границах (7.7–8.5 тыс. символов) — свободная система',
