@@ -1606,36 +1606,63 @@ console.log('── N · стекло (Glassmorphism) ───');
       && /liveOk \? 'оставил уточнённое на лету'/.test(voiceSrc)
       && /'Уточняю текст…'/.test(chatSrc));
 
-  /* ── 0.109: «Размышлять глубже» — просьба человека, а не режим по умолчанию ── */
-  const deepMenu = readFileSync('src/components/AttachMenu.tsx', 'utf8');
+  /* ── 0.123: глубину выбирает агент, а не переключатель в меню «+» ──
+     До 0.123 это был пункт 0.109 («Размышлять глубже»): человек сам решал, где
+     цена ошибки выше цены секунды. Замер на проде показал, что на вопросах, которые
+     классификатор и так понял верно, переключатель не менял модель вовсе, а там,
+     где менял, — не факт что в лучшую сторону. Решение переехало в engine/depth.js
+     (свои проверки — test/depth.test.js), а здесь сторожится новая обвязка:
+     пункта нет, решение приходит событием потока, причина видна словами. */
+  /* Резак комментариев — один на весь блок: пояснения «почему убрали» содержат те
+     же имена, что и удалённый код, и проверка по всему файлу ловила бы текст.
+     Объявлен здесь, до первого использования (const в блоке не всплывает). */
+  const noComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+  const deepMenu = noComments(readFileSync('src/components/AttachMenu.tsx', 'utf8'));
   const appDeep = readFileSync('src/App.tsx', 'utf8');
   const apiDeep = readFileSync('src/lib/api.ts', 'utf8');
+  const entryDeep = readFileSync('functions/api/chat.js', 'utf8');
+  const engineDeep = readFileSync('engine/chat.js', 'utf8');
 
-  ok('N48: пункт «Размышлять глубже» — рабочий переключатель, а не надпись «скоро»',
-    /attach-deep/.test(deepMenu)
-      && /role="menuitemcheckbox"/.test(deepMenu)
-      && /aria-checked=\{deep\}/.test(deepMenu)
-      && !/title="Агент и так думает, когда это нужно"/.test(deepMenu)
-      /* «Плагины» остаются заготовкой — проверяем, что не сняли «скоро» сразу у двух */
-      && /attach-menu-item is-soon/.test(deepMenu));
+  ok('N48: пункта «Размышлять глубже» в меню «+» нет — глубину выбирает агент сам',
+    !/attach-deep/.test(deepMenu) && !/Размышлять глубже/.test(deepMenu)
+      && !/menuitemcheckbox/.test(deepMenu) && !/onDeep/.test(deepMenu)
+      /* «Плагины» остались заготовкой: меню не опустело целиком */
+      && /attach-menu-item is-soon/.test(deepMenu)
+      && /Камера/.test(deepMenu) && /Фото/.test(deepMenu) && /Файлы/.test(deepMenu),
+      'в меню найдено: ' + JSON.stringify((deepMenu.match(/attach-deep|onDeep|Размышлять глубже/g) || []).slice(0, 3)));
 
-  ok('N49: состояние режима видно и в меню, и на кнопке «+» — закрыв меню, человек не теряет его из виду',
-    /attach-switch/.test(deepMenu)
-      && /\.attach-switch \{/.test(css)
-      && /attach-menu-item\.attach-deep\.is-on \.attach-switch \{/.test(css)
-      && /plus-btn\$\{addMenuOpen \? ' is-open' : ''\}\$\{deep \? ' is-deep' : ''\}/.test(chatSrc)
-      && /<span className="plus-dot"/.test(chatSrc)
-      && /\.plus-dot \{/.test(css));
+  ok('N49: обвязки переключателя не осталось — ни в состоянии, ни в стилях, ни на кнопке «+»',
+    !/mt-deep/.test(appDeep) && !/setDeep/.test(appDeep) && !/\bdeep\b/.test(appDeep)
+      && !/plus-dot/.test(chatSrc) && !/is-deep/.test(chatSrc)
+      && !/\.attach-switch \{/.test(css) && !/\.plus-dot \{/.test(css)
+      && !/attach-deep/.test(css));
 
-  ok('N50: включённый режим доезжает до сервера и поднимает усилие рассуждения',
-    /usePersistentState<boolean>\('mt-deep'/.test(appDeep)
-      && /deep: deep \|\| undefined,/.test(appDeep)
-      && /reasoningEffort: deep \? 'high' : effort,/.test(appDeep)
-      && /deep: opts\.deep \? true : undefined,/.test(apiDeep));
+  ok('N50: решение агента видно человеку словами — событие потока и причина в подписи ответа',
+    /* вход решает до движка и объявляет решение потоку раньше текста */
+    /depthJudge\.judge\(\{/.test(entryDeep) && /context\.__send\(\{ kind: 'depth', deep: wantDeep, why: depthWhy/.test(entryDeep)
+      /* движок судит сам, когда его зовут не через вход (и уважает явную просьбу) */
+      && /depth\.judge\(\{ text, intent, images, env, asked \}\)/.test(engineDeep)
+      && /let deep = input\.deep === true/.test(engineDeep)
+      && /out\.depthWhy = depthWhy/.test(engineDeep)
+      /* вход уже прислал причину — движок не имеет права переписать её на
+         «человек попросил глубже»: флаг deep ставит тот же вход (ошибка H23) */
+      && /let depthWhy = deep \? String\(input\.depthWhy \|\| ''\) : ''/.test(engineDeep)
+      && !/let depthWhy = deep \? 'человек попросил глубже'/.test(engineDeep)
+      /* клиент принимает решение и поднимает потолки времени */
+      && /if \(ev\.kind === 'depth'\)/.test(apiDeep) && /const onDepthEvent = \(ev: SseEvent\)/.test(apiDeep)
+      && /ceilingMs = 150_000/.test(apiDeep)
+      /* подпись ответа называет причину, а не просто «глубже» */
+      && /r\.depthWhy \? ': ' \+ r\.depthWhy : ''/.test(apiDeep)
+      && /depthWhy\?: string/.test(apiDeep));
 
-  ok('N51: «глубже» не обрывается на 75-й секунде — человек просил не спешить',
-    /opts\.deep \? 120_000 : 75_000/.test(apiDeep)
-      && /deadlineMs: Number\(env\.CHAT_DEADLINE_MS \|\| \(wantDeep \? 75000 : 50000\)\)/.test(readFileSync('functions/api/chat.js', 'utf8')));
+  ok('N51: «глубже» не обрывается на 75-й секунде — потолок поднимается по решению агента',
+    /arm\(firstWaitMs\)/.test(apiDeep)
+      && /let firstWaitMs = opts\.deep \? 120_000 : 75_000/.test(apiDeep)
+      && /arm\(Math\.min\(SILENCE_MS, ceilingMs - \(Date\.now\(\) - startedAt\)\)\)/.test(apiDeep)
+      && /deadlineMs: Number\(env\.CHAT_DEADLINE_MS \|\| \(wantDeep \? 75000 : 50000\)\)/.test(entryDeep)
+      /* явная просьба извне по-прежнему важнее судьи: поле deep в теле не отменено */
+      && /const askedDeep = !!\(body && body\.deep === true\)/.test(entryDeep)
+      && /if \(!askedDeep\)/.test(entryDeep));
 
   /* Сторожок времени: раньше он убивал живой поток. На проде ответ собирался 83 с,
      на 75-й клиент обрывал связь, и человек читал «ответ оборвался на середине» —
@@ -1743,7 +1770,6 @@ console.log('── N · стекло (Glassmorphism) ───');
        стоят по делу, и проверка по всему файлу ловила бы текст, а не меню.
        Резак комментариев тот же, что для CSS (см. N21): блок-комментарий JS
        и пояснение внутри JSX вырезаются одним выражением. */
-    const noComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
     const menu = noComments(readFileSync('src/components/AttachMenu.tsx', 'utf8'));
     const appSrcVoice = readFileSync('src/App.tsx', 'utf8');
     const chatVoiceBare = noComments(chatVoice);
@@ -1751,16 +1777,16 @@ console.log('── N · стекло (Glassmorphism) ───');
     ok('N66: авточтения ответов в меню «+» больше нет — ни кнопки, ни её класса, ни её ручки',
       menu.indexOf('Отвечать голосом') < 0 && !/attach-speak/.test(menu)
         && !/onSpeak/.test(menu) && !/\bspeak\b/.test(menu) && !/Volume2/.test(menu)
-        /* переключатель в меню остался ровно один — «Размышлять глубже» */
-        && (menu.match(/role="menuitemcheckbox"/g) || []).length === 1
-        && /attach-menu-item attach-deep/.test(menu),
-      'в меню найдено: ' + JSON.stringify((menu.match(/attach-speak|onSpeak|Отвечать голосом/g) || []).slice(0, 3)));
+        /* переключателей в меню не осталось вовсе: глубина уехала в судью (0.123) */
+        && (menu.match(/role="menuitemcheckbox"/g) || []).length === 0
+        && /Камера/.test(menu) && /Файлы/.test(menu),
+      'в меню найдено: ' + JSON.stringify((menu.match(/attach-speak|onSpeak|Отвечать голосом|menuitemcheckbox/g) || []).slice(0, 3)));
 
-    ok('N67: состояние авточтения не осталось висеть в App (мёртвый код — тоже дефект)',
+    ok('N67: состояния авточтения и глубины не осталось висеть в App (мёртвый код — тоже дефект)',
       !/mt-speak/.test(appSrcVoice) && !/speakOn/.test(appSrcVoice) && !/setSpeakOn/.test(appSrcVoice)
-        && !/onSpeak/.test(appSrcVoice)
-        /* а состояние «Размышлять глубже» на месте — резали не его */
-        && /usePersistentState<boolean>\('mt-deep', false/.test(appSrcVoice));
+        && !/onSpeak/.test(appSrcVoice) && !/mt-deep/.test(appSrcVoice) && !/setDeep/.test(appSrcVoice)
+        /* а то, что человек действительно настраивает, на месте — резали не всё подряд */
+        && /usePersistentState<GenParams>\(/.test(appSrcVoice));
 
     ok('N68: ответ не читается вслух сам — ни ожидания конца потока, ни памяти о прочитанном',
       !/озвученRef/.test(chatVoice) && !/speakOn/.test(chatVoiceBare) && !/onSpeak/.test(chatVoiceBare)
@@ -1775,9 +1801,9 @@ console.log('── N · стекло (Glassmorphism) ───');
         && !/attach-menu-voice/.test(menu) && !/attach-voice-btn/.test(menu)
         && !/onVoice/.test(menu) && !/aria-label="Голос"/.test(menu)
         && !/menuitemradio/.test(menu)
-        /* а само меню живо: камера, фото, файлы, «Размышлять глубже» на месте */
+        /* а само меню живо: камера, фото, файлы и заготовка плагинов на месте */
         && /Камера/.test(menu) && /Фото/.test(menu) && /Файлы/.test(menu)
-        && /attach-menu-item attach-deep/.test(menu),
+        && /attach-menu-item is-soon/.test(menu),
       'в меню найдено: ' + JSON.stringify((menu.match(/Жен|Муж|attach-voice-btn|onVoice/g) || []).slice(0, 4)));
 
     ok('N70: состояние и обвязка выбора голоса убраны из App, ChatView и стилей (мёртвый код — тоже дефект)',
@@ -1804,10 +1830,12 @@ console.log('── N · стекло (Glassmorphism) ───');
 
   ok('N52: время ответа продлевается, пока поток живой, а молчание и общий потолок остаются',
     /const onAlive = \(\) => \{/.test(apiDeep)
-      && /readDraftStream\(res, opts\.onDraft, opts\.onReasoning, opts\.onWebSteps, onAlive, partial\)/.test(apiDeep)
+      && /readDraftStream\(res, opts\.onDraft, opts\.onReasoning, opts\.onWebSteps, onAlive, partial, onDepthEvent\)/.test(apiDeep)
       && /if \(got\.events\.length && onAlive\) onAlive\(\)/.test(apiDeep)
       && /SILENCE_MS = 45_000/.test(apiDeep)
-      && /CEILING_MS = opts\.deep \? 150_000 : 120_000/.test(apiDeep)
+      /* потолок перестал быть константой: его поднимает событие depth от судьи */
+      && /let ceilingMs = opts\.deep \? 150_000 : 120_000/.test(apiDeep)
+      && /arm\(Math\.min\(SILENCE_MS, ceilingMs - \(Date\.now\(\) - startedAt\)\)\)/.test(apiDeep)
       && /'связь оборвалась на середине ответа — повторите запрос'/.test(apiDeep));
 
   ok('N47: видно, что уточнение идёт прямо сейчас (иначе слова меняются «сами»)',

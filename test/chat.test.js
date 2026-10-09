@@ -474,6 +474,62 @@ console.log('G2 — «Размышлять глубже»: просьба чел
   globalThis.fetch = gs;
 }
 
+console.log('G3 — глубину выбирает агент, а не переключатель (0.123, engine/depth.js)');
+{
+  const rq = (o) => new Request('http://x/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });
+  const gs = globalThis.fetch;
+  globalThis.fetch = fakeFetch(() => ({ body: chat('Развёрнутый ответ.') }));
+
+  /* Никто ничего не просил: судья сам увидел доказательство и поднял глубину. */
+  const j1 = await (await onRequestPost({ request: rq({ text: 'докажи, что корень из 2 иррациональное число' }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0' }, waitUntil: () => {} })).json();
+  ok('G3a: доказательство поднимает глубину БЕЗ просьбы человека — и причина названа словами',
+    j1.ok === true && j1.deep === true && j1.intent === 'reasoning' && j1.tier === 'smart'
+      && /доказательство/.test(j1.depthWhy || ''),
+    JSON.stringify({ deep: j1.deep, intent: j1.intent, tier: j1.tier, why: j1.depthWhy }));
+
+  /* Причина входа обязана дожить до ответа: движок не имеет права переписать её
+     на «человек попросил», потому что флаг deep ставит тот же вход. */
+  ok('G3b: причина судьи доезжает до payload, а не затирается «человек попросил глубже»',
+    !/попросил/.test(j1.depthWhy || ''), j1.depthWhy);
+
+  /* Болтовня остаётся быстрой: судья не делает глубоким каждый запрос. */
+  const j2 = await (await onRequestPost({ request: rq({ text: 'привет' }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0' }, waitUntil: () => {} })).json();
+  ok('G3c: приветствие остаётся болтовнёй в быстрой очереди, а причина отказа видна в поле',
+    j2.intent === 'fast' && j2.tier === 'fast' && !j2.deep && /не глубже/.test(j2.depthWhy || ''),
+    JSON.stringify({ intent: j2.intent, tier: j2.tier, deep: j2.deep, why: j2.depthWhy }));
+
+  /* Явная просьба извне важнее судьи: curl и прежние версии приложения не сломаны. */
+  const j3 = await (await onRequestPost({ request: rq({ text: 'привет', deep: true }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0' }, waitUntil: () => {} })).json();
+  ok('G3d: явное deep:true извне по-прежнему решает — судья его не перебивает',
+    j3.deep === true && j3.intent === 'reasoning' && /попросил/.test(j3.depthWhy || ''),
+    JSON.stringify({ deep: j3.deep, why: j3.depthWhy }));
+
+  /* Слой выключается одной переменной — поведение прежнее, без сюрпризов в проде. */
+  const j4 = await (await onRequestPost({ request: rq({ text: 'докажи, что корень из 2 иррациональное число' }), env: { GROQ_KEYS: 'g1', RATE_LIMIT: '0', DEPTH: 'off' }, waitUntil: () => {} })).json();
+  ok('G3e: DEPTH=off — судья молчит, глубина только по явной просьбе',
+    !j4.deep && j4.intent === 'reasoning',
+    JSON.stringify({ deep: j4.deep, intent: j4.intent, why: j4.depthWhy }));
+
+  /* Прямой вызов движка: он судит сам, когда вход ничего не прислал. */
+  const f5 = fakeFetch(() => ({ body: chat('Ответ движка.') }));
+  const e5 = createEngine({ env: ENV, fetch: f5, sleep: async () => {}, quarantine: new Map() });
+  const r5 = await e5.run({ text: 'обоснуй и докажи каждый шаг этого решения' });
+  ok('G3f: движок без входа судит сам — глубина и причина на месте',
+    r5.ok === true && r5.deep === true && /доказательство|обоснуй/.test(r5.depthWhy || ''),
+    JSON.stringify({ deep: r5.deep, why: r5.depthWhy }));
+
+  /* Дорогая задача просит больше независимых проверок, если это разрешили переменной. */
+  const f6 = fakeFetch(() => ({ body: chat('17') }));
+  const e6 = createEngine({ env: Object.assign({ DEPTH_COUNCIL_K: 4 }, ENV), fetch: f6, sleep: async () => {}, quarantine: new Map() });
+  const r6 = await e6.run({ text: 'обоснуй и докажи, сколько останется: было 24, съели треть и ещё 5' });
+  ok('G3g: на дорогой задаче совет собирается шире (DEPTH_COUNCIL_K), а не как обычно',
+    r6.ok === true && f6.calls.length > 3,
+    JSON.stringify({ calls: f6.calls.length, ens: r6.ensemble, skip: r6.ensembleSkip }));
+
+  globalThis.fetch = gs;
+}
+
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
 

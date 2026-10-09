@@ -82,10 +82,12 @@ export interface ChatResult {
   streamError?: string
   /** Что модель написала себе перед ответом (у упрямых провайдеров — в отдельном поле). */
   reasoning?: string
-  /** Отвечала ли модель, которую движок считает думающей (режим «Размышлять глубже»). */
+  /** Отвечала ли модель, которую движок считает думающей. */
   deep?: boolean
   /** «Глубже» просили, а ответила не думающая модель: ответ верный, но без размышлений. */
   deepPlain?: boolean
+  /** Почему агент решил думать глубже (engine/depth.js) — словами, для подписи ответа. */
+  depthWhy?: string
   /** Запрос оборвал человек кнопкой «Остановить» — это не сбой сети и не таймаут,
       UI не должен показывать это как ошибку движка. */
   stopped?: boolean
@@ -103,6 +105,10 @@ export interface SseEvent {
   step?: WebStep
   status?: number
   payload?: unknown
+  /** `kind: 'depth'` — решение судьи глубины, приходит раньше текста ответа. */
+  deep?: boolean
+  /** Причина решения словами: её же человек увидит в подписи ответа. */
+  why?: string
 }
 
 /**
@@ -151,6 +157,8 @@ async function readDraftStream(
   onAlive?: () => void,
   /** Куда положить прочитанное, если финала не будет (см. PartialDraft). */
   out?: PartialDraft,
+  /** Решение судьи глубины (`kind: 'depth'`) — приходит раньше текста ответа. */
+  onDepth?: (ev: SseEvent) => void,
 ): Promise<Partial<ChatResult> | null> {
   const rd = res.body && typeof res.body.getReader === 'function' ? res.body.getReader() : null
   if (!rd) return null
@@ -170,7 +178,11 @@ async function readDraftStream(
        события, служебная строка) не доказывают, что ответ ещё пишется. */
     if (got.events.length && onAlive) onAlive()
     for (const ev of got.events) {
-      if (ev.kind === 'web' && ev.step) {
+      if (ev.kind === 'depth') {
+        /* Не текст и не «живо» в смысле ответа: это решение агента думать дольше.
+           Потолок времени поднимает вызывающий (см. onDepthEvent). */
+        if (onDepth) onDepth(ev)
+      } else if (ev.kind === 'web' && ev.step) {
         webSteps.push(ev.step)
         if (onWebSteps) onWebSteps(webSteps.slice())
       } else if (ev.kind === 'draft' && ev.channel === 'reasoning') {
@@ -451,9 +463,9 @@ export async function sendChat(
     /** Живые шаги поиска в интернете (Searched for / Fetched) по мере работы инструментов. */
     onWebSteps?: (steps: WebStep[]) => void
     /**
-     * «Размышлять глубже» (меню «+»): очередь становится smart, думающие модели —
-     * в голову пула, провайдеры с сильными рассуждениями идут первыми, а потолок
-     * времени на ответ выше (думать дольше — это и есть просьба).
+     * Явная просьба глубже — для внешних вызовов (curl, скрипты, прежние версии
+     * приложения). С 0.123 интерфейс её не отправляет: решение принимает агент
+     * (engine/depth.js), а причина приходит полем `depthWhy` и событием потока.
      */
     deep?: boolean
     /**
@@ -488,20 +500,33 @@ export async function sendChat(
      давала «движок недоступен» — самая честная надпись врала). Правило теперь:
      пока поток присылает события, время продлевается; молчание дольше SILENCE
      или общий потолок CEILING — это уже не медленная модель, а оборванная связь.
-     Глубокий режим думает дольше — и потолок у него выше (движок даёт ему 75 с). */
+
+     С 0.123 глубину выбирает агент, а не переключатель, поэтому потолки стали
+     величинами, а не константами: до первого события `depth` они обычные, а
+     получив решение «глубже» клиент поднимает их сам — думать дольше не значит
+     «связь оборвалась». Просьба извне (opts.deep, curl/скрипт) поднимает их сразу. */
   const SILENCE_MS = 45_000
-  const CEILING_MS = opts.deep ? 150_000 : 120_000
   const startedAt = Date.now()
+  let ceilingMs = opts.deep ? 150_000 : 120_000
+  let firstWaitMs = opts.deep ? 120_000 : 75_000
   let timer = 0
   let alive = false
   const arm = (ms: number) => {
     clearTimeout(timer)
     timer = setTimeout(() => ac.abort(), Math.max(1_000, ms))
   }
-  arm(opts.deep ? 120_000 : 75_000)
+  arm(firstWaitMs)
+  /* Решение судьи глубины приходит первым событием потока: поднимаем потолки и
+     говорим приложению, что ответ будет собираться дольше обычного. */
+  const onDepthEvent = (ev: SseEvent) => {
+    if (!ev || ev.deep !== true) return
+    ceilingMs = 150_000
+    firstWaitMs = 120_000
+    arm(Math.min(firstWaitMs, ceilingMs - (Date.now() - startedAt)))
+  }
   const onAlive = () => {
     alive = true
-    arm(Math.min(SILENCE_MS, CEILING_MS - (Date.now() - startedAt)))
+    arm(Math.min(SILENCE_MS, ceilingMs - (Date.now() - startedAt)))
   }
   if (opts.signal) opts.signal.addEventListener('abort', () => ac.abort(), { once: true })
   try {
@@ -541,7 +566,7 @@ export async function sendChat(
       // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
       // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
       const partial: PartialDraft = { text: '', reasoning: '' }
-      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, onAlive, partial)) as Partial<ChatResult> | null
+      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, onAlive, partial, onDepthEvent)) as Partial<ChatResult> | null
       if (!fin) {
         // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
         // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост.
@@ -664,8 +689,10 @@ export function sourceLine(r: ChatResult): string {
   return (
     `${r.provider} · ${r.model || '?'} · ${r.intent || '?'}/${r.tier || '?'} · ${r.ms ?? 0} мс` +
     (r.pinMiss && r.pinned ? ` · ${r.pinned} не ответил` : '') +
-    /* режим «глубже»: видно, дошла ли просьба до думающей модели или ответила обычная */
-    (r.deep ? (r.deepPlain ? ' · глубже: без размышлений' : ' · глубже') : '') +
+    /* Глубина — решение агента, и причина видна словами: «глубже: доказательство
+       или вывод», а не просто «глубже». Если думающая модель не нашлась, это тоже
+       сказано честно (deepPlain) — иначе режим выглядит сломанным. */
+    (r.deep ? (r.deepPlain ? ' · глубже: без размышлений' : ' · глубже' + (r.depthWhy ? ': ' + r.depthWhy : '')) : '') +
     (tools.length ? ` · данные: ${tools.join(', ')}` : '') +
     /* навыки — чем модель себя правила; коротко, чтобы строка не расползалась */
     ((r.skills || []).length ? ` · навыки: ${(r.skills || []).slice(0, 3).join(', ')}${(r.skills || []).length > 3 ? ' +' + ((r.skills || []).length - 3) : ''}` : '') +

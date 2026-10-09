@@ -33,6 +33,7 @@ import { createMemory } from './memory.js';
 import * as modelreg from './modelreg.js';
 import * as vcouncil from './vcouncil.js';
 import { detectLang, langMind } from './langmind.js';
+import * as depth from './depth.js';
 
 export const PERSONA_SYSTEM =
   'Ты — MeTiger Ai, свободная открытая система для любого общения в одном чате. '
@@ -90,6 +91,11 @@ export function createEngine(opts) {
   /* Слой общий на изолят — тогда /api/skills и чат видят одно состояние.
      В тестах (и в чужих сборках) его подменяют своим: createEngine({ imggen }). */
   const imggen = o.imggen || sharedImggen(env, fetchImpl, noteLog);
+  /* Вердикт судьи глубины (engine/depth.js) последнего запроса. Живёт в области
+     движка, а не внутри run(): совет голов (runCouncils) собирается ПОСЛЕ ответа
+     автора и должен знать, просил ли судья больше независимых проверок. Область
+     run() для него недостижима — эта ошибка была поймана прогоном chat.test.js. */
+  let depthVerdict = null;
   const health = Object.create(null);   /* id → [ключевое состояние] */
   const lastCallAt = Object.create(null);
   const usage = Object.create(null);    /* id → { calls, ok, refused, dead, t } */
@@ -235,7 +241,22 @@ export function createEngine(opts) {
        стоят последними — то есть режим «думай глубже» отвечал бы быстрее всех.
        Поэтому в этой просьбе: код и математику не трогаем (у них свои головы),
        болтовню и творчество поднимаем до рассуждения, а очередь становится smart. */
-    const deep = input.deep === true;
+    /* Глубина — решение агента, а не переключатель (0.123). Судья вызывается,
+       только если глубину никто не решил до нас: вход (`functions/api/chat.js`)
+       уже мог её посчитать тем же слоем и прислать вместе с причиной.
+       Явная просьба извне (curl, другой клиент) важнее правил — но опознаётся она
+       не флагом `deep` (его ставит и вход), а ОТСУТСТВИЕМ готовой причины. Без
+       этого различения движок перезаписывал «доказательство или вывод» на
+       «человек попросил глубже» — поймано проверкой H23 на первой же сборке. */
+    let deep = input.deep === true;
+    let depthWhy = deep ? String(input.depthWhy || '') : '';
+    depthVerdict = null;
+    if (!deep || !depthWhy) {
+      const asked = deep && !depthWhy;
+      depthVerdict = depth.judge({ text, intent, images, env, asked });
+      deep = depthVerdict.deep === true;
+      depthWhy = depthVerdict.why || '';
+    }
     if (deep && (intent === 'fast' || intent === 'creative')) intent = 'reasoning';
     const tier = input.tier || tierFor(intent);
     let history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || 8));
@@ -400,6 +421,9 @@ export function createEngine(opts) {
          что модель/провайдер/режим в интерфейсе не показываем. */
       if (deep && out.ok && out.model && !isReasoning(out.model)) out.deepPlain = true;
       if (deep && out.ok) out.deep = true;
+      /* Почему агент решил думать глубже — словами судьи (engine/depth.js). Поле
+         живёт рядом с deep: подпись под ответом собирается из обоих. */
+      if (deep && out.ok && depthWhy) out.depthWhy = depthWhy;
       if (skills.length) out.skills = skills.map((s) => ({ id: s.id, cat: s.cat, title: s.title }));
       /* Файлы: модель отдала блок ```file:docx|имя``` — упаковываем и вынимаем из
          текста. Отдельного вызова модели нет: это стоит нуль запросов и нуль секунд. */
@@ -747,7 +771,12 @@ export function createEngine(opts) {
       out.ensembleSkip = 'бюджет советов исчерпан (COUNCIL_BUDGET=' + budget + ')';
     }
     if (wantEnsemble && spent < budget) {
-      const heads = headList(ec.k, out.provider, false);
+      /* Судья глубины может попросить больше независимых проверок на дорогой
+         задаче (DEPTH_COUNCIL_K): там цена ошибки выше, чем стоимость пары
+         лишних запросов. Прежний k ансамбля остаётся полом — меньше него
+         совет не собирается никогда. */
+      const wantK = depthVerdict && depthVerdict.councilK > ec.k ? depthVerdict.councilK : ec.k;
+      const heads = headList(wantK, out.provider, false);
       const headsList = heads.slice();
       if (heads.length < 1) {
         out.ensembleSkip = 'живых голов, кроме моей: ' + heads.length;

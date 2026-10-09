@@ -529,9 +529,6 @@ interface ChatViewProps {
   /** Переключатель глубокого поиска («поиск») в панели ввода */
   searchOn?: boolean
   onToggleSearch?: () => void
-  /** «Размышлять глубже»: состояние и переключение (живёт в App, хранится в браузере) */
-  deep?: boolean
-  onDeep?: () => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
@@ -549,8 +546,6 @@ export function ChatView({
   draftReasoning,
   draftThinkingSec = 1,
   draftWebSteps = [],
-  deep = false,
-  onDeep,
   onSend,
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
@@ -1181,7 +1176,7 @@ export function ChatView({
             <div className="composer-foot-left">
               <button
                 type="button"
-                className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}${deep ? ' is-deep' : ''}`}
+                className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}`}
                 aria-label="Добавить"
                 aria-expanded={addMenuOpen}
                 onClick={() => {
@@ -1190,9 +1185,6 @@ export function ChatView({
                 }}
               >
                 <Plus size={20} />
-                {/* Метка режима: включено «глубже» или нет. Без неё человек,
-                    закрыв меню, не видит, что просьба ещё действует. */}
-                {deep ? <span className="plus-dot" aria-hidden="true" /> : null}
               </button>
               {/* Камера — снимок сразу с устройства (capture заставляет открыть именно камеру, не выбор приложения). */}
               <input
@@ -1290,8 +1282,6 @@ export function ChatView({
                 onPhoto={() => photoRef.current?.click()}
                 onUploadFiles={() => uploadRef.current?.click()}
                 onPickHistory={addFromHistory}
-                deep={deep}
-                onDeep={onDeep}
                 onClose={() => setAddMenuOpen(false)}
               />
             </>

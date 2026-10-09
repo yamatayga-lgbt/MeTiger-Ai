@@ -20,6 +20,8 @@ import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } f
 import { createBrave } from '../../engine/brave.js';
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
+import { classifyTask } from '../../engine/route.js';
+import * as depthJudge from '../../engine/depth.js';
 import { stats as skillStats } from '../../engine/skills.js';
 
 /**
@@ -347,10 +349,33 @@ async function handlePost(context) {
      рассуждения в потоке не нужны: это килобайты текста, которые никто не увидит,
      а лимиты и тариф провайдера считаются по нему так же, как по ответу. */
   const wantReasoning = !!(body && body.showReasoning === true);
-  /* «Думать глубже» — явная просьба человека из меню «+» (0.109). В движке она
-     поднимает очередь до smart, ставит думающие модели в голову пула и уводит
-     провайдеров с сильными рассуждениями вперёд. Без неё поведение прежнее. */
-  const wantDeep = !!(body && body.deep === true);
+  /* «Думать глубже» до 0.123 было переключателем в меню «+»: человек сам решал,
+     где цена ошибки выше цены секунды. Теперь это решает агент — судья глубины
+     (engine/depth.js) читает сам вопрос и называет причину словами. Явная просьба
+     извне (curl, другой клиент, прежние версии приложения) по-прежнему важнее
+     судьи: поле `deep` в теле никто не отменял. */
+  const askedDeep = !!(body && body.deep === true);
+  let depthVerdict = null;
+  let wantDeep = askedDeep;
+  let depthWhy = askedDeep ? 'человек попросил глубже' : '';
+  if (!askedDeep) {
+    try {
+      depthVerdict = depthJudge.judge({
+        text, images: allImages, env,
+        intent: classifyTask(String(text || ''), allImages),
+      });
+      wantDeep = depthVerdict.deep === true;
+      depthWhy = depthVerdict.why || '';
+    } catch (e) {
+      /* Судья не имеет права стоить ответа: не разобрался — глубина прежняя. */
+      depthWhy = '';
+    }
+  }
+  /* Поток узнаёт решение раньше текста: клиент поднимает потолки времени под
+     глубокий прогон (думать дольше — не значит «связь оборвалась»). */
+  if (context && context.__send) {
+    context.__send({ kind: 'depth', deep: wantDeep, why: depthWhy, asked: askedDeep });
+  }
   /* Потоковый разделитель <think>...</think>: если модель шлёт рассуждения тегом
      внутри обычного content (а не отдельным reasoning_content), перенаправляем
      содержимое <think>...</think> в живой канал reasoning в реальном времени, а
@@ -489,9 +514,10 @@ async function handlePost(context) {
     topP: norm.topP,
     presencePenalty: norm.presencePenalty,
     frequencyPenalty: norm.frequencyPenalty,
-    reasoningEffort: norm.reasoningEffort,
+    reasoningEffort: norm.reasoningEffort || (wantDeep && !askedDeep ? 'high' : undefined),
     showReasoning: wantReasoning,
     deep: wantDeep || undefined,
+    depthWhy: depthWhy || undefined,
     system: norm.system || PERSONA_SYSTEM,
     /* Род агента — настройка человека из приложения (Авто/М/Ж). Сюда идёт pick(), а
        не normalize(): распознанное значение едет в движок, пустое и мусорное — не
@@ -505,9 +531,9 @@ async function handlePost(context) {
     /* Явный запрос глубокого поиска («поиск» в панели ввода): принудительно зовёт
        web-search и читает первую найденную страницу, даже если в вопросе нет слова «погугли». */
     webSearch: body && body.webSearch === true ? true : undefined,
-    /* Глубокий режим думает дольше — и это ровно то, о чём человек попросил.
-       Потолок времени поднимаем только ему: обычный вопрос, который ждёт ответа
-       секунду, не должен получить право висеть полторы минуты. */
+    /* Глубокий прогон думает дольше — и теперь это решение агента, а не человека:
+       потолок времени поднимается по вердикту судьи. Обычный вопрос, который ждёт
+       ответа секунду, права висеть полторы минуты не получает. */
     deadlineMs: Number(env.CHAT_DEADLINE_MS || (wantDeep ? 75000 : 50000)),
   });
   /* Тег размышлений не показывается человеку ни в каком виде: ни закрытый посреди
@@ -580,6 +606,9 @@ async function handlePost(context) {
        но ответила обычная: фронт видит это в строке источника, а curl — здесь. */
     deep: r.deep || undefined,
     deepPlain: r.deepPlain || undefined,
+    /* Почему агент решил думать глубже (engine/depth.js) — словами, а не флагом:
+       человек видит причину в подписи ответа и может с ней не согласиться. */
+    depthWhy: r.depthWhy || depthWhy || undefined,
     /* Как ответили — родом и (по желанию) наблюдением о состоянии собеседника.
        Фронт показывает род в подписи, emotion — только если включён EMOTION_LABEL. */
     gender: r.gender, emotion: r.emotion || undefined,

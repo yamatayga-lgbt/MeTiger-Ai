@@ -1,22 +1,23 @@
 /**
- * Меню «+» в композере: Камера / Фото / Файлы / Плагины / Размышлять глубже —
- * как у референсов. Работают все, кроме «Плагинов» (заготовка, помечена «скоро»).
+ * Меню «+» в композере: Камера / Фото / Файлы / Плагины — как у референсов.
+ * Работают все, кроме «Плагинов» (заготовка, помечена «скоро»).
  *
- * «Размышлять глубже» с 0.109 — переключатель, а не надпись «скоро»: он поднимает
- * очередь до smart, ставит думающие модели в голову пула и даёт ответу больше
- * времени. Состояние видно переключателем, а не словами: включено — ползунок справа.
- *
- * «Файлы» не открывает системный диалог сразу, а раскрывает второй экран того
+ * «Файлы» не открывают системный диалог сразу, а раскрывают второй экран того
  * же окна: что человек уже прикладывал раньше (из src/lib/attachHistory, этот
  * браузер) + кнопка «Загрузить файлы» для нового файла.
  *
- * С 0.121 в меню нет переключателя авточтения ответов, а с 0.122 — и выбора
- * голоса Жен/Муж: озвучка живёт только кнопкой «озвучить» у самого ответа и
- * читает одним голосом. Переключатель в меню ровно один («Размышлять глубже»),
- * мёртвой обвязки (состояния, ручки, стили кнопок голоса) не осталось.
+ * Чего в меню больше нет и почему (по версиям):
+ *   0.121 — переключатель авточтения ответов: озвучка осталась кнопкой «озвучить»
+ *           у самого ответа, просить её заранее не нужно;
+ *   0.122 — выбор голоса Жен/Муж: в запасном пути (речь устройства) он не
+ *           работал, то есть меню обещало то, что слышно не всегда;
+ *   0.123 — «Размышлять глубже»: глубину выбирает агент по самому вопросу
+ *           (engine/depth.js) и пишет причину словами в подписи ответа.
+ * Переключателей в меню не осталось вовсе, мёртвой обвязки (состояния, ручки,
+ * стили) — тоже.
  */
 import { useEffect, useState } from 'react'
-import { Camera, ChevronLeft, FileText, Gauge, Image as ImageIcon, Paperclip, Puzzle, Upload } from 'lucide-react'
+import { Camera, ChevronLeft, FileText, Image as ImageIcon, Paperclip, Puzzle, Upload } from 'lucide-react'
 import { fileHref, fileSize } from '../lib/api'
 import { listHistory, type HistoryItem } from '../lib/attachHistory'
 import { haptic } from '../lib/haptic'
@@ -26,9 +27,6 @@ interface AttachMenuProps {
   onPhoto: () => void
   onUploadFiles: () => void
   onPickHistory: (item: HistoryItem) => void
-  /** «Размышлять глубже»: включено ли и как переключить (состояние живёт в App). */
-  deep?: boolean
-  onDeep?: () => void
   onClose: () => void
 }
 
@@ -43,7 +41,7 @@ function timeAgo(ms: number): string {
   return `${d} дн назад`
 }
 
-export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, onClose }: AttachMenuProps) {
+export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, onClose }: AttachMenuProps) {
   const [view, setView] = useState<'menu' | 'files'>('menu')
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
 
@@ -128,24 +126,11 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, de
         Плагины
         <span className="attach-menu-soon">скоро</span>
       </button>
-      {/* Окно не закрывается: переключатель без своего состояния на глазах —
-          это кнопка «нажал и не понял, включилось ли». Человек видит ползунок
-          и сам решает, когда закрыть меню. */}
-      <button
-        type="button"
-        className={`attach-menu-item attach-deep${deep ? ' is-on' : ''}`}
-        role="menuitemcheckbox"
-        aria-checked={deep}
-        aria-label="Размышлять глубже"
-        title={deep ? 'Размышлять глубже: включено' : 'Размышлять глубже'}
-        onClick={() => { haptic('light'); onDeep?.() }}
-      >
-        <span className="attach-menu-icon"><Gauge size={18} /></span>
-        Размышлять глубже
-        <span className="attach-switch" aria-hidden="true" />
-      </button>
-      {/* С 0.122 в меню нет и выбора голоса: Жен/Муж убраны по просьбе хозяина.
-          Озвучка осталась кнопкой «озвучить» у ответа и читает одним голосом. */}
+      {/* Ни переключателя глубины, ни выбора голоса: с 0.121–0.123 меню содержит
+          только то, что добавляет к сообщению (камера, фото, файлы) и заготовку
+          плагинов. Глубину размышления выбирает агент сам (engine/depth.js), а
+          озвучка живёт кнопкой «озвучить» у ответа — просить об этом в меню
+          больше нечего. */}
     </div>
   )
 }

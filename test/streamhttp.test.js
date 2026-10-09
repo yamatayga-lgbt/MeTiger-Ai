@@ -399,5 +399,40 @@ console.log('── H · SSE-обёртка двери /api/chat ───');
   });
 }
 
+console.log('── H20 · событие depth: решение агента приходит раньше текста ──');
+{
+  await withFetch(async () => {
+    globalThis.fetch = streamFetch(['Ответ', ' готов.'], []);
+    /* Вопрос с приметой глубины (доказательство) и вопрос без неё — один и тот же
+       поток, разница только в решении судьи. */
+    const deep = await drain(await post({ text: 'докажи, что корень из двух иррационален', chatId: 'sse20a' }, SSE));
+    const plain = await drain(await post({ text: 'привет', chatId: 'sse20b' }, SSE));
+
+    const dEv = deep.events.find((e) => e.kind === 'depth');
+    const pEv = plain.events.find((e) => e.kind === 'depth');
+    const dIdx = deep.events.findIndex((e) => e.kind === 'depth');
+    const dDraft = deep.events.findIndex((e) => e.kind === 'draft');
+    const dFin = deep.events.find((e) => e.kind === 'final');
+
+    ok('H20: решение агента о глубине летит отдельным событием, ПЕРЕД кусками текста',
+      !!dEv && dEv.deep === true && dIdx >= 0 && (dDraft < 0 || dIdx < dDraft)
+        && typeof dEv.why === 'string' && dEv.why.length > 5 && dEv.asked === false,
+      JSON.stringify({ dEv, dIdx, dDraft }));
+
+    ok('H21: причина читается человеком — ни id правил, ни имён переменных',
+      !!dEv && !/proof|plan|stakes|debug|arch|compare|multi|teach/.test(dEv.why)
+        && !/DEPTH|THRESHOLD/.test(dEv.why) && /доказательство/.test(dEv.why),
+      dEv && dEv.why);
+
+    ok('H22: на болтовне судья не поднимает глубину, и событие об этом всё равно есть',
+      !!pEv && pEv.deep === false && /не глубже/.test(pEv.why || ''),
+      JSON.stringify(pEv));
+
+    ok('H23: финальный payload несёт то же решение (curl и не-потоковые клиенты видят его в JSON)',
+      !!dFin && dFin.payload && dFin.payload.deep === true && /доказательство/.test(dFin.payload.depthWhy || ''),
+      JSON.stringify({ deep: dFin && dFin.payload && dFin.payload.deep, why: dFin && dFin.payload && dFin.payload.depthWhy }));
+  });
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
