@@ -157,7 +157,12 @@ export function shouldPoll(goal, opts) {
   let intent = '';
   try { intent = (opts && opts.classify ? opts.classify(t, null) : '') || ''; } catch (e) { intent = ''; }
   if (intent === 'code') return false;
-  if (INTENTS[intent] || LOGIC_MARKS.test(t)) return true;
+  /* 0.131: «reasoning» сам по себе — не повод голосовать. Классификатор кладёт туда
+     и «Почему небо голубое?», и «плюсы и минусы»: у объяснения нет одного верного
+     ответа, головы пишут разными словами, совет «расходится» (замер: 13,7 с вместо 2)
+     и «большинство» подменяет ответ автора почти случайным текстом. Голосуем на
+     математике и там, где у задачи явная примета единственного ответа. */
+  if (intent === 'math' || LOGIC_MARKS.test(t)) return true;
   /* fast-вердикт роутера — не приговор: смотрим на структуру задачи */
   return (intent === 'fast' || intent === '') && TWO_NUMBERS.test(t) && WORD_PROBLEM.test(t);
 }
