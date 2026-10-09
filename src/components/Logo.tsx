@@ -1,4 +1,4 @@
-import avatarUrl from '../assets/agent-avatar.png'
+import avatarUrl from '../assets/agent-avatar.webp'
 
 interface LogoMarkProps {
   size?: number

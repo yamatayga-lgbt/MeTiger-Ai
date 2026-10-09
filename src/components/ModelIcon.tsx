@@ -1,4 +1,4 @@
-import avatarUrl from '../assets/agent-avatar.png'
+import avatarUrl from '../assets/agent-avatar.webp'
 import type { ModelAvatar } from '../lib/models'
 
 export type BrandFamily =

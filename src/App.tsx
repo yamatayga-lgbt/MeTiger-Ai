@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { WorkspaceDrawer } from './components/WorkspaceDrawer'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
-import { SettingsView } from './views/SettingsView'
-import { UsageView } from './views/UsageView'
-import { WhatsNewView } from './views/WhatsNewView'
+const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })))
+const UsageView = lazy(() => import('./views/UsageView').then((m) => ({ default: m.UsageView })))
+const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
 import { useTheme } from './hooks/useTheme'
 import { useLiquidGlass } from './hooks/useLiquidGlass'
@@ -545,6 +545,7 @@ export default function App() {
               />
             </div>
           ) : null}
+          <Suspense fallback={null}>
           {view === 'settings' ? (
             <SettingsView
               user={user}
@@ -555,6 +556,7 @@ export default function App() {
           ) : null}
           {view === 'usage' ? <UsageView /> : null}
           {view === 'whatsnew' ? <WhatsNewView /> : null}
+          </Suspense>
         </main>
       </div>
 

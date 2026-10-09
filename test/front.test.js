@@ -72,7 +72,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   const out2 = join(dir, 'chatview.mjs');
   execFileSync(bin, [
     'src/views/ChatView.tsx', '--bundle', '--platform=node', '--format=esm',
-    '--packages=external', '--loader:.png=dataurl', '--outfile=' + out2, '--log-level=error',
+    '--packages=external', '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + out2, '--log-level=error',
   ], { stdio: 'inherit' });
   const { ChatView } = await import(out2);
   const msg = {
@@ -215,7 +215,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   const outPicker = join(dir, 'picker.mjs');
   execFileSync(bin, [
     entry, '--bundle', '--platform=node', '--format=esm', '--packages=external',
-    '--loader:.png=dataurl', '--outfile=' + outPicker, '--log-level=error',
+    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + outPicker, '--log-level=error',
   ], { stdio: 'inherit' });
   const bundle = await import(outPicker);
   const models = bundle.models;
@@ -290,7 +290,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   const shownN = (bigHtml.match(/role="option"/g) || []).length;
   const moreN = Number((bigHtml.match(/показаны не все \(ещё (\d+)\)/) || [])[1]);
   const outM = join(dir, 'models.mjs');
-  execFileSync(bin, ['src/lib/models.ts', '--format=esm', '--bundle', '--outfile=' + outM, '--loader:.png=dataurl', '--log-level=error'], { stdio: 'inherit' });
+  execFileSync(bin, ['src/lib/models.ts', '--format=esm', '--bundle', '--outfile=' + outM, '--loader:.png=dataurl', '--loader:.webp=dataurl', '--log-level=error'], { stdio: 'inherit' });
   const { MODELS: VITRINA } = await import(outM);
   const catalogN = BIG.models.length + VITRINA.filter((s) => !BIG.models.some((m) => m.id === s.id)).length;
   ok('I14: длинный список обрезан по группам, и человек об этом предупреждён',
@@ -377,7 +377,7 @@ console.log('J — вложения из браузера: сортировка,
   const out3 = join(dir, 'chatview-j.mjs');
   execFileSync(bin, [
     'src/views/ChatView.tsx', '--bundle', '--platform=node', '--format=esm',
-    '--packages=external', '--loader:.png=dataurl', '--outfile=' + out3, '--log-level=error',
+    '--packages=external', '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + out3, '--log-level=error',
   ], { stdio: 'inherit' });
   const { ChatView } = await import(out3);
   const html = renderToStaticMarkup(
@@ -477,7 +477,7 @@ console.log('K — Настройки: счётчик моделей, адрес
   const outS = join(dir, 'settings.mjs');
   execFileSync(bin, [
     'src/views/SettingsView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
-    '--loader:.png=dataurl', '--outfile=' + outS, '--log-level=error',
+    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + outS, '--log-level=error',
   ], { stdio: 'inherit' });
   const { SettingsView } = await import(outS);
   const html = renderToStaticMarkup(React.createElement(SettingsView, {
@@ -906,7 +906,7 @@ console.log('L2 — песочница: Python через Pyodide (второй 
     const out4 = join(dir, 'chatview-search.mjs');
     execFileSync(bin, [
       'src/views/ChatView.tsx', '--bundle', '--platform=node', '--format=esm',
-      '--packages=external', '--loader:.png=dataurl', '--outfile=' + out4, '--log-level=error',
+      '--packages=external', '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + out4, '--log-level=error',
     ], { stdio: 'inherit' });
     const { ChatView } = await import(out4);
     const toolsSrc = readFileSync('engine/tools.js', 'utf8');
@@ -953,7 +953,7 @@ console.log('L2 — песочница: Python через Pyodide (второй 
     ].join('\n'), 'utf8');
     execFileSync(bin, [
       entry5, '--bundle', '--platform=node', '--format=esm',
-      '--packages=external', '--loader:.png=dataurl', '--outfile=' + out5, '--log-level=error',
+      '--packages=external', '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + out5, '--log-level=error',
     ], { stdio: 'inherit' });
     const { ModelPicker: MP5, ParamsPopover, Topbar, detectBrand, canModelThink, DEFAULT_GEN_PARAMS, isGenParams, isDefaultGenParams, withGenParamDefaults } = await import(out5);
 
@@ -987,7 +987,7 @@ console.log('L2 — песочница: Python через Pyodide (второй 
     const logoSrc = readFileSync('src/components/Logo.tsx', 'utf8');
     const favSvg = readFileSync('public/favicon.svg', 'utf8');
     ok('M26: везде вместо старой буквы «M» стоит аватарка тигра (LogoMark, favicon и строка «Авто» в карточке модели движка)',
-      logoSrc.includes('agent-avatar.png')
+      logoSrc.includes('agent-avatar.webp')
         && !logoSrc.includes('M8.5 23V9.8')
         && !favSvg.includes('M8.5 23V9.8')
         && existsSync('public/favicon.png')
