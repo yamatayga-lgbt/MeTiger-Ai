@@ -218,5 +218,13 @@ console.log('П — самопроверка: агент сверяет отве
       && (() => { try { decide(undefined); decide(null); return true } catch (e) { return false } })());
 }
 
+{
+  const block = '[Инструмент: Веб-поиск]\nПариж: население 2 102 650, площадь 105,4 км², с 1789 года';
+  ok('C-search1: на «Столица Франции?» верный ответ «Париж.» без чисел из поиска не считается провалом (раньше досыл стирал «Париж»)',
+    findIssues({ text: 'Столица Франции?', reply: 'Париж.', block, tools: ['web-search'], ok: true }).notes.length === 0);
+  ok('C-search2: если вопрос про число — числа из поиска по-прежнему обязаны дойти',
+    /не дошли/.test(findIssues({ text: 'Сколько людей живёт в Париже?', reply: 'Очень много людей, это большой город.', block, tools: ['web-search'], ok: true }).notes.join(' ')));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

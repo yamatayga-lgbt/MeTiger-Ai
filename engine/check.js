@@ -33,6 +33,9 @@ export const MIN_QUESTIONS = 2;
 /** Доля чисел из данных инструментов, которая обязана дойти до ответа. */
 export const MIN_NUMBER_SHARE = 0.5;
 
+/** Вопрос, ответ на который — число: тогда числа из поиска обязаны дойти до ответа. */
+export const ASKS_NUMBER = /(сколько|скольк|how many|how much|курс|цен[аы]|стоим|процент|температур|населени|площад|рост|вес|возраст|когда|в как(?:ом|ой) году|дат[аы]|\d)/i;
+
 /** Потолок знаков у «ответа», который на деле отказ или отписка. */
 export const TOO_SHORT = 40;
 
@@ -307,7 +310,13 @@ export function findIssues(input) {
   out.share = numberShare(nums, reply);
   const tools = Array.isArray(i.tools) ? i.tools : [];
   const counted = tools.indexOf('calc') >= 0 || /\[Инструмент: Калькулятор\]/i.test(String(i.block || ''));
-  if (!counted && nums.length >= 2 && out.share < cfg.numberShare) {
+  /* Поиск в интернете приносит сниппеты, а в них полно случайных чисел (население,
+     даты, площадь). На «Столица Франции?» правило требовало этих чисел, досыл
+     переписывал верный ответ «Париж» в «Население 2 102 650…» без самого Парижа.
+     Для поиска числа обязательны, только если вопрос сам про число. */
+  const searched = tools.indexOf('web-search') >= 0;
+  const asksNumber = ASKS_NUMBER.test(text);
+  if (!counted && (!searched || asksNumber) && nums.length >= 2 && out.share < cfg.numberShare) {
     notes.push('данные инструмента не дошли до ответа (' + Math.round(out.share * 100) + '% чисел)');
   }
 

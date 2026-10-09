@@ -9,7 +9,11 @@ import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, joinLive, V
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
-import { Markdown } from '../components/Markdown'
+import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
+/* Markdown (react-markdown + remark-gfm + формулы + песочница кода) — самый тяжёлый
+   кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
+   виден как есть (pre-wrap), так что пустого места не бывает. */
+const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
 import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
@@ -955,7 +959,7 @@ export function ChatView({
                   ) : null}
                   {Array.isArray(m.files) && m.files.length ? <WriteFilesBlock files={m.files} /> : null}
                   <div className="bubble">
-                    <Markdown text={m.text} onRunOutput={runOutput} />
+                    <LazyBoundary fallback={<div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>}><Markdown text={m.text} onRunOutput={runOutput} /></LazyBoundary>
                   </div>
                   {/* Кто ответил и что сказал совет. Это не украшение: по ней видно,
                       что ответ проверяли, а не угадали, и где его исправили. */}

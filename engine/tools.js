@@ -689,15 +689,26 @@ export async function gatherTools(text, env, fetchImpl, o) {
     webSteps.push(step);
     if (onStep) { try { onStep(step); } catch { /* ignore */ } }
   };
+  /* Инструменты друг от друга не зависят — запускаем все сработавшие разом, а
+     разбираем результаты в прежнем порядке. Раньше шли по очереди: поиск + вики +
+     погода складывали свои задержки, теперь ждём только самый медленный. */
+  const hits = [];
   for (const t of TOOLS) {
     if (off.has(t.id)) continue;
     let hit = force.has(t.id);
     if (!hit) { try { hit = !!t.when(String(text || ''), env); } catch { hit = false; } }
     if (!hit) continue;
+    /* `img` — подменяемый слой картинок: тесты и чужие сборки движка обязаны
+       видеть в инструменте ровно тот экземпляр, что у движка, а не модульный. */
+    let run;
+    try { run = Promise.resolve(t.run({ text, env, fetch: fi, force: force.has(t.id), deep: !!opts.deep, img: opts.img })); }
+    catch (e) { run = Promise.reject(e); }
+    run.catch(() => {});
+    hits.push({ t, run });
+  }
+  for (const { t, run } of hits) {
     try {
-      /* `img` — подменяемый слой картинок: тесты и чужие сборки движка обязаны
-         видеть в инструменте ровно тот экземпляр, что у движка, а не модульный. */
-      const data = await t.run({ text, env, fetch: fi, force: force.has(t.id), deep: !!opts.deep, img: opts.img });
+      const data = await run;
       if (!data) continue;
       used.push(t.id);
       if (SOURCE_TOOLS.has(t.id)) {

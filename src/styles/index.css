@@ -5576,3 +5576,10 @@ kbd {
     background: var(--user-bubble);
   }
 }
+
+/* Масштаб пальцами разрешён (доступность: слабовидящим нужен зум). Чтобы iOS при этом
+   не увеличивал страницу сам при фокусе на поле ввода, на сенсорных экранах поля
+   ввода не мельче 16px — именно этот порог Safari считает «читаемым». */
+@media (pointer: coarse) {
+  input, textarea, select, .composer textarea { font-size: 16px !important; }
+}
