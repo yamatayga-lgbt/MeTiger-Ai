@@ -101,14 +101,12 @@ async function copyText(text: string): Promise<boolean> {
 /** Строка под пузырём: копировать + «N минут назад» (у ответа — ещё и сколько
     он шёл). Иконка меняется на галочку на полторы секунды после удачного
     копирования — обратная связь без тоста, который на телефоне лишний. */
-function MsgFooter({ text, time, align = 'left', canSpeak = false, voice = 'female' }: {
+function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
   text: string
   time: string
   align?: 'left' | 'right'
   /** Озвучка есть только у ответов агента: свой вопрос человек и так только что сказал. */
   canSpeak?: boolean
-  /** Каким голосом читать: выбор человека, помнится в браузере. */
-  voice?: 'female' | 'male'
 }) {
   const [copied, setCopied] = useState(false)
   /* Озвучка: «играет» держим на самой кнопке, а общий звук — один на приложение
@@ -139,7 +137,11 @@ function MsgFooter({ text, time, align = 'left', canSpeak = false, voice = 'fema
             haptic('light')
             if (speaking) { stopSpeech(); setSpeaking(false); return }
             setSpeaking(true)
-            await speak(text, { gender: voice, onState: (состояние) => setSpeaking(состояние === 'play') })
+            /* Голос один (женский: Светлана для русского, Aria для английского).
+               Выбор Жен/Муж убран из интерфейса в 0.122, но здесь род назван
+               словами, а не оставлен по умолчанию: из кнопки должно быть видно,
+               каким голосом читает ответ. */
+            await speak(text, { gender: 'female', onState: (состояние) => setSpeaking(состояние === 'play') })
           }}
         >
           {speaking ? <Square size={13} /> : <Volume2 size={14} />}
@@ -530,9 +532,6 @@ interface ChatViewProps {
   /** «Размышлять глубже»: состояние и переключение (живёт в App, хранится в браузере) */
   deep?: boolean
   onDeep?: () => void
-  /** Каким голосом читать: женским или мужским (выбор помнится в браузере). */
-  voice?: 'female' | 'male'
-  onVoice?: (v: 'female' | 'male') => void
   onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
@@ -552,8 +551,6 @@ export function ChatView({
   draftWebSteps = [],
   deep = false,
   onDeep,
-  voice = 'female',
-  onVoice,
   onSend,
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
@@ -1014,7 +1011,7 @@ export function ChatView({
                     </div>
                   ) : null}
                   {m.text ? (
-                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} canSpeak voice={voice} />
+                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} canSpeak />
                   ) : null}
                 </div>
               </div>
@@ -1295,8 +1292,6 @@ export function ChatView({
                 onPickHistory={addFromHistory}
                 deep={deep}
                 onDeep={onDeep}
-                voice={voice}
-                onVoice={onVoice}
                 onClose={() => setAddMenuOpen(false)}
               />
             </>

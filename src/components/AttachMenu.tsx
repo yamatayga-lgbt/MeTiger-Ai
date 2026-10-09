@@ -10,10 +10,10 @@
  * же окна: что человек уже прикладывал раньше (из src/lib/attachHistory, этот
  * браузер) + кнопка «Загрузить файлы» для нового файла.
  *
- * С 0.121 в меню нет переключателя авточтения ответов: озвучка осталась
- * кнопкой «озвучить» у самого ответа, а здесь — только выбор голоса Жен/Муж,
- * которым эта кнопка читает. Переключателей в меню ровно один («Размышлять
- * глубже»), и мёртвой обвязки (состояние, ожидание конца потока) не осталось.
+ * С 0.121 в меню нет переключателя авточтения ответов, а с 0.122 — и выбора
+ * голоса Жен/Муж: озвучка живёт только кнопкой «озвучить» у самого ответа и
+ * читает одним голосом. Переключатель в меню ровно один («Размышлять глубже»),
+ * мёртвой обвязки (состояния, ручки, стили кнопок голоса) не осталось.
  */
 import { useEffect, useState } from 'react'
 import { Camera, ChevronLeft, FileText, Gauge, Image as ImageIcon, Paperclip, Puzzle, Upload } from 'lucide-react'
@@ -28,9 +28,6 @@ interface AttachMenuProps {
   onPickHistory: (item: HistoryItem) => void
   /** «Размышлять глубже»: включено ли и как переключить (состояние живёт в App). */
   deep?: boolean
-  /** Выбор голоса: женский или мужской (состояние живёт в App). */
-  voice?: 'female' | 'male'
-  onVoice?: (v: 'female' | 'male') => void
   onDeep?: () => void
   onClose: () => void
 }
@@ -46,7 +43,7 @@ function timeAgo(ms: number): string {
   return `${d} дн назад`
 }
 
-export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, voice = 'female', onVoice, onClose }: AttachMenuProps) {
+export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, deep = false, onDeep, onClose }: AttachMenuProps) {
   const [view, setView] = useState<'menu' | 'files'>('menu')
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
 
@@ -147,32 +144,8 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, de
         Размышлять глубже
         <span className="attach-switch" aria-hidden="true" />
       </button>
-      {/* Выбор голоса Жен/Муж в меню остался: он задаёт, каким голосом кнопка
-          «озвучить» у ответа читает текст. Авточтение каждого ответа убрано
-          в 0.121 — вместе с ним ушёл и его переключатель из этого меню. */}
-      <div className="attach-menu-voice" role="group" aria-label="Голос">
-        <span className="attach-menu-voice-label">Голос</span>
-        <button
-          type="button"
-          className={'attach-voice-btn' + (voice === 'female' ? ' is-on' : '')}
-          role="menuitemradio"
-          aria-checked={voice === 'female'}
-          aria-label="Женский голос"
-          onClick={() => { haptic('light'); onVoice?.('female') }}
-        >
-          Жен
-        </button>
-        <button
-          type="button"
-          className={'attach-voice-btn' + (voice === 'male' ? ' is-on' : '')}
-          role="menuitemradio"
-          aria-checked={voice === 'male'}
-          aria-label="Мужской голос"
-          onClick={() => { haptic('light'); onVoice?.('male') }}
-        >
-          Муж
-        </button>
-      </div>
+      {/* С 0.122 в меню нет и выбора голоса: Жен/Муж убраны по просьбе хозяина.
+          Озвучка осталась кнопкой «озвучить» у ответа и читает одним голосом. */}
     </div>
   )
 }

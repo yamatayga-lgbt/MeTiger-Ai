@@ -8,7 +8,7 @@
 // (scripts/stamp-sw.mjs, запускается из `npm run build`) из версии в
 // package.json — так у всех установленных иконок старая оболочка быстро
 // сменяется новой, и об этом не нужно вспоминать руками при публикации.
-const CACHE_VERSION = 'v0121'
+const CACHE_VERSION = 'v0122'
 const CACHE_NAME = `metiger-shell-${CACHE_VERSION}`
 const SHELL_URLS = ['./', './index.html', './favicon.png', './favicon.svg', './manifest.webmanifest']
 

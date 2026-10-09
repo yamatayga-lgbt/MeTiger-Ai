@@ -1736,15 +1736,15 @@ console.log('── N · стекло (Glassmorphism) ───');
       /stopSpeech\(\)/.test(readFileSync('src/lib/speech.ts', 'utf8')) && /export function stopSpeech/.test(readFileSync('src/lib/speech.ts', 'utf8')));
 
     /* 0.121: переключатель авточтения ответов из меню «+» убран — по просьбе
-       хозяина. Озвучка осталась кнопкой «озвучить» у самого ответа, а выбор
-       голоса Жен/Муж в меню нужен именно ей.
+       хозяина. 0.122: следом убран и выбор голоса Жен/Муж — там же, по той же
+       просьбе. Озвучка осталась одной кнопкой «озвучить» у самого ответа, и
+       читает она одним голосом.
        Проверяем КОД БЕЗ КОММЕНТАРИЙ: в пояснении «почему убрали» те же имена
        стоят по делу, и проверка по всему файлу ловила бы текст, а не меню.
        Резак комментариев тот же, что для CSS (см. N21): блок-комментарий JS
        и пояснение внутри JSX вырезаются одним выражением. */
     const noComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
     const menu = noComments(readFileSync('src/components/AttachMenu.tsx', 'utf8'));
-    const menuRaw = readFileSync('src/components/AttachMenu.tsx', 'utf8');
     const appSrcVoice = readFileSync('src/App.tsx', 'utf8');
     const chatVoiceBare = noComments(chatVoice);
 
@@ -1765,18 +1765,36 @@ console.log('── N · стекло (Glassmorphism) ───');
     ok('N68: ответ не читается вслух сам — ни ожидания конца потока, ни памяти о прочитанном',
       !/озвученRef/.test(chatVoice) && !/speakOn/.test(chatVoiceBare) && !/onSpeak/.test(chatVoiceBare)
         /* озвучка жива, но запускается только рукой человека: кнопка у ответа */
-        && /canSpeak/.test(chatVoice) && /await speak\(text, \{ gender: voice, onState/.test(chatVoice));
+        && /canSpeak/.test(chatVoice) && /await speak\(text, \{ gender: 'female', onState/.test(chatVoice));
 
-    ok('N69: голос для озвучки по-прежнему выбирается в меню и помнится в браузере',
-      /usePersistentState<'female' \| 'male'>\(\s*'mt-voice'/.test(appSrcVoice)
-        && /aria-label="Женский голос"/.test(menuRaw) && /aria-label="Мужской голос"/.test(menuRaw)
-        && /attach-menu-voice/.test(menuRaw)
-        && /gender: voice, onState/.test(chatVoice));
+    /* 0.122: выбора голоса нет нигде — ни в меню, ни в состоянии, ни в пропсах.
+       Род назван словами прямо в кнопке («female»), чтобы из кода было видно,
+       каким голосом читает ответ, а не прятался в значении по умолчанию. */
+    ok('N69: выбора голоса Жен/Муж в меню «+» больше нет — ни кнопок, ни их ручек',
+      menu.indexOf('Жен') < 0 && menu.indexOf('Муж') < 0
+        && !/attach-menu-voice/.test(menu) && !/attach-voice-btn/.test(menu)
+        && !/onVoice/.test(menu) && !/aria-label="Голос"/.test(menu)
+        && !/menuitemradio/.test(menu)
+        /* а само меню живо: камера, фото, файлы, «Размышлять глубже» на месте */
+        && /Камера/.test(menu) && /Фото/.test(menu) && /Файлы/.test(menu)
+        && /attach-menu-item attach-deep/.test(menu),
+      'в меню найдено: ' + JSON.stringify((menu.match(/Жен|Муж|attach-voice-btn|onVoice/g) || []).slice(0, 4)));
 
-    ok('N70: кнопки голоса не растягиваются на всю строку — меню не распухает',
-      /\.attach-menu-voice \{[^}]*display: flex/.test(css)
-        && !/\.attach-menu-voice[^{]*\{[^}]*flex: 1 0 100%/.test(css)
-        && /\.attach-voice-btn \{[^}]*min-width: 52px/.test(css));
+    ok('N70: состояние и обвязка выбора голоса убраны из App, ChatView и стилей (мёртвый код — тоже дефект)',
+      !/mt-voice/.test(appSrcVoice) && !/setVoice/.test(appSrcVoice) && !/onVoice/.test(appSrcVoice)
+        /* Голосовой ВВОД в ChatView живьём жив (voice-btn, voiceError, startVoice),
+           поэтому смотрим не на слово «voice», а на выбор ГОЛОСА ДЛЯ ОЗВУЧКИ:
+           пропсы voice/onVoice и их передача в меню и в строку ответа. */
+        && !/onVoice/.test(chatVoiceBare) && !/^\s*voice\?:/m.test(chatVoiceBare)
+        && !/^\s*voice = /.test(chatVoiceBare) && !/voice=\{/.test(chatVoiceBare)
+        /* стили кнопок голоса не переживают сами кнопки — считаем по CSS без
+           комментариев: пояснение «почему убраны» те же имена содержит по делу */
+        && !/\.attach-menu-voice[^\w-]/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))
+        && !/\.attach-voice-btn/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))
+        /* озвучка при этом жива: движок, вход и кнопка у ответа на месте */
+        && /gender: opts\.gender \|\| 'female'/.test(readFileSync('src/lib/speech.ts', 'utf8'))
+        && /msg-speak-btn/.test(chatVoice),
+      'остатки: ' + JSON.stringify((appSrcVoice + chatVoiceBare).match(/mt-voice|onVoice|setVoice/g) || []));
 
     ok('N62: «*» и «_» внутри формулы не становятся разметкой Markdown',
       !/<em>/.test(starHtml) && /math-fx/.test(starHtml) && /math-sub/.test(starHtml)

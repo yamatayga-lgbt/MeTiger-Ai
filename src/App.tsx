@@ -136,13 +136,9 @@ export default function App() {
      квоту). Хранится в браузере: человек, которому режим нужен по работе, не
      должен включать его заново после каждой перезагрузки. */
   const [deep, setDeep] = usePersistentState<boolean>('mt-deep', false, (v): v is boolean => typeof v === 'boolean')
-  /* Какой голос читает ответы: женский или мужской. Выбор помнится в браузере —
-     он про человека («мне привычнее этот голос»), а не про текущий разговор.
-     Состояния авточтения ответов здесь больше нет (0.121): озвучка запускается
-     кнопкой «озвучить» у ответа, а не переключателем в меню «+». */
-  const [voice, setVoice] = usePersistentState<'female' | 'male'>(
-    'mt-voice', 'female', (v): v is 'female' | 'male' => v === 'female' || v === 'male',
-  )
+  /* Ни состояния авточтения ответов, ни выбора голоса здесь больше нет (0.121/0.122):
+     озвучка запускается только кнопкой «озвучить» у ответа и читает одним голосом,
+     поэтому хранить в браузере нечего. */
   /* параметры генерации: temperature, max_tokens, top_p, presence/frequency penalty */
   const [genParamsRaw, setGenParams] = usePersistentState<GenParams>(
     'mt-params',
@@ -548,8 +544,6 @@ export default function App() {
                 draftWebSteps={draftWebSteps}
                 deep={deep}
                 onDeep={() => setDeep((v) => !v)}
-                voice={voice}
-                onVoice={setVoice}
                 onSend={sendMessage}
                 onStop={stopGeneration}
                 genParams={genParams}
