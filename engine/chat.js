@@ -83,6 +83,8 @@ export const MODEL_COOL = new Map();
 /* Счётчик ротации ключей на изолят: без него каждый запрос начинал с ключа №1, и
    второй/третий ключ работали только как запасные после 429. */
 export const KEY_TURN = new Map();
+/** Мёртвые ключи (401/403) на изолят: id#индекс → до какого времени не трогать. */
+export const KEY_DEAD = new Map();
 /**
  * Остывание после 429 — на паре МОДЕЛЬ+КЛЮЧ: лимиты бесплатных тарифов считаются на
  * ключ, и 429 на первом ключе не значит, что второй тоже упрётся. Модель «остыла»,
@@ -158,6 +160,8 @@ export function createEngine(opts) {
   /* Прод передаёт модульную MODEL_COOL (общая на изолят), тесты — свою чистую. */
   const mcool = coolApi(o.modelCool || new Map());
   const keyTurn = o.keyTurn || new Map();
+  const keyDead = o.keyDead || new Map();
+  const isKeyDead = (id, i) => { const u = keyDead.get(id + '#' + i); if (!u) return false; if (u <= Date.now()) { keyDead.delete(id + '#' + i); return false; } return true; };
   /** Ключ для модели: по кругу между запросами, мимо мёртвых и остывших на этой модели. */
   function chooseKey(id, model, skip) {
     const cfg = P[id];
@@ -170,6 +174,7 @@ export function createEngine(opts) {
       if (skip && skip.has(i)) continue;
       const h = health[id] && health[id][i];
       if (h && h.state === 'invalid') continue;
+      if (isKeyDead(id, i)) continue;
       if (mcool.keyCooling(id, model, i)) continue;
       return i;
     }
@@ -250,6 +255,16 @@ export function createEngine(opts) {
     }
     if (res.status === 401 || res.status === 403) {
       markKey(id, req.keyIdx, { state: 'invalid' });
+      /* Один мёртвый ключ из нескольких — не повод сажать в карантин весь провайдер
+         (0.129: с ротацией ключей мёртвый третий ключ Groq выключал два живых). Ключ
+         выключается на час сам по себе, провайдер — только когда мертвы все. */
+      const nk = (P[id] && P[id].keys && P[id].keys.length) || 1;
+      if (nk > 1) {
+        keyDead.set(id + '#' + (req.keyIdx || 0), Date.now() + 3600000);
+        let alive = 0;
+        for (let i = 0; i < nk; i++) if (!isKeyDead(id, i)) alive++;
+        if (alive > 0) { note(id, 'dead'); return { ok: false, why: 'ключ ' + ((req.keyIdx || 0) + 1) + ' не принят, остальные живы', status: res.status, deadKey: true }; }
+      }
       punish(id, 'ключ не принят (http ' + res.status + ')');
       note(id, 'dead');
       return { ok: false, why: 'ключ не принят', status: res.status };
@@ -726,10 +741,10 @@ export function createEngine(opts) {
         /* 429 на этом ключе — та же модель сразу на другом ключе того же провайдера:
            лимит считается на ключ, а модель уже выбрана как лучшая для задачи. */
         const keysUsed = new Set([keyIdx]);
-        while (!r.ok && r.status === 429 && (deadline - Date.now()) >= 2500) {
+        while (!r.ok && (r.status === 429 || r.deadKey) && (deadline - Date.now()) >= 2500) {
           const nk = chooseKey(id, model, keysUsed);
           if (nk < 0) break;
-          tried.push({ provider: id, model, why: 'rate-limit на ключе ' + (keyIdx + 1) + ', беру ключ ' + (nk + 1), status: 429 });
+          tried.push({ provider: id, model, why: (r.deadKey ? 'ключ ' + (keyIdx + 1) + ' не принят' : 'rate-limit на ключе ' + (keyIdx + 1)) + ', беру ключ ' + (nk + 1), status: r.status });
           keyIdx = nk; keysUsed.add(nk);
           const req2 = buildRequest({
             cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,

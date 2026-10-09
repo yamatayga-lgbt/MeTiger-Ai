@@ -337,5 +337,25 @@ console.log('R127 — «план» внутри «планеты» и остыв
   ok('R129c: при одном ключе 429 не повторяется по кругу до конца бюджета', calls1 === 1, String(calls1));
 }
 
+{
+  const { createEngine } = await import('../engine/chat.js');
+  const seen = [];
+  const fake = async (url, init) => {
+    const a = String((init && init.headers && (init.headers.Authorization || init.headers.authorization)) || '');
+    seen.push(a.slice(-4));
+    if (a.endsWith('DEAD')) return new Response('{"error":"invalid key"}', { status: 401 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ок' }, finish_reason: 'stop' }] }), { status: 200 });
+  };
+  const quar = new Map(), turn = new Map(), dead = new Map();
+  const env = { GROQ_KEYS: 'k_DEAD,k_LIVE', COUNCIL_BUDGET: '0', CHECK: 'off', ENSEMBLE: 'off' };
+  const mk = () => createEngine({ env, fetch: fake, quarantine: quar, keyTurn: turn, keyDead: dead, sleep: async () => {} });
+  const r1 = await mk().run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'] });
+  ok('R130a: мёртвый ключ из двух не сажает провайдер в карантин, ответ — через живой ключ',
+    r1.ok && r1.provider === 'groq' && !quar.has('groq'), JSON.stringify({ seen, q: [...quar.keys()], tried: r1.tried }));
+  seen.length = 0;
+  for (let i = 0; i < 3; i++) await mk().run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'] });
+  ok('R130b: к мёртвому ключу больше не ходим', !seen.includes('DEAD'), JSON.stringify(seen));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
