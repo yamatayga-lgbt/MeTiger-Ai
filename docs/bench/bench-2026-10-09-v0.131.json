@@ -1,0 +1,198 @@
+{
+ "date": "2026-10-09",
+ "version": "0.131",
+ "results": {
+  "metiger": [
+   {
+    "id": "h1",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 2048,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "Год 1: \\(100 000 × 1{,}10 = 110 000\\) руб.\nГод 2: \\(110 000 × 1{,}10 = 121 000\\) руб.\nГод 3: \\(121 000 × 1{,}10 = 133 100\\) руб."
+   },
+   {
+    "id": "h2",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 1723,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "Количество нулей в конце \\(100!\\) определяется числом пар простых множителей \\(2\\) и \\(5\\); факториал содержит гораздо больше двоек, поэтому считаем только количество пятёрок.\n\n\\[\n\\text{Кол-во пятёрок} = \\left\\lfloor\\frac{100}{5}\\right\\rfloor\n                     + \\left\\lfloor\\frac{100}{5^{2}}\\right\\rfloor\n                     + \\left\\lfloor\\frac{100}{5^{3}}\\right\\rfloor + \\dots\n\\]\n\n\\[\n\\begin{aligned}\n\\left\\lfloor\\frac{100}{5}\\right\\rfloor &= 20,\\\\\n\\left\\lfloor\\frac{100}{25}\\right\\rfloor &= 4,\\\\\n\\left\\lfloor\\frac{100}{125}\\right\\rfloor &= 0.\n\\end{aligned}\n\\]\n\nСуммируем:\n\n\\[\n20 + 4 + 0 = 24.\n\\]\n\n**Ответ:** в конце числа \\(100!\\) — 24 нуля."
+   },
+   {
+    "id": "h3",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 1224,
+    "model": "qwen/qwen3.8-27b",
+    "provider": "groq",
+    "reply": "Цифра 7 встречается 20 раз.\n\nРасчет:\n1.  **В разряде единиц:** 7, 17, 27, 37, 47, 57, 67, 77, 87, 97 — всего 10 раз.\n2.  **В разряде десятков:** 70, 71, 72, 73, 74, 75, 76, 77, 78, 79 — всего 10 раз.\n\nВ числе 77 цифра 7 встречается дважды, и это учтено в обоих списках.\nИтого: \\(10 + 10 = 20\\)."
+   },
+   {
+    "id": "h4",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 12944,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "Остаток равен \\(2\\). (Поскольку \\(2^{3}\\equiv1\\pmod7\\), то \\(2^{100}=2^{3\\cdot33+1}\\equiv(2^{3})^{33}\\cdot2\\equiv1^{33}\\cdot2\\equiv2\\))."
+   },
+   {
+    "id": "h5",
+    "cat": "сложное",
+    "pass": false,
+    "why": "ответ: В слове «пререкаться» 3 буквы «р»: п, **р**, е, **р**, е, к, а, т, **ь**... подожди, давайте пересчитаем по по",
+    "ms": 8664,
+    "model": "qwen/qwen3.8-27b",
+    "provider": "groq",
+    "reply": "В слове «пререкаться» 3 буквы «р»:\n\nп, **р**, е, **р**, е, к, а, т, **ь**... подожди, давайте пересчитаем по порядку:\n1. п\n2. **р**\n3. е\n4. **р**\n5. е\n6. к\n7. а\n8. т\n9. ь\n10. с\n11. я\n12.\n\nПростите, я ошибся в разборе. Слово «пререкаться» пишется так: п-р-е-р-е-к-а-т-ь-с-я.\nУ меня было лишнее «я» в конце в первом подсчёте, но в самом слове последняя буква «я».\n\nДавайте просто выпишем слово и подчеркнём «р»:\n**п** **р** **е** **р** **е** **к** **а** **т** **ь** **с** **я**\n\nБуквы «р» стоят на 2-м и 4-м местах.\nИтого: 2 буквы."
+   },
+   {
+    "id": "h6",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 1430,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "В слове «переотведение» буква «е» встречается 5 раз."
+   },
+   {
+    "id": "h7",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 924,
+    "model": "qwen/qwen3.8-27b",
+    "provider": "groq",
+    "reply": "Пусть \\( x \\) — возраст сына сейчас.\nТогда возраст отца сейчас: \\( x + 30 \\).\n\nЧерез 5 лет:\n- Возраст сына: \\( x + 5 \\)\n- Возраст отца: \\( (x + 30) + 5 = x + 35 \\)\n\nПо условию, через 5 лет отец будет старше сына в 3 раза:\n\\[ x + 35 = 3(x + 5) \\]\n\nРешаем уравнение:\n\\[ x + 35 = 3x + 15 \\]\n\\[ 35 - 15 = 3x - x \\]\n\\[ 20 = 2x \\]\n\\[ x = 10 \\]\n\nСыну сейчас **10 лет**."
+   },
+   {
+    "id": "h8",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 3039,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "**Таблица прогресса**\n\n| День | Утреннее положение (м) | Подъём днём (+3 м) | Позиция к вечеру (м) | Спуск ночью (–2 м) |\n|------|------------------------|-------------------|----------------------|--------------------|\n| 1    | 0                      | 3                 | 3                    | 1                  |\n| 2    | 1                      | 4                 | 4                    | 2                  |\n| 3    | 2                      | 5                 | 5                    | 3                  |\n| 4    | 3                      | 6                 | 6                    | 4                  |\n| 5    | 4                      | 7                 | 7                    | 5                  |\n| 6    | 5                      | 8                 | 8                    | 6                  |\n| 7    | 6                      | 9                 | 9                    | 7                  |\n| **8**| **7**                  | **10**            | **10** (вершина)    | —                  |\n\nНа 8‑й день улитка достигает вершины 10 м и больше не скользит вниз."
+   },
+   {
+    "id": "h10",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 980,
+    "model": "openai/gpt-oss-20b",
+    "provider": "groq",
+    "reply": "9.9 — это больше, чем 9.11."
+   },
+   {
+    "id": "h11",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 860,
+    "model": "openai/gpt-oss-20b",
+    "provider": "groq",
+    "reply": "648"
+   },
+   {
+    "id": "h12",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 12354,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "Вероятность = \\(\\displaystyle \\frac{\\binom{5}{2}}{\\binom{8}{2}}=\\frac{10}{28}=\\frac{5}{14}\\).\nОтвет: \\(\\frac{5}{14}\\)."
+   },
+   {
+    "id": "h13",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 12670,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "Ответ: 120"
+   },
+   {
+    "id": "h14",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 2041,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "жар,жизнь,жёлтый"
+   },
+   {
+    "id": "h15",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 1387,
+    "model": "qwen/qwen3.8-27b",
+    "provider": "groq",
+    "reply": "1 января 2000 года был **суббота**."
+   },
+   {
+    "id": "h16",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 3524,
+    "model": "qwen/qwen3.8-27b",
+    "provider": "groq",
+    "reply": "Большой угол между стрелками = \\(360^\\circ - 7.5^\\circ = 352.5^\\circ\\)."
+   },
+   {
+    "id": "hc1",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 2404,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "```js\n/**\n * Returns the length of the longest strictly increasing subsequence.\n * @param {number[]} arr\n * @returns {number}\n */\nfunction lis(arr) {\n  if (!Array.isArray(arr) || arr.length === 0) return 0;\n\n// tails[i] – minimal possible tail of an increasing subsequence of length i+1\n  const tails = [];\n\nfor (const x of arr) {\n    // binary search for the first element >= x\n    let lo = 0, hi = tails.length;\n    while (lo < hi) {\n      const mid = (lo + hi) >> 1;\n      if (tails[mid] < x) lo = mid + 1;\n      else hi = mid;\n    }\n    // lo is the position to replace / append\n    tails[lo] = x;\n  }\n\nreturn tails.length;\n}\n```"
+   },
+   {
+    "id": "hc2",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 7062,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "```js\n/**\n * Evaluates an arithmetic expression containing integers,\n * + - * / operators and parentheses.\n * No use of eval or Function.\n *\n * @param {string} s – expression string\n * @returns {number} – computed value\n */\nfunction evalExpr(s) {\n  // remove spaces\n  const str = s.replace(/\\s+/g, '');\n  let i = 0;\n\nconst peek = () => str[i];\n  const getNumber = () => {\n    let start = i;\n    while (i < str.length && /[0-9]/.test(str[i])) i++;\n    return Number(str.slice(start, i));\n  };\n\n// factor → number | '(' expr ')' | ('+'|'-') factor   (unary plus/minus)\n  const factor = () => {\n    const ch = peek();\n    if (ch === '(') {\n      i++; // '('\n      const val = expr();\n      if (peek() !== ')') throw new Error('Mismatched parentheses');\n      i++; // ')'\n      return val;\n    }\n    if (ch === '+' || ch === '-') {\n      const sign = ch === '+' ? 1 : -1;\n      i++;\n      return sign * factor();\n    }\n    return getNumber();\n  };\n\n// term → factor { ('*'|'/') factor }\n  const term = () => {\n    let value = factor();\n    while (i < str.length) {\n      const op = peek();\n      if (op !== '*' && op !== '/') break;\n      i++;\n      const right = factor();\n      value = op === '*' ? value * right : value / right;\n    }\n    return value;\n  };\n\n// expr → term { ('+'|'-') term }\n  const expr = () => {\n    let value = term();\n    while (i < str.length) {\n      const op = peek();\n      if (op !== '+' && op !== '-') break;\n      i++;\n      const right = term();\n      value = op === '+' ? value + right : value - right;\n    }\n    return value;\n  };\n\nconst result = expr();\n  if (i !== str.length) throw new Error('Unexpected characters');\n  return result;\n}\n```"
+   },
+   {
+    "id": "hc3",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 1023,
+    "model": "qwen/qwen3.8-27b",
+    "provider": "groq",
+    "reply": "```js\nfunction mergeIntervals(list) {\n    if (!list || list.length === 0) return [];\n\nconst sorted = [...list].sort((a, b) => a[0] - b[0] || a[1] - b[1]);\n    const merged = [sorted[0]];\n\nfor (let i = 1; i < sorted.length; i++) {\n        const last = merged[merged.length - 1];\n        const current = sorted[i];\n\nif (current[0] <= last[1]) {\n            last[1] = Math.max(last[1], current[1]);\n        } else {\n            merged.push(current);\n        }\n    }\n\nreturn merged;\n}\n```"
+   },
+   {
+    "id": "hc4",
+    "cat": "сложное",
+    "pass": true,
+    "why": "",
+    "ms": 2538,
+    "model": "openai/gpt-oss-120b",
+    "provider": "groq",
+    "reply": "```js\nfunction toWordsRu(n) {\n  if (!Number.isInteger(n) || n < 0 || n > 999) return '';\n\nconst units = [\n    'ноль','один','два','три','четыре',\n    'пять','шесть','семь','восемь','девять'\n  ];\n  const teens = [\n    'десять','одиннадцать','двенадцать','тринадцать','четырнадцать',\n    'пятнадцать','шестнадцать','семнадцать','восемнадцать','девятнадцать'\n  ];\n  const tens = [\n    '','', // 0‑9 not used here\n    'двадцать','тридцать','сорок','пятьдесят',\n    'шестьдесят','семьдесят','восемьдесят','девяносто'\n  ];\n  const hundreds = [\n    '','сто','двести','триста','четыреста',\n    'пятьсот','шестьсот','семьсот','восемьсот','девятьсот'\n  ];\n\nif (n === 0) return units[0];\n\nconst h = Math.floor(n / 100);\n  const t = Math.floor((n % 100) / 10);\n  const u = n % 10;\n\nlet parts = [];\n\nif (h) parts.push(hundreds[h]);\n\nif (t === 1) {\n    parts.push(teens[u]); // 10‑19\n  } else {\n    if (t) parts.push(tens[t]);\n    if (u) parts.push(units[u]);\n  }\n\nreturn parts.join(' ');\n}\n```\n\nФункция собирает части числа: сотни, десятки (учитывая 10‑19) и единицы, соединяя их пробелом. Возвращает пустую строку, если вход вне диапазона 0‑999."
+   }
+  ]
+ }
+}

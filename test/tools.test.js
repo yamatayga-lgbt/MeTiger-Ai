@@ -109,8 +109,8 @@ const noKey = await gatherTools('новости про науку', {}, fakeFetc
 ok('T15: новости без ключей → тишина, а не выдумка', noKey.used.length === 0 && noKey.block === '');
 
 console.log('T — состав слоя и бытовые инструменты (перенос из донора)');
-ok('T16: в слое 16 инструментов — состав ровно тот, что ожидаем',
-  TOOL_IDS().join() === 'time,calc,currency,random,weather,wikipedia,url,news,web-search,date,coin,dice,joke,image-search,imggen,filegen',
+ok('T16: в слое 17 инструментов (0.132: + letters) — состав ровно тот, что ожидаем',
+  TOOL_IDS().join() === 'time,calc,letters,currency,random,weather,wikipedia,url,news,web-search,date,coin,dice,joke,image-search,imggen,filegen',
   TOOL_IDS().join());
 
 const dateRes = await gatherTools('какая сегодня дата', { TZ_NAME: 'Europe/Minsk' }, fakeFetch({}));
@@ -200,6 +200,16 @@ ok('T35: gatherTools собирает webSteps (search + fetch) для блок�
     && deepRes.webSteps.some((s) => s.kind === 'search' && /сверхпроводники/.test(s.query || ''))
     && deepRes.webSteps.some((s) => s.kind === 'fetch' && s.url === 'https://phys.example/lk99'),
   JSON.stringify(deepRes.webSteps));
+
+{
+  const { lettersOf, LETTERS_ASK } = await import('../engine/tools.js');
+  ok('T132a: «Сколько букв «р» в слове «пререкаться»?» — 2, посчитано кодом, а не моделью',
+    LETTERS_ASK.test('Сколько букв «р» в слове «пререкаться»?') && /встречается 2 раз/.test(lettersOf('Сколько букв «р» в слове «пререкаться»?')));
+  ok('T132b: английский «how many r\'s in strawberry» — 3', /встречается 3 раз/.test(lettersOf("How many r's in strawberry?")));
+  ok('T132c: предлог «в» не принимается за букву («сколько букв в слове молоко» — 6 букв, без счёта «в»)',
+    /6 букв/.test(lettersOf('сколько букв в слове молоко')) && !/Буква/.test(lettersOf('сколько букв в слове молоко')));
+  ok('T132d: слоги — по гласным', /слогов: 4/.test(lettersOf('Сколько слогов в слове «телевизор»?')));
+}
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

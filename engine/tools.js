@@ -302,6 +302,19 @@ export const TOOLS = [
     },
   },
   {
+    /* 0.132: подсчёт букв точным кодом. Модель видит не буквы, а куски слов, и на
+       «сколько „р“ в „пререкаться“» отвечала «3», а потом на глазах у человека писала
+       «подожди, пересчитаем…» (замер MeTiger Bench, вопрос h5). Как калькулятор для
+       арифметики: считает код, модель только говорит. */
+    id: 'letters',
+    title: 'Подсчёт букв',
+    when: (t) => LETTERS_ASK.test(t),
+    async run({ text }) {
+      const r = lettersOf(text);
+      return r || null;
+    },
+  },
+  {
     id: 'currency',
     title: 'Курсы валют',
     when: (t) => /курс|валют|обмен/i.test(t) && /доллар|евро|рубл|юан|гривн|злот|фунт|byn|usd|eur|rub|cny|\$/i.test(t),
@@ -744,6 +757,36 @@ export async function gatherTools(text, env, fetchImpl, o) {
   }
   const sources = srcParts.length ? extractSources(srcParts.join('\n')) : [];
   return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources, webSteps };
+}
+
+
+/* ─────────── подсчёт букв (инструмент letters) ─────────── */
+const Q = '[«"\'„“”]?';
+export const LETTERS_ASK = /(сколько\s+(?:раз\s+)?(?:букв|гласн|согласн|слог)|how\s+many\s+(?:letters|\w'?s\b|times\s+(?:does\s+)?(?:the\s+)?letter)|count\s+the\s+letter)/i;
+export function lettersOf(text) {
+  const t = String(text || '');
+  const word = (t.match(new RegExp('(?:в\\s+слове|in\\s+(?:the\\s+word\\s+)?)\\s*' + Q + '([A-Za-zА-Яа-яЁё-]{2,40})' + Q, 'i')) || [])[1];
+  if (!word) return null;
+  const w = word.toLowerCase();
+  const letters = [...w].filter((c) => /[a-zа-яё]/.test(c));
+  const VOW = 'аеёиоуыэюяaeiouy';
+  const out = [`Слово «${word}»: ${letters.length} букв (по буквам: ${letters.join('-')}).`];
+  /* какую букву спрашивают: «букв „р“», «буква р», «how many r's», «letter r» */
+  const m = t.match(new RegExp('(?:букв[аы]?|буква|letter)\\s*[«"\'„“]([A-Za-zА-Яа-яЁё])[»"\'”“]', 'i'))
+    || t.match(/(?:букв[аы]?|буква|letter)\s+([A-Za-zА-Яа-яЁё])\s+(?:в\s+слове|in\s)/i)
+    || t.match(/how\s+many\s+([a-z])'?s\b/i);
+  if (m) {
+    const ch = m[1].toLowerCase();
+    const pos = [];
+    letters.forEach((c, i) => { if (c === ch || (ch === 'е' && c === 'ё')) pos.push(i + 1); });
+    out.push(`Буква «${ch}» встречается ${pos.length} раз${pos.length ? ` (позиции: ${pos.join(', ')})` : ''}.`);
+  }
+  if (/гласн|слог/i.test(t)) {
+    const v = letters.filter((c) => VOW.includes(c)).length;
+    out.push(`Гласных: ${v}${/слог/i.test(t) ? ` — значит, слогов: ${v}` : ''}.`);
+  }
+  if (/согласн/i.test(t)) out.push(`Согласных: ${letters.filter((c) => !VOW.includes(c) && c !== 'ь' && c !== 'ъ').length}.`);
+  return out.join(' ');
 }
 
 export const TOOL_IDS = () => TOOLS.map((t) => t.id);
