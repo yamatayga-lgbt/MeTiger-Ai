@@ -274,5 +274,30 @@ console.log('Z — зрение как последнее слово в поря
     visionFirst(undefined, ['x']).length === 0 && visionFirst('не список', ['x']).length === 0);
 }
 
+console.log('R127 — «план» внутри «планеты» и остывание модели после 429 (0.127)');
+{
+  ok('R127a: «Назови 3 планеты» — не рассуждение (раньше «план» в «планеты» созывал совет на 13 с)',
+    classifyTask('Назови 3 планеты солнечной системы') === 'fast' && classifyTask('купить планшет') === 'fast');
+  ok('R127b: настоящий план по-прежнему рассуждение',
+    ['составь план поездки', 'нужен план', 'планирую отпуск', 'по плану'].every((q) => classifyTask(q) === 'reasoning'));
+  const { createEngine } = await import('../engine/chat.js');
+  let calls = [];
+  const fakeFetch = async (url, init) => {
+    const body = JSON.parse((init && init.body) || '{}');
+    calls.push(body.model);
+    if (calls.length === 1) return new Response('{"error":"rate"}', { status: 429 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ответ ' + body.model }, finish_reason: 'stop' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const shared = new Map();
+  const env = { GROQ_KEYS: 'g1', COUNCIL_BUDGET: '0', CHECK: 'off', ENSEMBLE: 'off' };
+  const mk = () => createEngine({ env, fetch: fakeFetch, modelCool: shared, sleep: async () => {} });
+  const r1 = await mk().run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'] });
+  const first = calls[0];
+  calls = [];
+  const r2 = await mk().run({ text: 'привет', useTools: false, skills: false, providerOrder: ['groq'] });
+  ok('R127c: модель, ответившая 429, в следующем запросе (новый движок, общая карта) идёт не первой',
+    r1.ok && r2.ok && calls[0] !== first, JSON.stringify({ first, next: calls }));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

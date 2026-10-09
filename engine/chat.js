@@ -70,6 +70,36 @@ function scrubToolMarkers(s) {
     .trim();
 }
 
+/**
+ * Остывание МОДЕЛИ после 429 (0.127). Раньше 429 помечал ключ «остыть 60 с» в карте,
+ * которую никто не читал, да ещё и живущей один запрос: каждый следующий вопрос снова
+ * шёл в ту же модель Groq, ловил 429 и только потом переходил дальше (на замере —
+ * до двух лишних 429 на ответ). Карта модульная, то есть общая на изолят Worker'а, и
+ * НЕ уезжает в KV: у бесплатного KV 1000 записей в сутки, а 429 бывают десятками.
+ * Остывшая модель не вычёркивается из пула, а уходит в его конец — если остыли все,
+ * обход всё равно попробует их, а не умрёт с пустыми руками.
+ */
+export const MODEL_COOL = new Map();
+/** Порядок пула с учётом остывания: свежие — вперёд, остывшие — в конец. */
+function coolApi(map) {
+  const cooling = (id, model) => {
+    const k = id + '::' + model;
+    const until = map.get(k);
+    if (!until) return false;
+    if (until <= Date.now()) { map.delete(k); return false; }
+    return true;
+  };
+  return {
+    cooling,
+    cool: (id, model, ms) => { if (map.size > 500) map.clear(); map.set(id + '::' + model, Date.now() + ms); },
+    order: (id, models) => {
+      const fresh = [], cold = [];
+      for (const m of models) (cooling(id, m) ? cold : fresh).push(m);
+      return fresh.concat(cold);
+    },
+  };
+}
+
 export function createEngine(opts) {
   const o = opts || {};
   const env = o.env || {};
@@ -111,6 +141,8 @@ export function createEngine(opts) {
      в проде карту передают модульную: иначе каждая request'а заново стучится в
      мёртвую дверь и теряет на это те секунды, которые стоили совета. */
   const quar = o.quarantine || new Map();
+  /* Прод передаёт модульную MODEL_COOL (общая на изолят), тесты — свою чистую. */
+  const mcool = coolApi(o.modelCool || new Map());
   const QUARANTINE_MS = Math.max(60000, Number(env.QUARANTINE_MS) || 240000);
   function punish(id, why, ms) {
     quar.set(id, { until: Date.now() + (ms || QUARANTINE_MS), why: String(why || '').slice(0, 140) });
@@ -175,6 +207,7 @@ export function createEngine(opts) {
     }
     if (res.status === 429) {
       markKey(id, req.keyIdx, { state: 'cool', until: Date.now() + 60000 });
+      mcool.cool(id, model, Math.max(5000, Number(env.MODEL_COOL_MS) || 45000));
       note(id, 'dead');
       /* 429 с текстом про баланс — не «подожди минуту», а «счёта нет» (так
          отвечает z.ai). Minute-long cool-down здесь лишь заново жжёт запросы. */
@@ -612,6 +645,17 @@ export function createEngine(opts) {
          своим основаниям, и на картинке такая перестановка отправляет запрос слепой
          модели. Зрение — последнее слово, иначе весь смысл теряется. */
       models = visionFirst(models, images);
+      /* Остывшие после 429 — в конец (выбор человека не трогаем). */
+      if ((!pin || pin.id !== id) && !images.length) {
+        models = mcool.order(id, models);
+        /* Остыли все модели провайдера, а дальше в очереди есть кто-то живой — не
+           тратим круг на заведомый 429, сразу к следующему. Последнего не пропускаем. */
+        const rest = order.slice(order.indexOf(id) + 1).filter((x) => P[x] && !punished(x));
+        if (models.length && rest.length && models.every((m) => mcool.cooling(id, m))) {
+          tried.push({ provider: id, why: 'остывает после 429' });
+          continue;
+        }
+      }
       if (!models.length) { tried.push({ provider: id, why: 'нет моделей в пуле' }); continue; }
       /* Картинка есть, а смотреть некому. Отвечать всё равно что гадать: модель
          получила бы текст без изображения и придумала бы содержимое (на проде на
