@@ -530,9 +530,6 @@ interface ChatViewProps {
   /** «Размышлять глубже»: состояние и переключение (живёт в App, хранится в браузере) */
   deep?: boolean
   onDeep?: () => void
-  /** «Отвечать голосом»: новые ответы читаются вслух (состояние живёт в App). */
-  speakOn?: boolean
-  onSpeak?: () => void
   /** Каким голосом читать: женским или мужским (выбор помнится в браузере). */
   voice?: 'female' | 'male'
   onVoice?: (v: 'female' | 'male') => void
@@ -555,8 +552,6 @@ export function ChatView({
   draftWebSteps = [],
   deep = false,
   onDeep,
-  speakOn = false,
-  onSpeak,
   voice = 'female',
   onVoice,
   onSend,
@@ -570,18 +565,10 @@ export function ChatView({
      ровно тот лаг, ради которого memo и поставлен. */
   const runOutput = useCallback((t: string) => onSend(t), [onSend])
 
-  /* «Отвечать голосом»: читаем вслух новый готовый ответ. Ждём окончания потока
-     (typing === false): читать по кускам — значит слышать фразу по мере набора,
-     а так звучит целое предложение. Последний озвученный текст помним, чтобы
-     перерисовка не читала один и тот же ответ заново. */
-  const озвученRef = useRef('')
-  useEffect(() => {
-    if (!speakOn || typing) return
-    const последний = [...messages].reverse().find((m) => m.role === 'assistant' && m.text)
-    if (!последний || последний.text === озвученRef.current) return
-    озвученRef.current = последний.text
-    void speak(последний.text, { gender: voice })
-  }, [speakOn, typing, messages, voice])
+  /* Авточтения новых ответов здесь больше нет (0.121): озвучка запускается
+     только кнопкой «озвучить» у самого ответа (см. MsgFooter, canSpeak).
+     Поэтому ни ожидания конца потока, ни памяти о последнем прочитанном тексте
+     не нужно — ответ не звучит сам, пока человек не попросил. */
 
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
@@ -1308,10 +1295,8 @@ export function ChatView({
                 onPickHistory={addFromHistory}
                 deep={deep}
                 onDeep={onDeep}
-                speak={speakOn}
                 voice={voice}
                 onVoice={onVoice}
-                onSpeak={onSpeak}
                 onClose={() => setAddMenuOpen(false)}
               />
             </>

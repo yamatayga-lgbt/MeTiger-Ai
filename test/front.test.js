@@ -1735,22 +1735,43 @@ console.log('── N · стекло (Glassmorphism) ───');
     ok('N65: озвучка — одна на приложение: второй ответ останавливает первый',
       /stopSpeech\(\)/.test(readFileSync('src/lib/speech.ts', 'utf8')) && /export function stopSpeech/.test(readFileSync('src/lib/speech.ts', 'utf8')));
 
-    const menu = readFileSync('src/components/AttachMenu.tsx', 'utf8')
-    ok('N66: «Отвечать голосом» — переключатель рядом с «Размышлять глубже», а не надпись',
-      /attach-menu-item attach-speak/.test(menu) && /role="menuitemcheckbox"/.test(menu)
-        && /onSpeak\?\.\(\)/.test(menu));
+    /* 0.121: переключатель авточтения ответов из меню «+» убран — по просьбе
+       хозяина. Озвучка осталась кнопкой «озвучить» у самого ответа, а выбор
+       голоса Жен/Муж в меню нужен именно ей.
+       Проверяем КОД БЕЗ КОММЕНТАРИЙ: в пояснении «почему убрали» те же имена
+       стоят по делу, и проверка по всему файлу ловила бы текст, а не меню.
+       Резак комментариев тот же, что для CSS (см. N21): блок-комментарий JS
+       и пояснение внутри JSX вырезаются одним выражением. */
+    const noComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+    const menu = noComments(readFileSync('src/components/AttachMenu.tsx', 'utf8'));
+    const menuRaw = readFileSync('src/components/AttachMenu.tsx', 'utf8');
+    const appSrcVoice = readFileSync('src/App.tsx', 'utf8');
+    const chatVoiceBare = noComments(chatVoice);
 
-    ok('N67: «Отвечать голосом» помнится в браузере, как «Размышлять глубже»',
-      /usePersistentState<boolean>\('mt-speak', false/.test(readFileSync('src/App.tsx', 'utf8')));
+    ok('N66: авточтения ответов в меню «+» больше нет — ни кнопки, ни её класса, ни её ручки',
+      menu.indexOf('Отвечать голосом') < 0 && !/attach-speak/.test(menu)
+        && !/onSpeak/.test(menu) && !/\bspeak\b/.test(menu) && !/Volume2/.test(menu)
+        /* переключатель в меню остался ровно один — «Размышлять глубже» */
+        && (menu.match(/role="menuitemcheckbox"/g) || []).length === 1
+        && /attach-menu-item attach-deep/.test(menu),
+      'в меню найдено: ' + JSON.stringify((menu.match(/attach-speak|onSpeak|Отвечать голосом/g) || []).slice(0, 3)));
 
-    ok('N68: новый ответ читается вслух только после окончания потока (не по кускам)',
-      /if \(!speakOn \|\| typing\) return/.test(chatVoice)
-        && /озвученRef\.current = последний\.text/.test(chatVoice));
+    ok('N67: состояние авточтения не осталось висеть в App (мёртвый код — тоже дефект)',
+      !/mt-speak/.test(appSrcVoice) && !/speakOn/.test(appSrcVoice) && !/setSpeakOn/.test(appSrcVoice)
+        && !/onSpeak/.test(appSrcVoice)
+        /* а состояние «Размышлять глубже» на месте — резали не его */
+        && /usePersistentState<boolean>\('mt-deep', false/.test(appSrcVoice));
 
-    ok('N69: голос для озвучки выбирается и помнится в браузере',
-      /usePersistentState<'female' \| 'male'>\(\s*'mt-voice'/.test(readFileSync('src/App.tsx', 'utf8'))
-        && /aria-label="Женский голос"/.test(menu) && /aria-label="Мужской голос"/.test(menu)
-        && /gender: voice, onState/.test(chatVoice) && /speak\(последний\.text, \{ gender: voice \}\)/.test(chatVoice));
+    ok('N68: ответ не читается вслух сам — ни ожидания конца потока, ни памяти о прочитанном',
+      !/озвученRef/.test(chatVoice) && !/speakOn/.test(chatVoiceBare) && !/onSpeak/.test(chatVoiceBare)
+        /* озвучка жива, но запускается только рукой человека: кнопка у ответа */
+        && /canSpeak/.test(chatVoice) && /await speak\(text, \{ gender: voice, onState/.test(chatVoice));
+
+    ok('N69: голос для озвучки по-прежнему выбирается в меню и помнится в браузере',
+      /usePersistentState<'female' \| 'male'>\(\s*'mt-voice'/.test(appSrcVoice)
+        && /aria-label="Женский голос"/.test(menuRaw) && /aria-label="Мужской голос"/.test(menuRaw)
+        && /attach-menu-voice/.test(menuRaw)
+        && /gender: voice, onState/.test(chatVoice));
 
     ok('N70: кнопки голоса не растягиваются на всю строку — меню не распухает',
       /\.attach-menu-voice \{[^}]*display: flex/.test(css)

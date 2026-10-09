@@ -136,12 +136,10 @@ export default function App() {
      квоту). Хранится в браузере: человек, которому режим нужен по работе, не
      должен включать его заново после каждой перезагрузки. */
   const [deep, setDeep] = usePersistentState<boolean>('mt-deep', false, (v): v is boolean => typeof v === 'boolean')
-  /* «Отвечать голосом»: ответы читаются вслух. Это тоже просьба, а не режим по
-     умолчанию, и помнится в браузере: человек, которому так удобно (за рулём,
-     с закрытыми глазами), не должен включать её каждый раз заново. */
-  const [speakOn, setSpeakOn] = usePersistentState<boolean>('mt-speak', false, (v): v is boolean => typeof v === 'boolean')
   /* Какой голос читает ответы: женский или мужской. Выбор помнится в браузере —
-     он про человека («мне привычнее этот голос»), а не про текущий разговор. */
+     он про человека («мне привычнее этот голос»), а не про текущий разговор.
+     Состояния авточтения ответов здесь больше нет (0.121): озвучка запускается
+     кнопкой «озвучить» у ответа, а не переключателем в меню «+». */
   const [voice, setVoice] = usePersistentState<'female' | 'male'>(
     'mt-voice', 'female', (v): v is 'female' | 'male' => v === 'female' || v === 'male',
   )
@@ -550,8 +548,6 @@ export default function App() {
                 draftWebSteps={draftWebSteps}
                 deep={deep}
                 onDeep={() => setDeep((v) => !v)}
-                speakOn={speakOn}
-                onSpeak={() => setSpeakOn((v) => !v)}
                 voice={voice}
                 onVoice={setVoice}
                 onSend={sendMessage}
