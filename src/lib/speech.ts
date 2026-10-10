@@ -4,9 +4,9 @@
  * Порядок такой: сначала пробуем серверный голос (POST /api/tts) — он звучит
  * живой речью. Если сервер не смог (служба голоса молчит, связи нет, потолок
  * частоты) — читаем речью самого устройства (речевой движок телефона). Речь
- * устройства не требует ничего, кроме установленного русского голоса, и потому
- * служит честным запасным путём: без неё кнопка «озвучить» превратилась бы в
- * обещание, которое не выполняется.
+ * устройства использует установленный голос нужного языка (либо выбор движка
+ * браузера по locale) и потому служит честным запасным путём: без него кнопка
+ * «озвучить» превратилась бы в обещание, которое не выполняется.
  *
  * Текст для речи готовит движок (engine/voiceout.js): разметка и формулы
  * превращаются в устную форму. Чтобы не держать вторую копию этого разбора в
@@ -34,21 +34,29 @@ export function stopSpeech(): void {
   }
 }
 
-/** Есть ли на устройстве русский голос: без него запасной путь молчит. */
-export function deviceVoice(): SpeechSynthesisVoice | null {
+/** Голос устройства под выбранный язык; без подсказки сохраняем русский по умолчанию. */
+export function deviceVoice(language?: string): SpeechSynthesisVoice | null {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
-  const голоса = window.speechSynthesis.getVoices();
-  if (!голоса.length) return null;
-  return голоса.find((g) => /^ru/i.test(g.lang)) || голоса.find((g) => /ru/i.test(g.lang)) || null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  const requested = String(language || '').trim().toLowerCase().replace(/_/g, '-');
+  if (requested) {
+    const base = requested.split('-')[0];
+    return voices.find((g) => g.lang.toLowerCase().replace(/_/g, '-') === requested)
+      || voices.find((g) => g.lang.toLowerCase().replace(/_/g, '-').split('-')[0] === base)
+      || null
+  }
+  return voices.find((g) => /^ru/i.test(g.lang)) || voices.find((g) => /ru/i.test(g.lang)) || null;
 }
 
 /** Речь устройства: говорим подготовленный текст. */
-function speakDevice(speech: string, onState: (s: SpeechState) => void): void {
-  const голос = deviceVoice();
-  if (!голос) { onState('нет голоса'); return; }
+function speakDevice(speech: string, language: string, onState: (s: SpeechState) => void): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) { onState('нет голоса'); return; }
+  const голос = deviceVoice(language);
+  if (!window.speechSynthesis.getVoices().length) { onState('нет голоса'); return; }
   const u = new SpeechSynthesisUtterance(speech);
-  u.voice = голос;
-  u.lang = голос.lang;
+  if (голос) u.voice = голос;
+  u.lang = language || голос?.lang || 'ru-RU';
   u.rate = 1;
   let закончен = false;
   u.onstart = () => onState('play');
@@ -65,14 +73,16 @@ function speakDevice(speech: string, onState: (s: SpeechState) => void): void {
 }
 
 /** Устная форма текста с сервера — та же, что уходит в серверный голос. */
-async function speechForm(text: string): Promise<string> {
+async function speechForm(text: string, language: string): Promise<{ speech: string; language: string }> {
   const r = await fetch('/api/tts?text=1', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, language }),
   });
   const j = await r.json().catch(() => null);
-  return (j && j.ok && j.speech) ? j.speech : '';
+  return (j && j.ok && j.speech)
+    ? { speech: String(j.speech), language: String(j.language || language) }
+    : { speech: '', language };
 }
 
 /**
@@ -81,18 +91,19 @@ async function speechForm(text: string): Promise<string> {
  */
 export async function speak(
   text: string,
-  opts: { gender?: 'male' | 'female'; onState?: (s: SpeechState) => void } = {},
+  opts: { gender?: 'male' | 'female'; language?: string; onState?: (s: SpeechState) => void } = {},
 ): Promise<SpeechState> {
   const onState = opts.onState || (() => {});
   stopSpeech();
   const чистый = String(text || '').trim();
+  const preferredLanguage = opts.language || (typeof navigator !== 'undefined' ? navigator.language : '') || 'ru-RU';
   if (!чистый) return 'error';
 
   try {
     const r = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: чистый, gender: opts.gender || 'female' }),
+      body: JSON.stringify({ text: чистый, gender: opts.gender || 'female', language: preferredLanguage }),
     });
     const тип = String(r.headers.get('content-type') || '');
     if (r.ok && /audio\//.test(тип)) {
@@ -117,9 +128,14 @@ export async function speak(
   /* Откат: речь устройства. Текст для неё берём у движка, чтобы формулы и
      разметку читала та же логика, что и в серверном голосе. */
   let речь = '';
-  try { речь = await speechForm(чистый); } catch { /* сервер молчит и здесь */ }
+  let language = preferredLanguage;
+  try {
+    const form = await speechForm(чистый, preferredLanguage);
+    речь = form.speech;
+    language = form.language || language;
+  } catch { /* сервер молчит и здесь */ }
   if (!речь) речь = чистый.replace(/```[\s\S]*?```/g, ' Пример кода. ').replace(/[*_#`]/g, '').trim();
   let итог: SpeechState = 'error';
-  speakDevice(речь, (s) => { итог = s; onState(s); });
+  speakDevice(речь, language, (s) => { итог = s; onState(s); });
   return итог;
 }

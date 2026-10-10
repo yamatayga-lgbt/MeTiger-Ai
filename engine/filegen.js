@@ -17,6 +17,16 @@
 const MAX_CONTENT = 200000;   /* символов контента от модели */
 const MAX_BUF = 512 * 1024;   /* готовый файл: b64 ~700 КБ — проходит в ответ сайта */
 
+/** Обрезает по видимым символам, не разрывая суррогатные пары и диакритические графемы. */
+function limitChars(value, max) {
+  const s = String(value);
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    return Array.from(seg.segment(s), (x) => x.segment).slice(0, max).join('');
+  }
+  return Array.from(s).slice(0, max).join('');
+}
+
 /* ===================== байты без Buffer (workerd без nodejs_compat) ===================== */
 
 const enc = new TextEncoder();
@@ -358,7 +368,7 @@ function makeXlsx(tsv, sheetName) {
   const workbook =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-    `<sheets><sheet name="${escXml((sheetName || 'Лист 1').slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+    `<sheets><sheet name="${escXml(limitChars(sheetName || 'Лист 1', 31))}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
   const wbRels =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
@@ -438,17 +448,17 @@ function htmlBlocks(md) {
 function makeHtml(md, title) {
   const inner = htmlBlocks(md);
   return enc.encode(
-    '<!DOCTYPE html>\n<html lang="ru"><head><meta charset="utf-8"/>' +
+    '<!DOCTYPE html>\n<html lang="und"><head><meta charset="utf-8"/>' +
     `<title>${escHtml(title || 'Документ')}</title>` +
     '<style>' +
     'body{font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#14161a;max-width:760px;margin:32px auto;padding:0 20px;line-height:1.55}' +
     'h1{font-size:26px;border-bottom:2px solid #e3e6ea;padding-bottom:10px}' +
     'h2{font-size:20px;margin-top:26px}h3{font-size:17px;margin-top:20px}' +
     'table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}' +
-    'th,td{border:1px solid #d6dae0;padding:7px 10px;text-align:left}th{background:#f2f4f7}' +
+    'th,td{border:1px solid #d6dae0;padding:7px 10px;text-align:start}th{background:#f2f4f7}' +
     'p.ni{margin:4px 0 4px 18px}' +
     '@media print{body{margin:0}a{color:inherit}}' +
-    '</style></head><body>\n' + inner +
+    '</style></head><body dir="auto">\n' + inner +
     '\n</body></html>');
 }
 
@@ -479,7 +489,7 @@ function generate(opts) {
   /* Модель частенько кладёт расширение в имя («Смета.xlsx») — режем, чтобы
      не вышло «Смета.xlsx.xlsx»; чистое имя идёт и в лист xlsx. */
   const rawName = String(o.name || 'файл').trim().replace(/\.(docx|xlsx|csv|txt|md|html?)$/i, '');
-  const base = rawName.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').slice(0, 80) || 'файл';
+  const base = limitChars(rawName.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' '), 80) || 'файл';
 
   let buf;
   if (fmt === 'docx') buf = makeDocx(content);
@@ -529,12 +539,11 @@ export function nameFromText(text) {
   const raw = String(text || '')
     .replace(/^\s*(и|также|ещё|пожалуйста)[,.\s]+/i, '')
     .replace(/оформи|сделай|приложи|отправ|отдай|пришли|скинь|выложи|верни|напиши|файлом|файл|docx|xlsx|csv|html|markdown|\bmd\b|\btxt\b|документ(ом)?|таблиц[а-яё]+|пожалуйста/gi, ' ')
-    .replace(/^[^а-яёa-z0-9]+|[^а-яёa-z0-9]+$/gi, '')
+    .replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, '')
     .replace(/^(?:в|на|из|до|для|о|об|как|с)\s+/i, '')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 60);
-  return raw || 'ответ агента';
+    .trim();
+  return limitChars(raw, 60) || 'ответ агента';
 }
 
 const cleanRest = (s) => String(s).replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -596,7 +605,7 @@ function sizeOf(n) {
 export { sizeOf };
 
 function cleanName(s) {
-  return String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'файл';
+  return limitChars(String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim(), 60) || 'файл';
 }
 
 export { generate, zipStore, crc32, mdBlocks, makeDocx, makeXlsx, makeCsv, makeHtml, parseTsv, colName, csvCell, boldRuns, htmlBlocks, FMT, bytesOf, catBytes, b64s, dec, enc };

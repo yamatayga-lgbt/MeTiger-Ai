@@ -31,7 +31,9 @@ import { createPcmTap, encodeWav, peakOf, LIVE_SEC, WHISPER_RATE } from './pcm'
  * появлялись бы «мир мир».
  */
 export function joinLive(prev: string, next: string): string {
-  const clean = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+  /* NFC makes composed/decomposed spellings equal for comparison; retaining \p{M}
+     avoids discarding diacritics. The transcript itself is never normalized. */
+  const clean = (w: string) => w.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '')
   const prevWords = prev.trim().split(/\s+/).filter(Boolean).map(clean)
   const nextWords = next.trim().split(/\s+/).filter(Boolean)
   let drop = 0
@@ -98,7 +100,7 @@ export function isPolishSupported(): boolean {
 
 const LANG_MAP: Record<string, string> = {
   ru: 'ru-RU',
-  be: 'ru-RU',
+  be: 'be-BY',
   uk: 'uk-UA',
   en: 'en-US',
   de: 'de-DE',
@@ -122,13 +124,21 @@ const LANG_MAP: Record<string, string> = {
 
 /** Язык распознавания: по языку Telegram/браузера, по умолчанию ru-RU. */
 export function voiceLang(pref?: string): string {
-  const raw = (
+  const raw = String(
     pref ||
     (typeof navigator !== 'undefined' ? navigator.language : '') ||
     'ru'
-  ).toLowerCase()
-  const base = raw.split('-')[0]
-  return LANG_MAP[base] || (raw.includes('-') ? raw : 'ru-RU')
+  ).trim().replace(/_/g, '-')
+  const parts = raw.split('-')
+  const base = parts[0].toLowerCase()
+  const canonical = [base, ...parts.slice(1).map((part) => {
+    if (part.length === 2 || /^\d{3}$/.test(part)) return part.toUpperCase()
+    if (part.length === 4) return part[0].toUpperCase() + part.slice(1).toLowerCase()
+    return part.toLowerCase()
+  })].join('-')
+  /* Регион браузера важен для распознавания (en-GB, zh-TW, pt-BR и т. п.). */
+  if (parts.length > 1 && /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(canonical)) return canonical
+  return LANG_MAP[base] || (canonical.includes('-') ? canonical : 'ru-RU')
 }
 
 /** Тот же язык, но коротко («ru») — в таком виде его понимает Whisper. */

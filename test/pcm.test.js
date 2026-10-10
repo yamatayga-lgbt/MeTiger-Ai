@@ -85,6 +85,15 @@ console.log('PCM — куски звука для уточнения на лет
   ok('P11: знаки и регистр не мешают узнать слово', j('Привет, мир!', 'Мир как дела') === 'как дела', j('Привет, мир!', 'Мир как дела'));
   ok('P12: без повтора текст не режется', j('первое предложение', 'второе предложение') === 'второе предложение', j('первое предложение', 'второе предложение'));
   ok('P13: пустые входы не ломают склейку', j('', 'начало') === 'начало' && j('хвост', '') === '');
+  ok('P14: composed/decomposed диакритика совпадает только при удалении повтора',
+    j('Cafe\u0301 monde', 'Café monde! après') === 'après', j('Cafe\u0301 monde', 'Café monde! après'));
+  ok('P15: белорусский язык распознавания не подменяется русским',
+    voice.voiceLang('be-BY') === 'be-BY' && voice.voiceLangShort('be-BY') === 'be',
+    voice.voiceLang('be-BY') + '/' + voice.voiceLangShort('be-BY'));
+  ok('P16: регион браузера сохраняется для голоса ввода (en-GB, zh-TW, pt-BR)',
+    voice.voiceLang('en-GB') === 'en-GB' && voice.voiceLang('zh-TW') === 'zh-TW'
+      && voice.voiceLang('pt-BR') === 'pt-BR' && voice.voiceLang('en_US') === 'en-US',
+    [voice.voiceLang('en-GB'), voice.voiceLang('zh-TW'), voice.voiceLang('pt-BR'), voice.voiceLang('en_US')].join('/'));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

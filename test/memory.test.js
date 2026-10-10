@@ -430,5 +430,17 @@ console.log('K — то же самое, но через HTTP-границу /ap
   globalThis.fetch = saved;
 }
 
+console.log('U — поиск в памяти и канонически равные диакритические знаки');
+{
+  const { store } = fakeKV();
+  const mem = createMemory({ store, env: { MEMORY_HOT_MSGS: '1' } });
+  await mem.addMessage('unicode-memory', 'user', 'Je préfère le café.');
+  for (let i = 0; i < 4; i++) await mem.addMessage('unicode-memory', 'assistant', 'Note ' + i + '.');
+  await mem.flush();
+  const ctx = await mem.contextFor('unicode-memory', 'Où est le cafe\u0301 ?', {});
+  ok('U1: поиск в памяти находит café при разложенном акценте в запросе',
+    ctx.block.includes('【Релевантное из ранней истории чата】') && ctx.block.includes('Je préfère le café.'), ctx.block.slice(-180));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

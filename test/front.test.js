@@ -436,6 +436,9 @@ console.log('K — Настройки: счётчик моделей, адрес
   person.savePersonName('Иван Петров');
   ok('K6b: имя из профиля доезжает до карточки и до инициалов',
     person.siteUser().name === 'Иван Петров' && person.initials(person.siteUser()) === 'ИП', person.initials(person.siteUser()));
+  ok('K6b1: инициалы не режут supplementary-plane буквы и сохраняют комбинируемую диакритику',
+    person.initials({ name: '𐐨лise' }) === '𐐀' && person.initials({ name: 'e\u0301lise' }) === 'É',
+    JSON.stringify([person.initials({ name: '𐐨лise' }), person.initials({ name: 'e\u0301lise' })]));
   ok('K6c: язык берётся у браузера и не бывает пустым (подсказка распознавания голоса)',
     /^[a-zA-Z-]{2,35}$/.test(person.siteUser().language_code), person.siteUser().language_code);
   ok('K6d: очистка имени убирает запись, а не оставляет «undefined»',

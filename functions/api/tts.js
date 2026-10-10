@@ -7,14 +7,14 @@
  * тут нет ни одного: голос берётся у бесплатной службы Microsoft (движок «читать
  * вслух»), поэтому этот вход нельзя «сломать» отсутствием секрета.
  *
- * Тело: { text, gender?: 'male' | 'female', voice?: '...' }.
+ * Тело: { text, gender?: 'male' | 'female', voice?: '...', language?: BCP-47 }.
  * Ответ: аудио (audio/mpeg) либо { ok: false, error } с человеческой причиной.
  *
  * Почему не отдаём потоком: mp3 весит десятки килобайт на фразу, и собрать его
  * целиком дешевле, чем городить потоковую передачу. Плеер на клиенте играет
  * готовый файл и умеет останавливаться.
  */
-import { synthesize, speechText, pickVoice, clampSpeech, TTS_LIMITS } from '../../engine/voiceout.js';
+import { synthesize, speechText, pickVoice, clampSpeech, languageTag, TTS_LIMITS } from '../../engine/voiceout.js';
 import { cfgOf as limitsCfg, createRateLimiter } from '../../engine/limits.js';
 import { limitsStore, realClientIp } from './chat.js';
 
@@ -47,7 +47,8 @@ export async function onRequestPost(context) {
     const t = String((body && body.text) || '');
     if (!t.trim()) return json({ ok: false, error: 'нечего читать' }, 400);
     const { text: forVoice } = clampSpeech(speechText(t), textLimit(env));
-    return json({ ok: true, speech: forVoice });
+    const language = languageTag(forVoice, body && body.language);
+    return json({ ok: true, speech: forVoice, language });
   }
   if (env.RATE_LIMIT !== '0') {
     const cfg = limitsCfg(env);
@@ -71,11 +72,12 @@ export async function onRequestPost(context) {
   }
 
   const gender = body && body.gender === 'male' ? 'male' : 'female';
-  const voice = (body && String(body.voice || '')) || pickVoice(text, gender);
+  const language = String((body && body.language) || '');
+  const voice = (body && String(body.voice || '')) || pickVoice(text, gender, language);
   /* ?debug=1 — служебный разбор: сколько кадров пришло и что в них было. Нужен,
      чтобы отличать «служба молчит» от «кадры пришли, но разобрались как чужие». */
   const debug = url.searchParams.get('debug') === '1';
-  const res = await synthesize(text, { voice, gender, env, debug });
+  const res = await synthesize(text, { voice, gender, language, env, debug });
   if (!res.ok) {
     /* 200 с причиной, а не 5xx: это не сбой нашего входа, а «голос сейчас не
        ответил», и клиенту по этой причине надо перейти на речь устройства.
@@ -105,7 +107,7 @@ export async function onRequestGet(context) {
   const env = (context && context.env) || {};
   return json({
     ok: true,
-    accepts: 'POST { text, gender }',
+    accepts: 'POST { text, gender, language? }',
     maxChars: textLimit(env),
     voices: { ru: ['ru-RU-DmitryNeural', 'ru-RU-SvetlanaNeural'], en: ['en-US-AndrewNeural', 'en-US-AriaNeural'] },
     example: speechText('\\(\\sqrt{2}\\) — иррациональное число.'),

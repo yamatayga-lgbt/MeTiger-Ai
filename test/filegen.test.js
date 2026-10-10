@@ -76,6 +76,11 @@ ok('A7: заголовок со стилем, жирный отдельным ru
   dxml.includes('w:val="Heading1"') && dxml.includes('<w:b/>') && dxml.includes('<w:tbl>') && dxml.includes('<w:tr>'), dxml.slice(0, 90));
 ok('A8: кириллица в xml цела и экранирование работает',
   dxml.includes('Отчёт') && !/&(?!amp|lt|gt|quot|#)/.test(dxml.replace(/&amp;|&lt;|&gt;|&quot;/g, '')));
+const unicodeText = 'Καλημέρα · 你好 · مرحبا · café\u0301 · 😀';
+const unicodeDoc = generate({ format: 'docx', name: '多言語レポート', content: unicodeText });
+const unicodeXml = new TextDecoder().decode(readZip(Buffer.from(unicodeDoc.b64, 'base64'))['word/document.xml'].data);
+ok('A8b: docx сохраняет греческий, китайский, арабский, разложенную диакритику и emoji',
+  unicodeText.split(' · ').every((part) => unicodeXml.includes(part)), unicodeXml.slice(-180));
 
 const xlsx = generate({ format: 'xlsx', name: 'Смета', content: 'Товар\tКол-во\tЦена\nМолоко\t2\t1,5\nИтого\t\t2,3' });
 const xz = readZip(Buffer.from(xlsx.b64, 'base64'));
@@ -95,12 +100,22 @@ ok('A12: запятая в поле — кавычки, формула отсе�
 
 const html = generate({ format: 'html', name: 'page', content: '# Привет <b>\n\nтекст' });
 const htmlText = Buffer.from(html.b64, 'base64').toString('utf8');
-ok('A13: html — печатная страница с доctype и экранированным тегом в тексте',
-  htmlText.startsWith('<!DOCTYPE html>') && htmlText.includes('&lt;b&gt;') && htmlText.includes('<h1>'), htmlText.slice(0, 60));
+ok('A13: html — печатная страница, UTF-8 и без ложной русской метки языка',
+  htmlText.startsWith('<!DOCTYPE html>') && htmlText.includes('&lt;b&gt;') && htmlText.includes('<h1>')
+    && htmlText.includes('<html lang=\"und\">') && htmlText.includes('<body dir=\"auto\">')
+    && htmlText.includes('text-align:start'), htmlText.slice(0, 120));
 
 ok('A14: расширение в имени не дублируется, запрещённые символы вычищены',
   generate({ format: 'docx', name: 'Смета.xlsx', content: 'а' }).name === 'Смета.docx'
   && generate({ format: 'md', name: 'а/b:c*d', content: 'а' }).name === 'а b c d.md', '');
+ok('A14b: имя файла не пустеет на арабском, китайском и латинской диакритике',
+  nameFromText('оформи файл مرحبا') === 'مرحبا'
+    && nameFromText('оформи файл 日本語 レポート') === '日本語 レポート'
+    && nameFromText('оформи файл cafe\u0301') === 'cafe\u0301',
+  JSON.stringify([nameFromText('оформи файл مرحبا'), nameFromText('оформи файл 日本語 レポート'), nameFromText('оформи файл cafe\u0301')]));
+const astralName = nameFromText('𐐀'.repeat(61));
+ok('A14c: лимит имени не разрывает supplementary-plane буквы',
+  Array.from(astralName).length === 60 && !/[\uD800-\uDBFF]$/.test(astralName), String(astralName.length));
 ok('A15: неизвестный формат — отказ со списком форматов, а не исключение вслепую',
   (() => { try { generate({ format: 'pdf', name: 'x', content: 'y' }); return false; } catch (e) { return /docx, xlsx/.test(e.message); } })());
 ok('A16: гигантский контент отклоняется с объяснением',

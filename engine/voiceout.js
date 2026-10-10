@@ -118,19 +118,69 @@ function разобратьБайты(buf) {
   return { kind: 'audio', audio: buf.slice(headerLength + 2) };
 }
 
-/** Язык ответа: по доле кириллицы. Короткие ответы («да», «ок») — тоже русские. */
+/** Язык/письменность для речи. Неизвестную письменность не выдаём за английскую. */
 export function guessLang(text) {
   const s = String(text || '');
-  const letters = s.replace(/[^\p{L}]/gu, '');
-  if (!letters) return 'ru';
-  const cyr = (s.match(/[\u0400-\u04FF]/g) || []).length;
-  return cyr / letters.length >= 0.15 ? 'ru' : 'en';
+  if (!/[\p{L}]/u.test(s)) return 'ru';
+  if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(s)) return 'ja';
+  if (/[ўЎ]/u.test(s)) return 'be';
+  if (/[ґєїҐЄЇ]/u.test(s)) return 'uk';
+  const scripts = [
+    ['ar', /\p{Script=Arabic}/gu], ['he', /\p{Script=Hebrew}/gu],
+    ['hi', /\p{Script=Devanagari}/gu], ['th', /\p{Script=Thai}/gu],
+    ['el', /\p{Script=Greek}/gu], ['hy', /\p{Script=Armenian}/gu],
+    ['ka', /\p{Script=Georgian}/gu], ['ko', /\p{Script=Hangul}/gu],
+    ['zh', /\p{Script=Han}/gu], ['ru', /\p{Script=Cyrillic}/gu],
+    ['en', /\p{Script=Latin}/gu],
+  ];
+  let best = 'und';
+  let bestCount = 0;
+  for (const [lang, re] of scripts) {
+    const count = (s.match(re) || []).length;
+    if (count > bestCount) { best = lang; bestCount = count; }
+  }
+  return best;
+}
+
+const LANG_TAGS = {
+  ru: 'ru-RU', en: 'en-US', be: 'be-BY', uk: 'uk-UA', zh: 'zh-CN',
+  ja: 'ja-JP', ko: 'ko-KR', ar: 'ar-SA', he: 'he-IL', hi: 'hi-IN',
+  th: 'th-TH', el: 'el-GR', hy: 'hy-AM', ka: 'ka-GE',
+};
+const LANG_FAMILY = {
+  ru: 'cyrillic', be: 'cyrillic', uk: 'cyrillic', bg: 'cyrillic', mk: 'cyrillic', sr: 'cyrillic',
+  en: 'latin', fr: 'latin', es: 'latin', pt: 'latin', it: 'latin', de: 'latin', nl: 'latin',
+  pl: 'latin', tr: 'latin', cs: 'latin', sk: 'latin', ro: 'latin', sv: 'latin', no: 'latin', da: 'latin',
+  ar: 'arabic', fa: 'arabic', ur: 'arabic', ps: 'arabic', sd: 'arabic',
+  he: 'hebrew', yi: 'hebrew',
+};
+const AMBIGUOUS_SCRIPT_LANGS = new Set(['ru', 'en', 'ar', 'he']);
+const validLocale = (s) => /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(s);
+
+/** BCP-47 язык для браузерного запасного голоса; подсказка — язык устройства. */
+export function languageTag(text, preferred) {
+  const detected = guessLang(text);
+  const hint = String(preferred || '').trim().replace(/_/g, '-');
+  const hintBase = hint.split('-')[0].toLowerCase();
+  if (validLocale(hint) && hintBase === detected) return hint;
+  /* Письменность сама по себе не различает en/fr, ru/uk или ar/fa; если браузер
+     сообщает язык той же письменности, используем его, а не выдуманную локаль. */
+  if (validLocale(hint) && AMBIGUOUS_SCRIPT_LANGS.has(detected)
+      && LANG_FAMILY[hintBase] && LANG_FAMILY[hintBase] === LANG_FAMILY[detected]) return hint;
+  if (LANG_TAGS[detected]) return LANG_TAGS[detected];
+  return validLocale(hint) ? hint : 'und';
 }
 
 /** Голос под текст и пожелание человека. По умолчанию — женский, как у ассистентов. */
-export function pickVoice(text, gender) {
-  const lang = guessLang(text);
-  const set = VOICES[lang] || VOICES.ru;
+export function pickVoice(text, gender, preferred) {
+  const detected = guessLang(text);
+  const hint = String(preferred || '').trim().replace(/_/g, '-');
+  const hintBase = hint.split('-')[0].toLowerCase();
+  if (validLocale(hint) && AMBIGUOUS_SCRIPT_LANGS.has(detected)
+      && LANG_FAMILY[hintBase] && LANG_FAMILY[hintBase] === LANG_FAMILY[detected]
+      && hintBase !== detected) return null;
+  const set = VOICES[detected];
+  if (!set) return null;
   return gender === 'male' ? set.male : set.female;
 }
 
@@ -326,7 +376,8 @@ async function синтезОдин(text, opts = {}, заход = 1) {
   const speech = speechText(text);
   if (speech.length < TTS_LIMITS.MIN_CHARS) return { ok: false, why: 'нечего читать' };
   const { text: forVoice, cut } = clampSpeech(speech, opts.maxChars || TTS_LIMITS.MAX_CHARS);
-  const voice = opts.voice || pickVoice(forVoice, opts.gender);
+  const voice = opts.voice || pickVoice(forVoice, opts.gender, opts.language);
+  if (!voice) return { ok: false, why: 'серверный голос для этой письменности не настроен', unsupported: true, заход };
   const rate = opts.rate || '+0%';
   const pitch = opts.pitch || '+0Hz';
   const connect = opts.connect || wsConnect;
@@ -391,8 +442,9 @@ async function синтезОдин(text, opts = {}, заход = 1) {
     });
     const id = randomId();
     ws.send('X-Timestamp:' + new Date().toString() + '\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n' + конверт);
+    const locale = LANG_TAGS[guessLang(forVoice)] || (String(voice).match(/^([a-z]{2,3}-[A-Z]{2})-/i) || [])[1] || 'en-US';
     const ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='"
-      + (guessLang(forVoice) === 'ru' ? 'ru-RU' : 'en-US') + "'><voice name='" + voice
+      + locale + "'><voice name='" + voice
       + "'><prosody pitch='" + pitch + "' rate='" + rate + "' volume='+0%'>"
       + escapeXml(forVoice) + '</prosody></voice></speak>';
     ws.send('X-RequestId:' + id + '\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:' + new Date().toString() + 'Z\r\nPath:ssml\r\n\r\n' + ssml);

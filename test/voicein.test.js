@@ -39,10 +39,16 @@ function net(answers) {
 
 console.log('V — расшифровка голоса: три источника, лимиты, честные причины');
 {
-  ok('V1: hasWords — слова есть только если есть буквы или цифры', !hasWords('') && !hasWords('   ') && !hasWords('!?!') && hasWords('привет'));
-  ok('V2: точка от шума («.») ответом не считается', !hasWords('.') && !hasWords('«»') && !hasWords('a'));
+  ok('V1: распознаются буквы и цифры любой письменности',
+    !hasWords('') && !hasWords('   ') && !hasWords('!?!') && hasWords('привет')
+      && hasWords('مرحبا') && hasWords('你好') && hasWords('Καλημέρα') && hasWords('ў'));
+  ok('V2: пунктуация от шума не считается речью, но односимвольное слово сохраняется',
+    !hasWords('.') && !hasWords('«»') && hasWords('a') && hasWords('我'));
   ok('V3: переносы и двойные пробелы вычищаются, перевод строк живой', hasWords('раз\nдва  три'));
-  ok('V4: лимиты наружу есть, и они не меняются', sttLimits.MAX_AUDIO === 8 * 1024 * 1024 && sttLimits.MIN_AUDIO === 400 && /ДОСЛОВНО/.test(sttLimits.PROMPT));
+  ok('V4: лимиты и требования к дословности, письму и диакритике есть',
+    sttLimits.MAX_AUDIO === 8 * 1024 * 1024 && sttLimits.MIN_AUDIO === 400
+      && /ДОСЛОВНО/.test(sttLimits.PROMPT) && /письменность/.test(sttLimits.PROMPT)
+      && /диакритические знаки/.test(sttLimits.PROMPT) && /Не транслитерируй/.test(sttLimits.PROMPT));
   /* Словарь продукта: без подсказки Whisper пишет «MeTiger» как слышит — «Митигер». */
   ok('V4b: в промпте есть словарь имён продукта (иначе своё имя писалось бы как слышится)',
     /MeTiger/.test(sttLimits.PROMPT) && /Whisper/.test(sttLimits.PROMPT) && /Groq/.test(sttLimits.PROMPT));
@@ -163,6 +169,12 @@ console.log('V — расшифровка голоса: три источник�
     JSON.stringify({ lang: rec.body.language, copt: rec.body.condition_on_previous_text }));
   ok('V30: ключ Cloudflare только в заголовке — в теле запроса его нет',
     /^Bearer cfk$/.test(rec.init.headers.authorization) && !/cfk/.test(rec.init.body), rec.init.headers.authorization);
+  const n2 = net({ cloudflare: [json({ result: { text: '你好' }, success: true })] });
+  const s2 = createStt({ env: { CLOUDFLARE_KEYS: 'cfk', CLOUDFLARE_ACCOUNT_ID: 'acc1' }, fetch: n2.fetchImpl, log: () => {} });
+  const r2 = await s2.transcribe({ bytes: AUDIO, mime: 'audio/wav', lang: 'zh', via: 'cloudflare' });
+  const body2 = JSON.parse(n2.calls[0].init.body);
+  ok('V30b: китайская стенограмма принимается, а русский style prompt не подмешивается',
+    r2.ok && r2.text === '你好' && body2.language === 'zh' && !('initial_prompt' in body2), JSON.stringify(body2));
 }
 {
   /* Верхняя форма ответа (result.text) и нижняя (text) — обе должны читаться. */

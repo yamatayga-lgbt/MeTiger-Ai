@@ -57,7 +57,14 @@ export function siteUser(): Person {
 
 export function initials(person: Person): string {
   const parts = String(person.name || '').split(/\s+/).filter(Boolean).slice(0, 2)
-  const out = parts.map((w) => (w[0] || '').toUpperCase()).join('')
+  const firstGrapheme = (word: string) => {
+    const chars = Array.from(word.normalize('NFC'))
+    if (!chars.length) return ''
+    let first = chars[0]
+    for (let i = 1; i < chars.length && /\p{M}/u.test(chars[i]); i++) first += chars[i]
+    return first
+  }
+  const out = parts.map((w) => firstGrapheme(w).toUpperCase()).join('')
   return out || 'Г'
 }
 

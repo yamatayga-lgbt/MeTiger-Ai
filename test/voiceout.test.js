@@ -16,7 +16,7 @@ function ok(name, cond, extra) {
 }
 
 const m = await import('../engine/voiceout.js');
-const { gecToken, speechText, clampSpeech, pickVoice, guessLang, parseFrame, synthesize, VOICES, TTS_LIMITS } = m;
+const { gecToken, speechText, clampSpeech, pickVoice, guessLang, languageTag, parseFrame, synthesize, VOICES, TTS_LIMITS } = m;
 
 console.log('G — подпись времени (Sec-MS-GEC)');
 {
@@ -110,6 +110,20 @@ console.log('L — потолки и выбор голоса');
     pickVoice('Привет', '') === VOICES.ru.female && pickVoice('Привет', 'male') === VOICES.ru.male);
   ok('L6: английский ответ читается английским голосом',
     pickVoice('Hello, how are you doing today?', 'male') === VOICES.en.male);
+  ok('L7: языки распознаются по письменности, а не все не-кириллические как английский',
+    guessLang('你好') === 'zh' && guessLang('こんにちは') === 'ja' && guessLang('مرحبا') === 'ar'
+      && guessLang('עברית') === 'he' && guessLang('Καλημέρα') === 'el'
+      && guessLang('Ґрунт') === 'uk' && guessLang('Ўсё добра') === 'be');
+  ok('L8: серверный голос не подменяет письменность/locale, fallback получает язык текста',
+    pickVoice('你好', 'female') === null && languageTag('你好') === 'zh-CN'
+      && languageTag('你好', 'zh-TW') === 'zh-TW'
+      && languageTag('مرحبا', 'fa-IR') === 'fa-IR'
+      && languageTag('Привет', 'be-BY') === 'be-BY'
+      && languageTag('Прывітанне', 'be-BY') === 'be-BY'
+      && pickVoice('Привет', 'female', 'be-BY') === null
+      && languageTag('Hello', 'be-BY') === 'en-US'
+      && languageTag('Bonjour', 'fr-FR') === 'fr-FR' && pickVoice('Bonjour', 'female', 'fr-FR') === null
+      && languageTag('ᏣᎳᎩ', 'en-GB') === 'en-GB');
 }
 
 console.log('P — кадры службы голоса');
@@ -268,6 +282,10 @@ console.log('T — синтез на подставном соединении (
   const безПовтора = await synthesize('🔥🎉✅', { connect: async () => { зряХодили++; return молчащее(); }, timeoutMs: 200 });
   ok('T11: «нечего читать» не повторяем и не соединяемся зря',
     !безПовтора.ok && безПовтора.why === 'нечего читать' && зряХодили === 0, JSON.stringify(безПовтора));
+  let unsupportedConnects = 0;
+  const unsupported = await synthesize('你好', { connect: async () => { unsupportedConnects++; return молчащее(); } });
+  ok('T11b: неизвестная серверу письменность не произносится английским голосом и уходит в device fallback',
+    !unsupported.ok && /не настроен/.test(unsupported.why) && unsupportedConnects === 0, JSON.stringify(unsupported));
 
   function молчащее() {
     const ws = подставное();
@@ -300,8 +318,12 @@ console.log('W — вход /api/tts');
 
   const устно = await onRequestPost(ctx({ text: 'Считаем \\(\\frac{a}{b}\\) тут.' }, 'https://a/api/tts?text=1'));
   const j = await устно.json();
-  ok('W3: ?text=1 отдаёт устную форму — по ней говорит речь устройства',
-    j.ok && /дробь a на b/.test(j.speech) && !/frac/.test(j.speech), JSON.stringify(j));
+  ok('W3: ?text=1 отдаёт устную форму и locale — по ней говорит речь устройства',
+    j.ok && /дробь a на b/.test(j.speech) && !/frac/.test(j.speech) && j.language === 'ru-RU', JSON.stringify(j));
+  const язык = await onRequestPost(ctx({ text: '你好', language: 'ru-RU' }, 'https://a/api/tts?text=1'));
+  const jl = await язык.json();
+  ok('W3b: китайская речь устройства получает zh-CN, даже если интерфейс на русском',
+    jl.ok && jl.language === 'zh-CN' && jl.speech === '你好', JSON.stringify(jl));
 
   const инфо = await onRequestGet({ env: {} });
   const и = await инфо.json();

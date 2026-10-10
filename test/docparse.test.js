@@ -126,6 +126,28 @@ console.log('F — документы: читаем то, что прислал 
     u.ok && /^товар,цена/.test(u.text) && u.text.indexOf('\u0000') < 0, JSON.stringify(u.text));
   const not16 = parse(new TextEncoder().encode('обычная строка в utf-8, ни одного нуля\n'), { name: 'utf8.txt' });
   ok('F17a: обычную utf-8 кириллицу за utf-16 не принимаем', not16.ok && /^обычная строка/.test(not16.text), JSON.stringify(not16.text || not16.why).slice(0, 80));
+  const utf16 = (text, little, bom) => {
+    const out = new Uint8Array(text.length * 2 + (bom ? 2 : 0));
+    let p = 0;
+    if (bom) { out[0] = little ? 0xff : 0xfe; out[1] = little ? 0xfe : 0xff; p = 2; }
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      out[p + i * 2] = little ? c & 255 : c >> 8;
+      out[p + i * 2 + 1] = little ? c >> 8 : c & 255;
+    }
+    return out;
+  };
+  const leBom = parse(utf16('你好, 世界', true, true), { name: 'chinese.txt' });
+  ok('F17b: UTF-16LE BOM не декодируется как UTF-8 — китайский текст остаётся точным',
+    leBom.ok && leBom.text === '你好, 世界', JSON.stringify(leBom.text || leBom.why));
+  const beBom = parse(utf16('Καλημέρα', false, true), { name: 'greek.txt' });
+  ok('F17c: UTF-16BE BOM сохраняет греческие буквы и диакритику',
+    beBom.ok && beBom.text === 'Καλημέρα', JSON.stringify(beBom.text || beBom.why));
+  const greekNoBom = parse(utf16('Καλημέρα', true, false), { name: 'greek.txt' });
+  const arabicNoBom = parse(utf16('مرحبا بكم', true, false), { name: 'arabic.txt' });
+  ok('F17d: UTF-16 без BOM определяется не только по латинице и кириллице',
+    greekNoBom.ok && greekNoBom.text === 'Καλημέρα' && arabicNoBom.ok && arabicNoBom.text === 'مرحبا بكم',
+    JSON.stringify([greekNoBom.text || greekNoBom.why, arabicNoBom.text || arabicNoBom.why]));
   const m = parse(enc('# Заголовок\n\nтекст **жирным**\n'), { name: 'заметки.md' });
   ok('F18: markdown читается как есть (разметку режем не мы, а модель)', m.ok && /\*\*жирным\*\*/.test(m.text), m.why || '');
   const h = parse(enc('<html><body><style>p{color:red}</style><p>Привет</p><br><p>Мир</p></body></html>'), { name: 'a.html' });

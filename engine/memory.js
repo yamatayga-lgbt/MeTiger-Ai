@@ -339,15 +339,16 @@ export function createMemory(opts) {
 
   function keywords(text) {
     return String(text || '')
+      .normalize('NFC')
       .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
       .split(/\s+/)
       .filter((w) => w.length > 3)
       .slice(0, 24);
   }
 
   function score(text, kws) {
-    const t = String(text || '').toLowerCase();
+    const t = String(text || '').normalize('NFC').toLowerCase();
     let n = 0;
     kws.forEach((k) => {
       if (t.indexOf(k) >= 0) n++;

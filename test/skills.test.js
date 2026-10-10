@@ -1390,5 +1390,16 @@ console.log('\nDD — группа 29: процесс, сценарий, соб�
     pf.map((x) => x.id).join(','));
 }
 
+{
+  const trPrompt = String(skillById('translate')?.prompt || '');
+  const grammarPrompt = String(skillById('grammar')?.prompt || '');
+  ok('LANG1: перевод использует нормы целевого языка, не навязывает русский и не теряет символы',
+    /целевого языка/.test(trPrompt) && !/русскими аналогами/.test(trPrompt)
+      && /не транслитерируй/i.test(trPrompt) && /диакритик/.test(trPrompt), trPrompt);
+  ok('LANG2: правка следует языку исходника и сохраняет письменность/знаки',
+    /языка исходного текста/.test(grammarPrompt) && /Сохрани письменность/.test(grammarPrompt)
+      && /не транслитерируй/.test(grammarPrompt), grammarPrompt);
+}
+
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

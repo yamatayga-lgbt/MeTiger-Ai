@@ -49,7 +49,7 @@ const extOf = (name) => {
   return m ? m[1].toLowerCase() : '';
 };
 
-/** UTF-16 без BOM: старшие байты пар должны лежать в узком наборе. */
+/** UTF-16 без BOM: старшие байты пар часто лежат в узком диапазоне текста. */
 function looksUtf16(b, le) {
   const n = Math.min(b.length - (b.length % 2), 400);
   if (n < 8) return false;
@@ -58,7 +58,9 @@ function looksUtf16(b, le) {
   for (let i = 0; i < pairs; i++) {
     const hi = le ? b[i * 2 + 1] : b[i * 2];
     const lo = le ? b[i * 2] : b[i * 2 + 1];
-    if ((hi === 0x00 || hi === 0x04 || hi === 0x05) && !(hi === 0 && lo < 9)) okN++;
+    /* В расширенной версии учитываем все частые BMP-письменности с верхним
+       байтом 0x01–0x1F: греческую, арабскую, иврит, индийские и др. */
+    if ((hi === 0x00 && lo >= 9) || (hi >= 0x01 && hi <= 0x1f)) okN++;
   }
   return pairs > 0 && okN / pairs >= 0.85;
 }
@@ -70,17 +72,11 @@ function utf16(b, le) {
 
 /** Байты → строка с определением UTF-16 (его любят Word и Excel). */
 function toText(bytes) {
-  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return decodeUtf8(bytes.subarray(2)).replace(/\u0000/g, '');
-  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    let s = '';
-    for (let i = 2; i + 1 < bytes.length; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
-    return s;
-  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return utf16(bytes.subarray(2), true);
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return utf16(bytes.subarray(2), false);
   /* UTF-16 без BOM — частый гость в csv и txt из Excel и Notepad. Считать «много
-     нулей» наивного мало: в кириллице старший байт равен 0x04, нулей почти нет, и
-     файл распадался в «B>20@». Поэтому проверяем, что СТАРШИЕ байты пар лежат в
-     узком наборе (0x00 для латиницы и цифр, 0x04–0x05 для кириллицы и греческого)
-     — на UTF-8 так не бывает. */
+     нулей» наивного мало: у многих письменностей верхний байт ненулевой. Проверяем,
+     что старшие байты пар часто попадают в диапазон BMP-текста, а не выглядят как UTF-8. */
   if (looksUtf16(bytes, true)) return utf16(bytes, true);
   if (looksUtf16(bytes, false)) return utf16(bytes, false);
   const raw = decodeUtf8(bytes);
