@@ -658,6 +658,29 @@ console.log('V — картинка не должна доставаться с�
   ok('P2: в подсказке названы и строка, и выключная формула, и системы',
     PERSONA_SYSTEM.indexOf('\\( ... \\)') >= 0 && PERSONA_SYSTEM.indexOf('\\[ ... \\]') >= 0
       && PERSONA_SYSTEM.indexOf('\\begin{cases}') >= 0)
+  ok('P3: базовая персона требует правильной орфографии, грамматики, пунктуации и типографики',
+    /Общие правила языка и письма/.test(PERSONA_SYSTEM)
+      && /орфографию, грамматику, согласование, пунктуацию и типографику/.test(PERSONA_SYSTEM)
+      && /сохраняй заданные диалект и стиль/i.test(PERSONA_SYSTEM))
+  ok('P4: системная подсказка сохраняет Unicode-буквы и требует каждый явно заданный символ',
+    /полный набор знаков/.test(PERSONA_SYSTEM)
+      && ['ў', 'і', 'ё', 'ґ', 'є', 'ї', 'ą', 'ł', 'ß', 'ı/İ', '¿¡', '±', '≤', '√'].every((ch) => PERSONA_SYSTEM.includes(ch))
+      && /включи каждый ровно в заданном виде, без пропусков и замен/.test(PERSONA_SYSTEM)
+      && /не транслитерируй/.test(PERSONA_SYSTEM))
+
+  const languageCalls = fakeFetch(() => ({ body: chat('Проверка.') }))
+  const languageEngine = createEngine({
+    env: Object.assign({}, ENV, { FREEDOM: '0', FREEDOM_MODE: 'off' }),
+    fetch: languageCalls,
+    sleep: async () => {},
+  })
+  await languageEngine.run({ text: 'Напиши слово «праўда» по-белорусски.', useTools: false, skills: false })
+  const sentSystem = languageCalls.calls.flatMap((call) => call.body.messages || [])
+    .filter((message) => message.role === 'system').map((message) => String(message.content)).join('\n')
+  ok('P5: общие языковые правила остаются в системном сообщении даже при FREEDOM=off',
+    sentSystem.includes('Общие правила языка и письма')
+      && sentSystem.includes('включи каждый ровно в заданном виде')
+      && !sentSystem.includes('【Язык и слова】'))
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

@@ -21,9 +21,10 @@ const ok = (name, condition) => {
 };
 
 const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
-ok('U140a все источники версии синхронизированы на 0.140',
-  currentVersion === '0.140' && pkg.version === currentVersion && lock.version === currentVersion
-    && lock.packages?.['']?.version === currentVersion);
+ok('U140a все источники версии синхронизированы между собой',
+  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
+    && pkg.version === currentVersion && lock.version === currentVersion
+    && lock.packages?.['']?.version === currentVersion));
 ok('U140b автогенерация и переименование чатов ограничены 30 символами',
   /TITLE_MAX = 30/.test(app) && /maxLength=\{30\}/.test(sidebar) && /maxLength=\{30\}/.test(topbar));
 ok('U140c старые и сохраняемые названия чатов тоже обрезаются до 30',
