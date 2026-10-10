@@ -75,8 +75,23 @@ console.log('V — расшифровка голоса: три источник�
   const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/ogg' });
   ok('V9: Groq — основной путь, текст и язык приходят как есть', r.ok && r.text === 'Привет, это Тигр.' && /groq\/whisper/.test(r.via) && r.lang === 'ru', JSON.stringify(r));
   const rec = n.calls[0];
-  ok('V10: запрос — multipart с моделью, temperature 0 и промптом стенографа', rec.form.get('model') === 'whisper-large-v3-turbo' && rec.form.get('temperature') === '0' && /ДОСЛОВНО/.test(rec.form.get('prompt')) && rec.form.get('response_format') === 'verbose_json', [...rec.form.keys()].join(','));
+  /* 0.147: инструкции стенографа у Groq больше нет — Whisper инструкции не
+     выполняет, а кириллическая инструкция весила 984 байта при лимите Groq в
+     896 БАЙТ: каждый запрос падал с 400, и речь не распознавалась вовсе.
+     Без языка подсказки нет совсем (чужой образец смещает письменность). */
+  ok('V10: запрос — multipart с моделью, temperature 0, БЕЗ тяжёлой инструкции (без языка — без подсказки)', rec.form.get('model') === 'whisper-large-v3-turbo' && rec.form.get('temperature') === '0' && !rec.form.get('prompt') && rec.form.get('response_format') === 'verbose_json', [...rec.form.keys()].join(','));
   ok('V11: ключ передаётся заголовком, а не текстом запроса', /^Bearer gk1$/.test(rec.init.headers.authorization), JSON.stringify(rec.init.headers));
+}
+{
+  /* 0.147: русский язык даёт короткий образец стиля со словарём имён, и он
+     всегда помещается в байтовый лимит Groq (896), даже с длинным хвостом. */
+  const n = net({ groq: [json({ text: 'ок', language: 'ru' })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1' }, fetch: n.fetchImpl, log: () => {} });
+  await s.transcribe({ bytes: AUDIO, mime: 'audio/ogg', lang: 'ru', prev: 'и ещё я хотел сказать про ' + 'очень '.repeat(120) + 'длинный хвост' });
+  const p = String(n.calls[0].form.get('prompt') || '');
+  ok('V10b: ru-образец стиля со словарём, ужатый до лимита Groq в байтах',
+    /пунктуацией/.test(p) && /MeTiger/.test(p) && new TextEncoder().encode(p).length <= 896,
+    'байт: ' + new TextEncoder().encode(p).length);
   ok('V12: в теле нет ни токена бота, ни пути к файлу на нашем диске', JSON.stringify([...rec.form.keys()]).indexOf('token') < 0 && /voice\.(ogg|opus|webm)/.test(rec.file.name || ''), String(rec.file && rec.file.name));
 }
 {

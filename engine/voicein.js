@@ -40,8 +40,25 @@ const STYLE_PROMPT = {
   ru: 'Привет! Это расшифровка речи с пунктуацией, заглавными буквами и числами.',
   en: 'Hello! This is a verbatim transcript with punctuation, capitalization and numbers.',
 };
+/* Словарь продукта: Whisper пишет имена так, как слышит («MeTiger» → «Митигер»).
+   Имена латиницей безопасны в любом языке образца. */
+const VOCAB = 'MeTiger, Whisper, Groq, Cloudflare, OpenRouter, Telegram.';
 function stylePrompt(lang, prev) {
-  return [STYLE_PROMPT[lang] || '', prev || ''].filter(Boolean).join(' ');
+  const base = STYLE_PROMPT[lang] ? STYLE_PROMPT[lang] + ' ' + VOCAB : '';
+  return [base, prev || ''].filter(Boolean).join(' ');
+}
+
+/* Groq считает лимит prompt (896) В БАЙТАХ, а кириллица — 2 байта на букву:
+   прежняя инструкция стенографа весила 984 байта, Groq отвечал 400 на КАЖДЫЙ
+   запрос, и речь не распознавалась вовсе (сломано в 0.142, починено в 0.147).
+   Whisper инструкции всё равно не выполняет — prompt для него образец стиля,
+   поэтому Groq получает то же, что Cloudflare: stylePrompt, ужатый по байтам. */
+const GROQ_PROMPT_BYTES = 800;
+const utf8bytes = (s) => new TextEncoder().encode(String(s || '')).length;
+function fitBytes(s, max) {
+  let t = String(s || '');
+  while (t && utf8bytes(t) > max) t = t.slice(0, -8);
+  return t;
 }
 
 /* Telegram носит opus в ogg; провайдеры берут не любой контейнер, поэтому формат
@@ -143,10 +160,12 @@ export function createStt(o) {
       fd.append('model', groqModel);
       fd.append('response_format', 'verbose_json');
       fd.append('temperature', '0');
-      /* Хвост уже сказанного подсказываем вместе с промптом: кусок в четыре
-         секунды без контекста теряет связность («и ещё» превращается в «ещё и»),
-         а с хвостом модель держит нить. prev — не команда, а образец стиля. */
-      fd.append('prompt', prev ? PROMPT + '\n\n' + prev : PROMPT);
+      /* Образец стиля на языке пишущего + хвост уже сказанного: кусок в четыре
+         секунды без контекста теряет связность («и ещё» превращается в «ещё и»).
+         НЕ инструкция: Whisper её не выполняет, а кириллическая инструкция
+         превышала байтовый лимит Groq — см. GROQ_PROMPT_BYTES. */
+      const p = fitBytes(stylePrompt(lang, prev), GROQ_PROMPT_BYTES);
+      if (p) fd.append('prompt', p);
       /* Язык подсказываем, когда знаем его точно (браузер сообщает язык пишущего):
          на короткой фразе «спасибо» автоопределение иногда уезжает в английский. */
       if (lang) fd.append('language', lang);
