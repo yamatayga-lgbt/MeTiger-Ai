@@ -28,12 +28,6 @@
   --sidebar-w: 248px;
   --content-max: 780px;
 
-  /* ---------- Стекло (Glassmorphism, 0.086) ----------
-     Один набор размеров на обе темы. 22px на десктопе читается как «жидкое»,
-     на телефоне размытие крупнее и дороже — там 14px (см. медиазапрос ниже). */
-  --glass-blur: 22px;
-  --glass-blur-lg: 30px;
-  --glass-sat: 165%;
 }
 
 [data-theme='dark'] {
@@ -72,56 +66,19 @@
   --code-bg: #0e0e12;
   --user-bubble: #21212a;
 
-  /* Стекло тёмной темы: панель светлее фона и почти прозрачна, по верхней кромке —
-     тонкая подсветка (rim light). Это и есть «жидкое стекло»: видно, что за панелью. */
-  /* Обои тёмной темы: те же переходы, но глубокие — иначе на чёрном фоне
-     прозрачная панель снова становится неотличима от фона. */
-  --wall: linear-gradient(
-    158deg,
-    #1e1539 0%,
-    #171835 26%,
-    #111c31 48%,
-    #0d1f2d 68%,
-    #0b1d1c 86%,
-    #0c1918 100%
-  );
-  /* Панель светлее фона: на тёмном фоне «почти чёрное на почти чёрном» не
-     читается (замер: разница яркости панели и фона всего 3 из 255). Дымчатая
-     панель поверх цветного фона даёт и свет, и оттенок — стекло видно. */
-  --glass: rgba(52, 52, 70, 0.34);
-  --glass-strong: rgba(42, 42, 58, 0.5);
-  --glass-brd: rgba(255, 255, 255, 0.14);
-  --glass-rim: rgba(255, 255, 255, 0.22);
-  --glass-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
-  /* Поле ввода — самая заметная стеклянная деталь на телефоне, и оно лежит
-     в самом тёмном углу обоев. Здесь панель светлее и плотнее прочего стекла. */
-  --pane: #3e3e54;
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0) 52%);
-  /* Жидкий блик (0.100) — цвет пятна, которое едет за пальцем; сам градиент
-     собирается в правиле панели.
-     Почему не здесь: значение токена вычисляется ТАМ, ГДЕ ОН ОБЪЯВЛЕН, — var(--mx)
-     внутри токена подставился бы на :root (где --mx нет) и «запёкся» бы на 50%.
-     Проверено живьём: переменные на панели стояли, а фон не менялся. */
-  --glass-spot: rgba(255, 255, 255, 0.17);
-  /* Юбилейная призма (0.100): по кромке панели идёт лёгкая радуга. Статичная —
-     движение по кадру стоило бы fps, а «жидкость» уже даёт бегающий блик. */
-  --glass-prism: linear-gradient(
-    118deg,
-    rgba(132, 112, 255, 0.16) 0%,
-    rgba(92, 190, 252, 0.1) 22%,
-    rgba(255, 255, 255, 0) 46%,
-    rgba(30, 220, 190, 0.1) 74%,
-    rgba(255, 176, 92, 0.12) 100%
-  );
-  /* Сияние под стеклом: три приглушённых пятна. Тише, чем может показаться нужным, —
-     сквозь панели должен читаться текст, а не спорить с ним. */
-  /* Сияние — это то, ЧТО показывает стекло. Тусклое сияние = «стекло пропало»,
-     это уже случалось (0.087–0.088). Держим цвета заметно живыми. */
-  --wall-band: rgba(255, 255, 255, 0.06);
-  --ambient-1: rgba(132, 112, 255, 0.5);
-  --ambient-2: rgba(30, 220, 190, 0.34);
-  --ambient-3: rgba(92, 132, 252, 0.4);
-  --ambient-o: 1;
+  /* ---------- Плоские панели (0.144) ----------
+     Стекло убрано: панели — обычные непрозрачные поверхности, как у других
+     ИИ-чатов. Прежние токены оставлены по именам (их читает много правил ниже),
+     но значения теперь плоские: без прозрачности, бликов, призм и размытий. */
+  --glass: var(--bg-elevated);
+  --glass-strong: var(--bg-elevated);
+  --glass-brd: var(--border);
+  --glass-rim: transparent;
+  --glass-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+  --pane: #1b1b22;
+  --glass-sheen: none;
+  --glass-spot: transparent;
+  --glass-prism: none;
 }
 
 [data-theme='light'] {
@@ -158,42 +115,16 @@
   --code-bg: #1c1b18;
   --user-bubble: #ebe8df;
 
-  /* Обои под стеклом. Раньше фон был почти одноцветным, и стекло было НЕ ВИДНО:
-     белая панель поверх светлой бумаги даёт тот же светлый цвет (замер: разница
-     карточка↔фон 45 из 765, насыщенность 3). Жидкое стекло читается только
-     тогда, когда за панелью есть цвет и форма: панель их размывает и тонируется
-     ими. Это и есть «обои» — базовый градиент на весь экран, а поверх него
-     пятна сияния (.ambient), которые медленно дышат. */
-  --wall: linear-gradient(
-    158deg,
-    #ffe4cb 0%,
-    #fbe6f6 24%,
-    #eee6ff 44%,
-    #e4eeff 64%,
-    #ddf3ee 84%,
-    #e3f6e8 100%
-  );
-  --glass: rgba(255, 255, 255, 0.34);
-  --glass-strong: rgba(255, 255, 255, 0.58);
-  --glass-brd: rgba(23, 21, 18, 0.12);
-  --glass-rim: rgba(255, 255, 255, 0.95);
-  --glass-shadow: 0 2px 8px rgba(23, 21, 18, 0.05), 0 18px 40px rgba(23, 21, 18, 0.12);
+  /* Плоские панели светлой темы (0.144): см. пояснение в тёмной теме. */
+  --glass: var(--bg-elevated);
+  --glass-strong: var(--bg-elevated);
+  --glass-brd: var(--border);
+  --glass-rim: transparent;
+  --glass-shadow: 0 2px 8px rgba(23, 21, 18, 0.06), 0 12px 28px rgba(23, 21, 18, 0.1);
   --pane: #ffffff;
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0) 55%);
-  --glass-spot: rgba(255, 255, 255, 0.92);
-  --glass-prism: linear-gradient(
-    118deg,
-    rgba(132, 112, 255, 0.14) 0%,
-    rgba(92, 190, 252, 0.1) 22%,
-    rgba(255, 255, 255, 0) 46%,
-    rgba(30, 220, 190, 0.1) 74%,
-    rgba(255, 176, 92, 0.12) 100%
-  );
-  --wall-band: rgba(255, 255, 255, 0.62);
-  --ambient-1: rgba(255, 150, 92, 0.5);
-  --ambient-2: rgba(120, 138, 255, 0.42);
-  --ambient-3: rgba(84, 200, 170, 0.36);
-  --ambient-o: 1;
+  --glass-sheen: none;
+  --glass-spot: transparent;
+  --glass-prism: none;
 }
 
 /* ---------- Reset ---------- */
@@ -338,7 +269,6 @@ a {
   grid-template-columns: 1fr;
   height: 100dvh;
   overflow: hidden;
-  /* точка отсчёта для сияния (.ambient) — оно лежит ровно под всем приложением */
   position: relative;
 }
 
@@ -374,8 +304,6 @@ a {
   inset: 0;
   z-index: 40;
   background: var(--scrim);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
   animation: fadeIn var(--t-fast) both;
 }
 
@@ -856,8 +784,6 @@ a {
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   /* НЕ sticky: шапка и так всегда наверху нескроллящегося столбца (скроллится
      только .thread-scroll ниже неё) — sticky тут не нужен, а в паре с
      backdrop-filter на мобильных WebKit/Chromium он — известный источник
@@ -2425,8 +2351,6 @@ kbd {
   background-color: color-mix(in srgb, var(--pane) 55%, transparent);
   background-image: var(--glass-sheen);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   animation: voiceRise var(--t-fast) both;
 }
 
@@ -4043,8 +3967,6 @@ kbd {
   align-items: flex-start;
   padding: 12vh 16px 16px;
   background: var(--scrim);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   animation: fadeIn var(--t-fast) both;
 }
 
@@ -4527,8 +4449,6 @@ kbd {
   font-size: 13.5px;
   font-weight: 600;
   text-decoration: none;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 .file-chip {
   display: inline-flex;
@@ -4754,123 +4674,20 @@ kbd {
 }
 
 /* ============================================================
-   Стекло · Glassmorphism («жидкое стекло») — 0.086
+   Плоские панели (0.144) — стекло убрано.
 
-   Что это: полупрозрачные панели, сквозь которые виден фон, с подсветкой
-   по верхней кромке (rim light) и мягкой тенью. Чтобы стеклу было что
-   показывать, под интерфейсом лежит «сияние» (.ambient) — три больших
-   мягких пятна, они медленно дышат.
-
-   Три правила, без которых это ломается на телефоне:
-
-   1. Размывается только ОБВЯЗКА — шапка, сайдбар, поле ввода, попапы,
-      палитра, тост, карточки. И никогда — сообщения в ленте: их десятки,
-      они едут при прокрутке, и backdrop-filter на каждом превращает
-      прокрутку в слайд-шоу. Пузырь человека полупрозрачный, но БЕЗ
-      размытия.
-
-   2. Один элемент — одно размытие. Вложенные blur (обёртка + поле внутри)
-      на мобильном WebKit стоят как два полноэкранных композита.
-
-   3. Если браузер не умеет стекло (или человек попросил меньше
-      прозрачности) — панели становятся честно непрозрачными, а сияние
-      гаснет (см. @supports и @media ниже). Стиль не имеет права ухудшать
-      читаемость текста.
-
-   Порядок здесь важен: этот блок идёт ПОСЛЕ обычных правил и потому
-   выигрывает у них при равной специфичности.
+   Обвязка — обычные непрозрачные поверхности, как у других ИИ-чатов:
+   без обоев, сияния, размытий, бликов и призм. Этот блок идёт ПОСЛЕ
+   обычных правил и выигрывает у них при равной специфичности — здесь
+   только то, что раньше задавал стеклянный блок: плотные фоны панелей
+   и размеры кнопок поля ввода.
    ============================================================ */
 
-/* ---------- Сияние под стеклом ---------- */
-.ambient {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-  /* Обои: базовый цветной градиент на весь экран. Без него панелям нечего
-     показывать — прозрачность и размытие видны только над цветом. */
-  background-image: var(--wall);
-}
-
-/* Световая полоса по диагонали: она даёт стеклу «блик» — панель поверх неё
-   выглядит освещённой, и по кромке видно, где стекло, а где фон. Это же и
-   единственная деталь, которая при размытии превращается в мягкое свечение
-   (размывать гладкий градиент визуально нечего). */
-.ambient::before {
-  content: '';
-  position: absolute;
-  left: -30%;
-  right: -30%;
-  top: 14%;
-  height: 30%;
-  transform: rotate(-13deg);
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--wall-band) 50%,
-    transparent 100%
-  );
-}
-
-/* Пятна сделаны радиальным градиентом, а не filter: blur(): на телефоне
-   размытие огромного элемента — это лишний полноэкранный композит на каждом
-   кадре, а градиент мягкий сам по себе и стоит копейки. */
-.ambient i {
-  position: absolute;
-  display: block;
-  border-radius: 50%;
-  will-change: transform;
-  /* Яркость пятен живёт здесь, а не на .ambient: там она гасила бы и обои. */
-  opacity: var(--ambient-o);
-}
-.ambient:not(.ambient-still) i:nth-child(1) {
-  left: -32vmax;
-  top: -38vmax;
-  width: 84vmax;
-  height: 84vmax;
-  background: radial-gradient(circle at 50% 50%, var(--ambient-1) 0%, transparent 54%);
-  animation: ambientDrift1 47s ease-in-out infinite alternate;
-}
-.ambient:not(.ambient-still) i:nth-child(2) {
-  right: -30vmax;
-  top: 6vmax;
-  width: 72vmax;
-  height: 72vmax;
-  background: radial-gradient(circle at 50% 50%, var(--ambient-2) 0%, transparent 54%);
-  animation: ambientDrift2 59s ease-in-out infinite alternate;
-}
-.ambient:not(.ambient-still) i:nth-child(3) {
-  left: -12vmax;
-  bottom: -48vmax;
-  width: 92vmax;
-  height: 92vmax;
-  background: radial-gradient(circle at 50% 50%, var(--ambient-3) 0%, transparent 58%);
-  animation: ambientDrift3 53s ease-in-out infinite alternate;
-}
-
-/* Движение медленное и на пару процентов вьюпорта: заметно только боковым
-   зрением. Быстрее — и это уже не фон, а аттракцион за текстом. */
-@keyframes ambientDrift1 {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(4vmax, 3vmax, 0) scale(1.07); }
-}
-@keyframes ambientDrift2 {
-  from { transform: translate3d(0, 0, 0) scale(1.05); }
-  to   { transform: translate3d(-5vmax, 4vmax, 0) scale(1); }
-}
-@keyframes ambientDrift3 {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(-3vmax, -4vmax, 0) scale(1.06); }
-}
-
-/* Столбец контента — над сиянием, иначе пятна окажутся поверх текста. */
 .main {
   position: relative;
   z-index: 1;
 }
 
-/* ---------- Само стекло ---------- */
 .topbar,
 .sidebar,
 .chat-menu,
@@ -4885,164 +4702,64 @@ kbd {
 .profile-card,
 .news-card,
 .news-intro {
-  background-color: var(--glass);
-  /* Блик — слой ФОНА, а не псевдоэлемент. Псевдоэлементу нужен position:
-     relative, а он перебивал absolute у попапов (параметры и модели) и ломал
-     раскладку поля ввода: попап становился обычным блоком внутри строки и
-     растягивал её на пол-экрана. Слой фона не трогает положение вовсе. */
-  /* Порядок слоёв: жидкость (пятно под пальцем) — сверху, статичный верхний блик —
-     под ней. --mx/--my ставит useLiquidGlass на саму панель, поэтому градиент
-     собран ЗДЕСЬ, а не в токене: см. пояснение у --glass-spot. */
-  background-image: radial-gradient(
-      240px 190px at var(--mx, 50%) var(--my, -30%),
-      var(--glass-spot),
-      transparent 62%
-    ),
-    var(--glass-sheen);
-  border-color: var(--glass-brd);
-  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  background-color: var(--bg-elevated);
+  border-color: var(--border);
 }
 
-/* ---------- Жидкое стекло (0.100) ----------
-
-   «Жидкое» здесь — это не анимация ради анимации, а два свойства настоящего
-   стекла, которых не было:
-     · блик ходит по поверхности вслед за пальцем/курсором (--mx/--my в токене
-       --glass-sheen). Значения ставит useLiquidGlass: rAF-кадр на движение,
-       passive-слушатели, и только по панелям под пальцем — раскладку это не
-       трогает вовсе, перерисовывается один фон;
-     · по кромке идёт лёгкая радуга (--glass-prism) — стекло ловит не только
-       свет, но и цвет. Она статичная: движение по кадру стоило бы fps, а
-       прокрутка на телефоне и без того не бесплатна.
-
-   Призмы нет у мелких кнопок поля ввода: там блик уже лежит поверх размытой
-   полки, и второй слой цвета превратил бы кружки в цветные пятна. */
-.topbar-pill,
-.composer,
-.model-panel,
-.palette {
-  background-image: radial-gradient(
-      240px 190px at var(--mx, 50%) var(--my, -30%),
-      var(--glass-spot),
-      transparent 62%
-    ),
-    var(--glass-prism),
-    var(--glass-sheen);
-}
-
-/* Панели, которые висят НАД содержимым (палитра, попапы, меню) — плотнее:
-   под ними текст, и он не должен просвечивать сквозь строки панели. */
-.palette,
+/* Панели, которые висят НАД содержимым, — с тенью: слой читается тенью,
+   а не прозрачностью. */
+.sidebar,
+.chat-menu,
 .model-panel,
 .params-popover,
 .attach-menu,
-.chat-menu {
-  background-color: var(--glass-strong);
-  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
+.palette,
+.toast,
+.workspace-drawer {
+  box-shadow: var(--shadow-lg);
 }
 
-/* ---------- Обвязка ───────────────────────────────────────── */
-
-/* Шапка: стекло поверх сияния. position: static сохранён намеренно — см.
-   комментарий у .topbar выше, sticky+blur на мобильном WebKit дёргается. */
+/* Шапка — цвет страницы, отделена нижней кромкой (border у базового правила). */
 .topbar {
-  /* только цвет: блик уже лежит слоем фона из общей группы, и шорткат
-     `background` его бы стёр. Первая строка — запасной цвет для браузеров
-     без color-mix (неизвестная функция обнуляет всё объявление). */
-  background-color: var(--bg);
-  background-color: color-mix(in srgb, var(--bg) 58%, transparent);
+  background: var(--bg);
 }
 
-/* Сайдбар — выезжающий ящик: плотнее остальных, под ним текст чата. */
-.sidebar {
-  background: var(--glass-strong);
-  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-}
-
-/* Поле ввода. Пилюля — полупрозрачное стекло, а размывает ОДНА обёртка вокруг
-   неё (правило 2): иначе на телефоне два вложенных blur на самом видном месте. */
+/* Полка зоны ввода — цвет страницы, без просвечивания. */
 .composer-wrap {
   position: relative;
-  /* Полка зоны ввода — стекло, а не заливка цветом страницы: обои за ней видны.
-     Размытие — одним слоем ::before ниже (правило 2). */
-  background: linear-gradient(
-    to top,
-    color-mix(in srgb, var(--pane) 40%, transparent) 0%,
-    color-mix(in srgb, var(--pane) 24%, transparent) 46%,
-    transparent 100%
-  );
+  background: var(--bg);
 }
 
-/* Размытие поля ввода — отдельным слоем, а НЕ backdrop-filter самой обёртки.
-   backdrop-filter делает элемент «системой координат» для потомков с
-   position: fixed. Внутри обёртки живёт затемнение .model-backdrop (им
-   закрывается попап по клику мимо), и оно сжималось до размеров поля ввода:
-   клик мимо перестал закрывать попап. Слой ::before размывает так же, но
-   ничего не переопределяет. */
-.composer-wrap::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-}
 .composer {
   position: relative;
-  background-color: color-mix(in srgb, var(--pane) 46%, transparent);
-  /* Жидкий блик собран здесь, а НЕ в общем токене: значение токена вычисляется
-     там, где объявлено, и var(--mx) внутри него «запекался» бы на :root в 50%. */
-  background-image: radial-gradient(
-      240px 190px at var(--mx, 50%) var(--my, -30%),
-      var(--glass-spot),
-      transparent 62%
-    ),
-    var(--glass-prism),
-    var(--glass-sheen);
-  border-color: var(--glass-brd);
-  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim),
-    inset 0 -1px 0 color-mix(in srgb, var(--glass-rim) 30%, transparent);
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
 }
 .composer:focus-within {
   border-color: var(--accent-border);
 }
 
-/* ---------- Зона ввода: плавающие кнопки ----------
-
-   Размытие здесь РОВНО одно — слой .composer-wrap::before (правило 2).
-   Кнопки — маленькие кружки, и собственный backdrop-filter каждой из них
-   стоил бы отдельного прохода по кадру; стеклянными их делают полупрозрачная
-   заливка, кромка, блик и тень. Это тот же приём, что у системных «жидких»
-   кнопок: они не размывают фон заново, они лежат на уже размытом. */
-
-/* Кнопки поля ввода — плавающие стеклянные кружки. */
+/* Кнопки поля ввода — простые круглые кнопки. */
 .composer .icon-btn,
 .composer .params-btn {
   width: 36px;
   height: 36px;
   border-radius: var(--r-full);
-  border: 1px solid var(--glass-brd);
-  background-color: color-mix(in srgb, var(--pane) 52%, transparent);
-  background-image: var(--glass-sheen);
+  border: 1px solid var(--border);
+  background-color: var(--surface-2);
   color: var(--text-2);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow-sm) 220%, transparent),
-    inset 0 1px 0 var(--glass-rim);
 }
 
 .composer .icon-btn:hover,
 .composer .params-btn:hover,
 .composer .params-btn.is-open,
 .composer .icon-btn.plus-btn.is-open {
-  background-color: color-mix(in srgb, var(--pane) 74%, transparent);
+  background-color: var(--surface-hover);
   color: var(--text);
 }
 
-/* Кнопка микрофона во время записи остаётся «зажжённой» — иначе стекло
-   перебивало бы её акцентную заливку. */
+/* Кнопка микрофона во время записи остаётся «зажжённой». */
 .composer .voice-btn.is-on {
   background-color: var(--accent);
   color: var(--accent-fg);
@@ -5052,143 +4769,53 @@ kbd {
   border-radius: var(--r-full);
 }
 
-/* Отправка — тот же круг, но акцентный: единственный цветной элемент в зоне,
-   поэтому и «плавает» выше прочих (тень и кольцо света). */
+/* Отправка — единственная акцентная кнопка в зоне ввода. */
 .composer .send-btn {
   width: 38px;
   height: 38px;
   border-radius: var(--r-full);
   background: var(--accent-grad);
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 22%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--accent-fg) 30%, transparent);
+  box-shadow: var(--shadow-sm);
 }
 
 .composer .send-btn:disabled {
-  background: color-mix(in srgb, var(--pane) 60%, transparent);
-  background-image: var(--glass-sheen);
+  background: var(--surface-2);
   color: var(--text-3);
-  border: 1px solid var(--glass-brd);
-  box-shadow: inset 0 1px 0 var(--glass-rim);
+  border: 1px solid var(--border);
+  box-shadow: none;
 }
 
-/* Пузырь человека: полупрозрачный, но БЕЗ размытия (правило 1). */
+/* Пузырь человека — плотный, без прозрачности. */
 .msg-user .bubble {
   background-color: var(--user-bubble);
-  background-color: color-mix(in srgb, var(--user-bubble) 78%, transparent);
-  border-color: var(--glass-brd);
-  box-shadow: inset 0 1px 0 var(--glass-rim);
+  border-color: var(--border);
 }
 
-/* Полоса голосового ввода и «+»-меню живут поверх ленты — им тоже стекло.
-   Полоса уже описана со стеклом выше; здесь только общий список мест, куда
-   подставляется общая жидкость (--glass-sheen), чтобы не было «стекло в двух
-   местах, а в остальных — плоские плашки». */
 .voice-strip {
-  background-color: color-mix(in srgb, var(--pane) 62%, var(--glass));
+  background-color: var(--bg-elevated);
 }
 
-/* Мелкие элементы — тоже стекло: капсула с названием чата, круглые кнопки в
-   шапке, активный пункт сайдбара, чипы вложений. Без них интерфейс читается как
-   «стекло только в двух местах» (шапка и поле ввода), хотя панелей много. */
+/* Капсула названия чата, круглые кнопки шапки, активный пункт сайдбара. */
 .topbar-pill,
 .icon-btn.topbar-round,
 .side-item.active {
-  background-color: var(--glass);
-  background-image: radial-gradient(
-      240px 190px at var(--mx, 50%) var(--my, -30%),
-      var(--glass-spot),
-      transparent 62%
-    ),
-    var(--glass-prism),
-    var(--glass-sheen);
-  border-color: var(--glass-brd);
-  box-shadow: inset 0 1px 0 var(--glass-rim);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  background-color: var(--surface-2);
+  border-color: var(--border);
 }
 
-/* Наведение у этих же элементов — тоже полупрозрачное, иначе при касании
-   панель щёлкает в непрозрачный цвет и стекло «выключается» под пальцем. */
 .topbar-pill:hover,
 .icon-btn.topbar-round:hover,
 .side-item.active:hover {
-  background-color: rgba(255, 255, 255, 0.09);
-}
-[data-theme='light'] .topbar-pill:hover,
-[data-theme='light'] .icon-btn.topbar-round:hover,
-[data-theme='light'] .side-item.active:hover {
-  background-color: rgba(23, 21, 18, 0.06);
+  background-color: var(--surface-hover);
 }
 
-/* Сияние «спокойное»: на экранах с крупными прозрачными карточками (настройки,
-   расход) движение сияния стоит кадров — замерено на прокрутке настроек:
-   с дрейфом 29,8 fps (30 кадров из 110 дольше 20 мс), без дрейфа 60 fps.
-   Это софтверный рендер (в песочнице нет видеокарты), на живом телефоне дешевле,
-   но выбирать «красиво или плавно» не надо: на главном экране сияние дышит
-   (прокрутку ленты движение не задевает: 60 fps), а под тяжёлыми экранами стоит.
-   Стекло при этом видно везде — его держат прозрачность, кромка и блик. */
-.ambient-still i {
-  animation: none !important;
-}
-
-/* ---------- Скримы (затемнение под ящиками) ---------- */
-/* Скрим гасит фон и слегка его размывает — за ним глубина, а не мутная каша. */
-.drawer-scrim {
-  backdrop-filter: blur(7px) saturate(120%);
-  -webkit-backdrop-filter: blur(7px) saturate(120%);
-}
-.palette-overlay {
-  backdrop-filter: blur(9px) saturate(120%);
-  -webkit-backdrop-filter: blur(9px) saturate(120%);
-}
-
-/* ---------- Телефон: дешевле и тише ---------- */
-/* Крупное размытие на слабом телефоне — это лаги прокрутки. 14px визуально
-   отличаются от 22px мало, а стоят заметно меньше. Сияние тоже приглушаем:
-   за текстом на узком экране ему тесно. */
+/* ---------- Узкий экран ---------- */
 @media (max-width: 460px) {
   .seg-long { display: none; }
   .seg-short { display: inline; }
   .settings-row .segmented { flex-shrink: 0; }
   .settings-row .segmented-item { padding: 5px 9px; }
 }
-
-@media (max-width: 780px) {
-  :root {
-    --glass-blur: 12px;
-    --glass-blur-lg: 18px;
-  }
-  .ambient i {
-    opacity: calc(var(--ambient-o) * 1.06);
-  }
-  /* Сияние на телефоне дышит: дрейф — это transform, его считает видеокарта
-     (замер на прокрутке ленты: 60 fps, кадр 16,7 мс, ни одного кадра дольше
-     20 мс). Останавливать его нельзя: без движения стекло выглядит плоским
-     и человек решает, что оно «пропало» — это была ошибка 0.087. */
-  /* Карточки настроек и расхода на телефоне — со стеклом, но БЕЗ размытия.
-     Замерено: с размытием прокрутка настроек падает до 16 fps (58 кадров из 120
-     дольше 20 мс, худший 276 мс) — на телефоне это рывки. А визуально размытие
-     тут ничего не даёт: за карточкой лежит мягкое сияние, а размытие гладкого
-     градиента не отличается от его отсутствия. Размытие нужно там, где за
-     панелью ТЕКСТ: шапка, поле ввода, меню — у них оно остаётся.
-     Стекло карточек держат прозрачность, кромка и блик. */
-  .settings-card,
-  .usage-card,
-  .profile-card {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-
-/* Телефон, у которого мало ядер: сияние убираем совсем, стекло оставляем. */
-@media (max-width: 780px) and (prefers-reduced-motion: reduce) {
-  .ambient i:nth-child(1),
-  .ambient i:nth-child(2),
-  .ambient i:nth-child(3) {
-    animation: none;
-  }
-}
-
 
 /* ---------- «Что нового» (0.100) ----------
 
@@ -5214,12 +4841,6 @@ kbd {
   border-radius: var(--r-lg);
   border: 1px solid var(--glass-brd);
   background-color: var(--glass);
-  background-image: radial-gradient(
-      240px 190px at var(--mx, 50%) var(--my, -30%),
-      var(--glass-spot),
-      transparent 62%
-    ),
-    var(--glass-sheen);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
 }
 
@@ -5245,12 +4866,6 @@ kbd {
   border-radius: var(--r-lg);
   border: 1px solid var(--glass-brd);
   background-color: var(--glass);
-  background-image: radial-gradient(
-      240px 190px at var(--mx, 50%) var(--my, -30%),
-      var(--glass-spot),
-      transparent 62%
-    ),
-    var(--glass-sheen);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
   padding: 12px 14px 13px;
 }
@@ -5290,7 +4905,7 @@ kbd {
   padding: 2px 7px;
   border-radius: var(--r-sm);
   border: 1px solid var(--glass-brd);
-  background-color: color-mix(in srgb, var(--pane) 34%, transparent);
+  background-color: var(--surface-2);
 }
 
 .news-title {
@@ -5436,8 +5051,6 @@ kbd {
   background-color: var(--glass-strong);
   background-image: var(--glass-sheen);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
-  backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg)) saturate(var(--glass-sat));
   animation: news-pop 220ms cubic-bezier(0.32, 0.72, 0, 1);
   /* Прокрутка внутри окошка не должна тянуть за собой фон на телефоне. */
   overscroll-behavior: contain;
@@ -5471,7 +5084,7 @@ kbd {
   justify-content: center;
   border-radius: var(--r-full);
   border: 1px solid var(--glass-brd);
-  background-color: color-mix(in srgb, var(--pane) 42%, transparent);
+  background-color: var(--surface-2);
   background-image: var(--glass-sheen);
   color: var(--text-2);
   cursor: pointer;
@@ -5529,93 +5142,8 @@ kbd {
 
 /* ---------- Уважение к настройкам системы ---------- */
 
-/* Человек попросил меньше прозрачности (или больше контраста) — стекло
-   выключается целиком: панели непрозрачные, сияние погашено. */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .ambient {
-    display: none;
-  }
-  .topbar,
-  .sidebar,
-  .chat-menu,
-  .model-panel,
-  .params-popover,
-  .attach-menu,
-  .palette,
-  .toast,
-  .workspace-drawer,
-  .settings-card,
-  .usage-card,
-  .profile-card,
-  .voice-strip,
-  .composer,
-  .composer-wrap {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-  .topbar,
-  .sidebar,
-  .chat-menu,
-  .model-panel,
-  .params-popover,
-  .attach-menu,
-  .palette,
-  .toast,
-  .workspace-drawer,
-  .settings-card,
-  .usage-card,
-  .profile-card {
-    background: var(--bg-elevated);
-  }
-  .composer {
-    background: var(--bg-elevated);
-  }
-  .composer-wrap {
-    background: var(--bg);
-  }
-  .composer .icon-btn,
-  .composer .params-btn,
-  .composer .send-btn:disabled {
-    background-color: var(--surface-2);
-    background-image: none;
-  }
-  .msg-user .bubble {
-    background: var(--user-bubble);
-  }
-}
-
-/* Совсем старый браузер: backdrop-filter нет — значит и стекла нет.
-   Панели снова плотные, иначе полупрозрачные прямоугольники поверх текста
-   сделают его нечитаемым. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .ambient i {
-    opacity: calc(var(--ambient-o) * 0.6);
-  }
-  .topbar,
-  .sidebar,
-  .chat-menu,
-  .model-panel,
-  .params-popover,
-  .attach-menu,
-  .palette,
-  .toast,
-  .workspace-drawer,
-  .settings-card,
-  .usage-card,
-  .profile-card {
-    background: var(--bg-elevated);
-  }
-  .composer-wrap {
-    background: var(--bg);
-  }
-  .composer,
-  .voice-strip {
-    background: var(--bg-elevated);
-  }
-  .msg-user .bubble {
-    background: var(--user-bubble);
-  }
-}
+/* Панели и так непрозрачные (0.144) — просьбу «меньше прозрачности» интерфейс
+   выполняет по умолчанию. Отдельные откаты стекла больше не нужны. */
 
 /* Масштаб пальцами разрешён (доступность: слабовидящим нужен зум). Чтобы iOS при этом
    не увеличивал страницу сам при фокусе на поле ввода, на сенсорных экранах поля
@@ -5995,8 +5523,6 @@ kbd {
   padding: 16px;
   overflow-y: auto;
   background: color-mix(in srgb, var(--scrim) 88%, transparent);
-  backdrop-filter: blur(8px) saturate(115%);
-  -webkit-backdrop-filter: blur(8px) saturate(115%);
   animation: caseFade .16s ease-out both;
 }
 

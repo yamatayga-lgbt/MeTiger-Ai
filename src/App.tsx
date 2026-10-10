@@ -12,7 +12,6 @@ const UsageView = lazy(() => import('./views/UsageView').then((m) => ({ default:
 const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
 import { useTheme } from './hooks/useTheme'
-import { useLiquidGlass } from './hooks/useLiquidGlass'
 import { APP_VERSION } from './lib/version'
 import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
@@ -169,9 +168,6 @@ export default function App() {
   const [user, setUser] = useState<Person>(siteUser())
 
   const { pref, resolved, setPref, toggle } = useTheme()
-  /* Жидкое стекло: блик ходит за пальцем по панелям. Один слушатель на всё
-     приложение, а не обработчик в каждой панели — см. hooks/useLiquidGlass.ts. */
-  useLiquidGlass()
   const [newsSeen, setNewsSeen] = useState<string>(() => readNewsSeen())
   /* Окошко «что нового после обновления». Решение принимается один раз при
      запуске: версия запомнена другой — значит человек только что обновился. */
@@ -569,20 +565,6 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Сияние под стеклом: три мягких пятна, они медленно дышат. Живут ровно
-          под всем приложением — сквозь них видно панели (шапку, поле ввода,
-          попапы). Пусто внутри: это фон, а не картинка, и читалкам тут нечего
-          делать (aria-hidden). Есть в CSS-правила, которые его гасят, если
-          человек просил в системе меньше прозрачности. */}
-      {/* На экранах с крупными прозрачными карточками (настройки, расход) сияние
-          стоит спокойно: движение под ними стоит кадров на прокрутке, а стекло
-          видно и без движения — прозрачностью, кромкой и бликом. */}
-      <div className={view === 'chat' ? 'ambient' : 'ambient ambient-still'} aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </div>
-
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}

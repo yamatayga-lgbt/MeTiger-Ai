@@ -1,11 +1,14 @@
 /** 0.137: экран настроек не мерцает при внутренней прокрутке. */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const app = readFileSync('src/App.tsx', 'utf8');
 const view = readFileSync('src/views/SettingsView.tsx', 'utf8');
 const css = readFileSync('src/styles/index.css', 'utf8');
-const glass = readFileSync('src/hooks/useLiquidGlass.ts', 'utf8');
+/* 0.144: жидкое стекло удалено — hooks/useLiquidGlass.ts больше не существует.
+   Прежняя проверка U137e (карточка настроек вне списка панелей блика) выродилась
+   в более сильную: блика нет ни у кого. */
+const glassGone = !existsSync('src/hooks/useLiquidGlass.ts');
 const version = readFileSync('src/lib/version.ts', 'utf8');
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const notes = readFileSync('src/lib/release-notes.ts', 'utf8');
@@ -26,9 +29,8 @@ ok('U137c прокрутка настроек не запускает smooth-а�
     && /\.settings-scroll\s*\{\s*scroll-behavior:\s*auto;/.test(css));
 ok('U137d крупные блоки настроек не анимируются и остаются видимыми',
   /\.settings-view,\s*\.settings-view \.page-head,\s*\.settings-view \.settings-group,\s*\.settings-view \.profile-card\s*\{\s*animation:\s*none !important;\s*opacity:\s*1;\s*transform:\s*none;/.test(css));
-const surfaces = glass.match(/const SURFACE = \[([\s\S]*?)\]\.join/);
-ok('U137e касание карточки настроек не запускает перерисовку блика',
-  Boolean(surfaces) && !surfaces[1].includes("'.settings-card'"));
+ok('U137e касание карточки настроек не запускает перерисовку блика (0.144: блик удалён вместе со стеклом)',
+  glassGone && !/useLiquidGlass/.test(app));
 ok('U137f заметка о выпуске и история README содержат 0.137',
   /version: '0\.137'[\s\S]*?title: 'Настройки прокручиваются без мерцания'/.test(notes)
     && /^> \*\*0\.137\*\*/m.test(readme));

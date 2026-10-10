@@ -1260,161 +1260,76 @@ console.log('L2 — песочница: Python через Pyodide (второй 
 }
 
 
-console.log('── N · стекло (Glassmorphism) ───');
+console.log('── N · плоский интерфейс (0.144: стекло убрано) ───');
 {
-  /* Проверяем не «есть ли красиво», а три вещи, на которых стекло держится:
-     1) обвязка размывается, а лента сообщений — НЕТ (иначе прокрутка на
-        телефоне становится слайд-шоу: десятки backdrop-filter, едущих в кадре);
-     2) слабый браузер и просьба «меньше прозрачности» дают непрозрачные панели;
-     3) блик у шапки удерживается абсолютным позиционированием — у .topbar
-        grid на три колонки, и ::after в потоке стал бы четвёртым элементом. */
+  /* 0.144: владелец попросил убрать «жидкое стекло» и сделать обычный вид,
+     как у других ИИ-чатов. Проверяем то, на чём держится плоский стиль:
+     1) во всём CSS нет ни одного backdrop-filter — размытие стоило кадров;
+     2) нет сияния (.ambient), обоев (--wall) и блика за пальцем (useLiquidGlass);
+     3) панели непрозрачные. Токены --glass* оставлены по именам (их читает
+        много правил), но значения плоские: без прозрачности, бликов и призм. */
   const css = readFileSync('src/styles/index.css', 'utf8');
   const appSrc = readFileSync('src/App.tsx', 'utf8');
   const htmlSrc = readFileSync('index.html', 'utf8');
   const themeSrc = readFileSync('src/hooks/useTheme.ts', 'utf8');
-
-  /* Правило ищем ТОЛЬКО внутри блока стекла: у .composer, .topbar, .msg-user .bubble
-     и .drawer-scrim есть и прежние правила выше по файлу, и брать первое вхождение
-     значило бы проверять старый стиль вместо нового. Селектор может стоять и в
-     группе (через запятую) — поэтому ищем «селектор, затем , или {». */
-  const start = css.indexOf('/* ---------- Само стекло ---------- */');
-  /* Отсекаем хвост с откатами: там у стекла нарочно backdrop-filter: none, и если
-     искать правила по всему файлу, проверка «в поле ввода ровно одно размытие»
-     споткнётся о собственный же честный откат. */
-  const fallback = css.indexOf('/* ---------- Уважение к настройкам системы ---------- */');
   /* Комментарии вырезаем: они объясняют, ЧЕМ был плох прежний подход, и сами
-     содержат слова вроде «position:» и «backdrop-filter» — проверка на них
-     спотыкалась бы о собственное объяснение. */
+     содержат слова вроде «backdrop-filter» — проверка на них спотыкалась бы
+     о собственное объяснение. */
   const stripCssComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
-  /* Эффективное значение правила: последнее объявление побеждает, и проверять
-     надо ИМЕННО его. На этом уже спотыкались: старый дубль с 62% «удерживал»
-     проверку зелёной, хотя на экране было 46%. */
-  const lastRuleBody = (sel) => {
-    /* Без регулярных выражений: они путались в соседях (.composer против
-       .composer-wrap и .composer .icon-btn) и возвращали не то правило.
-       Здесь селектор ищется как текст, а совпадением считается только то,
-       где после него стоит { или запятая списка. */
-    /* Ищем В БЛОКЕ СТЕКЛА (glassArea), а не по всему файлу: ниже лежат честные
-       откаты для «меньше прозрачности», где у .composer нарочно плотный фон, и
-       по всему файлу последним находился именно откат. */
-    const t = glassArea || stripCssComments(css);
-    let body = '';
-    let from = 0;
-    for (;;) {
-      const at = t.indexOf(sel, from);
-      if (at < 0) return body;
-      from = at + sel.length;
-      const before = at === 0 ? '\n' : t[at - 1];
-      if (!' \n\t},'.includes(before)) continue;
-      const rest = t.slice(from).match(/^\s*([{.,:])/);
-      if (!rest || (rest[1] !== '{' && rest[1] !== ',')) continue;
-      const brace = t.indexOf('{', from);
-      const close = brace < 0 ? -1 : t.indexOf('}', brace);
-      if (brace < 0 || close < 0) continue;
-      body = t.slice(brace + 1, close);
-    }
-  };
-  const glassArea = start < 0 ? '' : stripCssComments(css.slice(start, fallback > start ? fallback : undefined));
+  const bareCss = stripCssComments(css);
+  /* Плоский блок обвязки: идёт ПОСЛЕ обычных правил и выигрывает у них. */
+  const start = css.indexOf('Плоские панели (0.144) — стекло убрано');
+  const flatArea = start < 0 ? '' : stripCssComments(css.slice(start));
   const ruleBody = (sel) => {
     const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp('(^|\\n)[ \\t]*' + esc + '[ \\t]*(?:,|\\{)', 'g');
     const out = [];
     let m;
-    while ((m = re.exec(glassArea))) {
-      const brace = glassArea.indexOf('{', m.index);
+    while ((m = re.exec(flatArea))) {
+      const brace = flatArea.indexOf('{', m.index);
       if (brace < 0) break;
-      out.push(glassArea.slice(m.index, glassArea.indexOf('}', brace)));
+      out.push(flatArea.slice(m.index, flatArea.indexOf('}', brace)));
       re.lastIndex = brace;
     }
     return out.join('\n');
   };
-  const glassGroup = start < 0 ? '' : css.slice(start, css.indexOf('}', start));
-  const veilGroup = glassGroup.indexOf('.palette {') > 0
-    ? glassGroup.slice(glassGroup.indexOf('.palette {'))
-    : '';
 
-  ok('N1: сияние под стеклом нарисовано тремя пятнами внутри оболочки приложения, и оно вне чтения для программ (aria-hidden)',
-    /className=\{view === 'chat' \? 'ambient' : 'ambient ambient-still'\}[^>]*aria-hidden="true"[\s\S]{0,140}<i \/>[\s\S]{0,40}<i \/>[\s\S]{0,40}<i \/>/.test(appSrc));
+  ok('N1: сияния больше нет — в оболочке приложения нет разметки .ambient',
+    !/ambient/.test(appSrc));
 
-  ok('N2: у стекла свои токены в ОБЕИХ темах (прозрачность, кромка, блик, тень, цвета сияния)',
+  ok('N2: токены панелей есть в обеих темах и они плоские (без прозрачности, бликов и призм)',
     ['dark', 'light'].every((t) => {
       const i = css.indexOf("data-theme='" + t + "'");
-      const body = i < 0 ? '' : css.slice(i, css.indexOf('}', i));
-      return ['--glass:', '--glass-strong:', '--glass-brd:', '--glass-rim:', '--glass-sheen:', '--glass-shadow:', '--ambient-1:', '--ambient-2:', '--ambient-3:'].every((k) => body.includes(k));
-    }), 'нет токена в одной из тем');
+      const body = i < 0 ? '' : css.slice(i, css.indexOf('\n}', i));
+      return ['--glass: var(--bg-elevated)', '--glass-brd: var(--border)', '--glass-sheen: none', '--glass-spot: transparent', '--glass-prism: none'].every((k) => body.includes(k));
+    }), 'в одной из тем токен не плоский');
 
-  ok('N3: размывается обвязка — шапка, сайдбар, попапы, меню, палитра, тост, ящик, карточки',
+  ok('N3: во всём CSS нет ни одного backdrop-filter — размытие стоило кадров на телефоне',
+    !/backdrop-filter:/.test(bareCss));
+
+  ok('N4: обвязка — непрозрачные панели: шапка, сайдбар, попапы, меню, палитра, тост, ящик, карточки',
     ['topbar', 'sidebar', 'chat-menu', 'model-panel', 'params-popover', 'attach-menu', 'palette', 'toast', 'workspace-drawer', 'settings-card', 'usage-card', 'profile-card']
-      .every((n) => glassGroup.includes('.' + n)) && /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(glassGroup),
-    glassGroup.slice(0, 80));
+      .every((n) => flatArea.includes('.' + n)) && /background-color: var\(--bg-elevated\)/.test(flatArea),
+    flatArea.slice(0, 80));
 
-  ok('N4: поле ввода — стекло, и размывает его РОВНО одна обёртка (вложенный blur стоит как два полноэкранных композита)',
-    /backdrop-filter: blur\(var\(--glass-blur\)\)/.test(ruleBody('.composer-wrap::before'))
-      && /background-color: color-mix\(in srgb, var\(--pane\) 46%, transparent\)/.test(lastRuleBody('.composer'))
-      && !/backdrop-filter/.test(ruleBody('.composer')));
+  ok('N5: поле ввода — плотная пилюля на плотной полке, без просвечивания',
+    /background-color: var\(--surface\)/.test(ruleBody('.composer'))
+      && /background: var\(--bg\)/.test(ruleBody('.composer-wrap')));
 
-  ok('N5: сообщения в ленте НЕ размываются — это то, что защищает прокрутку на телефоне',
-    !glassGroup.includes('.bubble') && !/backdrop-filter/.test(ruleBody('.msg-user .bubble')) && !/backdrop-filter/.test(ruleBody('.bubble')));
+  ok('N6: пузырь человека плотный — var(--user-bubble) без color-mix с прозрачностью',
+    /background-color: var\(--user-bubble\)/.test(ruleBody('.msg-user .bubble'))
+      && !/color-mix\(in srgb, var\(--user-bubble\)/.test(bareCss));
 
-  ok('N6: пузырь человека при этом полупрозрачный (сквозь него видно сияние)',
-    /color-mix\(in srgb, var\(--user-bubble\)/.test(ruleBody('.msg-user .bubble')));
+  ok('N7: бликов нет — ни --mx/--my, ни пятна за пальцем, ни линейных градиентов в токенах блеска',
+    !/var\(--mx/.test(bareCss)
+      && !/--glass-sheen: linear-gradient/.test(css)
+      && !/--glass-prism: linear-gradient/.test(css));
 
-  ok('N7: блик сделан СЛОЁМ ФОНА (background-image), а не псевдоэлементом — псевдоэлементу нужен position: relative, а он перебивал absolute у попапов',
-    /background-image: radial-gradient\([\s\S]{0,200}var\(--glass-spot\),[\s\S]{0,60}var\(--glass-sheen\)/.test(glassArea)
-      && !/\.topbar::after/.test(css)
-      && !/\.params-popover::after/.test(css)
-      && !/\.palette::after/.test(css));
+  ok('N8: обоев и сияния нет в CSS — ни .ambient, ни --wall, ни дрейфа пятен',
+    !/\.ambient/.test(bareCss) && !/--wall/.test(bareCss) && !/ambientDrift/.test(css));
 
-  ok('N8: сияние — градиенты, а не filter: blur() (размытие огромного элемента — лишний композит на каждом кадре телефона)',
-    /\.ambient i \{[\s\S]{0,400}radial-gradient/.test(css)
-      && !/\.ambient[\s\S]{0,60}filter: blur/.test(css));
-
-  ok('N9: на телефоне стекло с размытием 12px; размытие снято только у карточек настроек и расхода (замер: с ним прокрутка настроек падала до 16 fps), а сияние ДЫШИТ',
-    /@media \(max-width: 780px\) \{[\s\S]{0,200}--glass-blur: 12px/.test(css)
-      && /@media \(max-width: 780px\) \{[\s\S]{0,1800}\.settings-card,[\s\S]{0,260}backdrop-filter: none/.test(css)
-      && /--glass: rgba\(52, 52, 70, 0\.34\)/.test(css)
-      && /--ambient-1: rgba\(132, 112, 255, 0\.5\)/.test(css));
-
-  /* ── 0.100: жидкое стекло, «Что нового» и подхват в выборе модели ──
-     Жидкостью здесь названы ровно две вещи, и обе обязаны быть видны машиной:
-     блик, который ходит по панели за пальцем (--mx/--my в токене --glass-sheen),
-     и радужная кромка (--glass-prism). Дешёвость — часть требования: слушатели
-     passive, запись в переменные по одному rAF-кадру, а на пальце — только
-     касание (таскать пятно во время прокрутки значило бы платить кадром). */
-  /* Жидкий блик: gradient собран в ПРАВИЛЕ панели, а не в токене. Значение токена
-     вычисляется там, где объявлено, — var(--mx) внутри токена «запекался» на :root
-     в 50%, и блик не двигался (проверено живьём: переменные на панели стояли,
-     фон не менялся). Обе темы обязаны давать цвет пятна. */
-  ok('N26: блик читает --mx/--my самой панели (в правиле, а не в токене), и у обеих тем есть цвет пятна',
-    /background-image: radial-gradient\(\s*240px 190px at var\(--mx, 50%\) var\(--my, -30%\)/.test(glassArea)
-      && ['dark', 'light'].every((t) => {
-        const i = css.indexOf("data-theme='" + t + "'");
-        const body = i < 0 ? '' : css.slice(i, css.indexOf('\n}', i));
-        return body.includes('--glass-spot:') && body.includes('--glass-prism:');
-      })
-      && !/--glass-sheen: radial-gradient/.test(css.slice(0, css.indexOf('/* ---------- Само стекло'))),
-    'жидкий блик собран не там, где надо');
-
-
-  const liquidSrc = readFileSync('src/hooks/useLiquidGlass.ts', 'utf8');
-  ok('N27: блик ходит за пальцем дешёво — passive-слушатели, один кадр на движение, палец только касается',
-    /addEventListener\('pointermove', onMove, \{ passive: true \}\)/.test(liquidSrc)
-      && /requestAnimationFrame\(paint\)/.test(liquidSrc)
-      && /addEventListener\('pointerdown', onPointerDown, \{ passive: true \}\)/.test(liquidSrc)
-      /* Оба события: часть браузеров шлёт только одно из двух (проверено). */
-      && /addEventListener\('touchstart', onTouch, \{ passive: true \}\)/.test(liquidSrc)
-      && /prefers-reduced-motion: reduce/.test(liquidSrc)
-      && /setProperty\('--mx'/.test(liquidSrc)
-      /* Решение — по e.pointerType, а не по медиазапросу: медиазапрос врёт на
-         гибридных ноутбуках и в браузерах без мыши (проверено живьём). */
-      && /e\.pointerType === 'mouse'/.test(liquidSrc)
-      && /if \(!c\.clientX && !c\.clientY\) return/.test(liquidSrc)
-      && /if \(pt && pt !== 'mouse' && pt !== 'pen'\) return/.test(liquidSrc)
-      && !/hover: hover\) and \(pointer: fine\)/.test(liquidSrc),
-    'тип указателя берётся не из события');
-
-  ok('N28: жидкое стекло включено на всё приложение одной строкой, а не обработчиком в каждой панели',
-    /useLiquidGlass\(\)/.test(readFileSync('src/App.tsx', 'utf8')));
+  ok('N9: жидкое стекло удалено целиком: hooks/useLiquidGlass.ts не существует и App его не зовёт',
+    !existsSync('src/hooks/useLiquidGlass.ts') && !/useLiquidGlass/.test(appSrc));
 
   /* «Что нового»: экран существует, читается из своих данных, свежая запись — та,
      что совпадает с версией продукта (забытая запись — красный тест), и точка на
@@ -1882,25 +1797,24 @@ console.log('── N · стекло (Glassmorphism) ───');
   ok('N47: видно, что уточнение идёт прямо сейчас (иначе слова меняются «сами»)',
     /voice-tag/.test(chatSrc) && /\.voice-tag \{/.test(css) && /liveBusy/.test(chatSrc));
 
-  ok('N10: если стекло не поддержано или человек просил меньше прозрачности — панели честно непрозрачные',
-    /@supports not \(\(backdrop-filter: blur\(1px\)\)/.test(css)
-      && /prefers-reduced-transparency: reduce/.test(css)
-      && /prefers-contrast: more/.test(css)
-      && /backdrop-filter: none/.test(css));
+  ok('N10: просьба системы «меньше прозрачности» выполняется по умолчанию — панели и так непрозрачные, отдельных откатов нет',
+    /Панели и так непрозрачные \(0\.144\)/.test(css)
+      && !/prefers-reduced-transparency/.test(bareCss)
+      && !/@supports not \(\(backdrop-filter/.test(bareCss));
 
-  ok('N11: скримы под ящиками и палитрой размывают фон, а не просто затемняют',
-    /backdrop-filter: blur\(7px\)/.test(ruleBody('.drawer-scrim'))
-      && /backdrop-filter: blur\(9px\)/.test(ruleBody('.palette-overlay')));
+  ok('N11: скримы под ящиками и палитрой затемняют фон цветом, без размытия',
+    /\.drawer-scrim \{[^}]*background: var\(--scrim\)/.test(bareCss)
+      && !/\.drawer-scrim \{[^}]*backdrop-filter/.test(bareCss));
 
-  ok('N12: блок стекла стоит ПОСЛЕ обычных правил — при равной специфичности выигрывает он',
-    start > css.indexOf('\n.params-popover {') && start > css.indexOf('\n.settings-card {'));
+  ok('N12: плоский блок обвязки стоит ПОСЛЕ обычных правил — при равной специфичности выигрывает он',
+    start > css.indexOf('\\n.params-popover {') && start > css.indexOf('\\n.settings-card {'));
 
 
   ok('N14: стекло НЕ трогает положение элементов — попапы и меню остаются absolute (иначе попап становится блоком в строке поля ввода и растягивает её до 574px — это был баг 0.086)',
     ['.model-panel', '.params-popover', '.attach-menu', '.chat-menu'].every((sel) => !/position:/.test(ruleBody(sel))));
 
-  ok('N15: у обёртки поля ввода своё размытие выключено — иначе backdrop-filter делает её системой координат для fixed-потомков, и затемнение .model-backdrop сжимается до размеров поля (клик мимо перестаёт закрывать попап)',
-    !/backdrop-filter: blur/.test(ruleBody('.composer-wrap')) && /backdrop-filter: blur/.test(ruleBody('.composer-wrap::before')));
+  ok('N15: у поля ввода нет слоя размытия вовсе — .composer-wrap::before удалён вместе со стеклом',
+    !/\.composer-wrap::before/.test(bareCss));
 
   /* Прежнее решение (переключатель на свою строку) отменено: оно раздувало блоки
      «Тема» и «Род агента» с 56 до 102 px. Действующее: подписи короче на узком
@@ -1910,13 +1824,10 @@ console.log('── N · стекло (Glassmorphism) ───');
       && !/flex: 1 0 100%/.test(css));
 
 
-  ok('N17: стекло прозрачное в обеих темах (0.34 тёмная / 0.34 светлая), меню поверх текста плотнее (--glass-strong), а поле ввода — свой токен --pane: на тёмных обоях оно светлее фона (замер: без этого панель и фон совпадали по яркости)',
-    /--glass: rgba\(52, 52, 70, 0\.34\)/.test(css)
-      && /--glass: rgba\(255, 255, 255, 0\.34\)/.test(css)
-      && /--glass-strong: rgba\(42, 42, 58, 0\.5\)/.test(css)
-      && /--pane: #3e3e54/.test(css)
+  ok('N17: плоские поверхности в обеих темах: --pane непрозрачный, пилюля ввода — var(--surface)',
+    /--pane: #1b1b22/.test(css)
       && /--pane: #ffffff/.test(css)
-      && /background-color: color-mix\(in srgb, var\(--pane\) 46%, transparent\)/.test(lastRuleBody('.composer')));
+      && /background-color: var\(--surface\)/.test(ruleBody('.composer')));
 
   ok('N18: переключатели в настройках не раздувают строку (высота 60px, а не 102): блок «Тема» и «Род агента» в одну строку с подписью, подпись не обрезается многоточием',
     /\.seg-short \{\s*display: none/.test(css)
@@ -1924,40 +1835,23 @@ console.log('── N · стекло (Glassmorphism) ───');
       && !/\.settings-row \.segmented \{\s*flex: 1 0 100%/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')));
 
 
-  ok('N19: стекло есть и у мелочей — капсула чата, круглые кнопки шапки, активный пункт сайдбара размывают и прозрачны (без них казалось, что стекло только в шапке и поле ввода)',
-    /\.topbar-pill,[\s\S]{0,120}\.icon-btn\.topbar-round,[\s\S]{0,120}\.side-item\.active \{/.test(glassArea)
-      && /\.topbar-pill,[\s\S]{0,400}backdrop-filter: blur\(var\(--glass-blur\)\)/.test(glassArea));
+  ok('N19: мелочи плоские — капсула чата, круглые кнопки шапки и активный пункт сайдбара с плотной заливкой',
+    /\.topbar-pill,[\s\S]{0,120}\.icon-btn\.topbar-round,[\s\S]{0,120}\.side-item\.active \{/.test(flatArea)
+      && /\.topbar-pill,[\s\S]{0,300}background-color: var\(--surface-2\)/.test(flatArea));
 
-  /* Обои — то, ради чего вообще видно стекло, поэтому сторож тут жёсткий.
-     Считаем по CSS БЕЗ комментариев: в пояснениях к правилам встречаются те же
-     слова («filter: blur»), и проверка ловила бы текст, а не код. */
-  const bareWall = stripCssComments(css);
+  ok('N21: обоев под интерфейсом нет — фон страницы одноцветный (var(--bg)), без градиентов на весь экран',
+    !/--wall/.test(bareCss) && /background: var\(--bg\)/.test(stripCssComments(css.slice(css.indexOf('body {'), css.indexOf('}', css.indexOf('body {'))))));
 
-  ok('N21: под стеклом лежат ОБОИ — базовый цветной градиент на весь экран в обеих темах (замер до них: насыщенность фона 5 из 255, белая панель 46% на светлом фоне визуально не отличалась от фона — человек дважды сказал «не вижу стекло»)', 
-    /--wall: linear-gradient\(/.test(bareWall)
-      && (bareWall.match(/--wall: linear-gradient\(/g) || []).length >= 2
-      && (bareWall.match(/--wall-band: /g) || []).length >= 2
-      && /background-image: var\(--wall\)/.test(bareWall)
-      && /\.ambient::before \{[\s\S]{0,400}var\(--wall-band\)/.test(bareWall)
-      && /\.ambient i \{[\s\S]{0,300}opacity: var\(--ambient-o\)/.test(bareWall)
-      && !/\.ambient \{[\s\S]{0,300}opacity: var\(--ambient-o\)/.test(bareWall)
-      && !/wall-band[\s\S]{0,200}filter: blur/.test(bareWall));
+  ok('N20: дыхания сияния нет — ни ambientDrift-анимаций, ни ambient-still в приложении',
+    !/ambientDrift/.test(css) && !/ambient-still/.test(readFileSync('src/App.tsx', 'utf8')));
 
-  ok('N20: сияние дышит на чате и стоит на экранах с крупными карточками — движение под ними стоит кадров (замер: 29,8 fps против 60)',
-    /\.ambient:not\(\.ambient-still\) i:nth-child\(1\)/.test(css)
-      && /\.ambient-still i \{\s*animation: none !important/.test(css)
-      && /view === 'chat' \? 'ambient' : 'ambient ambient-still'/.test(readFileSync('src/App.tsx', 'utf8')));
+  ok('N22: кнопки поля ввода — простые круглые кнопки, отправка — акцентная',
+    /\n\.composer \.icon-btn,[\s\S]{0,120}\.composer \.params-btn \{[\s\S]{0,400}border-radius: var\(--r-full\)/.test(bareCss)
+      && /\n\.composer \.send-btn \{[\s\S]{0,300}border-radius: var\(--r-full\)/.test(bareCss)
+      && /\n\.composer \.send-btn \{[\s\S]{0,300}background: var\(--accent-grad\)/.test(bareCss));
 
-  ok('N22: зона ввода — стекло, а кнопки поля ввода «плавают» стеклянными кружками: заливка через --pane, кромка, блик, тень; круглыми стали «+», параметры, микрофон и отправка (квадратные 10px-скругления читались как часть пилюли, а не как отдельные кнопки)', 
-    /color-mix\(in srgb, var\(--pane\) 40%, transparent\)/.test(lastRuleBody('.composer-wrap'))
-      && /\n\.composer \.icon-btn,[\s\S]{0,120}\.composer \.params-btn \{[\s\S]{0,400}border-radius: var\(--r-full\)/.test(bareWall)
-      && /\n\.composer \.icon-btn,[\s\S]{0,120}\.composer \.params-btn \{[\s\S]{0,400}color-mix\(in srgb, var\(--pane\) 52%, transparent\)/.test(bareWall)
-      && /\n\.composer \.send-btn \{[\s\S]{0,300}border-radius: var\(--r-full\)/.test(bareWall)
-      && /\n\.composer \.send-btn \{[\s\S]{0,400}box-shadow:[\s\S]{0,200}var\(--accent\)/.test(bareWall));
-
-  ok('N23: у кнопок поля ввода НЕТ собственного backdrop-filter — четыре кружка с размытием стоили бы четырёх проходов по кадру; стекло держат заливка, кромка и блик поверх уже размытой полки', 
-    !/backdrop-filter/.test(lastRuleBody('.composer .icon-btn, .composer .params-btn'))
-      && !/backdrop-filter/.test(lastRuleBody('.composer .send-btn')));
+  ok('N23: кнопки поля ввода плоские — заливка var(--surface-2), без блика и размытия',
+    /\.composer \.icon-btn,[\s\S]{0,200}background-color: var\(--surface-2\)/.test(bareCss));
 
   ok('N24: разметка ответа пересобирается только при смене текста (memo), а колбэк вывода кода стабилен (useCallback): иначе каждая буква в поле ввода заново разбирала Markdown всей переписки — это и был лаг печати', 
     /export const Markdown = memo\(/.test(readFileSync('src/components/Markdown.tsx', 'utf8'))
