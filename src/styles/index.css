@@ -267,7 +267,13 @@ a {
 .app {
   display: grid;
   grid-template-columns: 1fr;
-  height: 100dvh;
+  /* 100%, а НЕ 100dvh: dvh на Android Chrome пересчитывается по событиям
+     прокрутки, а наша страница не прокручивается вовсе — после появления
+     панели браузера оболочка оставалась выше экрана, и поле ввода насовсем
+     пряталось за нижней кромкой (0.148). Проценты идут от html (height: 100%),
+     который браузер пересчитывает всегда — и под панель, и под клавиатуру
+     (с interactive-widget=resizes-content из 0.146). */
+  height: 100%;
   overflow: hidden;
   position: relative;
 }
@@ -276,7 +282,7 @@ a {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: 100dvh;
+  height: 100%;
 }
 
 /* ---------- Sidebar (drawer на мобильном, статичный на десктопе) ---------- */
@@ -2795,7 +2801,7 @@ kbd {
   z-index: 50;
   width: min(560px, 100%);
   height: min(58vh, 430px);
-  max-height: calc(100dvh - 150px);
+  max-height: calc(100svh - 150px); /* svh: dvh на нескроллящейся странице Chrome не пересчитывает (0.148) */
   margin-left: auto;
   margin-right: auto;
   display: flex;
@@ -5528,7 +5534,7 @@ kbd {
 
 .case-editor {
   width: min(560px, 100%);
-  max-height: min(88dvh, 760px);
+  max-height: min(88svh, 760px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 17px;
