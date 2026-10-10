@@ -121,7 +121,7 @@ export function SettingsView({
   }
 
   return (
-    <div className="container view">
+    <div className="container view settings-view">
       <div className="page-head">
         <div className="grow">
           <h1>Настройки</h1>

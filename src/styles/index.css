@@ -6134,3 +6134,19 @@ kbd {
     transition: none !important;
   }
 }
+
+/* Экран настроек длинный и прокручивается отдельно от оболочки приложения.
+   Не анимируем его крупные слои при входе: на мобильных браузерах это вызывало
+   повторную растеризацию карточек и выглядело как исчезновение экрана. */
+.settings-scroll {
+  scroll-behavior: auto;
+}
+
+.settings-view,
+.settings-view .page-head,
+.settings-view .settings-group,
+.settings-view .profile-card {
+  animation: none !important;
+  opacity: 1;
+  transform: none;
+}

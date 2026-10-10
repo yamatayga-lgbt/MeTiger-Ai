@@ -615,7 +615,7 @@ export default function App() {
             : {})}
         />
 
-        <main className="content">
+        <main className={`content${view === 'settings' ? ' settings-scroll' : ''}`}>
           {view === 'chat' ? (
             <div className="chat-shell">
               <ChatView
