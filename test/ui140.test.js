@@ -34,17 +34,21 @@ ok('U140e сессия голоса хранит аудио и предоста�
   /canRetry: \(\) => boolean/.test(voice) && /retry: \(\) => boolean/.test(voice)
     && /retry\(\)\s*\{\s*if \(!hasRetryableRecording\(\) \|\| polishBusy\) return false[\s\S]*?transcribeAll\(\)/.test(voice));
 const stopInput = chat.slice(chat.indexOf('const stopVoiceInput ='), chat.indexOf('const cancelVoiceInput ='));
-ok('U140f остановка сохраняет сессию до точного ответа, ошибка включает повтор',
+/* 0.150: по просьбе владельца распознаёт браузер и текст сразу финален —
+   красного предупреждения и кнопки повтора в интерфейсе больше нет. */
+ok('U140f остановка оставляет распознанный текст в поле; кнопки повтора больше нет (0.150)',
   /session\.stop\(\)/.test(stopInput) && !/sessionRef\.current = null/.test(stopInput)
-    && /sessionRef\.current\?\.canRetry\(\)/.test(chat)
-    && /Повторить распознавание/.test(chat));
+    && !/Повторить распознавание/.test(chat)
+    && !/voiceRetryAvailable/.test(chat));
 ok('U140g успешный повтор автоматически кладёт текст в поле и освобождает запись',
   /onPolished: \(text\) => \{[\s\S]*?sessionRef\.current = null[\s\S]*?setValue\(composed\)/.test(chat));
 ok('U140h зависший запрос расшифровки прерывается таймаутом',
   /setTimeout\(\(\) => request\.abort\(\), POLISH_MS\)/.test(voice));
-ok('U140i кнопка повтора оформлена и доступна через live-region',
+ok('U140i предупреждение о связи убрано: ни кнопки повтора, ни «Запись сохранена» (0.150)',
   /className="voice-error" role="status" aria-live="polite"/.test(chat)
-    && /\.voice-retry-btn\s*\{/.test(css));
+    && !/\.voice-retry-btn\s*\{/.test(css)
+    && !/Запись сохранена/.test(chat)
+    && !/Не удалось распознать речь \(/.test(chat));
 ok('U140j заметка о выпуске и история README содержат 0.140',
   /version: '0\.140'[\s\S]*?title: 'Чаты короче, голос можно распознать повторно'/.test(notes)
     && /^> \*\*0\.140\*\*/m.test(readme));

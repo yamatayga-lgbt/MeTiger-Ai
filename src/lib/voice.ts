@@ -227,6 +227,12 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
 
   if (!navigator.mediaDevices?.getUserMedia) return null
 
+  /* 0.150: текст браузера — ФИНАЛ. Серверные слои (уточнение кусками на лету и
+     расшифровка всей записи после остановки) работают только когда браузерного
+     движка речи нет вовсе или он умер по ходу записи: владелец попросил «чисто
+     мой голос и авто-вставка» — без ожидания моделей и предупреждений о связи. */
+  const serverLayers = () => !Ctor || srDead
+
   let stream: MediaStream | null = null
   const stopMic = () => {
     stream?.getTracks().forEach((t) => t.stop())
@@ -245,7 +251,7 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
   let tap: { stop: () => void } | null = null
 
   const flushLive = async () => {
-    if (liveOff || inFlight || cancelled) return
+    if (!serverLayers() || liveOff || inFlight || cancelled) return
     if (pendingLen < LIVE_SEC * WHISPER_RATE) return
     const chunk = concat(pending)
     const keep = pending[pending.length - 1]?.length || 0
@@ -356,6 +362,8 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
   }
 
   const askAccurate = async () => {
+    /* Браузер уже написал финальный текст — сервер не дёргаем вовсе (0.150). */
+    if (!serverLayers()) return
     if (asked || cancelled) return
     asked = true
     await transcribeAll()

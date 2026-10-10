@@ -2581,25 +2581,8 @@ kbd {
   animation: fadeUp var(--t-fast) both;
 }
 
-.voice-retry-btn {
-  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
-  border-radius: 999px;
-  padding: 4px 9px;
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 8%, transparent);
-  font: inherit;
-  font-weight: 650;
-  cursor: pointer;
-}
 
-.voice-retry-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
-}
 
-.voice-retry-btn:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
 
 /* Пока идёт речь (или едет точный текст), в поле лежит ЧЕРНОВИК: он ещё
    изменится. Отмечаем это прозрачностью текста и лёгким свечением рамки, чтобы
