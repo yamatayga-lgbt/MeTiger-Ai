@@ -136,7 +136,10 @@ export function CasesView({ cases, chats, onNew, onEdit, onContinue, onToggleSta
                     label={`Удалить дело «${item.title}»`}
                     className="case-delete-btn"
                     onClick={() => {
-                      if (window.confirm(`Удалить дело «${item.title}»? Переписка останется.`)) onDelete(item)
+                      const message = item.chatId
+                        ? `Удалить дело «${item.title}» и связанную переписку${linkedChat ? ` «${linkedChat.title}»` : ''}? Переписку и вложения восстановить нельзя.`
+                        : `Удалить дело «${item.title}»? Это действие нельзя отменить.`
+                      if (window.confirm(message)) onDelete(item)
                     }}
                     size={15}
                   />

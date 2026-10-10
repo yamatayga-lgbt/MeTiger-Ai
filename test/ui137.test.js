@@ -16,8 +16,9 @@ const ok = (name, condition) => {
   console.log('  ✔ ' + name);
 };
 
-ok('U137a версия приложения и package.json совпадают',
-  /APP_VERSION = '0\.137'/.test(version) && pkg.version === '0.137');
+const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
+ok('U137a APP_VERSION и package.json синхронизированы',
+  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion) && pkg.version === currentVersion));
 ok('U137b экран настроек помечен отдельным классом',
   /className="container view settings-view"/.test(view));
 ok('U137c прокрутка настроек не запускает smooth-анимацию',

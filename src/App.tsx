@@ -298,11 +298,6 @@ export default function App() {
     notify('Контрольная точка сохранена')
   }, [notify])
 
-  const deleteCase = useCallback((item: CaseFile) => {
-    setCases((prev) => prev.filter((current) => current.id !== item.id))
-    notify('Дело удалено · переписка сохранена')
-  }, [notify])
-
   const toggleCaseStatus = useCallback((item: CaseFile) => {
     const status = item.status === 'done' ? 'active' : 'done'
     setCases((prev) => prev.map((current) => current.id === item.id
@@ -338,7 +333,7 @@ export default function App() {
   }, [activeChatId, cases, chats, selectChat])
 
   const deleteChat = useCallback(
-    (id: string) => {
+    (id: string, showNotification = true) => {
       haptic('medium')
       // забыть вклад именно этого чата на сервере (факты, транскрипт, подстройка),
       // не всю память человека — другие его чаты её по-прежнему разделяют.
@@ -365,10 +360,20 @@ export default function App() {
         }
         return next
       })
-      notify('Чат удалён')
+      if (showNotification) notify('Чат удалён')
     },
     [activeChatId, notify],
   )
+
+  const deleteCase = useCallback((item: CaseFile) => {
+    setCases((prev) => prev.filter((current) => current.id !== item.id))
+    if (item.chatId) {
+      deleteChat(item.chatId, false)
+      notify('Дело и связанная переписка удалены')
+    } else {
+      notify('Дело удалено')
+    }
+  }, [deleteChat, notify])
 
   /* Ответ агента. Этап 1 переноса: имитация из mock.ts уступила место двигателю.
      Мока осталось ровно столько, чтобы «npm run dev» жил без ключей и без сети.
