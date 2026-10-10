@@ -611,6 +611,7 @@ export function ChatView({
   const [levels, setLevels] = useState<number[]>(() => new Array(BARS).fill(0))
   const [seconds, setSeconds] = useState(0)
   const [voiceError, setVoiceError] = useState('')
+  const [voiceRetryAvailable, setVoiceRetryAvailable] = useState(false)
   /* Мягкая заметка о голосе: не беда, а пояснение (например, черновик не пишется,
      но запись идёт и точный текст придёт после остановки). Красным такое красить
      нельзя — человек решит, что всё сломалось, и бросит диктовать. */
@@ -653,22 +654,17 @@ export function ChatView({
   // при уходе со экрана микрофон выключается
   useEffect(() => () => sessionRef.current?.cancel(), [])
 
-  /* Остановка записи. Черновик остаётся в поле и НЕ трогается: точный текст
-     придёт следом (onPolished) и заменит его. Если уточнять нечем (нет
-     MediaRecorder) — просто закрепляем черновик. */
+  /* После остановки оставляем сессию в памяти до успеха: если сервер не ответил,
+     запись можно будет отправить на расшифровку повторно, не говоря заново. */
   const stopVoiceInput = (): string => {
     const session = sessionRef.current
-    sessionRef.current = null
     const composed = joinText(baseRef.current, interimRef.current)
     baseRef.current = composed
     interimRef.current = ''
     setValue(composed)
     setListening(false)
     setLevels(new Array(BARS).fill(0))
-    if (session) {
-      session.stop()
-      if (voicePolish) setPolishing(true)
-    }
+    if (session) session.stop()
     haptic('light')
     return composed
   }
@@ -681,20 +677,38 @@ export function ChatView({
     setValue(preVoiceRef.current)
     setListening(false)
     setPolishing(false)
+    setVoiceRetryAvailable(false)
     setLevels(new Array(BARS).fill(0))
     setSeconds(0)
     haptic('light')
   }
 
-  /* Ошибка уточнения — не беда: черновик на месте, и он читаемый. Говорим об этом
-     одной строкой и не пугаем красным, потому что работа уже сделана. */
+  /* При сетевом сбое оставляем и черновик, и исходную запись: после восстановления
+     связи можно повторить точную расшифровку. */
   const voicePolishFailed = (reason?: string) => {
     setPolishing(false)
+    const hasDraft = baseRef.current.trim() !== preVoiceRef.current.trim()
+    const canRetry = sessionRef.current?.canRetry() ?? false
+    setVoiceRetryAvailable(canRetry)
+    setValue((current) => current.trim() ? current : baseRef.current)
+    const why = reason || 'ошибка связи'
     setVoiceError(
-      reason
-        ? `Точный текст не пришёл (${reason}) — оставил то, что записалось на лету`
-        : 'Точный текст не пришёл — оставил то, что записалось на лету',
+      canRetry
+        ? hasDraft
+          ? `Расшифровка не завершилась (${why}). Черновик сохранён — можно повторить.`
+          : `Не удалось распознать речь (${why}). Запись сохранена — повторите после восстановления связи.`
+        : hasDraft
+          ? `Точный текст не пришёл (${why}) — черновик оставил в поле.`
+          : `Не удалось распознать речь (${why}). Попробуйте записать ещё раз.`,
     )
+  }
+
+  const retryVoiceTranscription = () => {
+    const session = sessionRef.current
+    if (!session?.retry()) {
+      setVoiceRetryAvailable(false)
+      setVoiceError('Сохранённая запись уже недоступна — начните новую запись.')
+    }
   }
 
   const startVoiceInput = () => {
@@ -702,8 +716,12 @@ export function ChatView({
       setVoiceError('Голосовой ввод не поддерживается в этом браузере')
       return
     }
+    sessionRef.current?.cancel()
+    sessionRef.current = null
     haptic('medium')
     setVoiceError('')
+    setVoiceRetryAvailable(false)
+    setPolishing(false)
     setVoiceNote('')
     liveOnRef.current = false
     preVoiceRef.current = value
@@ -762,13 +780,19 @@ export function ChatView({
           const composed = joinText(preVoiceRef.current, text)
           baseRef.current = composed
           interimRef.current = ''
+          sessionRef.current = null
           setValue(composed)
-                setPolishing(false)
+          setPolishing(false)
+          setVoiceRetryAvailable(false)
+          setVoiceError('')
           haptic('light')
         },
         onPolish: (state, reason) => {
-          if (state === 'start') setPolishing(true)
-          else voicePolishFailed(reason)
+          if (state === 'start') {
+            setPolishing(true)
+            setVoiceRetryAvailable(false)
+            setVoiceError('')
+          } else voicePolishFailed(reason)
         },
         onCap: () => {
           setVoiceError(`Запись остановлена сама: больше ${VOICE_MAX_SEC / 60} минут подряд не пишу`)
@@ -789,15 +813,22 @@ export function ChatView({
        клавиатура (Enter на компьютере) могла бы это сделать в обход disabled у кнопки,
        которая на это время сама превращается в «Остановить». */
     if (typing) return
-    /* Отправка во время уточнения: человек уже нажал «отправить», значит ждать
-       сервер незачем — берём черновик, а летящий запрос точного текста гасим,
-       иначе он вернётся в уже очищенное поле. */
-    if (polishing) {
+    /* Отправка во время записи/уточнения: берём видимый черновик и гасим запрос,
+       иначе точный текст вернётся в уже очищенное поле после отправки. */
+    let text = value
+    if (listening) {
+      text = stopVoiceInput()
       sessionRef.current?.cancel()
       sessionRef.current = null
       setPolishing(false)
+      setVoiceRetryAvailable(false)
+    } else if (polishing || voiceRetryAvailable) {
+      sessionRef.current?.cancel()
+      sessionRef.current = null
+      setPolishing(false)
+      setVoiceRetryAvailable(false)
     }
-    const text = (listening ? stopVoiceInput() : value).trim()
+    text = text.trim()
     /* Картинка или файл без вопроса — это запрос «посмотри, что я прислал»: движок
        сам решит, что с этим делать. Совсем пустой ход не отправляем. */
     if (!text && !shots.length && !docs.length) return
@@ -810,6 +841,7 @@ export function ChatView({
     setDocError('')
     setShotError('')
     setVoiceError('')
+    setVoiceRetryAvailable(false)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
@@ -1301,7 +1333,21 @@ export function ChatView({
             </>
           ) : null}
         </form>
-        {voiceError ? <div className="voice-error">{voiceError}</div> : null}
+        {voiceError ? (
+          <div className="voice-error" role="status" aria-live="polite">
+            <span>{voiceError}</span>
+            {voiceRetryAvailable ? (
+              <button
+                type="button"
+                className="voice-retry-btn"
+                onClick={retryVoiceTranscription}
+                disabled={polishing}
+              >
+                Повторить распознавание
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {voiceNote && (listening || polishing) ? <div className="voice-note">{voiceNote}</div> : null}
         <p className="composer-hint">
           <span className="composer-hint-model">MeTiger Ai</span> · ИИ может ошибаться. Проверяйте важную информацию.

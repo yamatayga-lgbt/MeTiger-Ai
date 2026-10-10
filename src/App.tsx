@@ -100,8 +100,8 @@ const nextId = () => `m${++msgSeq}-${Date.now()}`
 const newChatId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 
 const NEW_CHAT_TITLE = 'Новый чат'
-/** Название чата — не длиннее 50 символов (просьба владельца, 0.135). */
-const TITLE_MAX = 50
+/** Название чата — не длиннее 30 символов (просьба владельца, 0.140). */
+const TITLE_MAX = 30
 /** Автоназвание из первого сообщения: одна строка, обрезка по слову, «…» в конце. */
 function titleFromText(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim()

@@ -22,6 +22,13 @@ const ACTIVE_KEY = 'mt-active-chat'
 const VIEW_KEY = 'mt-view'
 
 const MAX_MESSAGES_PER_CHAT = 300
+const MAX_CHAT_TITLE = 30
+
+function safeChatTitle(value: unknown): string {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, MAX_CHAT_TITLE)
+    : 'Новый чат'
+}
 
 type RawFile = {
   name?: unknown
@@ -108,7 +115,7 @@ function sanitizeChat(raw: unknown): Chat | null {
   if (messages.length === 0) return null
   return {
     id: c.id,
-    title: typeof c.title === 'string' && c.title.trim() ? c.title : 'Новый чат',
+    title: safeChatTitle(c.title),
     messages,
     updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : Date.now(),
   }
@@ -213,7 +220,11 @@ export function saveChats(chats: Chat[], activeChatId: string, view: ViewId): vo
   try {
     const real = chats
       .filter((c) => c.messages.length > 0)
-      .map((c) => ({ ...c, messages: c.messages.slice(-MAX_MESSAGES_PER_CHAT).map(stripMediaForStorage) }))
+      .map((c) => ({
+        ...c,
+        title: safeChatTitle(c.title),
+        messages: c.messages.slice(-MAX_MESSAGES_PER_CHAT).map(stripMediaForStorage),
+      }))
     localStorage.setItem(CHATS_KEY, JSON.stringify(real))
     localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeChatId))
     localStorage.setItem(VIEW_KEY, JSON.stringify(view))

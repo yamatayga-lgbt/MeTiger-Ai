@@ -101,7 +101,7 @@ export function Sidebar({
               ref={inputRef}
               className="rename-input"
               value={draft}
-              maxLength={50}
+              maxLength={30}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={commitRename}
               onKeyDown={(e) => {

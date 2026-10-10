@@ -194,6 +194,10 @@ export interface VoiceHandlers {
 export interface VoiceSession {
   /** Остановить запись. Черновик остаётся, точный текст придёт через onPolished. */
   stop: () => void
+  /** Можно ли повторить точную расшифровку сохранённой записи. */
+  canRetry: () => boolean
+  /** Повторить точную расшифровку после восстановления связи. */
+  retry: () => boolean
   /** Остановить и отбросить всё: и запись, и летящий запрос. */
   cancel: () => void
 }
@@ -269,14 +273,17 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
     const blob = encodeWav(samples)
     const tail = String((live && handlers.liveContext && handlers.liveContext()) || '').slice(-120)
     const url = '/api/stt?lang=' + encodeURIComponent(lang.split('-')[0]) + (tail ? '&prev=' + encodeURIComponent(tail) : '')
-    const ac = signal ? null : new AbortController()
-    const tm = live ? null : setTimeout(() => ac?.abort(), POLISH_MS)
+    const request = new AbortController()
+    const abortFromCaller = () => request.abort()
+    if (signal?.aborted) request.abort()
+    else signal?.addEventListener('abort', abortFromCaller, { once: true })
+    const tm = live ? null : setTimeout(() => request.abort(), POLISH_MS)
     try {
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'audio/wav' },
         body: blob,
-        signal: signal || ac?.signal,
+        signal: request.signal,
       })
       const j = (await r.json().catch(() => null)) as { ok?: boolean; text?: string; error?: string } | null
       const text = j && j.ok && typeof j.text === 'string' ? j.text.trim() : ''
@@ -285,18 +292,38 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
       return text
     } finally {
       if (tm) clearTimeout(tm)
+      signal?.removeEventListener('abort', abortFromCaller)
     }
   }
 
-  /** Слой 3: вся запись целиком — самый верный текст. */
-  const askAccurate = async () => {
-    if (asked || cancelled) return
-    asked = true
+  const concat = (parts: Int16Array[]): Int16Array => {
+    let n = 0
+    for (const p of parts) n += p.length
+    const out = new Int16Array(n)
+    let off = 0
+    for (const p of parts) {
+      out.set(p, off)
+      off += p.length
+    }
+    return out
+  }
+
+  const hasRetryableRecording = () => {
+    if (!stopped || cancelled || !pcmLen) return false
+    return peakOf(concat(pcm)) >= SILENCE_PEAK
+  }
+
+  /** Вся запись целиком — точный текст. Сессию держим до успеха или отмены,
+   *  чтобы при сетевом сбое её можно было повторить, не диктуя заново. */
+  let polishBusy = false
+  const transcribeAll = async () => {
+    if (cancelled || polishBusy) return
     const all = concat(pcm)
     if (!all.length || peakOf(all) < SILENCE_PEAK) {
       handlers.onPolish?.('fail', 'записи нет')
       return
     }
+    polishBusy = true
     handlers.onPolish?.('start')
     const ac = new AbortController()
     abortRef = ac
@@ -312,19 +339,16 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
           liveOk ? 'оставил уточнённое на лету' : 'связь не дала уточнить',
         )
       }
+    } finally {
+      polishBusy = false
+      if (abortRef === ac) abortRef = null
     }
   }
 
-  const concat = (parts: Int16Array[]): Int16Array => {
-    let n = 0
-    for (const p of parts) n += p.length
-    const out = new Int16Array(n)
-    let off = 0
-    for (const p of parts) {
-      out.set(p, off)
-      off += p.length
-    }
-    return out
+  const askAccurate = async () => {
+    if (asked || cancelled) return
+    asked = true
+    await transcribeAll()
   }
 
   // --- уровень сигнала: берём прямо из кусков, отдельный анализатор не нужен ---
@@ -409,6 +433,14 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
       stopMic()
       void flushLive()
       void askAccurate()
+    },
+    canRetry() {
+      return hasRetryableRecording()
+    },
+    retry() {
+      if (!hasRetryableRecording() || polishBusy) return false
+      void transcribeAll()
+      return true
     },
     cancel() {
       cancelled = true

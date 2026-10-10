@@ -1,4 +1,4 @@
-/** 0.135: группы истории по времени, лимит названия 50, полоска прокрутки поля ввода. */
+/** Исторические проверки 0.135 и текущий предел длины названия чата. */
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -17,8 +17,8 @@ ok('U135f месяц прошлого года', groupLabel(new Date(2025, 11, 3
 const g = groupChats([{ updatedAt: now - 2 * D }, { updatedAt: now - 60e3 }, { updatedAt: now - 3 * D }], now);
 ok('U135g порядок и слияние групп', g.length === 2 && g[0].label === 'Сегодня' && g[1].items.length === 2 && g[1].items[0].updatedAt === now - 2 * D);
 const app = readFileSync('src/App.tsx', 'utf8');
-ok('U135h лимит названия 50', /TITLE_MAX = 50/.test(app) && /titleFromText\(/.test(app)
-  && /maxLength=\{50\}/.test(readFileSync('src/components/Sidebar.tsx', 'utf8')) && /maxLength=\{50\}/.test(readFileSync('src/components/Topbar.tsx', 'utf8')));
+ok('U135h название чата ограничено 30 символами', /TITLE_MAX = 30/.test(app) && /titleFromText\(/.test(app)
+  && /maxLength=\{30\}/.test(readFileSync('src/components/Sidebar.tsx', 'utf8')) && /maxLength=\{30\}/.test(readFileSync('src/components/Topbar.tsx', 'utf8')));
 ok('U135i у поля ввода нет полосы прокрутки', /\.composer textarea::-webkit-scrollbar \{ display: none/.test(readFileSync('src/styles/index.css', 'utf8')));
 console.log(`\n${pass} ✔, ${fail} ✖`);
 if (fail) process.exit(1);
