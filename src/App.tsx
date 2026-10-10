@@ -12,6 +12,7 @@ const UsageView = lazy(() => import('./views/UsageView').then((m) => ({ default:
 const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
 import { useTheme } from './hooks/useTheme'
+import { usePullToRefresh } from './hooks/usePullToRefresh'
 import { APP_VERSION } from './lib/version'
 import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
@@ -168,6 +169,10 @@ export default function App() {
   const [user, setUser] = useState<Person>(siteUser())
 
   const { pref, resolved, setPref, toggle } = useTheme()
+  /* Обновление смахиванием вниз: оболочка заперта (0.143), палец двигает только
+     индикатор-кружок — см. hooks/usePullToRefresh.ts. */
+  const ptrRef = useRef<HTMLDivElement>(null)
+  usePullToRefresh(ptrRef)
   const [newsSeen, setNewsSeen] = useState<string>(() => readNewsSeen())
   /* Окошко «что нового после обновления». Решение принимается один раз при
      запуске: версия запомнена другой — значит человек только что обновился. */
@@ -565,6 +570,15 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Кружок обновления: живёт за верхней кромкой и выезжает за пальцем.
+          Вне чтения для программ — это индикатор жеста, а не содержимое. */}
+      <div className="ptr" ref={ptrRef} aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+        </svg>
+      </div>
+
       <Sidebar
         open={menuOpen}
         onClose={() => setMenuOpen(false)}

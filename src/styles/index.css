@@ -5716,3 +5716,51 @@ kbd {
   opacity: 1;
   transform: none;
 }
+
+/* ---------- Обновление смахиванием вниз (0.145) ----------
+
+   Родной pull-to-refresh остался выключенным (0.143: он тянул за собой всю
+   оболочку). Жест вернулся своим: палец двигает ТОЛЬКО этот кружок, остальной
+   интерфейс стоит на месте. Логика — hooks/usePullToRefresh.ts; transform и
+   opacity ставятся оттуда, здесь — внешний вид и три состояния. */
+.ptr {
+  position: fixed;
+  top: -46px;
+  left: 50%;
+  transform: translate(-50%, 0);
+  z-index: 200;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Дотянул до порога: кружок «заряжен» — отпускай. */
+.ptr.is-ready {
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+/* Не дотянул: уезжает обратно мягко, а не телепортом. */
+.ptr.is-leaving {
+  transition: transform 200ms ease-out, opacity 200ms ease-out;
+}
+
+/* Отпустил дальше порога: стрелка крутится, пока страница перезагружается. */
+.ptr.is-busy svg {
+  animation: ptrSpin 0.8s linear infinite;
+}
+
+@keyframes ptrSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
