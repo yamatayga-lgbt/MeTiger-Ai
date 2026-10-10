@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Folder, PanelLeft, PenLine, Trash2 } from 'lucide-react'
+import { Briefcase, ChevronDown, Folder, PanelLeft, PenLine, Trash2 } from 'lucide-react'
 import { IconButton } from './ui'
 import { haptic } from '../lib/haptic'
 
@@ -7,25 +7,25 @@ interface TopbarProps {
   title: string
   onOpenMenu: () => void
   onOpenWorkspace: () => void
-  /** Переименовать/удалить ТЕКУЩИЙ чат прямо с капсулы в шапке — есть только на
-      экране чата. На «Настройках» и прочих разделах их не передают: там у
-      заголовка нет своего чата, который можно было бы переименовать или удалить,
-      и капсула превращается обратно в обычную неактивную подпись раздела. */
+  /** Действия текущего чата доступны только на экране чата; в разделах без
+      своей переписки капсула остаётся обычной неактивной подписью. */
   onRenameChat?: (title: string) => void
   onDeleteChat?: () => void
+  /** Сохранить текущую переписку как дело или обновить его контрольную точку. */
+  onSaveCase?: () => void
+  saveCaseLabel?: string
 }
 
 /** Верхняя панель: круглая кнопка меню слева, капсула с названием чата по центру
     (вместо апселла подписки у ChatGPT — у нас всё бесплатно), круглая кнопка
-    Workspace справа. Капсула кликабельна только на экране чата: открывает то же
-    меню «Переименовать / Удалить», что и у пункта чата в боковом меню — здесь
-    оно просто ближе под рукой, без необходимости открывать сайдбар. */
-export function Topbar({ title, onOpenMenu, onOpenWorkspace, onRenameChat, onDeleteChat }: TopbarProps) {
+    Workspace справа. В чате капсула открывает действия: сохранить дело,
+    переименовать или удалить переписку. */
+export function Topbar({ title, onOpenMenu, onOpenWorkspace, onRenameChat, onDeleteChat, onSaveCase, saveCaseLabel }: TopbarProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(title)
   const inputRef = useRef<HTMLInputElement>(null)
-  const interactive = Boolean(onRenameChat || onDeleteChat)
+  const interactive = Boolean(onRenameChat || onDeleteChat || onSaveCase)
 
   useEffect(() => {
     if (renaming) inputRef.current?.focus()
@@ -116,6 +116,18 @@ export function Topbar({ title, onOpenMenu, onOpenWorkspace, onRenameChat, onDel
               left: Math.max(8, Math.min(menu.x - 88, window.innerWidth - 184)),
             }}
           >
+            {onSaveCase ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(null)
+                  onSaveCase()
+                }}
+              >
+                <Briefcase size={14} />
+                {saveCaseLabel || 'Записать как дело'}
+              </button>
+            ) : null}
             {onRenameChat ? (
               <button
                 type="button"

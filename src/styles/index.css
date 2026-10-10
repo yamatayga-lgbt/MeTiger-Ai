@@ -5659,3 +5659,478 @@ kbd {
   .composer .send-btn:not(:disabled) { animation: none !important; }
   button svg, button, .composer textarea { transition: none !important; }
 }
+
+/* ── 0.136: «Дела» — видимая, редактируемая память пользователя ─────────────── */
+.cases-view {
+  padding-bottom: 36px;
+}
+
+.cases-view .page-head {
+  align-items: center;
+}
+
+.cases-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  margin: -7px 0 18px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.cases-intro svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.cases-tabs {
+  display: flex;
+  gap: 5px;
+  width: fit-content;
+  padding: 4px;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+}
+
+.cases-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: var(--r-full);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background .18s var(--ease-out), color .18s var(--ease-out), transform .25s var(--spring);
+}
+
+.cases-tabs button.active {
+  color: var(--text);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+}
+
+.cases-tabs button span {
+  min-width: 19px;
+  padding: 1px 5px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text-2);
+  font-size: 10px;
+  text-align: center;
+}
+
+.cases-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.case-card,
+.cases-empty {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.case-card {
+  padding: 16px;
+  animation: fadeUp .3s var(--ease-out) both;
+  transition: border-color .2s var(--ease-out), transform .25s var(--spring), box-shadow .2s var(--ease-out);
+}
+
+.case-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.case-card.is-done {
+  background: color-mix(in srgb, var(--surface) 88%, var(--ok-soft));
+}
+
+.case-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-width: 0;
+  margin-bottom: 15px;
+}
+
+.case-card-icon,
+.case-editor-icon,
+.cases-empty-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.case-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.case-card-title h2 {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 680;
+  letter-spacing: -.01em;
+}
+
+.case-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.case-card-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.case-detail-field {
+  margin-top: 11px;
+  min-width: 0;
+}
+
+.case-detail-label {
+  margin-bottom: 4px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.case-detail-field p,
+.case-next-step p {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.case-detail-field ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.case-detail-field li + li {
+  margin-top: 3px;
+}
+
+.case-detail-field li::marker {
+  color: var(--accent);
+}
+
+.case-muted {
+  color: var(--text-3) !important;
+}
+
+.case-next-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent-soft) 58%, transparent);
+}
+
+.case-next-step > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.case-next-step .case-detail-label {
+  color: var(--accent);
+}
+
+.case-card-foot {
+  margin-top: 12px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.case-linked-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.case-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.case-card-actions .btn {
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.case-card-actions .case-delete-btn {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  color: var(--text-3);
+}
+
+.case-card-actions .case-delete-btn:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.cases-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 30px 20px;
+  text-align: center;
+  animation: fadeUp .3s var(--ease-out) both;
+}
+
+.cases-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  margin-bottom: 12px;
+}
+
+.cases-empty h2 {
+  font-size: 15px;
+  font-weight: 680;
+}
+
+.cases-empty p {
+  max-width: 420px;
+  margin: 6px 0 15px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* Карточка дела — неблокирующий оверлей, всё поле прокручивается на телефоне. */
+.case-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--scrim) 88%, transparent);
+  backdrop-filter: blur(8px) saturate(115%);
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
+  animation: caseFade .16s ease-out both;
+}
+
+.case-editor {
+  width: min(560px, 100%);
+  max-height: min(88dvh, 760px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 17px;
+  border: 1px solid var(--glass-brd);
+  border-radius: var(--r-xl, 20px);
+  background-color: var(--bg-elevated);
+  background-image: var(--glass-sheen);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-rim);
+  animation: casePop .22s var(--spring) both;
+}
+
+.case-editor-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.case-editor-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.case-editor-head h2 {
+  margin-top: 1px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.case-editor-head p {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.case-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.case-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.case-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.case-field > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 630;
+}
+
+.case-field small {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.case-field input,
+.case-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  outline: none;
+  transition: border-color .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+
+.case-field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.case-field input:focus,
+.case-field textarea:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.case-field input::placeholder,
+.case-field textarea::placeholder {
+  color: var(--text-3);
+}
+
+.case-editor-note {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.case-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@keyframes caseFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes casePop { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 520px) {
+  .cases-view .page-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .cases-view .page-head > .btn {
+    width: 100%;
+  }
+  .case-card {
+    padding: 13px;
+  }
+  .case-card-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+  }
+  .case-card-actions .btn {
+    padding: 0 7px;
+    gap: 5px;
+    font-size: 11.5px;
+  }
+  .case-card-actions .btn:nth-of-type(3) {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    justify-self: start;
+  }
+  .case-card-actions .case-delete-btn {
+    grid-column: 3;
+    grid-row: 1;
+    margin-left: 0;
+  }
+  .case-editor {
+    padding: 14px;
+  }
+  .case-editor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .case-card,
+  .cases-empty,
+  .case-overlay,
+  .case-editor {
+    animation: none !important;
+  }
+  .cases-tabs button,
+  .case-card,
+  .case-field input,
+  .case-field textarea {
+    transition: none !important;
+  }
+}

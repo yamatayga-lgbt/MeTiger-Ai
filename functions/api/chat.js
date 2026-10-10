@@ -305,6 +305,9 @@ async function handlePost(context) {
      разумный диапазон, а история — притащить пустые реплики. Что пришлось
      поправить — возвращается словами, а не молча. */
   const norm = normalizeFields(Object.assign({}, body, { text }), context.env);
+  // Карточка «Дела» — короткие, подтверждённые пользователем данные. Ограничиваем
+  // её размер на сервере; движок добавит её к пользовательскому запросу как данные.
+  const caseContext = typeof body.caseContext === 'string' ? body.caseContext.slice(0, 3600) : '';
   const userId = sanitizeUserId(body.userId)
     || (/^tg_[0-9]{3,}$/.test(String(norm.chatId || '')) ? norm.chatId : '');
   const chatId = memoryKey(userId, norm.chatId || String(request.headers.get('x-mt-chat') || 'web').slice(0, 80));
@@ -481,6 +484,7 @@ async function handlePost(context) {
     /* нормализованные поля, а не сырые из тела: иначе потолок из env на «system»
        и «text» был бы просто украшением, а provider с путью дошёл бы до выбора */
     text: norm.text || text, history,
+    caseContext: caseContext || undefined,
     chatId: memory ? chatId : undefined,
     origin: memory ? threadId : undefined,
     images: allImages,

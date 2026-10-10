@@ -453,6 +453,8 @@ export async function sendChat(
     attachments?: Attachment[]
     model?: string
     gender?: string
+    /** Подтверждённая пользователем карточка дела; движок добавит её к текущему запросу как данные. */
+    caseContext?: string
     /**
      * Живой черновик. Если он задан, у сервера просится поток (`accept: text/event-stream`):
      * на каждом куске провайдера сюда приходит накопленный текст, а `null` значит «сбрось —
@@ -543,6 +545,7 @@ export async function sendChat(
       body: JSON.stringify({
         text,
         history: history.slice(-8),
+        caseContext: opts.caseContext || undefined,
         images: opts.images,
         attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
         model: opts.model || undefined,

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { groupChats } from '../lib/chatGroups'
 import {
   Activity,
+  Briefcase,
   Check,
   MessageSquarePlus,
   Moon,
@@ -38,6 +39,7 @@ interface SidebarProps {
 }
 
 const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
+  { id: 'cases', label: 'Дела', icon: Briefcase },
   /* Расход — пунктом раздела, а не строкой в Настройках: в Настройках он дублировал
      этот же переход, и человек искал его в двух местах вместо одного. */
   { id: 'usage', label: 'Использование и Лимиты', icon: Activity },

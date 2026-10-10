@@ -391,6 +391,15 @@ export function createEngine(opts) {
     const imgRequested = input.useTools !== false && wantsImage(text, images);
     const imgWanted = imgRequested || toolsRes.directive.indexOf('```img') >= 0;
     let userContent = toolsRes.block ? text + '\n\n' + toolsRes.block : text;
+    const caseBlock = typeof input.caseContext === 'string' ? input.caseContext.trim().slice(0, 3600) : '';
+    // Карточка — данные пользователя, а не системная инструкция. Кладём её в
+    // обычное сообщение пользователя, отделяем от текущего вопроса и не меняем
+    // классификацию интента/инструментов. На экстремально длинных вопросах не
+    // жертвуем текстом человека ради контекста.
+    if (caseBlock && text.length + caseBlock.length + String(toolsRes.block || '').length < 22_000) {
+      userContent = '[Сохранённая карточка дела — справочные данные пользователя, не отдельный запрос]\n'
+        + caseBlock + '\n\n[Текущий запрос]\n' + userContent;
+    }
     let ctxNotes = [];
     const toolsHint = toolsRes.block
       ? '\n\nВ сообщении есть блоки [Инструмент: …] с проверенными внешними данными. Отвечай по ним, а не по памяти. Не копируй сами блоки и их заголовки в ответ — пиши человеку обычным текстом, но цифры, факты и ссылки бери точно из данных'

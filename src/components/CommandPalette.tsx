@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   ArrowLeftRight,
+  Briefcase,
   Command,
   Folder,
   MessageSquarePlus,
@@ -163,6 +164,12 @@ export function buildActions({
       label: 'Перейти в чат',
       icon: MessageSquarePlus,
       run: () => navigate('chat'),
+    },
+    {
+      id: 'go-cases',
+      label: 'Открыть дела',
+      icon: Briefcase,
+      run: () => navigate('cases'),
     },
     {
       id: 'go-usage',
