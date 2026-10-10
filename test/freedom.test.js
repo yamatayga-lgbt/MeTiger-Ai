@@ -230,8 +230,14 @@ console.log('D — врезка в движок: спасение ответа �
     /Не предполагай возраст собеседника/.test(data.FREEDOM_ALL)
       && !/[\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]/.test(data.FREEDOM_ALL + data.BYPASS_SYSTEM + data.ADULT_SYSTEM));
 
-  ok('E8: размер полной пачки в ожидаемых границах (7.7–8.5 тыс. символов) — свободная система',
-    data.FREEDOM_ALL.length > 7700 && data.FREEDOM_ALL.length < 8500, 'chars=' + data.FREEDOM_ALL.length);
+  ok('E8: размер полной пачки в ожидаемых границах (8–9 тыс. символов) — свободная система',
+    data.FREEDOM_ALL.length > 8000 && data.FREEDOM_ALL.length < 9000, 'chars=' + data.FREEDOM_ALL.length);
+
+  const core = data.FREEDOM_BLOCKS.find((block) => block.id === 'core')?.text || '';
+  ok('E9: РП и свободный диалог названы обычным форматом и в полной, и в короткой подсказке',
+    core.includes('Ролевые игры, РП и ролка — обычные форматы')
+      && freedom.FREEDOM_COMPACT.includes('РП, ролка и свободный диалог — обычный формат')
+      && freedom.freedomBlock({}, { intent: 'creative' }).text.includes('Ролевые игры, РП и ролка — обычные форматы'));
 }
 
 /* ── F: режимы подачи ──────────────────────────────────────────────────────────── */
