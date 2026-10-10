@@ -208,10 +208,20 @@
 html {
   -webkit-text-size-adjust: 100%;
   height: 100%;
+  /* Жёсткий замок на корневой скролл. Смахивание вниз (pull-to-refresh,
+     резиновый отскок) браузер делает на уровне ИМЕННО html, а не body:
+     overscroll-behavior на body его не останавливал — вся оболочка «ехала»
+     за пальцем. Скроллится только содержимое (.thread-scroll, .content и
+     другие внутренние зоны), оболочка приложения стоит на месте всегда. */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
   height: 100%;
+  /* Вторая половина замка: даже если что-то случайно вылезет за вьюпорт,
+     документ не станет прокручиваемым — скроллят только внутренние зоны. */
+  overflow: hidden;
   font-family: var(--font);
   font-size: 14px;
   line-height: 1.5;
@@ -485,6 +495,7 @@ a {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 10px -4px 0;
   padding: 0 4px 8px;
 }
@@ -720,6 +731,7 @@ a {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px;
 }
 
@@ -1184,6 +1196,7 @@ kbd {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 20px 16px 32px;
   scroll-behavior: smooth;
 }
@@ -1228,6 +1241,9 @@ kbd {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Докрутили до края — жест гаснет здесь, а не передаётся документу:
+     без этого на телефоне свайп у края чата дёргал всю оболочку. */
+  overscroll-behavior: contain;
   /* Без вечно видимой полоски прокрутки, как в ChatGPT: на телефоне скроллят
      пальцем, полоска — чисто десктопный (мышиный) ориентир. На устройствах
      с настоящей мышью (hover+точный указатель) возвращаем её ниже. */
