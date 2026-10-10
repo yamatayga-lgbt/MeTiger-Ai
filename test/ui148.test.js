@@ -31,8 +31,9 @@ ok('U148c оболочка — height: 100% от html: .app и .main без вь
   /\.app \{[^}]*height: 100%/.test(bare) && !/\.app \{[^}]*100(l|s|d)?vh/.test(bare)
     && /\.main \{[^}]*height: 100%/.test(bare));
 
-ok('U148d цепочка процентов целая: html и body держат height: 100%',
-  /html \{[^}]*height: 100%/.test(bare) && /body \{[^}]*height: 100%/.test(bare));
+ok('U148d цепочка процентов целая: html, body И #root держат height: 100% (без #root оболочка схлопывается — 0.149)',
+  /html \{[^}]*height: 100%/.test(bare) && /body \{[^}]*height: 100%/.test(bare)
+    && /#root \{[^}]*height: 100%/.test(bare));
 
 ok('U148e заметка о выпуске и история README содержат 0.148',
   /version: '0\.148'[\s\S]*?title: 'Поле ввода всегда на экране'/.test(notes)
