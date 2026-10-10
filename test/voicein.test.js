@@ -81,6 +81,7 @@ console.log('V — расшифровка голоса: три источник�
      Без языка подсказки нет совсем (чужой образец смещает письменность). */
   ok('V10: запрос — multipart с моделью, temperature 0, БЕЗ тяжёлой инструкции (без языка — без подсказки)', rec.form.get('model') === 'whisper-large-v3-turbo' && rec.form.get('temperature') === '0' && !rec.form.get('prompt') && rec.form.get('response_format') === 'verbose_json', [...rec.form.keys()].join(','));
   ok('V11: ключ передаётся заголовком, а не текстом запроса', /^Bearer gk1$/.test(rec.init.headers.authorization), JSON.stringify(rec.init.headers));
+  ok('V12: в теле нет ни токена бота, ни пути к файлу на нашем диске', JSON.stringify([...rec.form.keys()]).indexOf('token') < 0 && /voice\.(ogg|opus|webm)/.test(rec.file.name || ''), String(rec.file && rec.file.name));
 }
 {
   /* 0.147: русский язык даёт короткий образец стиля со словарём имён, и он
@@ -92,7 +93,6 @@ console.log('V — расшифровка голоса: три источник�
   ok('V10b: ru-образец стиля со словарём, ужатый до лимита Groq в байтах',
     /пунктуацией/.test(p) && /MeTiger/.test(p) && new TextEncoder().encode(p).length <= 896,
     'байт: ' + new TextEncoder().encode(p).length);
-  ok('V12: в теле нет ни токена бота, ни пути к файлу на нашем диске', JSON.stringify([...rec.form.keys()]).indexOf('token') < 0 && /voice\.(ogg|opus|webm)/.test(rec.file.name || ''), String(rec.file && rec.file.name));
 }
 {
   const n = net({ groq: [json({ error: { message: 'Invalid file format' } }, 400), json({ text: 'слышно' })] });
