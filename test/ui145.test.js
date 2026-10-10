@@ -32,7 +32,7 @@ ok('U145b жест свой и дешёвый: passive-слушатели, по�
 
 ok('U145c жест вооружается только от верха: прокрученный предок под пальцем его отменяет',
   /if \(n\.scrollTop > 0\) return false/.test(hook)
-    && /armed = atTop\(e\.target\)/.test(hook));
+    && /armed = (!viewportBusy\(\) && )?atTop\(e\.target\)/.test(hook));
 
 ok('U145d жест только вертикальный: повело вбок или вверх — отменяется',
   /if \(dy < 0 \|\| Math\.abs\(dx\) > Math\.abs\(dy\)\)/.test(hook));

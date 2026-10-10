@@ -49,6 +49,16 @@ export function usePullToRefresh(ind: RefObject<HTMLElement>): void {
       return true
     }
 
+    /* Клавиатура открыта или страница увеличена щипком — жест молчит: в этих
+       состояниях браузер сам панорамирует кадр, и «потянул вниз» значит
+       «подвинь страницу», а не «обнови» (0.146). */
+    const viewportBusy = (): boolean => {
+      const vv = window.visualViewport
+      if (!vv) return false
+      if (vv.scale > 1.02) return true
+      return vv.offsetTop > 1 || window.innerHeight - vv.height > 1
+    }
+
     const paint = () => {
       const k = Math.min(dist, MAX)
       el.style.transform = `translate(-50%, ${k}px) rotate(${k * 2.4}deg)`
@@ -71,7 +81,7 @@ export function usePullToRefresh(ind: RefObject<HTMLElement>): void {
       if (busy || e.touches.length !== 1) return
       x0 = e.touches[0].clientX
       y0 = e.touches[0].clientY
-      armed = atTop(e.target)
+      armed = !viewportBusy() && atTop(e.target)
       pulling = false
       dist = 0
     }

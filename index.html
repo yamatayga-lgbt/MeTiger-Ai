@@ -2,7 +2,11 @@
 <html lang="ru" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- interactive-widget=resizes-content: клавиатура СЖИМАЕТ страницу, а не
+         накрывает её. Без этого Android Chrome (108+) оставляет страницу полной
+         высоты и «панорамирует» её внутри окна — смахивание вниз утаскивало весь
+         кадр вместе с полем ввода (0.146). iOS параметр просто игнорирует. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="color-scheme" content="dark light" />
     <meta id="meta-theme-color" name="theme-color" content="#0A0A0C" />
     <meta name="description" content="MeTiger Ai — универсальный ИИ-агент в одном чате. Тексты, код, изображения, анализ документов и голосовые. Бесплатно, устанавливается на экран как приложение." />
