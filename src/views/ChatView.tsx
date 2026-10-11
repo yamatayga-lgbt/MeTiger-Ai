@@ -10,6 +10,7 @@ import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
 import { Guard } from '../components/Guard'
+import { ContextUsageIndicator } from '../components/ContextUsageIndicator'
 import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
 /* Markdown (react-markdown + remark-gfm + формулы + песочница кода) — самый тяжёлый
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
@@ -578,6 +579,8 @@ export function ChatView({
   const [docError, setDocError] = useState('')
   const [paramsOpen, setParamsOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
+  /* Информация о контексте для индикатора */
+  const [contextInfo, setContextInfo] = useState({ usedTokens: 0, maxTokens: 0 })
   /* Полноэкранный просмотр любой картинки из переписки (своей или от модели) —
      тап открывает её целиком вместо скачивания/мелкого превью. */
   const [lightbox, setLightbox] = useState<{ src: string; name?: string } | null>(null)
@@ -1345,6 +1348,12 @@ export function ChatView({
                 onClose={() => setParamsOpen(false)}
               />
             </>
+          ) : null}
+          {contextInfo.maxTokens > 0 ? (
+            <ContextUsageIndicator
+              usedTokens={contextInfo.usedTokens}
+              maxTokens={contextInfo.maxTokens}
+            />
           ) : null}
         </form>
         {voiceError ? (

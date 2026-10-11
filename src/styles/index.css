@@ -6225,3 +6225,49 @@ button,
   white-space: nowrap;
   margin-left: 4px;
 }
+
+/* Индикатор использования контекста */
+.context-usage-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 8px;
+}
+
+.context-usage-bar-container {
+  width: 80px;
+  height: 6px;
+  background-color: var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.context-usage-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.context-usage-text {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.context-usage-warning {
+  color: var(--amber) !important;
+  font-weight: 600;
+}
+
+.context-usage-alert {
+  font-size: 11px;
+  color: var(--danger);
+  margin-left: 6px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
