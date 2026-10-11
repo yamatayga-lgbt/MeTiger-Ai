@@ -4,11 +4,14 @@ import {
   ArrowLeftRight,
   Briefcase,
   Command,
+  Database,
   Folder,
+  Info,
   MessageSquarePlus,
   Moon,
   Settings,
   Sun,
+  UserRound,
 } from 'lucide-react'
 import type { IconType } from './ui'
 import { APP_VERSION } from '../lib/version'
@@ -178,10 +181,34 @@ export function buildActions({
       run: () => navigate('usage'),
     },
     {
+      id: 'go-profile',
+      label: 'Открыть профиль',
+      icon: UserRound,
+      run: () => navigate('profile'),
+    },
+    {
       id: 'go-settings',
       label: 'Открыть настройки',
       icon: Settings,
       run: () => navigate('settings'),
+    },
+    {
+      id: 'go-personalization',
+      label: 'Персонализация: имя, профессия, род агента',
+      icon: UserRound,
+      run: () => navigate('personalization'),
+    },
+    {
+      id: 'go-data',
+      label: 'Управление данными',
+      icon: Database,
+      run: () => navigate('data'),
+    },
+    {
+      id: 'go-info',
+      label: 'Информация о приложении',
+      icon: Info,
+      run: () => navigate('info'),
     },
     {
       id: 'toggle-theme',

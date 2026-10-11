@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
+import { BottomBar } from './components/BottomBar'
 import { WorkspaceDrawer } from './components/WorkspaceDrawer'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
@@ -8,6 +9,10 @@ import { CaseEditorModal } from './components/CaseEditorModal'
 import { ChatView } from './views/ChatView'
 import { CasesView } from './views/CasesView'
 const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })))
+const ProfileView = lazy(() => import('./views/ProfileView').then((m) => ({ default: m.ProfileView })))
+const PersonalizationView = lazy(() => import('./views/PersonalizationView').then((m) => ({ default: m.PersonalizationView })))
+const DataView = lazy(() => import('./views/DataView').then((m) => ({ default: m.DataView })))
+const InfoView = lazy(() => import('./views/InfoView').then((m) => ({ default: m.InfoView })))
 const UsageView = lazy(() => import('./views/UsageView').then((m) => ({ default: m.UsageView })))
 const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
@@ -40,7 +45,18 @@ import {
   type ReasoningEffort,
 } from './lib/models'
 
-export type ViewId = 'chat' | 'cases' | 'settings' | 'usage' | 'whatsnew'
+export type ViewId =
+  | 'chat'
+  | 'cases'
+  | 'settings'
+  | 'usage'
+  | 'whatsnew'
+  /* Экран профиля и всё, что открывается из него (0.155): вход в настройки
+     теперь тут, а сам профиль живёт на аватарке нижней панели. */
+  | 'profile'
+  | 'personalization'
+  | 'data'
+  | 'info'
 
 export interface Chat {
   id: string
@@ -55,6 +71,25 @@ const TITLES: Record<ViewId, string> = {
   settings: 'Настройки',
   usage: 'Использование и Лимиты',
   whatsnew: 'Что нового',
+  profile: 'Профиль',
+  personalization: 'Персонализация',
+  data: 'Управление данными',
+  info: 'Информация',
+}
+
+/* Экраны, которые нельзя рисовать «въезжающей» анимацией: списки на весь экран
+   мигают и дёргаются при входе (см. комментарий к .settings-scroll в styles). */
+const NO_ANIM_VIEWS: ViewId[] = ['settings', 'profile', 'personalization', 'data', 'info']
+
+/* Куда ведёт стрелка «назад» на вложенных экранах. Не история посещений, а
+   постоянный маршрут: с любого экрана назад — туда, откуда в него попадают.
+   Так поведение стрелки всегда можно объяснить словами, а не вспоминать. */
+const BACK_TO: Partial<Record<ViewId, ViewId>> = {
+  profile: 'chat',
+  settings: 'profile',
+  personalization: 'profile',
+  data: 'settings',
+  info: 'settings',
 }
 
 /* Прочитанные версии «Что нового» — на устройстве. Точка на пункте гаснет, как
@@ -248,6 +283,26 @@ export default function App() {
     haptic('select')
     setView(v)
     setMenuOpen(false)
+  }, [])
+
+  /* Стереть переписку, вложения и настройки НА УСТРОЙСТВЕ. Перезагрузка — часть
+     смысла: половина состояния (активный чат, кэш вложений) держится в памяти
+     вкладки, и без перезагрузки оно вернулось бы поверх пустого хранилища. */
+  const wipeLocal = useCallback(() => {
+    try {
+      localStorage.clear()
+    } catch {
+      /* приватный режим — чистить нечего */
+    }
+    void Promise.allSettled(
+      ['metiger-chat-media', 'metiger-attach-history'].map(
+        (name) =>
+          new Promise((resolve) => {
+            const req = indexedDB.deleteDatabase(name)
+            req.onsuccess = req.onerror = req.onblocked = () => resolve(null)
+          }),
+      ),
+    ).then(() => location.reload())
   }, [])
 
   const newChat = useCallback(() => {
@@ -614,6 +669,7 @@ export default function App() {
           title={title}
           onOpenMenu={() => setMenuOpen(true)}
           onOpenWorkspace={() => setWorkspaceOpen(true)}
+          {...(BACK_TO[view] ? { onBack: () => navigate(BACK_TO[view] as ViewId) } : {})}
           {...(view === 'chat'
             ? {
                 onRenameChat: (t: string) => renameChat(activeChatId, t),
@@ -628,7 +684,9 @@ export default function App() {
             : {})}
         />
 
-        <main className={`content${view === 'settings' ? ' settings-scroll' : ''}`}>
+        <main
+          className={`content${NO_ANIM_VIEWS.includes(view) ? ' settings-scroll' : ''}`}
+        >
           {view === 'chat' ? (
             <div className="chat-shell">
               <ChatView
@@ -660,17 +718,32 @@ export default function App() {
           ) : null}
           <Suspense fallback={null}>
           {view === 'settings' ? (
-            <SettingsView
-              user={user}
-              themePref={pref}
-              onThemePref={setPref}
-              notify={notify}
-            />
+            <SettingsView themePref={pref} onThemePref={setPref} onNavigate={navigate} />
           ) : null}
+          {view === 'profile' ? (
+            <ProfileView user={user} notify={notify} onNavigate={navigate} />
+          ) : null}
+          {view === 'personalization' ? <PersonalizationView notify={notify} /> : null}
+          {view === 'data' ? (
+            <DataView chats={chats} notify={notify} onWipeLocal={wipeLocal} />
+          ) : null}
+          {view === 'info' ? <InfoView notify={notify} onNavigate={navigate} /> : null}
           {view === 'usage' ? <UsageView /> : null}
           {view === 'whatsnew' ? <WhatsNewView /> : null}
           </Suspense>
         </main>
+
+        {/* Нижняя панель — как в приложении ChatGPT: слева капсула «Чат» (новый
+            разговор), справа аватарка (профиль, а через него настройки). Стоит
+            отдельным блоком в колонке, а не position:fixed — тогда ей не нужно
+            подкладывать отступ под содержимое, и на коротких экранах ничего
+            не перекрывается. */}
+        <BottomBar
+          user={user}
+          onNewChat={newChat}
+          onProfile={() => navigate('profile')}
+          profileActive={view === 'profile'}
+        />
       </div>
 
       <WorkspaceDrawer

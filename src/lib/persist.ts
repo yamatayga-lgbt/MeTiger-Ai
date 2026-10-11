@@ -190,7 +190,19 @@ export function loadView(fallback: ViewId): ViewId {
   try {
     const raw = localStorage.getItem(VIEW_KEY)
     const v: unknown = JSON.parse(raw ?? '')
-    if (v === 'chat' || v === 'cases' || v === 'settings' || v === 'usage' || v === 'whatsnew') return v
+    if (
+      v === 'chat' ||
+      v === 'cases' ||
+      v === 'settings' ||
+      v === 'usage' ||
+      v === 'whatsnew' ||
+      /* экраны 0.155: профиль и всё, что из него открывается */
+      v === 'profile' ||
+      v === 'personalization' ||
+      v === 'data' ||
+      v === 'info'
+    )
+      return v
   } catch {
     /* noop */
   }

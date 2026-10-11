@@ -473,28 +473,32 @@ console.log('K — Настройки: счётчик моделей, адрес
     /профиль пуст/.test(profileStatusLine({ ok: true, profile: { filled: false }, memoryChatId: 'u-dev1234' })) && /сеть недоступна/.test(profileStatusLine({ ok: false, error: 'сеть недоступна — профиль не прочитан' })), profileStatusLine({ ok: true, profile: { filled: false } }));
 }
 {
-  /* Настоящий SettingsView: человек должен увидеть три поля именно в той формулировке,
-     о которой договаривались, и подпись, чья это память. */
+  /* 0.155: экран настроек разгружен — форма памяти переехала в «Персонализацию»,
+     счётчик моделей — в «Информацию» (вход в них теперь через профиль). Проверки
+     те же самые, изменился только адрес: человек должен видеть три поля именно в
+     той формулировке, о которой договаривались, и подпись, чья это память. */
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
-  const outS = join(dir, 'settings.mjs');
   execFileSync(bin, [
-    'src/views/SettingsView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
-    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + outS, '--log-level=error',
+    'src/views/PersonalizationView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
+    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + join(dir, 'personalization.mjs'), '--log-level=error',
   ], { stdio: 'inherit' });
-  const { SettingsView } = await import(outS);
-  const html = renderToStaticMarkup(React.createElement(SettingsView, {
-    user: { id: 4242, first_name: 'Тигр', username: 'tiger' },
-    themePref: 'system', onThemePref() {}, isTelegram: false, notify() {},
-  }));
-  ok('K18: в Настройках есть группа «Память» и три поля в нужной формулировке',
+  const { PersonalizationView } = await import(join(dir, 'personalization.mjs'));
+  const html = renderToStaticMarkup(React.createElement(PersonalizationView, { notify() {} }));
+  ok('K18: поля памяти есть и названы в нужной формулировке (0.155: экран «Персонализация»)',
     /Память/.test(html) && /Как вас зовут/.test(html) && /Ваша профессия или занятие/.test(html) && /Подробнее о вас/.test(html), [!/Память/.test(html), !/Как вас зовут/.test(html), !/Ваша профессия/.test(html), !/Подробнее о вас/.test(html)].join(','));
   ok('K19: поля ввода и текстареа настоящие — сохранять есть чему', /<input[^>]*maxlength="60"/i.test(html) && /<input[^>]*maxlength="90"/i.test(html) && /<textarea[^>]*maxlength="1500"/i.test(html), (html.match(/maxlength=?[0-9]+/gi) || []).join(','));
   ok('K20: строка «чья это память» видна, и это не обещание общей памяти', /у каждого человека своя/.test(html) && !/общая память/.test(html), (html.match(/Чья это память[\s\S]{0,220}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
-  ok('K21: счётчик моделей — отдельная строка с кнопкой обновления', /Модели/.test(html) && /Обновить/.test(html) && /считаю…/.test(html), (html.match(/Модели[\s\S]{0,120}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 120));
   ok('K22: поля не автозаполняются чужими данными и не светят ключ в title', /autocomplete/.test(html) === false && /u-tg_4242/.test(html) === false);
-}
 
+  execFileSync(bin, [
+    'src/views/InfoView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
+    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + join(dir, 'info.mjs'), '--log-level=error',
+  ], { stdio: 'inherit' });
+  const { InfoView } = await import(join(dir, 'info.mjs'));
+  const htmlInfo = renderToStaticMarkup(React.createElement(InfoView, { notify() {}, onNavigate() {} }));
+  ok('K21: счётчик моделей — отдельная строка с кнопкой обновления (0.155: экран «Информация»)', /Модели/.test(htmlInfo) && /Обновить/.test(htmlInfo) && /считаю…/.test(htmlInfo), (htmlInfo.match(/Модели[\s\S]{0,120}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 120));
+}
 
 console.log('L — песочница: запуск кода в браузере (исполнять на платформе негде)');
 {
@@ -1858,9 +1862,9 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       && /const runOutput = useCallback\(\(t: string\) => onSend\(t\), \[onSend\]\)/.test(readFileSync('src/views/ChatView.tsx', 'utf8'))
       && /<Markdown text=\{m\.text\} onRunOutput=\{runOutput\} sources=\{m\.sources\} \/>/.test(readFileSync('src/views/ChatView.tsx', 'utf8')));
 
-  ok('N25: строки «Модели» и «Версия» в Настройках — короткие: у «Версии» только номер и кнопка (владелец попросил убрать «показывает старую версию? нажмите «Обновить»»), у «Моделей» — число без описания столбцом', 
-    !/показывает старую версию/.test(readFileSync('src/views/SettingsView.tsx', 'utf8'))
-      && /<div className="n">Версия<\/div>\s*<\/div>/.test(readFileSync('src/views/SettingsView.tsx', 'utf8'))
+  ok('N25: строки «Модели» и «Версия» — короткие: у «Версии» только номер и кнопка (владелец попросил убрать «показывает старую версию? нажмите «Обновить»»), у «Моделей» — число без описания столбцом (0.155: обе строки на экране «Информация»)', 
+    !/показывает старую версию/.test(readFileSync('src/views/InfoView.tsx', 'utf8'))
+      && /<div className="n">Версия<\/div>\s*<\/div>/.test(readFileSync('src/views/InfoView.tsx', 'utf8'))
       && /моделей доступно: /.test(readFileSync('src/lib/api.ts', 'utf8'))
       && !/по провайдерам: /.test(readFileSync('src/lib/api.ts', 'utf8'))
       && !/живых провайдеров: /.test(readFileSync('src/lib/api.ts', 'utf8')));

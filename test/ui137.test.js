@@ -25,7 +25,11 @@ ok('U137a APP_VERSION и package.json синхронизированы',
 ok('U137b экран настроек помечен отдельным классом',
   /className="container view settings-view"/.test(view));
 ok('U137c прокрутка настроек не запускает smooth-анимацию',
-  /className=\{`content\$\{view === 'settings' \? ' settings-scroll' : ''\}`\}/.test(app)
+  /* 0.155: класс вешает уже не одна проверка «это настройки?», а список экранов
+     NO_ANIM_VIEWS — к настройкам добавились профиль, персонализация, данные и
+     информация, у них длинные списки и та же болячка с мерцанием. */
+  /className=\{`content\$\{NO_ANIM_VIEWS\.includes\(view\) \? ' settings-scroll' : ''\}`\}/.test(app)
+    && /const NO_ANIM_VIEWS: ViewId\[\] = \[[^\]]*'settings'/.test(app)
     && /\.settings-scroll\s*\{\s*scroll-behavior:\s*auto;/.test(css));
 ok('U137d крупные блоки настроек не анимируются и остаются видимыми',
   /\.settings-view,\s*\.settings-view \.page-head,\s*\.settings-view \.settings-group,\s*\.settings-view \.profile-card\s*\{\s*animation:\s*none !important;\s*opacity:\s*1;\s*transform:\s*none;/.test(css));

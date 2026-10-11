@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Briefcase, ChevronDown, Folder, PanelLeft, PenLine, Trash2 } from 'lucide-react'
+import { ArrowLeft, Briefcase, ChevronDown, Folder, PanelLeft, PenLine, Trash2 } from 'lucide-react'
 import { IconButton } from './ui'
 import { haptic } from '../lib/haptic'
 
@@ -7,6 +7,9 @@ interface TopbarProps {
   title: string
   onOpenMenu: () => void
   onOpenWorkspace: () => void
+  /** Вложенный экран (профиль, настройки, персонализация...): слева стрелка
+      «назад», как в приложении ChatGPT, вместо круглой кнопки меню. */
+  onBack?: () => void
   /** Действия текущего чата доступны только на экране чата; в разделах без
       своей переписки капсула остаётся обычной неактивной подписью. */
   onRenameChat?: (title: string) => void
@@ -20,7 +23,7 @@ interface TopbarProps {
     (вместо апселла подписки у ChatGPT — у нас всё бесплатно), круглая кнопка
     Workspace справа. В чате капсула открывает действия: сохранить дело,
     переименовать или удалить переписку. */
-export function Topbar({ title, onOpenMenu, onOpenWorkspace, onRenameChat, onDeleteChat, onSaveCase, saveCaseLabel }: TopbarProps) {
+export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameChat, onDeleteChat, onSaveCase, saveCaseLabel }: TopbarProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(title)
@@ -47,12 +50,21 @@ export function Topbar({ title, onOpenMenu, onOpenWorkspace, onRenameChat, onDel
     <>
       <header className="topbar">
         <div className="topbar-side topbar-left">
-          <IconButton
-            icon={PanelLeft}
-            label="Меню"
-            onClick={onOpenMenu}
-            className="topbar-round only-mobile"
-          />
+          {onBack ? (
+            <IconButton
+              icon={ArrowLeft}
+              label="Назад"
+              onClick={onBack}
+              className="topbar-round"
+            />
+          ) : (
+            <IconButton
+              icon={PanelLeft}
+              label="Меню"
+              onClick={onOpenMenu}
+              className="topbar-round only-mobile"
+            />
+          )}
         </div>
 
         {renaming ? (

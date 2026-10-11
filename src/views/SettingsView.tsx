@@ -1,357 +1,167 @@
+/**
+ * Настройки (0.155) — список как в приложении ChatGPT, только с нашими пунктами.
+ *
+ * Владелец вычеркнул красным то, чего у нас нет и не будет по смыслу (Общие,
+ * Уведомления, Безопасность и благополучие, Удаленное управление, Центр
+ * конфиденциальности, Управление рекламой) — их здесь нет. Осталось то, что есть
+ * на скрине, и то, что проекту действительно нужно:
+ *
+ *   • «Внешний вид» и «Акцентный цвет» — первая карточка, как на скрине;
+ *   • Голос, Безопасность и вход, Хранилище, Сообщить об ошибке — пока заглушки,
+ *     каждая помечена честным «Скоро»: кнопка не притворяется живой;
+ *   • «Управление данными» и «Информация» — рабочие экраны (0.155), в них
+ *     переехало всё, что раньше жило строками здесь.
+ *
+ * Раньше на этом экране были профиль, род агента, уведомления, звуки, тема,
+ * модели и версия — профиль и род агента ушли в «Персонализацию» (через профиль),
+ * модели и версия — в «Информацию», уведомления и звуки убраны как ненастоящие
+ * (они ничего не делали, а владелец их и не просил).
+ */
 import {
-  Bell,
-  Cpu,
-  Fingerprint,
+  AudioLines,
+  Bug,
+  ChevronDown,
+  Database,
+  HardDrive,
   Info,
+  LockKeyhole,
   Monitor,
   Moon,
   Palette,
-  RefreshCw,
-  Save,
-  ShieldCheck,
-  SlidersHorizontal,
   Sun,
-  Trash2,
-  UserRound,
-  Volume2,
 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, Segmented, Switch } from '../components/ui'
-import {
-  clearProfile,
-  fetchCounters,
-  fetchProfile,
-  profileStatusLine,
-  saveProfile,
-  signalsLine,
-  type ProfileFields,
-} from '../lib/api'
-import { currentUserId, identityLine } from '../lib/identity'
-import { GENDER_CHOICES, isGender, type Gender } from '../lib/gender'
-import { usePersistentState } from '../hooks/usePersistentState'
-import { displayName, initials, savePersonName, type Person } from '../lib/user'
-import { APP_VERSION, forceAppUpdate } from '../lib/version'
+import { useState } from 'react'
+import { Badge, Segmented } from '../components/ui'
+import { haptic } from '../lib/haptic'
 import type { ThemePref } from '../hooks/useTheme'
+import type { ViewId } from '../App'
 
 interface SettingsViewProps {
-  user: Person
   themePref: ThemePref
   onThemePref: (p: ThemePref) => void
-  notify: (msg: string) => void
+  onNavigate: (v: ViewId) => void
 }
 
-export function SettingsView({
-  user,
-  themePref,
-  onThemePref,
-  notify,
-}: SettingsViewProps) {
-  const [prefs, setPrefs] = usePersistentState('mt-settings', {
-    notifications: true,
-    sounds: false,
-  })
-
-  /* Род агента лежит отдельным ключом, а не внутри mt-settings: его читает отправка
-     сообщения в App.tsx, и эти два места не должны затырать друг друга. */
-  const [gender, setGender] = usePersistentState<Gender>('mt-gender', 'auto', isGender)
-
-  /* Профиль — три поля о человеке, которые уходят в каждый ответ. Они живут НЕ в
-     localStorage: иначе «память» зависела бы от браузера и не доезжала бы до бота.
-     Здесь только форма и статус; настоящее хранит KV на сервере. */
-  const [prof, setProf] = useState<ProfileFields>({ name: '', job: '', about: '' })
-  const [profStatus, setProfStatus] = useState('читаю…')
-  const [profSignals, setProfSignals] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [models, setModels] = useState('считаю…')
-
-  const loadProfile = useCallback(async () => {
-    const r = await fetchProfile()
-    if (r.ok && r.profile) {
-      setProf({ name: r.profile.name || '', job: r.profile.job || '', about: r.profile.about || '' })
-      setProfStatus(profileStatusLine(r))
-      setProfSignals(signalsLine(r))
-    } else {
-      setProfStatus(r.error || 'профиль не прочитан')
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadProfile()
-    void refreshModels()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function refreshModels() {
-    setModels('обновляю…')
-    const r = await fetchCounters()
-    setModels(r.line)
-  }
-
-  async function onSave() {
-    setBusy(true)
-    const r = await saveProfile(prof)
-    if (r.ok) {
-      setProfStatus(r.unchanged ? 'ничего не изменилось — сохранилось как было' : profileStatusLine(r))
-      setProfSignals(signalsLine(r))
-      /* Имя нужно не только этому экрану: с ним приветствие в чате и сидбар
-         называют человека, а не «Гость». Пишем рядом с серверной копией. */
-      savePersonName(prof.name)
-      notify(r.unchanged ? 'Менять нечего' : 'Записал: учту в следующих ответах')
-    } else {
-      /* сохрание прилетело отказом — человек должен видеть причину, а не крутящийся
-         спиннер: слишком часто, нет KV, нет сети — это разные истории */
-      setProfStatus('Не сохранил: ' + (r.error || 'неизвестно'))
-      notify('Профиль не сохранён')
-    }
-    setBusy(false)
-  }
-
-  async function onClear() {
-    setBusy(true)
-    const r = await clearProfile()
-    if (r.ok) {
-      setProf({ name: '', job: '', about: '' })
-      setProfStatus('профиль забыт · поля пустые')
-      setProfSignals('')
-      notify('Профиль очищен')
-    } else {
-      setProfStatus('Не очистил: ' + (r.error || 'неизвестно'))
-    }
-    setBusy(false)
-  }
+export function SettingsView({ themePref, onThemePref, onNavigate }: SettingsViewProps) {
+  /* «Внешний вид» — раскрывающаяся строка: тема выбирается прямо под подписью,
+     как в приложении ChatGPT. По умолчанию свёрнута, чтобы список оставался списком. */
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
 
   return (
     <div className="container view settings-view">
       <div className="page-head">
         <div className="grow">
           <h1>Настройки</h1>
-          <p className="sub">Внешний вид, ассистент и параметры приложения.</p>
+          <p className="sub">Внешний вид и параметры приложения.</p>
         </div>
-        <SlidersHorizontal
-          size={22}
-          color="var(--text-3)"
-          style={{ marginTop: 4, flexShrink: 0 }}
-        />
       </div>
 
-      <div className="profile-card">
-        <div className="avatar" style={{ width: 54, height: 54, fontSize: 18 }}>
-          {initials(user)}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="name">{displayName(user)}</div>
-          <div className="handle">
-            {user.handle}
-          </div>
-        </div>
-        <Badge tone="gray">
-          <span className="dot" />
-          без аккаунта
-        </Badge>
-      </div>
-
-      <div className="settings-group" style={{ marginTop: 26 }}>
-        <div className="settings-label">Внешний вид</div>
+      <div className="settings-group" style={{ marginTop: 4 }}>
         <div className="settings-card">
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Palette size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Тема</div>
-            </div>
-            <Segmented
-              variant="icon"
-              value={themePref}
-              onChange={onThemePref}
-              options={[
-                { value: 'system', label: <Monitor size={15} />, title: 'Системная' },
-                { value: 'light', label: <Sun size={15} />, title: 'Светлая' },
-                { value: 'dark', label: <Moon size={15} />, title: 'Тёмная' },
-              ]}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="settings-group">
-        <div className="settings-label">Ассистент</div>
-        <div className="settings-card">
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Bell size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Уведомления</div>
-              <div className="d">Ответы агента и статусы задач</div>
-            </div>
-            <Switch
-              checked={prefs.notifications}
-              label="Уведомления"
-              onChange={(v) => setPrefs({ ...prefs, notifications: v })}
-            />
-          </div>
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Volume2 size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Звуки</div>
-              <div className="d">Звук при ответе агента</div>
-            </div>
-            <Switch
-              checked={prefs.sounds}
-              label="Звуки"
-              onChange={(v) => setPrefs({ ...prefs, sounds: v })}
-            />
-          </div>
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <UserRound size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Род агента</div>
-            </div>
-            <Segmented
-              value={gender}
-              onChange={setGender}
-              options={GENDER_CHOICES.map((c) => ({
-                value: c.value,
-                /* На узком экране «Мужской/Женский» не помещаются рядом с подписью
-                   и она уезжала под переключатель (а прошлая попытка увести
-                   переключатель на свою строку раздула блок). Показываем короткие
-                   подписи — CSS выбирает, какой вариант виден (см. .seg-short). */
-                label: (
-                  <>
-                    <span className="seg-long">{c.title}</span>
-                    <span className="seg-short">{c.short}</span>
-                  </>
-                ),
-                title: c.hint,
-              }))}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="settings-group">
-        <div className="settings-label">Память</div>
-        <div className="settings-card">
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Fingerprint size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Чья это память</div>
-              <div className="d">
-                {identityLine(currentUserId())} — у каждого человека своя, память
-                необщая. Сменить ключ = начать с чистого листа
-              </div>
-            </div>
-            <Badge tone="gray">Браузер</Badge>
-          </div>
-          <div className="settings-form">
-            <label>
-              <span>Как вас зовут</span>
-              <input
-                value={prof.name}
-                maxLength={60}
-                placeholder="Например, Иван"
-                onChange={(e) => setProf({ ...prof, name: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>Ваша профессия или занятие</span>
-              <input
-                value={prof.job}
-                maxLength={90}
-                placeholder="Например, аналитик данных"
-                onChange={(e) => setProf({ ...prof, job: e.target.value })}
-              />
-            </label>
-            <label>
-              <span>Подробнее о вас</span>
-              <textarea
-                value={prof.about}
-                maxLength={1500}
-                rows={4}
-                placeholder="Интересы и предпочтения: что учитывать, отвечать коротко или подробно, нужны ли примеры и код"
-                onChange={(e) => setProf({ ...prof, about: e.target.value })}
-              />
-              <span className="hint">
-                Три поля уходят агенту в каждый ответ. Он опирается на них и не
-                выдумывает сверх написанного; в разговоре их не пересказывает.
-              </span>
-            </label>
-            <div className="actions">
-              <Button variant="primary" icon={Save} onClick={onSave} disabled={busy}>
-                Сохранить
-              </Button>
-              <Button variant="ghost" icon={Trash2} onClick={onClear} disabled={busy}>
-                Забыть
-              </Button>
-              <span className="hint">{profStatus}</span>
-            </div>
-            {profSignals ? <div className="settings-signals">{profSignals}</div> : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="settings-group">
-        <div className="settings-label">Приложение</div>
-        <div className="settings-card">
-          <div
-            className="settings-row tappable"
-            role="button"
-            tabIndex={0}
-            onClick={() => notify('Панель администратора — в следующих версиях')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                notify('Панель администратора — в следующих версиях')
-              }
+          <button
+            type="button"
+            className="rows-row tappable"
+            aria-expanded={appearanceOpen}
+            onClick={() => {
+              haptic('light')
+              setAppearanceOpen((v) => !v)
             }}
           >
-            <div className="icon-wrap">
-              <ShieldCheck size={16} />
+            <span className="rows-ic" aria-hidden="true">
+              <Sun size={20} />
+            </span>
+            <span className="rows-name">Внешний вид</span>
+            <ChevronDown
+              size={17}
+              className={`rows-chev${appearanceOpen ? ' is-open' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+          {appearanceOpen ? (
+            <div className="rows-row is-plain">
+              <Segmented
+                variant="icon"
+                value={themePref}
+                onChange={onThemePref}
+                options={[
+                  { value: 'system', label: <Monitor size={15} />, title: 'Системная' },
+                  { value: 'light', label: <Sun size={15} />, title: 'Светлая' },
+                  { value: 'dark', label: <Moon size={15} />, title: 'Тёмная' },
+                ]}
+              />
+              <span className="rows-hint">Тема приложения</span>
             </div>
-            <div className="grow">
-              <div className="n">Панель управления</div>
-              <div className="d">Админка SaaS: пользователи, лимиты, статистика</div>
-            </div>
-            <Badge tone="blue">Скоро</Badge>
+          ) : null}
+
+          <div className="rows-row is-soon">
+            <span className="rows-ic" aria-hidden="true">
+              <Palette size={20} />
+            </span>
+            <span className="rows-name">Акцентный цвет</span>
+            <span className="rows-dot" aria-hidden="true" />
+            <span className="rows-val">Синий</span>
+            <Badge tone="gray">Скоро</Badge>
+            <ChevronDown size={17} className="rows-chev" aria-hidden="true" />
           </div>
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Cpu size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Модели</div>
-              <div className="d">{models}</div>
-            </div>
-            <Button variant="ghost" icon={RefreshCw} onClick={refreshModels}>
-              Обновить
-            </Button>
+        </div>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-card">
+          <div className="rows-row is-soon">
+            <span className="rows-ic" aria-hidden="true">
+              <AudioLines size={20} />
+            </span>
+            <span className="rows-name">Голос</span>
+            <Badge tone="gray">Скоро</Badge>
           </div>
-          <div className="settings-row">
-            <div className="icon-wrap">
-              <Info size={16} />
-            </div>
-            <div className="grow">
-              <div className="n">Версия</div>
-            </div>
-            <Badge tone="gray">{APP_VERSION}</Badge>
-            <Button
-              variant="ghost"
-              icon={RefreshCw}
-              onClick={() => {
-                notify('Обновляю приложение…')
-                void forceAppUpdate()
-              }}
-            >
-              Обновить
-            </Button>
+          <div className="rows-row is-soon">
+            <span className="rows-ic" aria-hidden="true">
+              <LockKeyhole size={20} />
+            </span>
+            <span className="rows-name">Безопасность и вход</span>
+            <Badge tone="gray">Скоро</Badge>
           </div>
+          <div className="rows-row is-soon">
+            <span className="rows-ic" aria-hidden="true">
+              <HardDrive size={20} />
+            </span>
+            <span className="rows-name">Хранилище</span>
+            <Badge tone="gray">Скоро</Badge>
+          </div>
+          <button
+            type="button"
+            className="rows-row tappable"
+            onClick={() => {
+              haptic('light')
+              onNavigate('data')
+            }}
+          >
+            <span className="rows-ic" aria-hidden="true">
+              <Database size={20} />
+            </span>
+            <span className="rows-name">Управление данными</span>
+          </button>
+          <div className="rows-row is-soon">
+            <span className="rows-ic" aria-hidden="true">
+              <Bug size={20} />
+            </span>
+            <span className="rows-name">Сообщить об ошибке</span>
+            <Badge tone="gray">Скоро</Badge>
+          </div>
+          <button
+            type="button"
+            className="rows-row tappable"
+            onClick={() => {
+              haptic('light')
+              onNavigate('info')
+            }}
+          >
+            <span className="rows-ic" aria-hidden="true">
+              <Info size={20} />
+            </span>
+            <span className="rows-name">Информация</span>
+          </button>
         </div>
       </div>
 

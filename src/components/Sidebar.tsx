@@ -8,7 +8,6 @@ import {
   Moon,
   PenLine,
   Search,
-  Settings,
   Sparkles,
   Sun,
   Trash2,
@@ -38,7 +37,7 @@ interface SidebarProps {
   newsDot?: boolean
 }
 
-const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
+const SECTIONS: { id: ViewId; label: string; icon: typeof Briefcase }[] = [
   { id: 'cases', label: 'Дела', icon: Briefcase },
   /* Расход — пунктом раздела, а не строкой в Настройках: в Настройках он дублировал
      этот же переход, и человек искал его в двух местах вместо одного. */
@@ -46,7 +45,9 @@ const SECTIONS: { id: ViewId; label: string; icon: typeof Settings }[] = [
   /* «Что нового» — первым пунктом: после обновления человек первым делом ищет
      именно его, а точка на пункте говорит, что версия сменилась. */
   { id: 'whatsnew', label: 'Что нового', icon: Sparkles },
-  { id: 'settings', label: 'Настройки', icon: Settings },
+  /* «Настройки» отсюда убраны (0.155): вход в них один — через профиль, он на
+     аватарке в нижней панели. Два входа путали: человек не понимал, чем
+     настройки в меню отличаются от настроек в профиле. */
 ]
 
 
@@ -248,7 +249,7 @@ export function Sidebar({
         </div>
 
         <div className="side-foot-row">
-          <button type="button" className="user-row" onClick={() => onNavigate('settings')}>
+          <button type="button" className="user-row" onClick={() => onNavigate('profile')}>
             <div className="avatar" style={{ width: 30, height: 30, fontSize: 11.5 }}>
               {initials(user)}
             </div>
