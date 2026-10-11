@@ -557,7 +557,6 @@ export async function sendChat(
         /* явная просьба глубокого поиска в сети; без неё работают только собственные триггеры */
         webSearch: opts.webSearch ? true : undefined,
         temperature: typeof opts.temperature === 'number' ? opts.temperature : undefined,
-        maxTokens: typeof opts.maxTokens === 'number' && opts.maxTokens > 0 ? opts.maxTokens : undefined,
         topP: typeof opts.topP === 'number' ? opts.topP : undefined,
         presencePenalty: typeof opts.presencePenalty === 'number' ? opts.presencePenalty : undefined,
         frequencyPenalty: typeof opts.frequencyPenalty === 'number' ? opts.frequencyPenalty : undefined,

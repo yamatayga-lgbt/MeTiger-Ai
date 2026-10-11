@@ -538,7 +538,7 @@ interface ChatViewProps {
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
   onStop?: () => void
-  /** Параметры генерации (temperature, max_tokens, top_p) */
+  /** Параметры генерации (temperature, top_p) */
   genParams?: GenParams
   onGenParamsChange?: (next: GenParams) => void
 }
@@ -1271,7 +1271,7 @@ export function ChatView({
                 className={`params-btn${paramsOpen ? ' is-open' : ''}`}
                 aria-label="Параметры генерации"
                 aria-expanded={paramsOpen}
-                title="Параметры: temperature, max_tokens, top_p"
+                title="Параметры: temperature, top_p"
                 onClick={() => {
                   haptic('light')
                   setParamsOpen((v) => !v)

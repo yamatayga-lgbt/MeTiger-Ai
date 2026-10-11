@@ -437,7 +437,6 @@ export default function App() {
                   }
                 : {}),
               temperature: genParams.temperature,
-              ...(genParams.maxTokens > 0 ? { maxTokens: genParams.maxTokens } : {}),
               topP: genParams.topP,
               presencePenalty: genParams.presencePenalty,
               frequencyPenalty: genParams.frequencyPenalty,

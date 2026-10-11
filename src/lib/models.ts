@@ -24,8 +24,6 @@ export const EFFORT_LABELS: Record<ReasoningEffort, string> = {
 
 export interface GenParams {
   temperature: number
-  /** 0 = Макс. (потолок самой модели), иначе 256..8192 */
-  maxTokens: number
   topP: number
   /** -2..2, 0 = выключено. Положительное — реже повторяет уже сказанные темы целиком. */
   presencePenalty: number
@@ -35,7 +33,6 @@ export interface GenParams {
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
   temperature: 1.0,
-  maxTokens: 0,
   topP: 0.95,
   presencePenalty: 0,
   frequencyPenalty: 0,
@@ -46,7 +43,6 @@ export function isGenParams(v: unknown): v is GenParams {
   const o = v as Record<string, unknown>
   return (
     typeof o.temperature === 'number' &&
-    typeof o.maxTokens === 'number' &&
     typeof o.topP === 'number' &&
     /* поля появились в 0.070 — старое сохранённое состояние (до обновления) их не
        содержит, поэтому отсутствие трактуем как 0 (выключено), а не как брак данных */
@@ -67,7 +63,6 @@ export function withGenParamDefaults(p: GenParams): GenParams {
 export function isDefaultGenParams(p: GenParams): boolean {
   return (
     Math.abs(p.temperature - DEFAULT_GEN_PARAMS.temperature) < 0.01 &&
-    p.maxTokens === DEFAULT_GEN_PARAMS.maxTokens &&
     Math.abs(p.topP - DEFAULT_GEN_PARAMS.topP) < 0.01 &&
     Math.abs((p.presencePenalty || 0) - DEFAULT_GEN_PARAMS.presencePenalty) < 0.01 &&
     Math.abs((p.frequencyPenalty || 0) - DEFAULT_GEN_PARAMS.frequencyPenalty) < 0.01
