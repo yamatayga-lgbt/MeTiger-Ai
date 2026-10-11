@@ -21,6 +21,8 @@
      Текст ошибки на экране — единственный способ узнать причину с телефона.
    ============================================================ */
 import { Component, type ReactNode } from 'react'
+import { isChunkLoadError } from '../lib/chunkReload'
+import { forceAppUpdate } from '../lib/version'
 
 interface GuardProps {
   children: ReactNode
@@ -81,11 +83,20 @@ export class RootGuard extends Component<{ children: ReactNode }, RootState> {
 
   render() {
     if (this.state.error === null) return this.props.children
+    /* 0.157: «файл старой версии не найден» — это не поломка приложения, а
+       отставшая на одну выкладку вкладка. Человеку не нужно читать про ошибку:
+       ему нужна кнопка, которая берёт свежую версию. Автоперезагрузка уже
+       пробовала (lib/chunkReload) — сюда попадаем, когда она не помогла. */
+    const stale = isChunkLoadError(this.state.error)
     return (
       <div className="crash-screen" role="alert">
         <div className="crash-card">
-          <h1>Приложение споткнулось</h1>
-          <p>Это ошибка MeTiger, не ваша. Текст ниже поможет её исправить — покажите его в чате поддержки.</p>
+          <h1>{stale ? 'Есть свежая версия' : 'Приложение споткнулось'}</h1>
+          <p>
+            {stale
+              ? 'Приложение обновилось, пока это окно было открыто: файлы прежней версии больше не нужны. Это не ошибка — нажмите «Обновить и перезагрузить», и всё откроется.'
+              : 'Это ошибка MeTiger, не ваша. Текст ниже поможет её исправить — покажите его в чате поддержки.'}
+          </p>
           <pre className="crash-error">{this.state.error}</pre>
           {this.state.stack ? (
             <details className="crash-stack">
@@ -94,18 +105,32 @@ export class RootGuard extends Component<{ children: ReactNode }, RootState> {
             </details>
           ) : null}
           <div className="crash-actions">
-            <button type="button" className="crash-btn primary" onClick={() => location.reload()}>
-              Перезагрузить
-            </button>
             <button
               type="button"
-              className="crash-btn"
-              onClick={() => { void resetStoredData() }}
+              className="crash-btn primary"
+              onClick={() => {
+                /* На отставшей версии обычной перезагрузки может не хватить
+                   (кэш мог отдать ту же оболочку) — тогда сносим service worker
+                   и его кэш: это и есть «Обновить и перезагрузить». */
+                if (stale) void forceAppUpdate()
+                else location.reload()
+              }}
             >
-              Сбросить данные и перезагрузить
+              {stale ? 'Обновить и перезагрузить' : 'Перезагрузить'}
             </button>
+            {stale ? null : (
+              <button
+                type="button"
+                className="crash-btn"
+                onClick={() => { void resetStoredData() }}
+              >
+                Сбросить данные и перезагрузить
+              </button>
+            )}
           </div>
-          <p className="crash-note">«Сбросить данные» удалит сохранённую переписку на этом устройстве — применяйте, только если перезагрузка не помогает.</p>
+          {stale ? null : (
+            <p className="crash-note">«Сбросить данные» удалит сохранённую переписку на этом устройстве — применяйте, только если перезагрузка не помогает.</p>
+          )}
         </div>
       </div>
     )

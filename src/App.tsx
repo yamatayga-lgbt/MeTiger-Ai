@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { WorkspaceDrawer } from './components/WorkspaceDrawer'
@@ -7,13 +7,17 @@ import { Toast } from './components/Toast'
 import { CaseEditorModal } from './components/CaseEditorModal'
 import { ChatView } from './views/ChatView'
 import { CasesView } from './views/CasesView'
-const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })))
-const ProfileView = lazy(() => import('./views/ProfileView').then((m) => ({ default: m.ProfileView })))
-const PersonalizationView = lazy(() => import('./views/PersonalizationView').then((m) => ({ default: m.PersonalizationView })))
-const DataView = lazy(() => import('./views/DataView').then((m) => ({ default: m.DataView })))
-const InfoView = lazy(() => import('./views/InfoView').then((m) => ({ default: m.InfoView })))
-const UsageView = lazy(() => import('./views/UsageView').then((m) => ({ default: m.UsageView })))
-const WhatsNewView = lazy(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })))
+/* Экраны грузятся отдельными файлами. lazyView вместо голого lazy (0.157):
+   если вкладка открыта с прошлой выкладки, файл старой версии уже удалён — это
+   не ошибка приложения, а отставание на версию, и лечится перезагрузкой
+   (см. lib/chunkReload.ts). */
+const SettingsView = lazyView(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })))
+const ProfileView = lazyView(() => import('./views/ProfileView').then((m) => ({ default: m.ProfileView })))
+const PersonalizationView = lazyView(() => import('./views/PersonalizationView').then((m) => ({ default: m.PersonalizationView })))
+const DataView = lazyView(() => import('./views/DataView').then((m) => ({ default: m.DataView })))
+const InfoView = lazyView(() => import('./views/InfoView').then((m) => ({ default: m.InfoView })))
+const UsageView = lazyView(() => import('./views/UsageView').then((m) => ({ default: m.UsageView })))
+const WhatsNewView = lazyView(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
 import { useTheme } from './hooks/useTheme'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
@@ -32,6 +36,7 @@ import {
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { caseContext, draftCaseFromChat, loadCases, newCaseDraft, saveCases, type CaseFile } from './lib/cases'
 import { haptic } from './lib/haptic'
+import { lazyView } from './lib/chunkReload'
 import { siteUser, type Person } from './lib/user'
 import { usePersistentState } from './hooks/usePersistentState'
 import {
