@@ -28,7 +28,9 @@ ok('U146c жест обновления молчит при открытой к�
   /const viewportBusy = \(\): boolean =>/.test(hook)
     && /vv\.scale > 1\.02/.test(hook)
     && /vv\.offsetTop > 1 \|\| window\.innerHeight - vv\.height > 1/.test(hook)
-    && /armed = !viewportBusy\(\) && atTop\(e\.target\)/.test(hook));
+    /* 0.160: к условию добавились сторож слоя и замок — клавиатурный сторож
+       остался в той же цепочке. */
+    && /armed = [!\w\s&()]*viewportBusy\(\)[!\w\s&()]*atTop\(e\.target\)/.test(hook));
 
 ok('U146d заметка о выпуске и история README содержат 0.146',
   /version: '0\.146'[\s\S]*?title: 'Поле ввода не уезжает при смахивании'/.test(notes)

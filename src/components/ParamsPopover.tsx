@@ -1,7 +1,8 @@
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { haptic } from '../lib/haptic'
+import { lockPageGesture, unlockPageGesture } from '../lib/pageGesture'
 
 interface ParamsPopoverProps {
   params: GenParams
@@ -25,6 +26,13 @@ export function ParamsPopover({ params, onChange, onClose }: ParamsPopoverProps)
   const [dragY, setDragY] = useState(0)
   const [dragging, setDragging] = useState(false)
   const startY = useRef<number | null>(null)
+
+  /* Пока шторка открыта, страничный жест «потянул вниз — обновилось» молчит
+     (0.160): иначе владелец тянул шторку, а перезагружалась страница. */
+  useEffect(() => {
+    lockPageGesture()
+    return () => unlockPageGesture()
+  }, [])
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button')) return

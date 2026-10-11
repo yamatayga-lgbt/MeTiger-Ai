@@ -14,9 +14,14 @@
  *   · только вертикальный: повело вбок раньше, чем вниз, — жест отменяется
  *     (горизонтальные свайпы по коду и таблицам не должны перезагружать);
  *   · слушатели passive — прокрутка не платит за жест ни кадра;
- *   · отпустил дальше порога — перезагрузка; раньше порога — кружок уезжает.
+ *   · отпустил дальше порога — перезагрузка; раньше порога — кружок уезжает;
+ *   · касание, начавшееся внутри всплывающего слоя (шторка «Параметры»,
+ *     палитра, меню «+», ящик Workspace) или при явном замке, жест НЕ запускает:
+ *     движение принадлежит слою (0.160 — владелец ловил перезагрузку страницы,
+ *     когда тянул вниз шторку параметров).
  */
 import { useEffect, type RefObject } from 'react'
+import { pageGestureLocked, touchedOverlay } from '../lib/pageGesture'
 
 /** Палец должен пройти вниз хотя бы столько, чтобы жест считался «потянул». */
 const START_AT = 10
@@ -81,7 +86,10 @@ export function usePullToRefresh(ind: RefObject<HTMLElement>): void {
       if (busy || e.touches.length !== 1) return
       x0 = e.touches[0].clientX
       y0 = e.touches[0].clientY
-      armed = !viewportBusy() && atTop(e.target)
+      /* Слои и замок — до всякой геометрии: если палец лёг на шторку параметров,
+         «потянул вниз» значит «сложи шторку», и страницу тут обновлять нечего. */
+      const overlay = touchedOverlay(e.target)
+      armed = !overlay && !pageGestureLocked() && !viewportBusy() && atTop(e.target)
       pulling = false
       dist = 0
     }
