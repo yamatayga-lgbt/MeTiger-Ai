@@ -17,6 +17,7 @@
 
 /* Форматы файла — единый источник правды: у инструмента-указания и у постобработки. */
 import { smartSearch, searchBlock, SEARCH_DIRECTIVE } from './search.js';
+import { needsWeb } from './webrules.js';
 import { FMT, formatFromText } from './filegen.js';
 import { sharedImggen, IMG_DIRECTIVE, wantsImage, lineOf as imgLineOf } from './imggen.js';
 
@@ -461,9 +462,16 @@ export const TOOLS = [
   {
     id: 'web-search',
     title: 'Веб-поиск',
-    when: (t) => /найди в интернете|найди в сети|погугли|поищи|поиск[аи]?\s+в\s+интернете|search\s+the\s+web|найди информацию|актуальн\w*\s+данн|последн\w+\s+(верси|данн|инфо|релиз|событ)|в\s+202[4-9]\b|кто\s+(сейчас\s+президент|выиграл|победил|возглавляет)|когда\s+(вышел|вышла|выйдет|состоится)|сколько\s+сейчас\s+стоит|официальн\w+\s+сайт|что\s+(случилось|произошло)\s+с/i.test(t),
+    /* Автоматически, а не по кнопке (0.168): решает engine/webrules.js — нужен ли
+       этому вопросу интернет. Правило и его цена описаны там же; коротко: про то,
+       что меняется (курсы, цены, погода, новости, версии, кто сейчас у власти) —
+       ищем; про то, что не меняется (определения, код, перевод, счёт) — нет. */
+    when: (t) => needsWeb(t).need,
     async run({ text, env, fetch: fi, force, deep }) {
-      const q = queryOf(text) || ((force || deep) ? clean(text).slice(0, 120) : '');
+      /* Запросом идёт очищенный вопрос, а если очистка ничего не оставила (короткое
+         «новости», «курс») — сам вопрос: раньше такой запрос молча пропадал, и поиск
+         не срабатывал, хотя правило его уже включило. */
+      const q = queryOf(text) || clean(String(text || '')).slice(0, 120);
       if (!q) return null;
       /* 0.133: сначала настоящий поисковик (Gemini + Google Search, запасной — Groq
          browser_search) с чтением страниц — engine/search.js. Прежний путь

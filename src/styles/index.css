@@ -4857,14 +4857,6 @@ button.rows-row:hover {
   font-size: 22px;
 }
 
-/* «Искать в интернете» (0.166): включённая кнопка не кричит — она светится
-   акцентом и остаётся на месте между сообщениями, чтобы человек видел режим. */
-.web-btn.is-on {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
 .usage-prov {
   padding: 13px 16px;
   border-bottom: 1px solid var(--border);
