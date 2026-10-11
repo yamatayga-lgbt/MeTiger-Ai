@@ -1862,9 +1862,12 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       && /const runOutput = useCallback\(\(t: string\) => onSend\(t\), \[onSend\]\)/.test(readFileSync('src/views/ChatView.tsx', 'utf8'))
       && /<Markdown text=\{m\.text\} onRunOutput=\{runOutput\} sources=\{m\.sources\} \/>/.test(readFileSync('src/views/ChatView.tsx', 'utf8')));
 
+  const infoSrc = readFileSync('src/views/InfoView.tsx', 'utf8');
   ok('N25: строки «Модели» и «Версия» — короткие: у «Версии» только номер и кнопка (владелец попросил убрать «показывает старую версию? нажмите «Обновить»»), у «Моделей» — число без описания столбцом (0.155: обе строки на экране «Информация»)', 
-    !/показывает старую версию/.test(readFileSync('src/views/InfoView.tsx', 'utf8'))
-      && /<div className="n">Версия<\/div>\s*<\/div>/.test(readFileSync('src/views/InfoView.tsx', 'utf8'))
+    !/показывает старую версию/.test(infoSrc)
+      && /className="rows-name">Версия<\/span>/.test(infoSrc)
+      /* Ни одной строки с пояснением-абзацем: экран — список, а не форма. */
+      && !/<div className="d">/.test(infoSrc)
       && /моделей доступно: /.test(readFileSync('src/lib/api.ts', 'utf8'))
       && !/по провайдерам: /.test(readFileSync('src/lib/api.ts', 'utf8'))
       && !/живых провайдеров: /.test(readFileSync('src/lib/api.ts', 'utf8')));

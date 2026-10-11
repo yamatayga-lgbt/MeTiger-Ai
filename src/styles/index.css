@@ -4125,7 +4125,9 @@ button.rows-row:hover {
 }
 
 .rows-name {
-  flex: 1;
+  /* basis auto, а не 0: с длинным значением справа (например, счётчиком моделей)
+     подпись не должна сжиматься в ноль — уступает место значение. */
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4133,7 +4135,7 @@ button.rows-row:hover {
 }
 
 .rows-val {
-  flex: none;
+  flex: 0 1 auto;
   max-width: 46%;
   overflow: hidden;
   color: var(--text-3);
