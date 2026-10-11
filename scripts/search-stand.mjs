@@ -54,13 +54,56 @@ const args = process.argv.slice(2);
 const nArg = args.find((a) => a.startsWith('--n='));
 const N = nArg ? Math.max(1, Number(nArg.slice(4)) || 20) : QUESTIONS.length;
 const DEEP = args.includes('--deep');
+/* --prod: гонять вопросы через живой сайт, а не через локальный движок. Так стенд
+   проверяет настоящую дорогу — движок + поиск + ключи из окружения Cloudflare, — и
+   не требует ключей на машине. Заголовки браузера обязательны: Cloudflare отвечает
+   403 на запросы «из ниоткуда» (проверено на 0.161). */
+const PROD = args.includes('--prod');
+const PROD_URL = (args.find((a) => a.startsWith('--url=')) || '').slice(6) || 'https://metiger-ai.pages.dev';
+const PROD_UA = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+
+/** Один вопрос на живом сайте: ответ, источники, даты. */
+async function askProd(q) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 180000);
+  try {
+    const r = await fetch(PROD_URL + '/api/chat', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: PROD_URL,
+        referer: PROD_URL + '/',
+        'user-agent': PROD_UA,
+      },
+      body: JSON.stringify({ text: q, webSearch: true }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) return { ok: false, why: 'сервер ответил ' + r.status };
+    const j = await r.json().catch(() => null);
+    if (!j) return { ok: false, why: 'ответ не разобрался' };
+    return {
+      ok: !!j.ok,
+      why: j.error,
+      reply: String(j.reply || ''),
+      sources: Array.isArray(j.sources) ? j.sources : [],
+      engine: (j.provider || '') + (j.model ? '/' + j.model : ''),
+      ms: j.ms,
+    };
+  } catch (e) {
+    return { ok: false, why: String((e && e.message) || e) };
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 const env = Object.assign({}, loadSecrets(), process.env);
-if (!env.GEMINI_KEYS && !env.GROQ_KEYS) {
+if (!PROD && !env.GEMINI_KEYS && !env.GROQ_KEYS) {
   console.log('нет ключей: задайте GEMINI_KEYS/GROQ_KEYS или положите их в keys/.secrets.env');
+  console.log('или гоняйте через живой сайт: node scripts/search-stand.mjs --prod');
   process.exit(1);
 }
 
+console.log(PROD ? 'стенд свежести через живой сайт: ' + PROD_URL : 'стенд свежести через локальный движок');
 let withDate = 0;
 let read = 0;
 let ok = 0;
@@ -70,7 +113,7 @@ for (let i = 0; i < Math.min(N, QUESTIONS.length); i++) {
   const t0 = Date.now();
   let res = null;
   try {
-    res = await smartSearch({ q, env, deep: DEEP });
+    res = PROD ? await askProd(q) : await smartSearch({ q, env, deep: DEEP });
   } catch (e) {
     res = { ok: false, why: String((e && e.message) || e) };
   }
@@ -85,9 +128,11 @@ for (let i = 0; i < Math.min(N, QUESTIONS.length); i++) {
   rows.push({ q, ok: !!(res && res.ok), engine: (res && res.engine) || '', src: src.length, read: reads.length, dated: dated.length, newest, ms });
   console.log(
     (res && res.ok ? '✔' : '✖') + ' ' + String(i + 1).padStart(2) + '. ' + q.padEnd(44)
-    + ' источников ' + String(src.length).padStart(2) + ' · прочитано ' + reads.length
+    + ' источников ' + String(src.length).padStart(2)
+    + (PROD ? '' : ' · прочитано ' + reads.length)
     + ' · с датой ' + String(dated.length).padStart(2) + ' · свежайшая ' + newest.padEnd(10)
     + ' ' + String(ms).padStart(6) + ' мс'
+    + (PROD ? ' · ответ ' + String(((res && res.reply) || '').length) + ' зн.' : '')
     + (res && res.ok ? '' : '  (' + String((res && res.why) || 'нет ответа').slice(0, 60) + ')'),
   );
 }
