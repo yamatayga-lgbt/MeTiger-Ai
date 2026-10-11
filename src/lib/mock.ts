@@ -49,7 +49,7 @@ export interface ChatMessage {
   /** Общее время ответа в мс. */
   ms?: number
   /** Проверенные источники ответа (заголовок + ссылка) — кликабельны под пузырём. */
-  sources?: { title: string; url: string }[]
+  sources?: { title: string; url: string; date?: string }[]
   /** Шаги поиска в интернете и чтения сайтов (Searched for / Fetched). */
   webSteps?: {
     kind: 'search' | 'fetch'

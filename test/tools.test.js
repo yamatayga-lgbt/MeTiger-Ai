@@ -211,5 +211,14 @@ ok('T35: gatherTools собирает webSteps (search + fetch) для блок�
   ok('T132d: слоги — по гласным', /слогов: 4/.test(lettersOf('Сколько слогов в слове «телевизор»?')));
 }
 
+/* 0.163: дата источника доезжает до плашек под ответом. */
+{
+  const { extractSources } = await import('../engine/tools.js');
+  const block = '1) Курс доллара (https://myfin.by/usd · от 2026-10-04)\n2) Старая статья (https://old.by/x)';
+  const src = extractSources(block);
+  ok('T163a: дата источника вынута из строки поиска и уехала в плашку', src[0].date === '2026-10-04', JSON.stringify(src[0]));
+  ok('T163b: без даты источник остаётся без выдуманной свежести', src[1] && src[1].date === undefined, JSON.stringify(src[1]));
+}
+
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 process.exit(fail ? 1 : 0);

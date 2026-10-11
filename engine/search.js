@@ -143,6 +143,51 @@ export function pageText(html) {
 }
 
 const STOP = new Set('что как где кто когда какой какая какие какое это для или при над под про сколько сейчас сегодня есть был была были будет the and for with what how who when which from this that'.split(' '));
+/**
+ * Дата публикации или обновления страницы — из её же разметки (0.163).
+ *
+ * Зачем: «свежие данные» — то, ради чего человек идёт в поиск, а поисковик даёт
+ * ссылки без дат. Без даты модель не отличает вчерашнюю новость от статьи
+ * трёхлетней давности и отвечает по устаревшему как по текущему.
+ *
+ * Правило одно: дату берём ТОЛЬКО из разметки страницы (мета-теги, <time>,
+ * микроразметка) или из подписи «обновлено …» рядом с началом текста. Не нашли —
+ * пусто: выдуманная дата хуже отсутствия даты.
+ */
+export function dateOf(html) {
+  const h = String(html || '');
+  const raw = (re) => {
+    const m = re.exec(h);
+    return m && m[1] ? saneDate(m[1]) : '';
+  };
+  let d = raw(/<meta[^>]+(?:property|name|itemprop)=["'](?:article:published_time|article:modified_time|og:updated_time|datePublished|dateModified|pubdate|date|last-modified)["'][^>]*content=["']([^"']+)["']/i);
+  if (!d) d = raw(/<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name|itemprop)=["'](?:article:published_time|article:modified_time|og:updated_time|datePublished|dateModified|pubdate|date)["']/i);
+  if (!d) d = raw(/<time[^>]+datetime=["']([^"']+)["']/i);
+  if (!d) d = raw(/"datePublished"\s*:\s*"([^"]+)"/i);
+  if (!d) d = raw(/"dateModified"\s*:\s*"([^"]+)"/i);
+  if (!d) {
+    const txt = pageText(h).slice(0, 3000);
+    const m = /(?:обновлено|опубликовано|дата)[^0-9]{0,25}(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/i.exec(txt);
+    if (m) {
+      const dd = Number(m[1]);
+      const mm = Number(m[2]);
+      if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) return m[3] + '-' + String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+    }
+  }
+  return d;
+}
+
+/** Строка даты в безопасный вид: только разумные годы, иначе пусто. */
+function saneDate(s) {
+  const t = String(s || '').trim();
+  if (!t) return '';
+  const m = /(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  const y = m ? Number(m[1]) : (/^\d{4}$/.test(t) ? Number(t) : 0);
+  if (!y || y < 1995 || y > new Date().getFullYear() + 1) return '';
+  if (m && (Number(m[2]) < 1 || Number(m[2]) > 12 || Number(m[3]) < 1 || Number(m[3]) > 31)) return '';
+  return m ? m[1] + '-' + m[2] + '-' + m[3] : String(y) + '-01-01';
+}
+
 export function terms(q) {
   return String(q || '').toLowerCase().split(/[^a-zа-яё0-9]+/i).filter((w) => w.length >= 3 && !STOP.has(w)).map((w) => (w.length > 6 ? w.slice(0, w.length - 2) : w));
 }
@@ -174,7 +219,8 @@ export async function readPages(fi, sources, q, o) {
       if (ct && !/html|text/.test(ct)) return null;
       const html = (await r.text()).slice(0, 600000);
       const passages = bestPassages(pageText(html), q, 2, 420);
-      return passages.length ? { url: s.url, passages } : null;
+      const date = dateOf(html);
+      return passages.length ? { url: s.url, passages, date } : null;
     } catch { return null; }
   }));
   return res.filter(Boolean);
@@ -199,6 +245,12 @@ export async function smartSearch({ q, env, fetch: fi, deep }) {
   if (!res.ok) { why.push(res.why); res = await groqSearch({ q, env: e, fetch: f }); }
   if (!res.ok) { why.push(res.why); return { ok: false, why: why.join('; ') }; }
   res.reads = await readPages(f, res.sources, q, { pages: deep ? 5 : 3, ms: deep ? 4000 : 3000 });
+  /* Дата прочитанной страницы приклеивается к источнику: под ответом и в самом
+     блоке поиска человек и модель видят, насколько сведения свежие. */
+  for (const s of res.sources) {
+    const r = (res.reads || []).find((x) => x.url === s.url);
+    if (r && r.date) s.date = r.date;
+  }
   if (CACHE.size > 200) CACHE.clear();
   CACHE.set(key, { at: Date.now(), res });
   return res;
@@ -209,10 +261,12 @@ export function searchBlock(q, res) {
   const lines = [`Результаты поиска по запросу «${q}» (поисковик: ${res.engine === 'google' ? 'Google' : 'веб'}):`];
   res.sources.forEach((s, i) => {
     const read = (res.reads || []).find((r) => r.url === s.url);
-    lines.push(`${i + 1}) ${s.title || s.url} (${s.url})`);
+    lines.push(`${i + 1}) ${s.title || s.url} (${s.url}${s.date ? ' · от ' + s.date : ''})`);
     if (read) for (const p of read.passages) lines.push(`   выдержка: ${p}`);
   });
-  lines.push('', 'Сводка поисковика (опирайся на неё и на выдержки):', res.summary.slice(0, 2500));
+  lines.push('', 'У источников через «· от» указана дата публикации или обновления, где она есть. '
+    + 'Если данные явно старые (больше года) — скажи об этом человеку словами.', '',
+    'Сводка поисковика (опирайся на неё и на выдержки):', res.summary.slice(0, 2500));
   for (const r of res.reads || []) lines.push(`Выжимка из источника (${r.url}): ${r.passages[0].slice(0, 200)}`);
   return lines.join('\n');
 }

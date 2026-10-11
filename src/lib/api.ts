@@ -21,6 +21,8 @@ export interface ChatTurn {
 export interface SourceLink {
   title: string
   url: string
+  /** Дата публикации/обновления страницы, если её удалось прочитать (0.163). */
+  date?: string
 }
 
 export interface WebStep {
@@ -688,6 +690,25 @@ export function fileSize(n: number): string {
 /** data-URI для скачивания: своего хранилища под выдачу нет, файл живёт в ответе. */
 export function fileHref(f: { mime: string; b64: string }): string {
   return `data:${f.mime || 'application/octet-stream'};base64,${f.b64}`
+}
+
+/**
+ * Дата источника словами (0.163): «сегодня», «вчера», «3 дня назад», а дальше —
+ * обычная дата. Свежесть — половина смысла поиска, но показывать её надо так,
+ * чтобы человек понял с одного взгляда, а не сравнивал числа.
+ */
+export function sourceDate(iso: string, now?: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim())
+  if (!m) return ''
+  const d = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const today = new Date(now || Date.now())
+  const midnight = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+  const days = Math.round((midnight - d) / 86400000)
+  if (days < 0) return 'будущая дата?'   /* чужой часовой пояс — не делаем вид, что понимаем */
+  if (days === 0) return 'сегодня'
+  if (days === 1) return 'вчера'
+  if (days < 30) return days + ' ' + (days % 10 === 1 && days % 100 !== 11 ? 'день' : (days % 10 >= 2 && days % 10 <= 4 && (days % 100 < 10 || days % 100 >= 20) ? 'дня' : 'дней')) + ' назад'
+  return String(m[3]) + '.' + String(m[2]) + '.' + String(m[1])
 }
 
 export function sourceLine(r: ChatResult): string {

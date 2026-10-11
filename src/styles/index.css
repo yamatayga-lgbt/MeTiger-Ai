@@ -6205,3 +6205,11 @@ button,
   color: var(--text-3);
   margin-top: -4px;
 }
+
+/* 0.163 — дата источника на плашке под ответом: свежесть видно сразу. */
+.msg-source-date {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  margin-left: 4px;
+}

@@ -46,5 +46,42 @@ const S = [{ url: 'https://a.by' }, { url: 'https://b.by' }];
 ok('S133h сноски → ссылки', linkCitations('Факт [1], ещё [2][1].', S) === 'Факт [\\[1\\]](https://a.by), ещё [\\[2\\]](https://b.by)[\\[1\\]](https://a.by).', linkCitations('Факт [1], ещё [2][1].', S));
 ok('S133i код и чужие номера не трогаем', linkCitations('`a[1]` и [5] и [x](y)', S) === '`a[1]` и [5] и [x](y)');
 
+/* ── 0.163: даты источников ──────────────────────────────────────────────────── */
+console.log('\nS163 — свежесть источников');
+{
+  const { dateOf } = await import('../engine/search.js');
+  const META = '<html><head><meta property="article:published_time" content="2026-10-05T08:30:00+03:00"></head><body>новость</body></html>';
+  const TIME = '<html><body><article><time datetime="2026-09-30">30 сентября</time></article></body></html>';
+  const REV = '<html><head><meta content="2025-02-14" name="date"></head><body>x</body></html>';
+  const LD = '<html><body><script type="application/ld+json">{"datePublished":"2026-01-09T10:00:00"}</script></body></html>';
+  /* Строку «обновлено …» ищем в начале текста страницы, а pageText оставляет
+     только содержательные строки (длиннее 40 знаков) — в жизни подпись даты
+     всегда стоит рядом с текстом, поэтому и в проверке она рядом с ним. */
+  const TXT = '<html><body><article><p>Обновлено 11.10.2026, добавлены условия поставки и порядок оплаты по договору.</p></article></body></html>';
+  const NONE = '<html><body><p>просто текст без даты</p></body></html>';
+  const JUNK = '<html><head><meta property="article:published_time" content="1971-01-01"></head><body>x</body></html>';
+  ok('S163a дата из мета-тега публикации', dateOf(META) === '2026-10-05', dateOf(META));
+  ok('S163b дата из <time datetime>', dateOf(TIME) === '2026-09-30', dateOf(TIME));
+  ok('S163c дата из меты, где атрибуты в обратном порядке', dateOf(REV) === '2025-02-14', dateOf(REV));
+  ok('S163d дата из микроразметки страницы', dateOf(LD) === '2026-01-09', dateOf(LD));
+  ok('S163e дата из подписи «обновлено …» в начале текста', dateOf(TXT) === '2026-10-11', dateOf(TXT));
+  ok('S163f нет даты — честно пусто, а не выдуманная дата', dateOf(NONE) === '', dateOf(NONE));
+  ok('S163g нелепый год (1971) не показываем: битая разметка не должна выглядеть свежестью', dateOf(JUNK) === '', dateOf(JUNK));
+
+  /* Дата доезжает до списка источников и до блока, который видит модель. */
+  const html = '<html><head><meta property="article:published_time" content="2026-10-04"></head><body><p>' + 'курс доллара обновлён и составляет 3,0637 рубля. '.repeat(6) + '</p></body></html>';
+  const fi = async (url) => {
+    if (/generativelanguage/.test(String(url))) {
+      return { status: 200, headers: { get: () => 'application/json' }, text: async () => JSON.stringify({ candidates: [{ content: { parts: [{ text: 'сводка' }] }, groundingMetadata: { groundingChunks: [{ web: { title: 'Курс доллара', uri: 'https://myfin.by/usd' } }] } }] }) };
+    }
+    return { status: 200, headers: { get: () => 'text/html' }, text: async () => html };
+  };
+  const sr = await smartSearch({ q: 'курс доллара на сегодня 77', env: { GEMINI_KEYS: 'g1' }, fetch: fi });
+  const block = searchBlock('курс доллара', sr);
+  ok('S163h дата прочитанной страницы приклеивается к источнику', sr.ok && sr.sources[0] && sr.sources[0].date === '2026-10-04', JSON.stringify(sr.sources && sr.sources[0]));
+  ok('S163i в блоке для модели дата названа словами «· от»', /· от 2026-10-04/.test(block), block.split('\n').slice(1, 3).join(' | '));
+  ok('S163j модели сказано, что делать со старыми данными', /больше года/.test(block));
+}
+
 console.log(`\n${pass} ✔, ${fail} ✖`);
 if (fail) process.exit(1);

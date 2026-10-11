@@ -91,7 +91,7 @@ export function extractSources(block) {
   const lines = String(block || '').split('\n').map((s) => s.trim()).filter(Boolean);
   const out = [];
   const seen = new Set();
-  const add = (title, rawUrl) => {
+  const add = (title, rawUrl, date) => {
     const url = unwrapSearchUrl(String(rawUrl || '').replace(/[),.;]+$/, '').trim());
     if (!/^https?:\/\//i.test(url) || /creativecommons\.org\/licenses/i.test(url)) return;
     if (seen.has(url)) return;
@@ -101,7 +101,7 @@ export function extractSources(block) {
       try { t = new URL(url).hostname.replace(/^www\./i, ''); } catch { t = url; }
     }
     if (t.length > 80) t = t.slice(0, 79).trimEnd() + '…';
-    out.push({ title: t, url });
+    out.push(date ? { title: t, url, date } : { title: t, url });
   };
   let prevTitle = '';
   for (const line of lines) {
@@ -130,7 +130,10 @@ export function extractSources(block) {
     const iCol = head.indexOf(': ');
     const sep = iDash > 0 && iCol > 0 ? Math.min(iDash, iCol) : (iDash > 0 ? iDash : iCol);
     const title = sep > 0 && sep < 90 ? head.slice(0, sep) : head;
-    add(title || prevTitle, url);
+    /* Дата источника едет строкой «(url · от 2026-10-05)» от блока поиска: здесь
+       вынимаем её из строки, чтобы плашка под ответом показала свежесть. */
+    const dm = /·\s*от\s*(\d{4}-\d{2}-\d{2})/.exec(line);
+    add(title || prevTitle, url, dm ? dm[1] : '');
     prevTitle = '';
     if (out.length >= 8) break;
   }

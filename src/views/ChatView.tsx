@@ -15,7 +15,7 @@ import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
    виден как есть (pre-wrap), так что пустого места не бывает. */
 const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
-import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, type Attachment, type WebStep } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, sourceDate, type Attachment, type WebStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 import { enterKeySends } from '../lib/platform'
@@ -1032,6 +1032,12 @@ export function ChatView({
                         >
                           <span className="msg-source-idx">[{i + 1}]</span>
                           <span className="msg-source-title">{s.title || s.url}</span>
+                          {/* Дата видна на плашке: «сегодня» / «3 дня назад» / дата. Без
+                              неё человек не отличает вчерашнюю новость от статьи 2021 года,
+                              а модель — тоже (0.163). */}
+                          {s.date && sourceDate(s.date) ? (
+                            <span className="msg-source-date">{sourceDate(s.date)}</span>
+                          ) : null}
                         </a>
                       ))}
                     </div>
