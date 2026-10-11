@@ -365,7 +365,9 @@ export default function App() {
      В проде подмены нет: если движок не ответил, человек видит причину, а не
      красивый текст из таблички. */
   const sendMessage = useCallback(
-    (text: string, images?: string[], attachments?: Attachment[]) => {
+    /* web — «искать в интернете» с кнопки у поля ввода (0.166). Движок по этому
+       флагу принудительно включает веб-поиск, не полагаясь на догадку по словам. */
+    (text: string, images?: string[], attachments?: Attachment[], web?: boolean) => {
       const chatId = activeChatId
       const current = chats.find((c) => c.id === chatId)
       const history = (current?.messages ?? []).slice(-8).map((m) => ({ role: m.role, text: m.text }))
@@ -413,6 +415,7 @@ export default function App() {
             return await sendChat(text, history, {
               signal: ac.signal,
               threadId: chatId,
+              ...(web ? { webSearch: true } : {}),
               ...(images && images.length ? { images } : {}),
               ...(attachments && attachments.length ? { attachments } : {}),
               ...(model ? { model } : {}),

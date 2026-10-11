@@ -17,7 +17,12 @@ import { envKeys } from './providers.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const CACHE = new Map();             /* запрос → { at, res } на изолят */
-const CACHE_MS = 10 * 60 * 1000;
+/* Час, а не десять минут: человек спрашивает «курс доллара сегодня» трижды за
+   вечер, и каждый раз платить за это тремя прочитанными страницами незачем.
+   Свежесть при этом не страдает: число, увиденное час назад, — всё ещё «сегодня».
+   Живой стенд (scripts/search-stand.mjs) гоняет вопросы по одному разу, кэш ему
+   не мешает, а вот второй заход в тот же час был бы уже про кэш, а не про поиск. */
+const CACHE_MS = 60 * 60 * 1000;
 let keyTurn = 0;
 
 const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();

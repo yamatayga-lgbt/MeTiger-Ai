@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, Copy, Globe, Mic, Plus, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
 import { speak, stopSpeech } from '../lib/speech'
 import { type Person } from '../lib/user'
@@ -8,6 +8,8 @@ import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib
 import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, joinLive, VOICE_MAX_SEC, type VoiceSession } from '../lib/voice'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
+import { Toast } from '../components/Toast'
+import { usePersistentState } from '../hooks/usePersistentState'
 import { AttachMenu } from '../components/AttachMenu'
 import { Guard } from '../components/Guard'
 import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
@@ -534,7 +536,7 @@ interface ChatViewProps {
   /** Переключатель глубокого поиска («поиск») в панели ввода */
   searchOn?: boolean
   onToggleSearch?: () => void
-  onSend: (text: string, images?: string[], attachments?: Attachment[]) => void
+  onSend: (text: string, images?: string[], attachments?: Attachment[], web?: boolean) => void
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
   onStop?: () => void
@@ -568,6 +570,11 @@ export function ChatView({
      не нужно — ответ не звучит сам, пока человек не попросил. */
 
   const [value, setValue] = useState('')
+  /* Поиск в интернете — переключатель у поля ввода. Хранится в localStorage:
+     человек включил его осознанно, и после перезахода он должен остаться. */
+  const [webForce, setWebForce] = usePersistentState('mt-web-force', false)
+  const [toast, setToast] = useState<string | null>(null)
+  const closeToast = useCallback(() => setToast(null), [])
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
   /* Перетаскивание показываем словами: без подсветки человек не знает, что на окно можно ронять. */
@@ -827,7 +834,12 @@ export function ChatView({
        сам решит, что с этим делать. Совсем пустой ход не отправляем. */
     if (!text && !shots.length && !docs.length) return
     haptic('medium')
-    onSend(text || (docs.length ? 'Посмотри, что я приложил' : 'Что на картинке?'), shots.length ? shots : undefined, docs.length ? docs : undefined)
+    onSend(
+      text || (docs.length ? 'Посмотри, что я приложил' : 'Что на картинке?'),
+      shots.length ? shots : undefined,
+      docs.length ? docs : undefined,
+      webForce,
+    )
     setValue('')
     baseRef.current = ''
     setShots([])
@@ -1262,6 +1274,29 @@ export function ChatView({
             </div>
 
             <div className="composer-foot-right">
+              {/* «Искать в интернете» (0.166): раньше поиск включался только угадыванием
+                  по словам («погугли», «новости») или глубоким режимом. Теперь это видимая
+                  кнопка у поля ввода: человек сам решает, когда ответ должен быть со
+                  свежими данными. Флаг доезжает до движка полем webSearch — он включает
+                  тот же путь, что и «поглубже»: поиск работает, даже если вопрос ничем не
+                  выдал себя. Выключён — экономит время и чужие квоты. */}
+              <button
+                type="button"
+                className={`icon-btn web-btn${webForce ? ' is-on' : ''}`}
+                aria-label={webForce ? 'Выключить поиск в интернете' : 'Искать в интернете'}
+                aria-pressed={webForce}
+                title={webForce ? 'Поиск включён: ответ будет со свежими данными' : 'Искать в интернете'}
+                onClick={() => {
+                  haptic('light')
+                  setWebForce((v) => {
+                    setToast(v ? 'Поиск выключен' : 'Поиск включён — найду свежие данные')
+                    return !v
+                  })
+                }}
+              >
+                <Globe size={16} />
+              </button>
+
               <button
                 type="button"
                 className={`params-btn${paramsOpen ? ' is-open' : ''}`}
@@ -1342,6 +1377,7 @@ export function ChatView({
               />
             </>
           ) : null}
+          <Toast message={toast} onDone={closeToast} />
         </form>
         {voiceError ? (
           <div className="voice-error" role="status" aria-live="polite">
