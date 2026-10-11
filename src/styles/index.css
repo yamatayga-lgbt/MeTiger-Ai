@@ -209,18 +209,44 @@ a {
   outline-offset: 2px;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--r-full);
-}
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Полосы прокрутки — только там, где есть мышь.
+   Раньше эти три правила стояли без условий, и Chrome на телефоне рисовал
+   СВОЮ полосу постоянно (стоило задать ::-webkit-scrollbar, как системная
+   накладная полоса заменяется нарисованной — и та уже не исчезает). Владелец
+   показал это со скриншотом: серый столбик у правого края и серая полоса под
+   полем ввода. На телефоне скроллят пальцем — полоса там мусор, поэтому по
+   умолчанию её нет ни у одной зоны; на устройстве с точным указателем
+   возвращаем (тот же приём, что у .thread-scroll с 0.108). */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: var(--r-full);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
 @keyframes fadeUp {
   from {
     opacity: 0;
@@ -275,6 +301,13 @@ a {
 .app {
   display: grid;
   grid-template-columns: 1fr;
+  /* Строка сетки — РОВНО высота оболочки, а не «по содержимому».
+     Без этой строки неявная строка auto росла под содержимое: на экране настроек
+     .main становился 1642px при экране 851, .content получал ту же высоту и
+     прокручивать ему было нечего — низ настроек просто отрезало overflow: hidden
+     у .app (владелец: «интерфейс в настройках не скроллится»). Теперь .main
+     всегда во весь экран, а прокручивается внутренняя зона (.content). */
+  grid-template-rows: 100%;
   /* 100%, а НЕ 100dvh: dvh на Android Chrome пересчитывается по событиям
      прокрутки, а наша страница не прокручивается вовсе — после появления
      панели браузера оболочка оставалась выше экрана, и поле ввода насовсем
@@ -290,8 +323,13 @@ a {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* min-height: 0 — иначе flex-ребёнок (.content) не имеет права быть меньше
+     содержимого, и всё, что выше экрана, отрезается вместо прокрутки. */
+  min-height: 0;
   height: 100%;
+  overflow: hidden;
 }
+
 
 /* ---------- Sidebar (drawer на мобильном, статичный на десктопе) ---------- */
 .sidebar {
@@ -5897,24 +5935,18 @@ kbd {
   margin-bottom: 8px;
 }
 
-/* ---------- iOS Fixes ---------- */
-/* iOS viewport fix for virtual keyboard */
-@supports (interactive-widget: resizes-content) {
-  html {
-    height: 100%;
-  }
-  body {
-    height: 100%;
-    overflow-y: auto;
-  }
-}
-
-/* iOS focus styles */
+/* ---------- Мобильные мелочи (0.154) ----------
+   Здесь стоял блок «iOS Fixes» из чужой правки, который ломал две вещи разом:
+   `body { overflow-y: auto }` внутри @supports (interactive-widget…) возвращал
+   прокрутку КОРНЮ — ровно тот замок, что ставили в 0.143 против «оболочка едет
+   за пальцем»; а `.chat-shell { overflow-y: auto }` давал чату ВТОРОЙ скролл
+   внутри первого — со своим видимым столбиком у правого края. Обе строки убраны;
+   полезное (touch-action, фокус, -webkit-overflow-scrolling у настоящих скролл-зон)
+   оставлено ниже. */
 :focus:not(:focus-visible) {
   outline: none;
 }
 
-/* iOS touch actions for buttons */
 button,
 .side-item,
 .chat-item,
@@ -5924,12 +5956,13 @@ button,
   -webkit-tap-highlight-color: transparent;
 }
 
-/* iOS scroll behavior */
-.chat-shell,
+/* Инерция прокрутки только у тех зон, которые действительно скроллятся:
+   overflow у них уже задан выше — дублировать его здесь не нужно. */
 .side-history,
 .ws-body,
-.cases-grid {
+.thread-scroll,
+.model-list-scroll,
+.model-col-detail,
+.attach-files-list {
   -webkit-overflow-scrolling: touch;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
