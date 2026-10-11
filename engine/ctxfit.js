@@ -29,6 +29,17 @@ const MAX_SYSTEM = 32000;
 const MAX_MSG = 4000;
 const MAX_HISTORY = 12;
 const MAX_TEXT = 24000;
+/**
+ * Потолок окна, когда каталог говорит, что модель тянет больше.
+ *
+ * Почему не «сколько скажет каталог»: окно — не единственный предел бесплатного
+ * тарифа, есть ещё минута-токены (TPM). Gemini с миллионом токенов отдал бы
+ * `429` на запрос в 300 КБ раньше, чем прочитал бы его, — и человек вместо ответа
+ * получил бы обход по кругу. 60 000 токенов ≈ 150 000 знаков: это целый документ
+ * с запасом, и это всё ещё в разы больше прежних 8 192, из-за которых резалась
+ * половина файла в 24 000 знаков.
+ */
+export const CTX_WINDOW_MAX = 60000;
 
 /** Оценка в токенах: кириллица плотнее, чем латиница (см. шапку). */
 export function estTokens(s) {
@@ -158,7 +169,11 @@ function digest(list) {
 export function fit(ctx) {
   const o = ctx || {};
   const env = o.env || {};
-  const window = clampNumber(env.CTX_WINDOW, 1200, 1000000, 8192);
+  /* Окно: сначала явное число от движка (`o.window`) — он спрашивает его у каталога
+     про ту модель, которая сейчас отвечает (Gemini честно тянет миллион токенов, а
+     groq-голове и восьми тысяч много). Настройка оператора (CTX_WINDOW) остаётся
+     главной: она и есть «не расти выше этого» — тесты и отладка живут на ней. */
+  const window = clampNumber(o.window, 1200, 1000000, clampNumber(env.CTX_WINDOW, 1200, 1000000, 8192));
   const maxOut = clampNumber(env.CTX_MAX_OUT, 64, 32000, num(o.maxOut, 900));
   const on = String(env.CTX_FIT || '') !== 'off';
   const notes = [];
@@ -230,7 +245,10 @@ export function fit(ctx) {
       if (out.text.length > maxTextChars) {
         out.cut.textTrimmed = out.text.length - maxTextChars;
         out.text = out.text.slice(0, maxTextChars) + '\n…(дальше обрезано: окно модели ' + window + ' токенов)';
-        notes.push('твой текст укоротил на ' + out.cut.textTrimmed + ' знаков, чтобы запрос влез в модель');
+        /* Окно называем и здесь: человеку важно не только «текст урезали», но и
+           «до какого размера» — по одному числу видно, идти ли к модели пошире. */
+        notes.push('твой текст укоротил на ' + out.cut.textTrimmed + ' знаков, чтобы запрос влез в окно модели '
+          + window + ' токенов');
       }
     }
   }
@@ -242,13 +260,15 @@ export function fit(ctx) {
 /** Строка состояния для диагностического конца. */
 export function lineOf(env) {
   if (String((env || {}).CTX_FIT || '') === 'off') return 'выключен (CTX_FIT=off)';
-  return 'окно ' + num((env || {}).CTX_WINDOW, 8192) + ' токенов · резерв на ответ ' + num((env || {}).CTX_MAX_OUT, 900);
+  return 'окно ' + num((env || {}).CTX_WINDOW, 8192) + ' токенов (или потолок модели из каталога, он же не выше '
+    + num((env || {}).CTX_WINDOW_MAX, CTX_WINDOW_MAX) + ') · резерв на ответ ' + num((env || {}).CTX_MAX_OUT, 900);
 }
 
 export function stats(env) {
   return {
     on: String((env || {}).CTX_FIT || '') !== 'off',
     window: num((env || {}).CTX_WINDOW, 8192),
+    windowMax: num((env || {}).CTX_WINDOW_MAX, CTX_WINDOW_MAX),
     maxOut: num((env || {}).CTX_MAX_OUT, 900),
     caps: { system: MAX_SYSTEM, msg: MAX_MSG, text: MAX_TEXT, history: MAX_HISTORY },
     line: lineOf(env),

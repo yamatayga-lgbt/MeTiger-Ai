@@ -20,7 +20,7 @@ import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools
 import { gatherTools } from './tools.js';
 import { sharedImggen, packImages, wantsImage, editsReady } from './imggen.js';
 import { sharedUsage } from './usage.js';
-import { fit as fitContext } from './ctxfit.js';
+import { fit as fitContext, estTokens, clampNumber, CTX_WINDOW_MAX } from './ctxfit.js';
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
@@ -35,6 +35,17 @@ import * as vcouncil from './vcouncil.js';
 import { detectLang, langMind } from './langmind.js';
 import * as depth from './depth.js';
 import * as check from './check.js';
+
+/**
+ * С какого размера материала движок ищет модель пошире (см. wideFirst).
+ *
+ * Число берётся от самой узкой головы, которую мы вообще пускаем в бой: окно 8 192
+ * минус резерв на ответ — значит всё, что больше ~6 000 токенов, у неё уже режется.
+ * Раньше порога не было вовсе: порядок голов выбирался только по задаче, и документ
+ * в 24 000 знаков уезжал голове с окном 8К, теряя половину на резке, — хотя в том же
+ * пуле стояла модель, которая приняла бы его целиком.
+ */
+const WIDE_AT_TOKENS = 6000;
 
 const LANGUAGE_RULES =
   '\n\nОбщие правила языка и письма: отвечай на языке собеседника, если он не попросил иначе. '
@@ -478,19 +489,11 @@ export function createEngine(opts) {
        Указаний «кто ты» здесь нет намеренно — это данные о собеседнике, а не роль. */
     if (input.profile) system = system + '\n' + String(input.profile).slice(0, 4000);
 
-    /* Подгонка под окно модели (engine/ctxfit.js). Делается ЗДЕСЬ, а не на входе:
-       только сейчас известен полный system — персона + навыки + freedom + данные
-       инструментов. Иначе мы гадали бы по длине запроса и резали зря.
-       Последнюю реплику человека не трогаем никогда; история уходит с самого
-       старого конца, и отрезанное остаётся в промпте выжимкой. */
-    {
-      const fitted = fitContext({ system, history, text: userContent, images, env, maxOut: input.maxTokens || 1200 });
-      system = fitted.system;
-      history = fitted.history;
-      userContent = fitted.text;
-      ctxNotes = fitted.notes || [];
-      if (fitted.overflow) ctxNotes = ctxNotes.concat([fitted.overflow]);
-    }
+    /* Подгонка под окно модели (engine/ctxfit.js) переехала НИЖЕ — после состояния
+       собеседника, памяти и профиля. Причина: раньше она считала окно по персоне,
+       навыкам и инструментам, а блоки эмоции и памяти (до 8 КБ) приклеивались к
+       системному промпту ПОСЛЕ неё — и выталкивали историю из контекста уже мимо
+       всякого счёта. Теперь считаем один раз, по всему, что реально поедет. */
 
     /* Состояние собеседника: слой смотрит на форму последней реплики и предыдущих
        четырёх (оттуда же берётся тренд) и дописывает, КАК работать — коротко или по
@@ -521,6 +524,127 @@ export function createEngine(opts) {
       } catch (e) {
         /* память не имеет права сломать ответ — максимум, она молчит */
       }
+    }
+
+    let order = orderFor(tier, P, { images, only: input.only, forceModel: input.forceModel, health });
+    /* Математика и код: вперёд тот провайдер, у которого в пуле стоит голова-счётчик
+       (ныне — бесплатный DeepSeek на OdiRouter, см. INTENT_HEADS). Пин человека и
+       явный providerOrder перебивают это как есть: порядок ниже применяется к нему.
+       Исключение — «17*23», где калькулятор уже дал точный ответ: тащить ради этого
+       модель с другим провайдером значит добавить человеку четыре секунды (замер
+       на проде: odirouter 6,7 с против groq 2,6 с). Считает код, модель только говорит. */
+    if ((intent === 'math' || intent === 'code') && !pin0(input) && toolsRes.used.indexOf('calc') < 0) {
+      order = preferHeads(order, poolOf(P), intent, env);
+    }
+    /* На острой теме порядок провайдеров решает не конфиг, а их же поведение:
+       доказанно смелые — первыми. Доказательств нет — порядок как всегда. */
+    if (brave && sensitive && !pin0(input)) {
+      order = brave.orderProviders(order, poolOf(P));
+    }
+    if (input.providerOrder && input.providerOrder.length) {
+      order = input.providerOrder.filter((id) => P[id] && P[id].keys.length);
+    }
+
+    /* Пин модели: человек выбрал конкретную модель в окне ввода — говорить должна
+       именно она. Ищем провайдера, у которого такая модель есть в пуле, и сужаем
+       очередь до него. Незнакомый id (опечатка, модель ушла из каталога) не роняет
+       запрос: пин молча снимается, работает обычный обход. */
+    let pin = null;
+    const pinName = String(input.model || '').trim();
+    if (pinName) {
+      const owner = input.only && P[input.only] ? input.only : Object.keys(P).find((id) => {
+        const m = P[id].models || {};
+        return [].concat(m.fast || [], m.smart || []).indexOf(pinName) >= 0;
+      });
+      /* Модели из живого каталога нет в наших пулах — это не повод снимать выбор:
+         по данным каталога знаем, чей это id (OpenRouter или Xkiро). */
+      const owner2 = owner || modelreg.ownerOf(modelreg.cached(), pinName);
+      if (owner2) pin = { id: owner2, model: pinName };
+      /* Выбранную модель ставим ПЕРВОЙ, а не единственной. Каталоги провайдеров
+         врут: на проде `nex-agi/nex-n2.5-mini:free` числится бесплатной, а
+         OpenRouter отвечает 404 «эта модель недоступна бесплатно». Жёсткий пин
+         превращал такой выбор в красную ошибку «ни один провайдер не ответил»,
+         хотя ответить было чем. Теперь: пин имеет первый отказ, а дальше идёт
+         обычный обход — и человек видит, какой моделью его всё-таки накормили. */
+      if (pin) order = [pin.id].concat(order.filter((x) => x !== pin.id));
+    }
+
+    /* ── Подгонка под окно модели (engine/ctxfit.js), по всему, что поедет ──────
+       Здесь и только здесь система собрана целиком: персона + навыки + правила
+       свободы + инструменты + род + профиль + состояние собеседника + память.
+       Дальше в очереди провайдеров каждая голова получит своё окно — см. fitFor
+       у цикла попыток. */
+    /* Значения ДО резки: из них взят refit для модели с окном меньше «лучшего».
+       Без них второй проход резал бы уже порезанное, и выжимка начала бы пропадать. */
+    const pristine = { system, history, text: userContent };
+    /**
+     * Окно для конкретной модели: потолок каталога, а поверх — потолок оператора.
+     *
+     * Было: одно число на запрос (CTX_WINDOW, 8 192). Материал, который бесплатно
+     * тянет Gemini (миллион токенов), резался по мерке самой маленькой головы в
+     * пуле — документ в 24 000 знаков терял половину ещё до отправки, хотя принять
+     * его было чем. Нет каталога (тест, холодный изолят) — живём по-прежнему.
+     */
+    const windowCap = Math.max(1200, Number(env.CTX_WINDOW_MAX) || CTX_WINDOW_MAX);
+    const windowOperator = Number(env.CTX_WINDOW) > 0 ? Math.min(Number(env.CTX_WINDOW), 1000000) : 0;
+    function windowFor(providerId, model) {
+      const fallback = clampNumber(env.CTX_WINDOW, 1200, 1000000, 8192);
+      if (windowOperator) return windowOperator;      /* сказано «не расти выше» — не расту */
+      const ceil = modelreg.ceilings(modelreg.cached(), model, providerId);
+      if (!ceil || !ceil.ctx) return fallback;        /* каталог молчит — прежнее окно */
+      return Math.max(1200, Math.min(ceil.ctx, windowCap));
+    }
+    /* Сколько токенов просит этот запрос без резки — по этому числу движок решает,
+       звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */
+    const needTokens = estTokens(pristine.system) + estTokens(pristine.text)
+      + pristine.history.reduce((a, m) => a + estTokens(m && m.content), 0);
+    /* Первая подгонка — по ЛУЧШЕМУ окну среди тех, кто может ответить: терять
+       контекст заранее нельзя, сузить успеем под каждую попытку (fitFor). */
+    const bestWindow = (() => {
+      if (windowOperator) return windowOperator;
+      let best = clampNumber(env.CTX_WINDOW, 1200, 1000000, 8192);
+      for (const pid of order) {
+        const cfg = P[pid];
+        if (!cfg) continue;
+        for (const model of (modelsFor(cfg, tier, intent, images, env, deep) || []).slice(0, 3)) {
+          const w = windowFor(pid, model);
+          if (w > best) best = w;
+        }
+      }
+      return best;
+    })();
+    let fitted = fitContext({ ...pristine, images, env, maxOut: input.maxTokens || 1200, window: bestWindow });
+    system = fitted.system;
+    history = fitted.history;
+    userContent = fitted.text;
+    ctxNotes = (fitted.notes || []).slice();
+    if (fitted.overflow) ctxNotes = ctxNotes.concat([fitted.overflow]);
+    /**
+     * Подгонка под окно головы, которая сейчас получит запрос. Уже влезает в лучшее
+     * окно — отдаём готовое (лишней работы нет); у головы окно меньше — режем заново
+     * из pristine, и человек увидит правду именно про свою попытку.
+     */
+    function fitFor(providerId, model) {
+      const w = windowFor(providerId, model);
+      if (!fitted.window || w >= fitted.window) return fitted;
+      return fitContext({ ...pristine, images, env, maxOut: input.maxTokens || 1200, window: w });
+    }
+    /**
+     * Длинный материал — вперёд те, у кого есть чем его принять.
+     *
+     * Порядок голов выстаивался под задачу («эта лучше пишет код»), но документ в
+     * 24 000 знаков уезжает такой голове с окном 8К и половину теряет на резке, а
+     * рядом в пуле стоит модель, которая приняла бы его целиком. Ставим широких
+     * вперёд — состав не меняем: не ответит широкий, ответит прежний порядок.
+     */
+    function wideFirst(models, providerId) {
+      if (needTokens < WIDE_AT_TOKENS || (images && images.length)) return models;
+      const wide = [], rest = [];
+      for (const m of models) {
+        const ceil = modelreg.ceilings(modelreg.cached(), m, providerId);
+        (ceil && ceil.ctx >= needTokens ? wide : rest).push(m);
+      }
+      return wide.length ? wide.concat(rest) : models;
     }
     async function withMeta(out) {
       if (!out) return out;
@@ -647,53 +771,31 @@ export function createEngine(opts) {
       return out;
     }
 
-    const messages = history.concat([{ role: 'user', content: userContent }]);
+    /* Готового `messages` здесь больше нет: тексты для каждой попытки собирает
+       fitFor под окно её головы (см. выше) — иначе резка одной головы уезжала бы
+       другой, у которой места больше. */
     const allowReframe = input.allowReframe !== false && freedom.canReframe(text, env);
     let reframed = false;
     let reframedCalls = 0;
     let firstSoft = null;
 
-    let order = orderFor(tier, P, { images, only: input.only, forceModel: input.forceModel, health });
-    /* Математика и код: вперёд тот провайдер, у которого в пуле стоит голова-счётчик
-       (ныне — бесплатный DeepSeek на OdiRouter, см. INTENT_HEADS). Пин человека и
-       явный providerOrder перебивают это как есть: порядок ниже применяется к нему.
-       Исключение — «17*23», где калькулятор уже дал точный ответ: тащить ради этого
-       модель с другим провайдером значит добавить человеку четыре секунды (замер
-       на проде: odirouter 6,7 с против groq 2,6 с). Считает код, модель только говорит. */
-    if ((intent === 'math' || intent === 'code') && !pin0(input) && toolsRes.used.indexOf('calc') < 0) {
-      order = preferHeads(order, poolOf(P), intent, env);
-    }
-    /* На острой теме порядок провайдеров решает не конфиг, а их же поведение:
-       доказанно смелые — первыми. Доказательств нет — порядок как всегда. */
-    if (brave && sensitive && !pin0(input)) {
-      order = brave.orderProviders(order, poolOf(P));
-    }
-    if (input.providerOrder && input.providerOrder.length) {
-      order = input.providerOrder.filter((id) => P[id] && P[id].keys.length);
-    }
-
-    /* Пин модели: человек выбрал конкретную модель в окне ввода — говорить должна
-       именно она. Ищем провайдера, у которого такая модель есть в пуле, и сужаем
-       очередь до него. Незнакомый id (опечатка, модель ушла из каталога) не роняет
-       запрос: пин молча снимается, работает обычный обход. */
-    let pin = null;
-    const pinName = String(input.model || '').trim();
-    if (pinName) {
-      const owner = input.only && P[input.only] ? input.only : Object.keys(P).find((id) => {
-        const m = P[id].models || {};
-        return [].concat(m.fast || [], m.smart || []).indexOf(pinName) >= 0;
-      });
-      /* Модели из живого каталога нет в наших пулах — это не повод снимать выбор:
-         по данным каталога знаем, чей это id (OpenRouter или Xkiро). */
-      const owner2 = owner || modelreg.ownerOf(modelreg.cached(), pinName);
-      if (owner2) pin = { id: owner2, model: pinName };
-      /* Выбранную модель ставим ПЕРВОЙ, а не единственной. Каталоги провайдеров
-         врут: на проде `nex-agi/nex-n2.5-mini:free` числится бесплатной, а
-         OpenRouter отвечает 404 «эта модель недоступна бесплатно». Жёсткий пин
-         превращал такой выбор в красную ошибку «ни один провайдер не ответил»,
-         хотя ответить было чем. Теперь: пин имеет первый отказ, а дальше идёт
-         обычный обход — и человек видит, какой моделью его всё-таки накормили. */
-      if (pin) order = [pin.id].concat(order.filter((x) => x !== pin.id));
+    /* Длинный материал — вперёд те, кому есть чем его принять.
+       Порядок обхода выстраивался под задачу и скорость, и первым в нём обычно
+       стоит самый быстрый (у него окно 8К): документ в 24 000 знаков у него
+       режется, а стоящая следом голова на миллион токенов приняла бы его целиком.
+       Состав очереди не меняем — только тех, у кого материал помещается, ставим
+       раньше. Пин человека не трогаем: он выбрал модель руками, его слово первое. */
+    if (!pin && needTokens >= WIDE_AT_TOKENS) {
+      const fits = (pid) => {
+        const cfg = P[pid];
+        if (!cfg) return false;
+        return (modelsFor(cfg, tier, intent, images, env, deep) || []).some((m) => {
+          const ceil = modelreg.ceilings(modelreg.cached(), m, pid);
+          return !!ceil && ceil.ctx >= needTokens;
+        });
+      };
+      const wideIds = order.filter(fits);
+      if (wideIds.length && wideIds.length < order.length) order = wideIds.concat(order.filter((x) => wideIds.indexOf(x) < 0));
     }
 
     const tried = [];
@@ -717,6 +819,11 @@ export function createEngine(opts) {
          своим основаниям, и на картинке такая перестановка отправляет запрос слепой
          модели. Зрение — последнее слово, иначе весь смысл теряется. */
       models = visionFirst(models, images);
+      /* Длинный материал (документ, вставленный текст, долгий разговор) — вперёд те,
+         у кого есть чем его принять. Стоит ПОСЛЕ зрения (картинке нужна зрячая
+         голова, и это важнее окна) и ДО остывания: холодная голова не ответит
+         вообще, какое бы окно у неё ни было. */
+      if (!pin) models = wideFirst(models, id);
       /* Остывшие после 429 — в конец (выбор человека не трогаем). */
       if ((!pin || pin.id !== id) && !images.length) {
         models = mcool.order(id, models, cfg);
@@ -749,12 +856,21 @@ export function createEngine(opts) {
         if (!okPace) { tried.push({ provider: id, why: 'пауза тарифа длиннее бюджета' }); break; }
         lastCallAt[id] = Date.now();
         const useReframe = reframed && allowReframe;
-        const curMessages = useReframe
-          ? history.concat([{ role: 'user', content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }) }])
-          : messages;
-        const curSystem = useReframe
-          ? system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe })
-          : system;
+        /* Окно — по ЭТОЙ голове. Влезает в лучшее окно (обычный случай) — берём
+           готовую подгонку, работы нет; у головы окно меньше — режем заново из
+           pristine, и человеку достаётся правда именно про эту попытку, а не
+           заметка от той модели, которая в итоге не ответила. */
+        const fitNow = useReframe
+          ? fitContext({
+            system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
+            history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
+            text: toolsRes.block
+              ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block
+              : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
+          })
+          : fitFor(id, model);
+        const curMessages = fitNow.history.concat([{ role: 'user', content: fitNow.text }]);
+        const curSystem = fitNow.system;
         if (useReframe) reframedCalls++;
         const req = buildRequest({
           cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
@@ -789,6 +905,11 @@ export function createEngine(opts) {
           else if (r.soft || /ответ-отказ|блок по фильтру/.test(String(r.why || ''))) brave.mark(id, model, false);
         }
         if (r.ok) {
+          /* Ответила именно эта голова — значит её подгонка и есть правда о запросе.
+             Строки о резке от неудавшихся попыток человеку не показываем: они про
+             другую модель и только путали бы («урезал на 5» — а кто урезал?). */
+          ctxNotes = (fitNow.notes || []).slice();
+          if (fitNow.overflow) ctxNotes = ctxNotes.concat([fitNow.overflow]);
           /* Обрыв на лимите токенов: одна допылка у того же провайдера, не молча обрывать. */
           let reply = r.reply;
           if (r.finish === 'length' && input.continueOnTruncate !== false) {
@@ -863,19 +984,26 @@ export function createEngine(opts) {
       const left = deadline - Date.now();
       if (keyIdx >= 0 && await pace(id, left)) {
         lastCallAt[id] = Date.now();
-        const curMessages = history.concat([{
-          role: 'user',
-          content: toolsRes.block ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
-        }]);
+        /* Та же подгонка, что и в очереди: окно этой головы, история из pristine. */
+        const refit = fitContext({
+          system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
+          history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
+          text: toolsRes.block
+            ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block
+            : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
+        });
+        const curMessages = refit.history.concat([{ role: 'user', content: refit.text }]);
         const req = buildRequest({
           cfg, keyIdx, model, provider: id, messages: curMessages,
-          system: system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
+          system: refit.system,
           tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
         const r = await attemptOne(id, model, req, left);
         if (r.ok) {
+          ctxNotes = (refit.notes || []).slice();
+          if (refit.overflow) ctxNotes = ctxNotes.concat([refit.overflow]);
           const hit = {
             reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
             tools: toolsRes.used, sources: toolsRes.sources || [], webSteps: toolsRes.webSteps || [],

@@ -5,6 +5,8 @@
  */
 import { estTokens, clampNumber, normalizeFields, fit, lineOf, stats } from '../engine/ctxfit.js';
 import { createEngine } from '../engine/chat.js';
+import { buildTable } from '../engine/providers.js';
+import * as modelreg from '../engine/modelreg.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -110,6 +112,87 @@ console.log('C27 — сквозная проверка: движок приме�
   ok('C29: движок говорит словами, что он подрезал', typeof r.cxFit === 'string' && /окно модели/.test(r.cxFit), JSON.stringify(r.cxFit));
   const small = await createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: f, sleep: async () => {} }).run({ text: 'привет', history: [{ role: 'user', content: 'как дела' }], providerOrder: ['groq'], skills: false, useTools: false });
   ok('C30: на нормальном запросе поле подгонки пустое — резали нечего', small.ok && small.cxFit === undefined, JSON.stringify(small.cxFit));
+}
+
+/* 0.153: окно следует за моделью, которая отвечает.
+   До этого окно было одной цифрой на весь запрос (CTX_WINDOW, 8 192), и документ
+   в 24 000 знаков терял половину ещё до отправки — даже когда в пуле стояла модель
+   на миллион токенов. Здесь это и проверяется: у широкой головы документ цел, у
+   узкой — честно подрезан и названо окно, а на длинный материал движок сначала
+   идёт к широкой. */
+console.log('C31 — окно по модели, а не одно на всех');
+{
+  const P = buildTable({ GROQ_KEYS: 'g1', GEMINI_KEYS: 'm1' });
+  const models = [];
+  for (const [pid, cfg] of Object.entries(P)) {
+    for (const id of [].concat(cfg.models.fast || [], cfg.models.smart || [])) {
+      models.push({ id, src: pid, free: true, chat: true, ctx: pid === 'gemini' ? 1000000 : 8192, maxOut: 4096 });
+    }
+  }
+  const store = { get: async () => ({ value: JSON.stringify({ updatedAt: Date.now(), count: models.length, models }) }) };
+  await modelreg.loadCatalog(store, { env: {}, now: Date.now(), force: true });
+  ok('C31: каталог с разными окнами дошёл до движка (gemini 1М, groq 8К)',
+    modelreg.ceilings(modelreg.cached(), 'gemini-3.5-flash', 'gemini').ctx === 1000000
+      && modelreg.ceilings(modelreg.cached(), 'qwen/qwen3.8-27b', 'groq').ctx === 8192,
+    JSON.stringify({
+      gemini: modelreg.ceilings(modelreg.cached(), 'gemini-3.5-flash', 'gemini'),
+      groq: modelreg.ceilings(modelreg.cached(), 'qwen/qwen3.8-27b', 'groq'),
+    }));
+
+  /* «Документ» из вложения: 18 900 знаков — так ATTACH_DOC_CHARS и задуман, он
+     режет файл на 24 000, то есть документ обязан доехать до модели целиком. */
+  const tail = 'КОНЕЦ-ДОКУМЕНТА-77';
+  const doc = 'строка документа с данными. '.repeat(690) + tail;
+  const question = 'Что сказано в документе?\n\n' + doc;
+  const calls = [];
+  /* Ответ — в форме того провайдера, куда позвали: gemini разбирает candidates,
+     openai-подобные — choices. Один общий фейк отдавал gemini «пустой ответ». */
+  const f = async (url, init) => {
+    calls.push({ url: String(url), body: JSON.parse(String(init.body)) });
+    const body = /generativelanguage/.test(String(url))
+      ? { candidates: [{ content: { parts: [{ text: 'ок' }] }, finishReason: 'STOP' }] }
+      : { choices: [{ message: { content: 'ок' }, finish_reason: 'stop' }] };
+    return { status: 200, text: async () => JSON.stringify(body) };
+  };
+  /* У gemini текст лежит в contents (parts.text), у openai-подобных — в messages. */
+  const sentText = (i) => {
+    const b = (calls[i] && calls[i].body) || {};
+    if (Array.isArray(b.contents)) {
+      const last = b.contents[b.contents.length - 1] || {};
+      return String((((last.parts || [])[0]) || {}).text || '');
+    }
+    const msgs = b.messages || [];
+    return String((msgs[msgs.length - 1] && msgs[msgs.length - 1].content) || '');
+  };
+
+  const wide = await createEngine({ env: { GEMINI_KEYS: 'm1' }, fetch: f, sleep: async () => {} })
+    .run({ text: question, history: [], providerOrder: ['gemini'], skills: false, useTools: false });
+  ok('C32: широкая голова получает документ целиком — хвост на месте, резать нечего',
+    wide.ok && sentText(0).indexOf(tail) >= 0 && wide.cxFit === undefined,
+    JSON.stringify({ ok: wide.ok, cx: wide.cxFit, tailIn: sentText(0).indexOf(tail) >= 0, len: sentText(0).length }));
+
+  calls.length = 0;
+  const narrow = await createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: f, sleep: async () => {} })
+    .run({ text: question, history: [], providerOrder: ['groq'], skills: false, useTools: false });
+  ok('C33: узкая голова режет — и говорит, что окно было 8 192, а не молчит',
+    narrow.ok && sentText(0).indexOf(tail) < 0 && /окно модели 8192/.test(String(narrow.cxFit)),
+    JSON.stringify({ cx: narrow.cxFit, tailIn: sentText(0).indexOf(tail) >= 0 }).slice(0, 200));
+
+  calls.length = 0;
+  const auto = await createEngine({ env: { GROQ_KEYS: 'g1', GEMINI_KEYS: 'm1' }, fetch: f, sleep: async () => {} })
+    .run({ text: question, history: [], providerOrder: ['groq', 'gemini'], skills: false, useTools: false });
+  ok('C34: на длинный материал движок сам идёт к широкой голове первой (в этом и смысл)',
+    auto.ok && calls.length > 0 && /generativelanguage/.test(calls[0].url) && auto.cxFit === undefined,
+    JSON.stringify({ first: (calls[0] || {}).url, cx: auto.cxFit }).slice(0, 200));
+
+  /* Слово оператора остаётся главным: CTX_WINDOW — это «не расти выше», и каталог
+     с миллионом его не отменяет (на этом живут тесты и отладка). */
+  calls.length = 0;
+  const capped = await createEngine({ env: { GEMINI_KEYS: 'm1', CTX_WINDOW: '2000' }, fetch: f, sleep: async () => {} })
+    .run({ text: question, history: [], providerOrder: ['gemini'], skills: false, useTools: false });
+  ok('C35: CTX_WINDOW оператора сильнее каталога — окно 2 000 держит и миллионную модель',
+    capped.ok && /окно модели 2000/.test(String(capped.cxFit)) && sentText(0).indexOf(tail) < 0,
+    JSON.stringify({ cx: capped.cxFit, tailIn: sentText(0).indexOf(tail) >= 0 }).slice(0, 200));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
