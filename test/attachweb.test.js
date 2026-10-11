@@ -6,6 +6,7 @@
  *   node test/attachweb.test.js
  */
 import { onRequestPost, onRequestGet, readAttachments } from '../functions/api/chat.js';
+import { DOC_CHARS } from '../engine/attach.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -154,8 +155,11 @@ console.log('W — файл из браузера доезжает до моде
       j.ok === true && /дальше файл не показываем/.test(userText(c)), JSON.stringify(j.attachments).slice(0, 160));
     const def = await onRequestPost({ request: req({ text: 'резюме', attachments: [{ name: 'д.txt', mime: 'text/plain', size: 60000, b64: b64of('абвгд '.repeat(6000)) }] }), env: ENV });
     const dj = await def.json();
-    ok('W17: без перебивки действует дефолт — 24000 знаков на файл',
-      dj.ok === true && userText(c).length <= 24100 && /абвгд/.test(userText(c)), String(userText(c).length));
+    /* 0.161: дефолт поднят с 24 000 до 160 000 знаков — договор на сотню страниц
+       больше не теряет четыре пятых, а «читаю по частям» решает движок. */
+    ok('W17: без перебивки действует дефолт — 160 000 знаков на файл (файл не обрезан)',
+      dj.ok === true && DOC_CHARS === 160000 && !/дальше файл не показываем/.test(userText(c)),
+      JSON.stringify({ chars: DOC_CHARS, tail: userText(c).slice(-70) }));
   });
 }
 {
@@ -228,6 +232,28 @@ console.log('\nW22 — советы голов не слепые: блок фа�
     !d.images.length && d.docs.length === 1 && d.docs[0].ok === true, JSON.stringify(d.docs.map((x) => x.ok)));
   ok('W27: правило имени общее со слоем Telegram — IMAGE_NAME импортирован, а не переписан',
     (await import('../engine/attach.js')).IMAGE_NAME.test('x.heic') === true, 'IMAGE_NAME');
+}
+
+console.log('\nW28 — большой файл: читается по частям, человеку это видно');
+{
+  await withFetch(async () => {
+    const c = stub('');
+    /* Документ крупнее окна самой широкой головы в тестовом пуле: путь «по частям». */
+    const body = Array.from({ length: 30 }, (_, i) => 'Раздел ' + i + '. ' + 'Условия сделки и порядок приёмки товара, ответственность сторон. '.repeat(20)).join('\n\n');
+    const doc = { name: 'договор.txt', mime: 'text/plain', size: body.length, b64: b64of(body) };
+    const res = await onRequestPost({ request: req({ text: 'какой срок оплаты по договору?', attachments: [doc] }), env: ENV });
+    const j = await res.json();
+    const chats = c.filter((x) => x.kind === 'chat');
+    const texts = chats.map((x) => JSON.stringify(x.body)).join('\n');
+    ok('W28: файл больше окна — прочитан по частям, и это видно под ответом',
+      res.status === 200 && j.ok === true
+        && Array.isArray(j.attachments) && /договор\.txt/.test(j.attachments[0].name)
+        && /прочитан по частям \(\d+ из \d+\)/.test(String(j.attachments[0].line)),
+      JSON.stringify(j.attachments && j.attachments[0]));
+    ok('W29: текст файла не уехал в запрос целиком (иначе это была бы резка, а не чтение)',
+      texts.indexOf(body) < 0 && /--- начало фрагмента ---/.test(texts),
+      JSON.stringify({ whole: texts.indexOf(body), parts: /--- начало фрагмента ---/.test(texts) }));
+  });
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

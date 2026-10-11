@@ -31,6 +31,7 @@ import * as style from './style.js';
 import * as ensemble from './ensemble.js';
 import { createMemory } from './memory.js';
 import * as modelreg from './modelreg.js';
+import * as longdoc from './longdoc.js';
 import * as vcouncil from './vcouncil.js';
 import { detectLang, langMind } from './langmind.js';
 import * as depth from './depth.js';
@@ -574,9 +575,6 @@ export function createEngine(opts) {
        свободы + инструменты + род + профиль + состояние собеседника + память.
        Дальше в очереди провайдеров каждая голова получит своё окно — см. fitFor
        у цикла попыток. */
-    /* Значения ДО резки: из них взят refit для модели с окном меньше «лучшего».
-       Без них второй проход резал бы уже порезанное, и выжимка начала бы пропадать. */
-    const pristine = { system, history, text: userContent };
     /**
      * Окно для конкретной модели: потолок каталога, а поверх — потолок оператора.
      *
@@ -594,12 +592,10 @@ export function createEngine(opts) {
       if (!ceil || !ceil.ctx) return fallback;        /* каталог молчит — прежнее окно */
       return Math.max(1200, Math.min(ceil.ctx, windowCap));
     }
-    /* Сколько токенов просит этот запрос без резки — по этому числу движок решает,
-       звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */
-    const needTokens = estTokens(pristine.system) + estTokens(pristine.text)
-      + pristine.history.reduce((a, m) => a + estTokens(m && m.content), 0);
     /* Первая подгонка — по ЛУЧШЕМУ окну среди тех, кто может ответить: терять
-       контекст заранее нельзя, сузить успеем под каждую попытку (fitFor). */
+       контекст заранее нельзя, сузить успеем под каждую попытку (fitFor). Считается
+       ДО документов: по этому числу решается, влезает файл целиком или его читаем
+       по частям (ниже). */
     const bestWindow = (() => {
       if (windowOperator) return windowOperator;
       let best = clampNumber(env.CTX_WINDOW, 1200, 1000000, 8192);
@@ -613,6 +609,110 @@ export function createEngine(opts) {
       }
       return best;
     })();
+
+    /* ── Большие документы (0.161): влез — целиком, не влез — по частям ─────────
+       Файл нельзя ни выбросить, ни молча отрезать: человек прислал его именно за
+       тем, что в нём написано. Это то, чем берёт DeepSeek («договор на сто страниц,
+       спросите про пункт в середине»), и до сих пор у нас файл упирался в окно.
+       Теперь: влезает в лучшее доступное окно — идёт как есть; не влезает — читаем
+       по частям, как читал бы человек: по каждой части выписка по вопросу, в ответ
+       выписки. Вложения едут отдельным полем (functions/api/chat.js, compose с
+       defer), потому что решение принимает движок, а не сборщик текста. */
+    const docReads = [];
+    if (Array.isArray(input.docs) && input.docs.length) {
+      const reserveOut = Math.max(64, Number(input.maxTokens) || 1200) + (images.length ? images.length * 1000 : 0);
+      const histTok = history.reduce((a, m) => a + estTokens(m && m.content) + 4, 0);
+      const askTerms = longdoc.terms(text);
+      /* Бюджет времени на чтение частей: меньше половины общего, чтобы у ответа
+         осталось время жить. Дальше каждой части — свой кусок, не весь бюджет. */
+      const mapEnd = Date.now() + Math.max(0, Math.min(30000, Math.round((Number(input.deadlineMs) || 45000) * 0.45)));
+      for (const d of input.docs) {
+        const body = String((d && d.text) || '');
+        if (!body) continue;
+        const head = '[Файл: ' + String(d.name || 'файл') + (d.line ? ' · ' + d.line : '') + ']';
+        const fitsWhole = estTokens(body) + estTokens(head) + estTokens(system) + histTok
+          + estTokens(userContent) + reserveOut <= bestWindow * 0.95;
+        if (fitsWhole) {
+          userContent += '\n\n' + head + '\n' + body;
+          docReads.push({ name: d.name || 'файл', line: d.line || '', how: 'целиком', parts: 1, total: 1, keep: body });
+          continue;
+        }
+        /* Часть такой длины, чтобы «вопрос + запас + фрагмент + выписка» влезали в
+           окно той головы, что сейчас в очереди: 1 токен кириллицы ≈ 2.6 знака,
+           берём с запасом вниз (×1.15 от окна в токенах — это ≈44 % окна в знаках). */
+        const partChars = Math.max(longdoc.MIN_PART_CHARS, Math.floor(bestWindow * 1.15));
+        const pl = longdoc.plan(body, askTerms, { partChars, terms: askTerms });
+        const reads = [];
+        for (const part of pl.parts) {
+          let got = '';
+          const leftMs = mapEnd - Date.now();
+          const slice = Math.max(0, Math.min(12000, leftMs));
+          /* Голова совета (docsMap: false) файл видеть обязана — иначе совет голосует
+             по ответу, не видя документа, и правки приходят «мимо». Но восемь вызовов
+             на каждую голову — это квота впустую: ей хватает найденных по вопросу мест. */
+          if (slice >= 4000 && input.docsMap !== false) {
+            try {
+              const r = await run({
+                ...input, docs: null, text: longdoc.readPrompt(d.name, text, part),
+                history: [], system: longdoc.MAP_SYSTEM, useTools: false, webSearch: false,
+                skills: false, chatId: undefined, noCouncils: true, noCheck: true,
+                allowReframe: false, deadlineMs: slice, maxTokens: 700,
+              });
+              if (r && r.ok && r.reply && !longdoc.isEmptyExtract(r.reply)) got = String(r.reply);
+            } catch (e) { got = ''; }
+          }
+          /* Модель не ответила — ищем нужное сами: это не «прочитал файл», но это
+             найденное по вопросу место, и оно честно помечено в списке под ответом. */
+          if (!got) got = longdoc.localPick(part.text, askTerms, 1200);
+          if (got) reads.push({ i: part.i, total: pl.total, text: got });
+        }
+        if (!reads.length) {
+          userContent += '\n\n' + head + '\n' + body.slice(0, Math.max(2000, Math.floor(bestWindow * 1.5)));
+          docReads.push({ name: d.name || 'файл', line: d.line || '', how: 'частично', parts: 0, total: pl.total, keep: '' });
+          continue;
+        }
+        const block = longdoc.blockOf({ name: d.name, line: d.line, reads, total: pl.total, dropped: pl.dropped });
+        userContent += block;
+        docReads.push({
+          name: d.name || 'файл', line: d.line || '', how: 'по частям',
+          parts: reads.length, total: pl.total, keep: block,
+        });
+      }
+      /* Выписки — в память чата: следующая реплика придёт БЕЗ файла, и без этой
+         записи модель ответит по памяти, то есть выдумает (см. memory.rememberDoc). */
+      if (useMem && docReads.length) {
+        const lastDoc = docReads[docReads.length - 1];
+        try {
+          await memory.rememberDoc(input.chatId, {
+            name: lastDoc.name, line: lastDoc.line, block: lastDoc.keep,
+            parts: lastDoc.parts, total: lastDoc.total,
+          });
+        } catch (e) { /* память не имеет права сломать ответ */ }
+      }
+    }
+    /* Вопрос про файл, присланный РАНЬШЕ: вложения в этом ходе нет, но человек
+       спрашивает «а что там в пункте 7.3?». Достаём выписки — но только когда
+       вопрос правда про файл: держать их в промпте каждый ход дороже, чем польза. */
+    const ASKS_FILE = /файл|документ|договор|инструкц|таблиц|презентац|пдф|pdf|docx|xlsx|вложени|выписк|в нём|в нем|из него|по нему|там сказано|в пункте|п\.\s*\d/i;
+    if (useMem && !(Array.isArray(input.docs) && input.docs.length) && ASKS_FILE.test(text)) {
+      const saved = await memory.docFor(input.chatId);
+      if (saved && saved.block) {
+        userContent += '\n\n[Ранее приложенный файл: ' + saved.name
+          + (saved.line ? ' · ' + saved.line : '') + ' — выписки из него]\n' + saved.block;
+        docReads.push({
+          name: saved.name, line: saved.line, how: 'из памяти',
+          parts: saved.parts || 0, total: saved.total || 0, keep: '',
+        });
+      }
+    }
+
+    /* Значения ДО резки: из них взят refit для модели с окном меньше «лучшего».
+       Без них второй проход резал бы уже порезанное, и выжимка начала бы пропадать. */
+    const pristine = { system, history, text: userContent };
+    /* Сколько токенов просит этот запрос без резки — по этому числу движок решает,
+       звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */
+    const needTokens = estTokens(pristine.system) + estTokens(pristine.text)
+      + pristine.history.reduce((a, m) => a + estTokens(m && m.content), 0);
     let fitted = fitContext({ ...pristine, images, env, maxOut: input.maxTokens || 1200, window: bestWindow });
     system = fitted.system;
     history = fitted.history;
@@ -675,6 +775,15 @@ export function createEngine(opts) {
       /* чем именно заплатили за окно — человек должен видеть, что история у него
          не «испарилась», а была сжата движком */
       if (ctxNotes.length) out.cxFit = ctxNotes.join('; ');
+      /* Чем обернулись приложенные файлы (0.161): «прочитан целиком», «прочитан по
+         частям 7 из 12», «из памяти». Строка уезжает в список прочитанного под
+         ответом — человек должен видеть, по чему именно ему отвечали. */
+      if (docReads.length) {
+        out.docs = docReads.map((x) => ({
+          name: x.name, how: x.how, parts: x.parts, total: x.total,
+          line: longdoc.lineOf({ line: x.line, kept: x.parts, total: x.total }),
+        }));
+      }
       if (emoCfg.label && emo && emo.id !== 'neutral') {
         out.emotion = { id: emo.id, emoji: emo.emoji, label: emo.label, confidence: Math.round(emo.confidence * 100) / 100 };
       }
@@ -732,6 +841,7 @@ export function createEngine(opts) {
             const repair = o.repair
               || ((extra) => run({
                 ...input,
+                docs: null,
                 text: extra,
                 /* Досыл — не новый ход разговора: те же приёмы, что у продолжения
                    оборванного ответа (иначе память писала бы транскрипт дважды, а
@@ -922,7 +1032,7 @@ export function createEngine(opts) {
                тега (functions/api/chat.js). */
             if (onDelta) { try { onDelta({ kind: 'reset', provider: id, model }); } catch (e) { /* наблюдатель упал — поток не его вина */ } }
             const more = await run({
-              ...input, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-900),
+              ...input, docs: null, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-900),
               history: [], system: 'Ты продолжаешь оборванный ответ.', providerOrder: [id], continueOnTruncate: false,
               useTools: false, allowReframe: false,
               /* Продолжение — НЕ новый ход разговора. Без этой строки внутренний run()
@@ -1084,6 +1194,9 @@ export function createEngine(opts) {
       text: textOverride != null ? textOverride : inp.text,
       providerOrder: [provider],
       noCouncils: true,
+      /* Документ голове виден (иначе совет голосует по невидимому файлу), но части
+         своими вызовами она не читает — это квота впустую, см. блок документов. */
+      docsMap: false,
       /* Голова совета отвечает не человеку, а в голосование: самопроверка с досылом
          на каждой голове означала бы по одной починке на голос (три досыла вместо
          одного — поймано проверкой G4e) и жгла бы квоту бесплатных ключей впустую. */

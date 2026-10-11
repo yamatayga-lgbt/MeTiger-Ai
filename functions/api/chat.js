@@ -30,6 +30,26 @@ export function realClientIp(request, env) {
 
 
 /** Чем читаем вложения веб-чата — одной строкой для curl-диагностики. */
+/**
+ * Список прочитанного под ответом (0.161). Строку про файл даёт ДВИЖОК, а не
+ * читалка: только он знает, влез документ целиком или читался по частям. Без
+ * этого «прочитан по частям (7 из 12)» человек не увидел бы вовсе, а без файла в
+ * этом ходе (вопрос по присланному раньше) список остался бы пустым.
+ */
+function attachmentsOut(att, r) {
+  const seen = new Set();
+  const out = [];
+  for (const x of ((r && r.docs) || [])) {
+    seen.add(String(x.name || ''));
+    out.push({ name: x.name, ok: true, line: x.line || '', how: x.how || '' });
+  }
+  for (const d of ((att && att.docs) || [])) {
+    if (seen.has(String(d.name || ''))) continue;
+    out.push({ name: d.name, ok: !!d.ok, line: d.ok ? d.line : (d.why || 'не прочитан'), how: '' });
+  }
+  return out.length ? out : undefined;
+}
+
 function attachLine(env) {
   const e = env || {};
   const on = String(e.ATTACH || '') !== 'off';
@@ -274,7 +294,11 @@ async function handlePost(context) {
   if (!words && att && attNothing) {
     return json({ ok: false, error: 'не прочитал ни одного вложения', attachNotes: att.notes }, 422);
   }
-  const text = att ? composeAttach({ has: true }, att, words).text : words;
+  /* Вложения-документы едут отдельным полем (0.161): текст файла вклеивает в
+     промпт движок, а не сборщик текста, — только он знает окно модели и умеет
+     читать файл по частям. Примечания и расшифровка голоса остаются здесь. */
+  const composed = att ? composeAttach({ has: true, defer: true }, att, words) : null;
+  const text = composed ? composed.text : words;
   if (!text) return json({ ok: false, error: 'пустой запрос' }, 400);
   const allImages = images.concat((att && att.images) || []);
   if (allImages.length > 2) allImages.length = 2;
@@ -488,6 +512,9 @@ async function handlePost(context) {
     chatId: memory ? chatId : undefined,
     origin: memory ? threadId : undefined,
     images: allImages,
+    /* Прочитанные документы — движку: он решит, целиком они влезают в окно или
+       их надо читать по частям (engine/longdoc.js). */
+    docs: (composed && composed.docBlocks && composed.docBlocks.length) ? composed.docBlocks : undefined,
     tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
     only: norm.provider,
     /* Человек выбрал модель в окне ввода — она и отвечает. Советы голов в этом
@@ -579,9 +606,7 @@ async function handlePost(context) {
     ctxFit: r.cxFit || undefined,
     /* чем обернулись приложенные файлы: что прочитано (имя · формат · знаков) и почему
        остальное не дошло — человек должен видеть это под ответом, а не в логах */
-    attachments: att && att.docs.length
-      ? att.docs.map((d) => ({ name: d.name, ok: !!d.ok, line: d.ok ? d.line : (d.why || 'не прочитан') }))
-      : undefined,
+    attachments: attachmentsOut(att, r),
     attachNotes: att && att.notes.length ? att.notes : undefined,
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,

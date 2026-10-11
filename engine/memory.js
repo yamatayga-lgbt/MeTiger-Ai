@@ -33,6 +33,7 @@ export const LIMITS = {
   prefsMax: 12,
   goalsMax: 12,
   msgChars: 20000,
+  docChars: 12000,   // выписки из последнего приложенного файла: по ним отвечаем на «а что там в п. 7?»
   factChars: 300,
   cacheMax: 60,     // записей в isolate-кэше
 };
@@ -91,6 +92,22 @@ export function normalize(chatId, raw) {
           origin: String(m.origin || '').slice(0, 80),
         }))
       : [],
+    /* Последний приложенный файл (0.161). Нужен, потому что вложения живут один
+       ход: во второй реплике («а что там в пункте 7.3?») файла в запросе уже нет,
+       и без этой записи модель отвечает по памяти, то есть выдумывает. Храним
+       ТОЛЬКО выписки (не сам файл): их вес в разы меньше, а ответить по ним можно
+       на любой вопрос из файла. Новый файл заменяет старый — держать все
+       присланные документы в KV дороже, чем польза от них. */
+    doc: d.doc && typeof d.doc === 'object' && d.doc.block
+      ? {
+        name: String(d.doc.name || '').slice(0, 120),
+        line: String(d.doc.line || '').slice(0, 160),
+        block: String(d.doc.block).slice(0, LIMITS.docChars),
+        parts: Math.max(0, Number(d.doc.parts) || 0),
+        total: Math.max(0, Number(d.doc.total) || 0),
+        at: Number(d.doc.at) || 0,
+      }
+      : null,
     /* Факты и уроки раньше были просто строками — тег «из какого чата» неоткуда
        взять у старых записей. normalize() принимает обе формы: голую строку
        заворачивает в { text, origin: '', ts: 0 } (безопасно — такую запись
@@ -481,6 +498,32 @@ export function createMemory(opts) {
     return 'Сжато механически (' + lines.length + ' реплик): ' + took.slice(0, 24).join(' | ').slice(0, 4000);
   }
 
+  /** Запомнить выписки по приложенному файлу — для следующих реплик этого чата. */
+  async function rememberDoc(chatId, doc) {
+    if (!chatId || !doc || !doc.block) return null;
+    const d = await load(chatId);
+    d.doc = {
+      name: String(doc.name || 'файл').slice(0, 120),
+      line: String(doc.line || '').slice(0, 160),
+      block: String(doc.block).slice(0, LIMITS.docChars),
+      parts: Math.max(0, Number(doc.parts) || 0),
+      total: Math.max(0, Number(doc.total) || 0),
+      at: now(),
+    };
+    return save(chatId, d);
+  }
+
+  /** Выписки последнего файла этого чата (или null). */
+  async function docFor(chatId) {
+    if (!chatId) return null;
+    try {
+      const d = await load(chatId);
+      return d.doc && d.doc.block ? d.doc : null;
+    } catch (e) {
+      return null;   /* память не имеет права сломать ответ */
+    }
+  }
+
   async function forget(chatId) {
     const key = keyFor(chatId);
     cache.delete(key);
@@ -554,6 +597,8 @@ export function createMemory(opts) {
     cfg,
     keyFor,
     load,
+    rememberDoc,
+    docFor,
     save,
     addMessage,
     addFact,

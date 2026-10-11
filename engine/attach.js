@@ -40,7 +40,12 @@ export function sniffImageMime(bytes) {
 export const MAX_PHOTO = 5 * 1024 * 1024;
 export const MAX_AUDIO = 8 * 1024 * 1024;
 export const MAX_DOC_BYTES = DOC_MAX;              /* 8 МБ — тот же потолок, что у читалки */
-export const DOC_CHARS = 24000;                    /* сколько текста файла показывать модели */
+/* Сколько текста файла показывать модели. Было 24 000 — договор на сто страниц
+   терял четыре пятых, и человек об этом не знал. Теперь до 160 000 знаков: этого
+   хватает на книгу среднего размера, а движок сам решает, влезает ли файл в окно
+   головы целиком или его надо читать по частям (engine/longdoc.js). Потолок байт
+   (8 МБ у читалки) остался прежним — он про размер файла, а не про текст. */
+export const DOC_CHARS = 160000;                   /* сколько текста файла показывать модели */
 export const MAX_IMAGES = 2;   /* тот же потолок, что у фронта (src/lib/images.ts) и у /api/chat */                       /* ровно столько же, сколько принимает чат */
 
 const capBytes = (n, max) => (n > max ? Math.round(max / 1024 / 1024 * 10) / 10 + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ');
@@ -86,8 +91,18 @@ export async function readVoiceBytes(bytes, mime, o) {
  * порядок («сначала голос, потом подпись, блок файла в конце») можно было
  * проверить без сети.
  */
+/**
+ * Собрать то, что поедет движку.
+ *
+ * `media.defer` — режим веб-чата (0.161): текст документа НЕ вклеивается сюда, а
+ * едет отдельным полем (`docBlocks`), потому что решение «файл влезает целиком
+ * или его читаем по частям» принимает движок: у него окно модели, очередь голов и
+ * бюджет секунд. У канала без `defer` (бот) всё как было — текст файла вклеен в
+ * сообщение, потому что своей обработки вложений у него нет.
+ */
 export function compose(media, got, text) {
   const base = String(text || '').trim();
+  const defer = !!(media && media.defer);
   const parts = [];
   const spoken = got && got.voiceText ? String(got.voiceText).trim() : '';
   /* Голос плюс подпись — это один ход: и то и другое должно дойти до модели.
@@ -97,10 +112,17 @@ export function compose(media, got, text) {
   else if (got && (got.notes || []).length) parts.push('(ни слов, ни расшифровки — смотри примечание)');
 
   const blocks = [];
+  const docBlocks = [];
   for (const d of ((got && got.docs) || [])) {
-    blocks.push(d.ok
-      ? '[Файл: ' + d.name + ' · ' + d.line + ']\n' + d.text
-      : '[Файл: ' + d.name + ' — ' + (d.why || 'не прочитан') + ']');
+    /* Непрочитанный файл движку показывать нечего — о нём говорит строка списка
+       вложений под ответом. Прочитанный при `defer` тоже не вклеиваем: им займётся
+       движок (влечёт целиком или прочитает по частям). */
+    if (!defer) {
+      blocks.push(d.ok
+        ? '[Файл: ' + d.name + ' · ' + d.line + ']\n' + d.text
+        : '[Файл: ' + d.name + ' — ' + (d.why || 'не прочитан') + ']');
+    }
+    if (d.ok) docBlocks.push({ name: d.name, line: d.line, text: d.text, chars: d.chars, ok: true });
   }
   const notes = ((got && got.notes) || []).map((n) => '· ' + n);
   let out = parts.join('\n\n');
@@ -108,5 +130,5 @@ export function compose(media, got, text) {
   if (notes.length) out = (out ? out + '\n\n' : '') + notes.join('\n');
   if (!out) out = 'Посмотри, что в вложении, и скажи по делу.';
   const images = (got && got.images) || [];
-  return { text: out.slice(0, 120000), images, files: blocks.length, notes };
+  return { text: out.slice(0, 120000), images, files: blocks.length, notes, docBlocks };
 }
