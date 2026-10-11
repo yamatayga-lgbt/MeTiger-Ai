@@ -1,0 +1,10 @@
+{
+  "changelogFile": "CHANGELOG.md",
+  "versionFile": "VERSION.md",
+  "versionIncrement": "0.001",
+  "groupCommits": true,
+  "releaseBranch": "main",
+  "tagPrefix": "v",
+  "commitMessageTemplate": "Release v{version}",
+  "tagMessageTemplate": "Release v{version}"
+}
