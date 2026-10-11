@@ -580,7 +580,7 @@ export function ChatView({
   const [paramsOpen, setParamsOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   /* Информация о контексте для индикатора */
-  const [contextInfo, setContextInfo] = useState({ usedTokens: 0, maxTokens: 0 })
+  const [contextInfo] = useState({ usedTokens: 0, maxTokens: 0 })
   /* Полноэкранный просмотр любой картинки из переписки (своей или от модели) —
      тап открывает её целиком вместо скачивания/мелкого превью. */
   const [lightbox, setLightbox] = useState<{ src: string; name?: string } | null>(null)

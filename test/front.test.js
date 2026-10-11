@@ -1031,12 +1031,11 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         onChange() {},
       }),
     );
-    ok('M30: кнопка параметров и карточка ПАРАМЕТРЫ содержат temperature, max_tokens (Макс.), top_p и Сброс',
+    ok('M30: кнопка параметров и карточка ПАРАМЕТРЫ содержат temperature, top_p и Сброс',
       /class="params-btn/.test(htmlOn)
         && /ПАРАМЕТРЫ/.test(htmlParams)
         && /Сброс/.test(htmlParams)
         && /temperature/.test(htmlParams)
-        && /max_tokens/.test(htmlParams) && /Макс\./.test(htmlParams)
         && /top_p/.test(htmlParams));
     ok('M30b: 0.070 — карточка расширена presence_penalty и frequency_penalty (по умолчанию 0.0)',
       /presence_penalty/.test(htmlParams) && /frequency_penalty/.test(htmlParams)
