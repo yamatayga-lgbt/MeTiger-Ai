@@ -4,6 +4,7 @@
  * Запуск: node test/tools.test.js
  */
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { gatherTools, evalExpr, TOOL_IDS, JOKES, isoWeek, unwrapSearchUrl, extractSources } from '../engine/tools.js';
 import { formatFromText, nameFromText } from '../engine/filegen.js';
 
@@ -50,14 +51,14 @@ const timeRes = await gatherTools('который час?', { TZ_NAME: 'Europe/M
 ok('T7: «который час?» → дата с таймзоной', timeRes.used.join() === 'time' && timeRes.block.includes('Europe/Minsk'), timeRes.block);
 
 const cur = await gatherTools('курс доллара к рублю', {}, fakeFetch({
-  'open.er-api.com/v6/latest/RUB': { rates: { USD: 0.011, EUR: 0.0094, BYN: 0.026 } },
+  'open.er-api.com/v6/latest/RUB': { rates: { USD: 0.011, EUR: 0.0094, BYN: 0.026 }, time_last_update_unix: 1791619200 },
 }));
 ok('T8: «курс доллара» → база RUB и USD в ответе', cur.used.join() === 'currency' && cur.block.includes('RUB') && cur.block.includes('USD'), cur.block);
 
 const weather = await gatherTools('погода в варшаве', {}, fakeFetch({
   'geocoding-api.open-meteo.com': { results: [{ name: 'Варшава', latitude: 52.2, longitude: 21.0 }] },
   'api.open-meteo.com': {
-    current: { temperature_2m: 12.4, apparent_temperature: 10.1, wind_speed_10m: 3.6, precipitation: 0, weather_code: 1 },
+    current: { temperature_2m: 12.4, apparent_temperature: 10.1, wind_speed_10m: 3.6, precipitation: 0, weather_code: 1, time: '2026-10-11T09:00' },
     daily: { temperature_2m_max: [15], temperature_2m_min: [7] },
   },
 }));
@@ -218,6 +219,43 @@ ok('T35: gatherTools собирает webSteps (search + fetch) для блок�
   const src = extractSources(block);
   ok('T163a: дата источника вынута из строки поиска и уехала в плашку', src[0].date === '2026-10-04', JSON.stringify(src[0]));
   ok('T163b: без даты источник остаётся без выдуманной свежести', src[1] && src[1].date === undefined, JSON.stringify(src[1]));
+}
+
+/* 0.165: у данных из открытых API есть свой адрес и дата — их видно в плашках.
+   Повод: на живом проде ответ про курс дописал «данные на 18 июля 2026» и ссылку
+   на ЦБ, которых в данных инструмента не было. Даты и ссылки — только из данных. */
+{
+  const cur2 = await gatherTools('курс доллара к рублю', {}, fakeFetch({
+    'open.er-api.com/v6/latest/RUB': { rates: { USD: 0.011, EUR: 0.0094 }, time_last_update_unix: 1791619200 },
+  }));
+  ok('T165a: курсы отдают источник с датой обновления (не «на сегодня» без числа)',
+    /https:\/\/open\.er-api\.com\/v6\/latest\/RUB · от 2026-10-10/.test(cur2.block), cur2.block);
+  ok('T165b: источник курсов доехал до плашек с датой и без «шагов поиска»',
+    cur2.sources.length === 1 && cur2.sources[0].date === '2026-10-10'
+      && cur2.webSteps.length === 0, JSON.stringify({ src: cur2.sources, steps: cur2.webSteps.length }));
+
+  const w2 = await gatherTools('погода в варшаве', {}, fakeFetch({
+    'geocoding-api.open-meteo.com': { results: [{ name: 'Варшава', latitude: 52.2, longitude: 21.0 }] },
+    'api.open-meteo.com': {
+      current: { temperature_2m: 12.4, apparent_temperature: 10.1, wind_speed_10m: 3.6, precipitation: 0, weather_code: 1, time: '2026-10-11T09:00' },
+      daily: { temperature_2m_max: [15], temperature_2m_min: [7] },
+    },
+  }));
+  ok('T165c: погода отдаёт источнику время наблюдения',
+    w2.sources.length === 1 && w2.sources[0].date === '2026-10-11', JSON.stringify(w2.sources));
+
+  const off = await gatherTools('курс доллара к рублю', {}, fakeFetch({
+    'open.er-api.com/v6/latest/RUB': { rates: { USD: 0.011 } },
+  }));
+  ok('T165d: без времени обновления источник остаётся без даты — выдумывать нечего',
+    off.sources.length === 1 && off.sources[0].date === undefined, JSON.stringify(off.sources));
+}
+
+/* 0.165: правило о честных датах стоит рядом с подсказкой про инструменты. */
+{
+  const chat = readFileSync('engine/chat.js', 'utf8');
+  ok('T165e: модели сказано не выдумывать даты и адреса',
+    /Дат[аы]/.test(chat) && /бери только из данных/.test(chat));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);

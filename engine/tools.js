@@ -334,7 +334,16 @@ export const TOOLS = [
       const parts = want
         .filter((c) => rates[c] > 0)
         .map((c) => `1 ${c} = ${fmtNum(Math.round((1 / rates[c]) * 10000) / 10000)} ${base}`);
-      return parts.length ? `Курсы на сегодня (база ${base}): ${parts.join(', ')}.` : null;
+      if (!parts.length) return null;
+      /* 0.165: у курсов есть своя дата — и она честная. Раньше блок кончался словами
+         «на сегодня», и модель дописывала к ответу выдуманное «данные на 18 июля» и
+         ссылку на ЦБ, которой в данных не было. Теперь дата обновления и адрес API
+         едут строкой источника (её читает extractSources) — плашка под ответом
+         покажет свежесть, а придумывать станет нечего. */
+      const upd = Number(j.time_last_update_unix) * 1000 || 0;
+      const day = upd ? new Date(upd).toISOString().slice(0, 10) : '';
+      const src = `1) ${SRC_TITLE.currency} (https://open.er-api.com/v6/latest/${base}${day ? ' · от ' + day : ''})`;
+      return `Курсы на сегодня (база ${base}): ${parts.join(', ')}.\n${src}`;
     },
   },
   {
@@ -375,7 +384,11 @@ export const TOOLS = [
       if (!c) return null;
       const sky = WMO[c.weather_code] || '—';
       const day = d ? `, днём до ${Math.round(d.temperature_2m_max[0])}°C, ночью до ${Math.round(d.temperature_2m_min[0])}°C` : '';
-      return `${place.name} сейчас: ${Math.round(c.temperature_2m)}°C (ощущается ${Math.round(c.apparent_temperature)}°C), ${sky}, ветер ${Math.round(c.wind_speed_10m)} м/с, осадки ${c.precipitation} мм${day}.`;
+      /* 0.165: время наблюдения (open-meteo отдаёт его в current.time) — в источник,
+         чтобы ответ не выглядел «погодой вообще», без даты. */
+      const at = String(c.time || '').slice(0, 10);
+      const src = `1) ${SRC_TITLE.weather} (https://open-meteo.com${at ? ' · от ' + at : ''})`;
+      return `${place.name} сейчас: ${Math.round(c.temperature_2m)}°C (ощущается ${Math.round(c.apparent_temperature)}°C), ${sky}, ветер ${Math.round(c.wind_speed_10m)} м/с, осадки ${c.precipitation} мм${day}.\n${src}`;
     },
   },
   {
@@ -695,6 +708,14 @@ export const TOOLS = [
 
 const SOURCE_TOOLS = new Set(['web-search', 'wikipedia', 'news', 'url']);
 
+/* Заголовок источника для API-инструментов: одна строка на все, чтобы плашка под
+   ответом называла данные по имени, а не адресом. */
+const SRC_TITLE = { currency: 'Открытые курсы валют', weather: 'Погода · open-meteo' };
+
+/* Данные из открытого API: у них есть адрес и дата, значит они дают источник, но
+   шагами поиска не считаются — человек не искал, он спросил курс или погоду. */
+const API_SOURCE_TOOLS = new Set(['currency', 'weather']);
+
 /**
  * Собрать данные всех сработавших инструментов.
  * Возвращает { used: string[], block: string, directive: string, sources: {title,url}[], webSteps: object[] }.
@@ -737,8 +758,9 @@ export async function gatherTools(text, env, fetchImpl, o) {
       const data = await run;
       if (!data) continue;
       used.push(t.id);
-      if (SOURCE_TOOLS.has(t.id)) {
+      if (SOURCE_TOOLS.has(t.id) || API_SOURCE_TOOLS.has(t.id)) {
         srcParts.push(data);
+        if (SOURCE_TOOLS.has(t.id)) {
         const toolSources = extractSources(data);
         if (t.id === 'url') {
           const uMatch = /URL:\s*(https?:\/\/\S+)/i.exec(data);
@@ -760,6 +782,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
             const found = toolSources.find((s) => s.url === excerptUrl);
             emitStep({ kind: 'fetch', url: excerptUrl, title: (found && found.title) || excerptUrl });
           }
+        }
         }
       }
       /* kind: 'directive' — правило для модели, а не внешние данные. */
