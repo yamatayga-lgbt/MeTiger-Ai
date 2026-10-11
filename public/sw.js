@@ -8,7 +8,7 @@
 // (scripts/stamp-sw.mjs, запускается из `npm run build`) из версии в
 // package.json — так у всех установленных иконок старая оболочка быстро
 // сменяется новой, и об этом не нужно вспоминать руками при публикации.
-const CACHE_VERSION = 'v0157'
+const CACHE_VERSION = 'v0158'
 const CACHE_NAME = `metiger-shell-${CACHE_VERSION}`
 const SHELL_URLS = ['./', './index.html', './favicon.png', './favicon.svg', './manifest.webmanifest', './offline.html']
 
@@ -43,8 +43,11 @@ self.addEventListener('fetch', (event) => {
 
   // Network-first: пока есть сеть — всегда свежая версия (проект обновляется часто),
   // кэш — только подстраховка на случай обрыва связи или холодного повторного запуска.
+  // Навигацию (сам index.html) просим с проверкой свежести: страница не должна
+  // залипать на прежней версии оболочки, пока на сервере уже новая (0.158).
+  const isNavigate = req.mode === 'navigate'
   event.respondWith(
-    fetch(req)
+    fetch(req, isNavigate ? { cache: 'no-cache' } : undefined)
       .then((res) => {
         if (res && res.ok) {
           const copy = res.clone()

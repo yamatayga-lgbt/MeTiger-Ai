@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import { RootGuard } from './components/Guard'
 import { isChunkLoadError, reloadForFreshChunks } from './lib/chunkReload'
+import { startVersionWatch } from './lib/versionWatch'
 import './styles/index.css'
 
 // Vite сам сообщает о неудачной догрузке файла экрана этим событием — ловим его
@@ -16,6 +17,11 @@ window.addEventListener('vite:preloadError', (event) => {
 
 // Рендер сразу: данных с сервера для первого кадра не нужно
 const root = createRoot(document.getElementById('root')!)
+// Сторож версии (0.158): приложение само замечает новую выкладку и обновляется,
+// не дожидаясь, пока человек закроет окно. Без него долго живущая вкладка
+// остаётся на старой версии — так владелец и увидел кнопки внизу, которых уже нет.
+startVersionWatch()
+
 root.render(
   <StrictMode>
     {/* RootGuard (0.151): любая ошибка рендера — экран с причиной и кнопками
