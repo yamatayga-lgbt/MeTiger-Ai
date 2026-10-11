@@ -9,6 +9,7 @@ import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, joinLive, V
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
+import { Guard } from '../components/Guard'
 import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
 /* Markdown (react-markdown + remark-gfm + формулы + песочница кода) — самый тяжёлый
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
@@ -967,7 +968,17 @@ export function ChatView({
                   ) : null}
                   {Array.isArray(m.files) && m.files.length ? <WriteFilesBlock files={m.files} /> : null}
                   <div className="bubble">
-                    <LazyBoundary fallback={<div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>}><Markdown text={m.text} onRunOutput={runOutput} sources={m.sources} /></LazyBoundary>
+                    {/* Guard (0.151): упал Markdown-рендер ЭТОГО сообщения —
+                        серая плашка с причиной и сырым текстом вместо белого
+                        экрана на всю переписку при каждой загрузке. */}
+                    <Guard fallback={(why) => (
+                      <>
+                        <div className="msg-broken">Не удалось отрисовать это сообщение ({why}) — показываю как есть:</div>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                      </>
+                    )}>
+                      <LazyBoundary fallback={<div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>}><Markdown text={m.text} onRunOutput={runOutput} sources={m.sources} /></LazyBoundary>
+                    </Guard>
                   </div>
                   {/* Кто ответил и что сказал совет. Это не украшение: по ней видно,
                       что ответ проверяли, а не угадали, и где его исправили. */}
