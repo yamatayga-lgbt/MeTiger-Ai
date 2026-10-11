@@ -38,9 +38,14 @@ const ok = (name, condition) => {
   console.log('  ✔ ' + name);
 };
 
+/* Версия не прибита к «0.161»: страж обязан пережить следующую версию, иначе
+   каждая выкладка ломает прогон на пустом месте. Проверяем ФОРМУ и согласие
+   всех источников — это и есть то, что может сломаться по невнимательности. */
 const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U161a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
-  currentVersion === '0.161' && pkg.version === '0.161' && lock.version === '0.161' && /# Version 0\.161/.test(vmd),
+  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
+    && pkg.version === currentVersion && lock.version === currentVersion)
+    && new RegExp('# Version ' + String(currentVersion).replace('.', '\\.')).test(vmd),
   [currentVersion, pkg.version, lock.version].join('/'));
 ok('U161b «Что нового» и README знают про 0.161 (человек узнаёт, что изменилось)',
   /version: '0\.161'/.test(notes) && /title: 'Большие документы читаются по частям'/.test(notes) && /\*\*0\.161\*\*/.test(readme));

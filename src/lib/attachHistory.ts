@@ -121,3 +121,31 @@ export function dataUrlToB64(dataUrl: string): string {
   const i = dataUrl.indexOf(',')
   return i >= 0 ? dataUrl.slice(i + 1) : dataUrl
 }
+
+/**
+ * Все записи «как есть» — для резервной копии (0.162). Отдаём полный объект
+ * вместе с base64: без байтов копия бесполезна, а собирать её из listHistory
+ * нельзя — там тот же полный объект, но назначение у него другое (показ списка),
+ * и однажды его урежут, не подумав про копию.
+ */
+export async function dumpHistory(): Promise<HistoryItem[]> {
+  return listHistory()
+}
+
+/** Заменить историю целиком тем, что лежит в копии. Ошибку не глотаем: от неё
+ *  зависит, честно ли отчитаться человеку, что копия восстановлена. */
+export async function restoreHistory(items: HistoryItem[]): Promise<number> {
+  const list = Array.isArray(items) ? items.filter((x) => x && typeof x.b64 === 'string' && x.name) : []
+  const db = await openDb()
+  if (!db) throw new Error('браузер не пустил в свою базу')
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite')
+    const store = tx.objectStore(STORE)
+    store.clear()
+    list.forEach((it) => store.put(it))
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(new Error('запись не удалась'))
+  })
+  db.close()
+  return list.length
+}

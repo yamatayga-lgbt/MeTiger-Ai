@@ -136,3 +136,46 @@ export function mediaIdsOfMessage(m: { id: string; images?: string[]; files?: { 
   if (Array.isArray(m.files)) m.files.forEach((_, i) => ids.push(fileMediaId(m.id, i)))
   return ids
 }
+
+/**
+ * Все куски «как есть» — для резервной копии (0.162). Берём из базы напрямую, а
+ * не через loadMediaMap: тот собирает карту по известным id текущей переписки, и
+ * в копию не попал бы кусок от удалённого чата (а он нужен, если копию заливают
+ * на другом устройстве, где переписка ещё целая).
+ */
+export async function dumpMedia(): Promise<{ id: string; value: string }[]> {
+  try {
+    const db = await openDb()
+    if (!db) return []
+    const rows = await new Promise<{ id: string; value: string }[]>((resolve) => {
+      const tx = db.transaction(STORE, 'readonly')
+      const req = tx.objectStore(STORE).getAll()
+      req.onsuccess = () => resolve((req.result || []) as { id: string; value: string }[])
+      req.onerror = () => resolve([])
+    })
+    db.close()
+    return rows.filter((r) => r && typeof r.id === 'string' && typeof r.value === 'string')
+  } catch {
+    return []
+  }
+}
+
+/** Заменить медиа целиком. Ошибку не глотаем: от неё зависит честный отчёт. */
+export async function restoreMedia(rows: { id: string; value: string }[]): Promise<number> {
+  const list = Array.isArray(rows) ? rows.filter((r) => r && typeof r.id === 'string' && typeof r.value === 'string') : []
+  const db = await openDb()
+  if (!db) throw new Error('браузер не пустил в свою базу')
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite')
+    const store = tx.objectStore(STORE)
+    store.clear()
+    list.forEach((r) => store.put({ id: r.id, value: r.value, savedAt: Date.now() }))
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(new Error('запись не удалась'))
+  })
+  db.close()
+  /* Пробная запись помечает id как «уже пробовали» — иначе после восстановления
+     первый же saveChats забраковал бы эти куски и перестал их сохранять. */
+  tried.clear()
+  return list.length
+}

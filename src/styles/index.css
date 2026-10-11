@@ -6181,3 +6181,27 @@ button,
 .attach-files-list {
   -webkit-overflow-scrolling: touch;
 }
+
+/* 0.162 — карточка «файл копии прочитан» на экране «Управление данными»:
+   показывает, что именно заменит переписку, и просит второе нажатие. */
+.restore-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-top: 4px;
+  border: 1px solid var(--line, rgba(127, 127, 127, 0.22));
+  border-radius: 14px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.06));
+}
+
+.restore-box .n {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.restore-box .d {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin-top: -4px;
+}
