@@ -7,10 +7,11 @@
  * устройства (мгновенная и точная, но только про этого человека), — и они не
  * смешиваются в одно число, потому что означают разное.
  */
-import { Activity, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Activity, RefreshCw, RotateCcw } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Toast } from '../components/Toast'
 import { Badge, Button, cx } from '../components/ui'
-import { telemetrySummary } from '../lib/models'
+import { clearSpeed, fmtSec, speedSummary, telemetrySummary, type SpeedSummary } from '../lib/models'
 import { fmtAgo, fmtDuration } from '../lib/time'
 import { useUsageLive, type UsageRow } from '../lib/usage'
 
@@ -110,6 +111,14 @@ export function UsageView() {
     return () => window.clearInterval(id)
   }, [])
 
+  const [speed, setSpeed] = useState<SpeedSummary>(() => speedSummary())
+  const [toast, setToast] = useState<string | null>(null)
+  const closeToast = useCallback(() => setToast(null), [])
+  /* Экран открыт — числа обновляем вместе с опросом счётчика (раз в 5 с). */
+  useEffect(() => {
+    setSpeed(speedSummary())
+  }, [at])
+
   const device = telemetrySummary()
   const rows = data?.providers || []
   const minuteSum = rows.reduce((a, r) => a + (r.minute || 0), 0)
@@ -179,6 +188,70 @@ export function UsageView() {
         </div>
       </div>
 
+      {/* Живость и скорость (0.164). Стоит выше серверных чисел нарочно: это
+          единственное, что остаётся правдой, даже если /api/usage молчит, —
+          замеры лежат на устройстве. Токены в секунду тут не показываем: человеку
+          важно, когда агент заговорил и отвечает ли он вообще. */}
+      <div className="settings-group">
+        <div className="settings-label">Живость и скорость · по этому устройству</div>
+        <div className="settings-card">
+          <div className="speed-grid">
+            <div className="usage-card">
+              <div className="usage-cap">Первый ответ</div>
+              <div className="usage-num">{speed.firstSample ? fmtSec(speed.firstP50) : '—'}</div>
+              <div className="usage-sub">
+                {speed.firstSample
+                  ? `половина ответов начиналась быстрее · по ${speed.firstSample} ${plural(speed.firstSample, 'ответу', 'ответам', 'ответам')}`
+                  : 'пока нет замеров — задайте пару вопросов'}
+              </div>
+            </div>
+            <div className="usage-card">
+              <div className="usage-cap">Худший случай</div>
+              <div className="usage-num">{speed.firstSample ? fmtSec(speed.firstP95) : '—'}</div>
+              <div className="usage-sub">
+                {speed.firstSample ? '19 из 20 ответов начинались быстрее' : 'появится со вторым-третьим ответом'}
+              </div>
+            </div>
+            <div className="usage-card">
+              <div className="usage-cap">Что живо</div>
+              <div className="usage-num">{data ? `${workRows.length}/${rows.length}` : '…'}</div>
+              <div className="usage-sub">
+                {data
+                  ? `провайдеров с ключом · отвечали сегодня ${totals.ok}`
+                  : 'спрашиваю счётчик'}
+              </div>
+            </div>
+          </div>
+          {speed.emptySample > 0 ? (
+            <div className="settings-row">
+              <div className="grow">
+                <div className="n">
+                  {speed.emptyCount === 0
+                    ? 'Пустых ответов не было'
+                    : `Пустых ответов ${speed.emptyCount} из ${speed.emptySample}`}
+                </div>
+                <div className="d">
+                  {speed.emptyCount === 0
+                    ? `за ${speed.emptySample} ${plural(speed.emptySample, 'ответ', 'ответа', 'ответов')} ни одного пустого — агент отвечал каждый раз`
+                    : `${Math.round((speed.emptyCount / speed.emptySample) * 100)} % · это ответы без текста (одна мысль не в счёт)`}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                icon={RotateCcw}
+                onClick={() => {
+                  clearSpeed()
+                  setSpeed(speedSummary())
+                  setToast('Замеры сброшены')
+                }}
+              >
+                Сбросить
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       {!data ? (
         <div className="settings-group">
           <div className="settings-card">
@@ -226,6 +299,8 @@ export function UsageView() {
           </div>
         </div>
       ) : null}
+
+      <Toast message={toast} onDone={closeToast} />
 
       <div className="app-foot">
         Сутки — по UTC, как у провайдеров: сброс в 00:00 UTC (03:00 по Минску).

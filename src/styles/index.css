@@ -4845,6 +4845,18 @@ button.rows-row:hover {
   line-height: 1.4;
 }
 
+/* Скорость (0.164): те же карточки, что и у расхода, но в две колонки на узком
+   экране — цифры короткие («1,2 с»), и человеку важно сравнить их рядом. */
+.speed-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px 4px;
+}
+.speed-grid .usage-num {
+  font-size: 22px;
+}
+
 .usage-prov {
   padding: 13px 16px;
   border-bottom: 1px solid var(--border);

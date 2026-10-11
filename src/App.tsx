@@ -393,6 +393,10 @@ export default function App() {
       const allowThink = reasoningOn && canModelThink(model)
       const startedAt = Date.now()
       let thinkEndedAt = 0
+      /* Время до первого слова (0.164): первый непустой кусок черновика. Токены в
+         секунду — наша метрика, человеку важно, когда агент заговорил. Если ответ
+         пришёл целиком без потока, замер честно останется пустым. */
+      let firstTokenAt = 0
       setTyping(true)
       setDraft('')
       setDraftReasoning(allowThink ? '' : null)
@@ -413,7 +417,10 @@ export default function App() {
               ...(attachments && attachments.length ? { attachments } : {}),
               ...(model ? { model } : {}),
               gender: genderForRequest(readGender()),
-              onDraft: (t) => setDraft(t),
+              onDraft: (t) => {
+                if (t && !firstTokenAt) firstTokenAt = Date.now()
+                setDraft(t)
+              },
               onWebSteps: (steps) => setDraftWebSteps(steps),
               ...(allowThink
                 ? {
@@ -452,6 +459,12 @@ export default function App() {
             model || r.model,
             r.ms,
             (r.reply ? r.reply.length : 0) + (r.reasoning ? r.reasoning.length : 0),
+            {
+              msToFirst: firstTokenAt ? firstTokenAt - startedAt : 0,
+              /* «Пустой» — ответ, из которого человеку нечего прочитать. Ответ со
+                 одной лишь мыслью (reasoning) считаем пустым: это не ответ. */
+              empty: !(r.reply || '').trim(),
+            },
           )
         }
         if (abortRef.current === ac) abortRef.current = null

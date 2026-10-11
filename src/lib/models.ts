@@ -571,7 +571,12 @@ export function getModelTelemetry(
   }
 }
 
-export function recordModelTelemetry(id: string | undefined, ms?: number, chars?: number): void {
+export function recordModelTelemetry(
+  id: string | undefined,
+  ms?: number,
+  chars?: number,
+  extra?: { msToFirst?: number; empty?: boolean },
+): void {
   try {
     if (typeof localStorage === 'undefined') return
     const map = readTelemetryMap()
@@ -597,9 +602,105 @@ export function recordModelTelemetry(id: string | undefined, ms?: number, chars?
     const totalPrev = map._total?.requests || 0
     map._total = { requests: totalPrev + 1, ...(tps ? { tokPerSec: tps } : {}) }
     localStorage.setItem(TELEMETRY_KEY, JSON.stringify(map))
+    if (extra) recordSpeed(extra)
   } catch {
     // ignore quota/SSR errors
   }
+}
+
+/* ==================== Скорость до первого слова и пустые ответы (0.164) ====================
+   Человек судит об агенте по двум вещам: как быстро он начинает отвечать и отвечает
+   ли вообще. Токены в секунду — наша метрика, а не его. Поэтому копим ровно два
+   числа с последних ответов: миллисекунды до первого куска текста и отметку
+   «ответ пришёл пустым». По ним считаем медиану и хвост (p50/p95).
+   Храним на устройстве и только у себя: это замер, а не слежка, и он помогает
+   человеку понять, врёт ли ощущение «сегодня тупит» — или это провайдер. */
+
+const SPEED_KEY = 'mt-model-speed'
+/** Сколько замеров держим: 300 ответов — это недели работы, а ключ остаётся крошечным. */
+const SPEED_MAX = 300
+
+export interface SpeedSummary {
+  /** Сколько ответов с замером «до первого слова». */
+  firstSample: number
+  /** Медиана: половина ответов начиналась быстрее этого. */
+  firstP50: number
+  /** Хвост: 19 из 20 ответов начинались быстрее. */
+  firstP95: number
+  /** Сколько ответов оценивали на пустоту. */
+  emptySample: number
+  /** Сколько из них пришли пустыми (без пробного текста не считаются). */
+  emptyCount: number
+}
+
+function readSpeed(): { first: number[]; empty: number[] } {
+  try {
+    if (typeof localStorage === 'undefined') return { first: [], empty: [] }
+    const raw = localStorage.getItem(SPEED_KEY)
+    if (!raw) return { first: [], empty: [] }
+    const p = JSON.parse(raw)
+    const first = Array.isArray(p?.first) ? p.first.filter((n: unknown) => typeof n === 'number' && n > 0) : []
+    const empty = Array.isArray(p?.empty) ? p.empty.filter((n: unknown) => typeof n === 'number') : []
+    return { first, empty }
+  } catch {
+    return { first: [], empty: [] }
+  }
+}
+
+/** Записывает один замер. Зовётся из recordModelTelemetry — там же, где счётчик. */
+export function recordSpeed(extra: { msToFirst?: number; empty?: boolean }): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const cur = readSpeed()
+    /* Ноль миллисекунд — это не «мгновенно», а «не поймали»: молча выбрасываем,
+       чтобы не портить медиану выдуманным рекордом. */
+    if (typeof extra.msToFirst === 'number' && extra.msToFirst > 0) {
+      cur.first = cur.first.concat(Math.round(extra.msToFirst)).slice(-SPEED_MAX)
+    }
+    if (typeof extra.empty === 'boolean') {
+      cur.empty = cur.empty.concat(extra.empty ? 1 : 0).slice(-SPEED_MAX)
+    }
+    localStorage.setItem(SPEED_KEY, JSON.stringify(cur))
+  } catch {
+    // ignore quota/SSR errors
+  }
+}
+
+/** Ближайший ранг: та же формула, что у серверных замеров, — без интерполяции. */
+export function pctl(arr: number[], p: number): number {
+  if (!arr.length) return 0
+  const a = arr.slice().sort((x, y) => x - y)
+  const idx = Math.min(a.length - 1, Math.max(0, Math.ceil((p / 100) * a.length) - 1))
+  return a[idx]
+}
+
+export function speedSummary(): SpeedSummary {
+  const { first, empty } = readSpeed()
+  return {
+    firstSample: first.length,
+    firstP50: pctl(first, 50),
+    firstP95: pctl(first, 95),
+    emptySample: empty.length,
+    emptyCount: empty.reduce((a, b) => a + b, 0),
+  }
+}
+
+/** Кнопка «начать замер заново»: старые числа не должны выглядеть сегодняшними. */
+export function clearSpeed(): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.removeItem(SPEED_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+/** Секунды словами: «0,4 с» / «12 с» — без десятых там, где они не нужны. */
+export function fmtSec(ms: number): string {
+  if (!ms || ms < 0) return '—'
+  const s = ms / 1000
+  if (s < 10) return `${(Math.round(s * 10) / 10).toString().replace('.', ',')} с`
+  return `${Math.round(s)} с`
 }
 
 /**

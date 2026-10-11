@@ -762,7 +762,7 @@ console.log('L2 — песочница: Python через Pyodide (второй 
     const chat = readFileSync('src/views/ChatView.tsx', 'utf8');
     const app = readFileSync('src/App.tsx', 'utf8');
     ok('M12: черновик дошёл до экрана: App просит его и отдаёт в ChatView, а ChatView показывает текст вместо трёх точек',
-      /onDraft: \(t\) => setDraft\(t\)/.test(app) && /draft=\{draft\}/.test(app)
+      /onDraft: \(t\) => [\s\S]{0,200}setDraft\(t\)/.test(app) && /draft=\{draft\}/.test(app)
         && /draft \? \(/.test(chat) && /msg-draft/.test(chat));
     ok('M13: оборванный хвост не прячется — streamError показывается человеку',
       /streamError\?: string/.test(api) && /r\.streamError/.test(app));
