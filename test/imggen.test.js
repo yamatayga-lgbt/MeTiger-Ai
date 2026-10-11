@@ -96,7 +96,9 @@ ok('G9: IMG_DIRECTIVE объясняет модели формат блока', 
 {
   const why = 'gemini: 429 RESOURCE_EXHAUSTED';
   const r = await packImages('```img|кот\na cat\n```', { generate: async () => ({ ok: false, why }), wanted: true, text: 'нарисуй кота' });
-  ok('G16: отказ источника — честная строка в ответе, а не пустота', r.files.length === 0 && /не вышла: gemini: 429/.test(r.reply), JSON.stringify(r.reply));
+  ok('G16: отказ источника — понятная человеку строка, а техническая причина рядом в скобках',
+    r.files.length === 0 && /не вышла: у бесплатных источников кончился лимит/.test(r.reply)
+      && /gemini: 429/.test(r.reply), JSON.stringify(r.reply));
   ok('G17: и в notes она же, чтобы каналы не расходились', r.notes.length === 1 && /кот/.test(r.notes[0]));
 }
 {

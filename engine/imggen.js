@@ -72,11 +72,28 @@ const b64dec = (s) => {
 const first = (v) => String(v || '').split(',')[0].trim();
 
 /** OdiRouter: OpenAI-совместимые /v1/images/{generations,edits}, у free-каналов квоты нет. */
+/* Имена моделей у бесплатных шлюзов меняются без предупреждения: 11 окт 2026 на
+   проде живой прогон получил model_not_found на единственном зашитом имени, и это
+   выглядело как «картинки сломались», хотя канал был жив. Теперь имя — список
+   кандидатов: пробуем по очереди, отвечавшее запоминаем на изолят и начинаем с
+   него. Прописанное в окружении имя всегда идёт первым. */
+let odiGenTurn = 0;
+let odiEditTurn = 0;
+const ODI_GEN_CANDIDATES = ['free-gpt-image-2', 'gpt-image-1', 'flux-schnell', 'flux', 'qwen-image'];
+const ODI_EDIT_CANDIDATES = ['free-gpt-image-2-edit', 'gpt-image-1-edit', 'qwen-image-edit'];
+
+function odiModels(env, name, candidates) {
+  const raw = String(env[name] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const list = (raw.length ? raw : candidates).slice();
+  /* Первым — то, что уже отвечало: как в переборе ключей у gemini. */
+  return { make: () => list, candidates: list };
+}
+
 function odirouterSource(env) {
   const key = first(env.ODIROUTER_KEYS || env.ODIROUTER_KEY);
   if (!key) return null;
-  const gen = String(env.IMGGEN_ODI_MODEL || 'free-gpt-image-2');
-  const edit = String(env.IMGGEN_ODI_EDIT_MODEL || 'free-gpt-image-2-edit');
+  const genList = odiModels(env, 'IMGGEN_ODI_MODEL', ODI_GEN_CANDIDATES).candidates;
+  const editList = odiModels(env, 'IMGGEN_ODI_EDIT_MODEL', ODI_EDIT_CANDIDATES).candidates;
   const base = 'https://api.odirouter.ai/v1';
   const post = async (path, payload, fetchImpl) => {
     const r = await fetchImpl(base + path, {
@@ -95,52 +112,93 @@ function odirouterSource(env) {
     if (!bytes && !item.url) throw new Error('источник вернул ответ без картинки');
     return { bytes, url: item.url || '' };
   };
+  /* Пробуем имена по очереди. «Нет такой модели» — не повод считать канал мёртвым:
+     идём дальше. Ошибку отдаём только когда имена кончились. */
+  const tryList = async (path, makeBody, list, turn, fetchImpl) => {
+    const order = list.map((_, i) => (turn + i) % list.length);
+    let lastWhy = 'ни одно имя модели не подошло';
+    for (const idx of order) {
+      try {
+        return { out: await post(path, makeBody(list[idx]), fetchImpl), model: list[idx] };
+      } catch (e) {
+        lastWhy = String((e && e.message) || e);
+        if (!/model_not_found|not found|unknown model|404/i.test(lastWhy)) break;
+      }
+    }
+    throw new Error(lastWhy);
+  };
   return {
     id: 'odirouter',
     edits: true,
     async generate({ prompt, size, fetchImpl }) {
-      const out = await post('/images/generations', { model: gen, prompt, n: 1, size: size || DEFAULT_SIZE }, fetchImpl);
-      return out;
+      const r = await tryList('/images/generations', (m) => ({ model: m, prompt, n: 1, size: size || DEFAULT_SIZE }), genList, odiGenTurn, fetchImpl);
+      odiGenTurn = genList.indexOf(r.model) >= 0 ? genList.indexOf(r.model) : odiGenTurn;
+      return r.out;
     },
     async edit({ prompt, images, size, fetchImpl }) {
       const img = (images || [])[0];
       if (!img) throw new Error('для правки нужна картинка во вложении');
-      const out = await post('/images/edits', {
-        model: edit, prompt, n: 1, size: size || DEFAULT_SIZE,
+      const r = await tryList('/images/edits', (m) => ({
+        model: m, prompt, n: 1, size: size || DEFAULT_SIZE,
         image: 'data:' + (img.mime || 'image/png') + ';base64,' + img.data,
-      }, fetchImpl);
-      return out;
+      }), editList, odiEditTurn, fetchImpl);
+      odiEditTurn = editList.indexOf(r.model) >= 0 ? editList.indexOf(r.model) : odiEditTurn;
+      return r.out;
     },
   };
 }
 
 /** Gemini: generateContent с responseModalities — картинка на выход, входные parts = правка. */
+/* У Gemini картинки упираются в дневную квоту ключа. Ключей в GEMINI_KEYS обычно
+   несколько, а источник брал только первый — и когда на нём квота кончалась,
+   картинки «ломались» при живых остальных ключах. Теперь перебираем все ключи,
+   запоминаем на изолят тот, который отвечал, и начинаем с него: обычно попадаем
+   с первого раза, а при исчерпании — молча идём к следующему. */
+let gemKeyTurn = 0;
+
 function geminiSource(env) {
-  const key = first(env.GEMINI_KEYS || env.GOOGLE_API_KEY);
-  if (!key) return null;
+  const keys = String(env.GEMINI_KEYS || env.GOOGLE_API_KEY || '')
+    .split(',').map((k) => k.trim()).filter(Boolean);
+  if (!keys.length) return null;
   const model = String(env.IMGGEN_GEMINI_MODEL || 'gemini-2.5-flash-image');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const call = async (parts, fetchImpl) => {
-    const r = await fetchImpl(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
-    });
-    const txt = await r.text();
-    let j = null; try { j = JSON.parse(txt); } catch { /* нет */ }
-    if (!r.status || r.status >= 400) {
-      const e = j && j.error;
-      throw new Error((e && e.status ? e.status + ' ' + String(e.message).slice(0, 70) : 'http ' + r.status));
+    const order = keys.map((_, i) => (gemKeyTurn + i) % keys.length);
+    let lastWhy = 'ни один ключ не ответил';
+    for (const idx of order) {
+      const r = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': keys[idx] },
+        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
+      });
+      const txt = await r.text();
+      let j = null; try { j = JSON.parse(txt); } catch { /* нет */ }
+      if (!r.status || r.status >= 400) {
+        const e = j && j.error;
+        lastWhy = (e && e.status ? e.status + ' ' + String(e.message).slice(0, 70) : 'http ' + r.status);
+        continue;
+      }
+      const out = ((j && j.candidates) || [])[0];
+      const list = (out && out.content && out.content.parts) || [];
+      const img = list.find((p) => p && p.inlineData && p.inlineData.data);
+      if (!img) {
+        /* Модель ответила текстом: это не про ключ, второй ключ даст то же самое —
+           причину отдаём как есть, не жжём остальные. */
+        lastWhy = 'модель ответила текстом без картинки';
+        break;
+      }
+      gemKeyTurn = idx;
+      return {
+        bytes: b64dec(img.inlineData.data),
+        url: '',
+        text: list.filter((p) => p && p.text).map((p) => p.text).join(' ').trim(),
+      };
     }
-    const out = ((j && j.candidates) || [])[0];
-    const list = (out && out.content && out.content.parts) || [];
-    const img = list.find((p) => p && p.inlineData && p.inlineData.data);
-    if (!img) throw new Error('модель ответила текстом без картинки');
-    return {
-      bytes: b64dec(img.inlineData.data),
-      url: '',
-      text: list.filter((p) => p && p.text).map((p) => p.text).join(' ').trim(),
-    };
+    /* Все ключи в лимите — так и скажем: это честнее, чем «429» без числа ключей. */
+    const allQuota = /RESOURCE_EXHAUSTED|429|exceeded/i.test(lastWhy);
+    throw new Error(allQuota && keys.length > 1
+      ? lastWhy + ' (проверено ключей: ' + keys.length + ')'
+      : lastWhy);
   };
   return {
     id: 'gemini',
@@ -468,7 +526,7 @@ export async function packImages(answer, o) {
   for (const b of blocks.slice(0, 2)) {
     const needEdit = images.length > 0 && /(убер|уба\w*|удал\w*|замени|поменя|перекрас|дорисуй|фон|правк|retouch|inpaint|remove|change|background|crop|обреж)/i.test(b.prompt);
     const r = await (needEdit ? ed : gen)({ prompt: b.prompt, images });
-    if (!r.ok) { notes.push('картинка «' + (b.name || 'без имени') + '» не вышла: ' + r.why); continue; }
+    if (!r.ok) { notes.push('картинка «' + (b.name || 'без имени') + '» не вышла: ' + whyWithRaw(humanWhy(r.why), r.why)); continue; }
     files.push(fileOf(r, b.name));
   }
 
@@ -480,7 +538,7 @@ export async function packImages(answer, o) {
       const needEdit = images.length > 0 && wantsEdit(opts.text, images);
       const r = await (needEdit ? ed : gen)({ prompt: p, images });
       if (r.ok) files.push(fileOf(r, cleanName(p).slice(0, 40)));
-      else notes.push('картинка не вышла: ' + r.why);
+      else notes.push('картинка не вышла: ' + whyWithRaw(humanWhy(r.why), r.why));
     }
   }
 
@@ -488,6 +546,30 @@ export async function packImages(answer, o) {
   if (!reply && files.length) reply = 'Готово: ' + files.map((f) => f.name).join(', ') + '.';
   if (notes.length) reply = (reply ? reply + '\n\n' : '') + '· ' + notes.join('\n· ');
   return { reply, files, notes };
+}
+
+/**
+ * Причина отказа словами для человека (0.169). Техническую строку человеку читать
+ * нечего («gemini: RESOURCE_EXHAUSTED You exceeded your current quota, please check
+ * your plan and billing de…»), но и прятать причину нельзя: она объясняет, ждать
+ * или пробовать другое. Поэтому в тексте — короткая человеческая фраза, а сырая
+ * причина остаётся в скобках: по ней мы разбираем, а человек видит, что делать.
+ */
+export function humanWhy(why) {
+  const w = String(why || '');
+  if (/402|quota|RESOURCE_EXHAUSTED|exceeded|лимит/i.test(w)) return 'у бесплатных источников кончился лимит на сегодня — попробуйте позже';
+  if (/model_not_found|not found|unknown model|404/i.test(w)) return 'источник больше не знает такой модели';
+  if (/таймаут|timeout|abort|время/i.test(w)) return 'источник не ответил вовремя';
+  if (/\bhttp\s*5\d\d/i.test(w)) return 'источник сейчас сломан на своей стороне';
+  if (/без картинки|пуст/i.test(w)) return 'источник ответил, но без картинки';
+  if (/сеть|network|fetch failed|ENOTFOUND/i.test(w)) return 'источник не отвечает';
+  return 'источники сейчас не справились';
+}
+
+/** Техническую причину оставляем в скобках, но коротко: она для разбора, не для чтения. */
+function whyWithRaw(human, raw) {
+  const t = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+  return t ? human + ' (' + t + ')' : human;
 }
 
 function fileOf(r, name) {
