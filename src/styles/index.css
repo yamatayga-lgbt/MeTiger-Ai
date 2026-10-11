@@ -6271,3 +6271,9 @@ button,
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+.composer-hint-version {
+  margin-left: 4px;
+  color: var(--text-3);
+  font-size: 9px;
+}
