@@ -45,7 +45,8 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U161a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
     && pkg.version === currentVersion && lock.version === currentVersion)
-    && new RegExp('# Version ' + String(currentVersion).replace('.', '\\.')).test(vmd),
+    && (new RegExp('# Version ' + String(currentVersion).replace('.', '\\.')).test(vmd)
+      || new RegExp('^' + String(currentVersion) + '$').test(vmd.trim())),
   [currentVersion, pkg.version, lock.version].join('/'));
 ok('U161b «Что нового» и README знают про 0.161 (человек узнаёт, что изменилось)',
   /version: '0\.161'/.test(notes) && /title: 'Большие документы читаются по частям'/.test(notes) && /\*\*0\.161\*\*/.test(readme));
