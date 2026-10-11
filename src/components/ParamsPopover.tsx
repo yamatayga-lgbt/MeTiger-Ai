@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { haptic } from '../lib/haptic'
@@ -6,12 +6,53 @@ import { haptic } from '../lib/haptic'
 interface ParamsPopoverProps {
   params: GenParams
   onChange: (next: GenParams) => void
+  /** Закрыть панель. Нужна для жеста: потянул полоску вниз — панель сложилась. */
+  onClose?: () => void
 }
+
+/** Сколько пальцем надо потянуть полоску вниз, чтобы панель сложилась. */
+const CLOSE_AFTER_PX = 64
 
 const MAX_TOKENS_SLIDER_TOP = 8192
 const MAX_TOKENS_SLIDER_MIN = 256
 
-export function ParamsPopover({ params, onChange }: ParamsPopoverProps) {
+export function ParamsPopover({ params, onChange, onClose }: ParamsPopoverProps) {
+  /* Жест «потянуть полоску вниз = закрыть» (0.159). Владелец показал на серую
+     линию сверху панели: она выглядела ручкой, но ничем не управляла — теперь
+     пальцем за неё панель складывается, как шторка. Тянем только за полоску и
+     за строку с надписью (там, где нет кнопки «Сброс»), чтобы не мешать
+     прокрутке содержимого и нажатиям на ползунки. */
+  const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const startY = useRef<number | null>(null)
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return
+    startY.current = e.clientY
+    setDragging(true)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (startY.current === null) return
+    /* Вверх тянется с сопротивлением: панель уезжает к верхнему краю только чуть-чуть,
+       намекая, что это не то направление. */
+    const dy = e.clientY - startY.current
+    setDragY(dy >= 0 ? dy : dy * 0.25)
+  }
+
+  const finishDrag = () => {
+    if (startY.current === null) return
+    const dy = dragY
+    startY.current = null
+    setDragging(false)
+    setDragY(0)
+    if (dy > CLOSE_AFTER_PX && onClose) {
+      haptic('light')
+      onClose()
+    }
+  }
+
   const tempPct = Math.round(((params.temperature - 0) / 2) * 100)
   const sliderTokVal = params.maxTokens <= 0 ? MAX_TOKENS_SLIDER_TOP : Math.min(MAX_TOKENS_SLIDER_TOP, Math.max(MAX_TOKENS_SLIDER_MIN, params.maxTokens))
   const tokPct = Math.round(((sliderTokVal - MAX_TOKENS_SLIDER_MIN) / (MAX_TOKENS_SLIDER_TOP - MAX_TOKENS_SLIDER_MIN)) * 100)
@@ -20,9 +61,32 @@ export function ParamsPopover({ params, onChange }: ParamsPopoverProps) {
   const freqPct = Math.round(((params.frequencyPenalty - -2) / 4) * 100)
 
   return (
-    <div className="params-popover" role="dialog" aria-label="Параметры генерации">
-      <div className="params-handle" aria-hidden="true" />
-      <div className="params-head">
+    <div
+      className={`params-popover${dragging ? ' is-dragging' : ''}`}
+      role="dialog"
+      aria-label="Параметры генерации"
+      style={dragY ? ({ transform: `translateY(${dragY}px)` } as CSSProperties) : undefined}
+    >
+      {/* Полоска-ручка: за неё панель складывается пальцем вниз. Область захвата
+          выше самой полоски (палец в 4px не попадает) — отсюда .params-grab. */}
+      <div
+        className="params-grab"
+        role="button"
+        aria-label="Потянуть вниз, чтобы закрыть"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+      >
+        <span className="params-handle" aria-hidden="true" />
+      </div>
+      <div
+        className="params-head"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+      >
         <span className="params-title">ПАРАМЕТРЫ</span>
         <button
           type="button"

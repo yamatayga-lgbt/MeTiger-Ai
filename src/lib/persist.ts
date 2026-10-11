@@ -192,17 +192,19 @@ export function loadView(fallback: ViewId): ViewId {
     const v: unknown = JSON.parse(raw ?? '')
     if (
       v === 'chat' ||
-      v === 'cases' ||
-      v === 'settings' ||
       v === 'usage' ||
       v === 'whatsnew' ||
-      /* экраны 0.155: профиль и всё, что из него открывается */
       v === 'profile' ||
       v === 'personalization' ||
       v === 'data' ||
       v === 'info'
     )
       return v
+    /* Разделы, которых больше нет (0.159): «Дела» убраны целиком, «Настройки»
+       переехали в профиль. Человека, закрывшего приложение на таком экране,
+       встречаем осмысленно, а не пустым чатом. */
+    if (v === 'cases') return 'chat'
+    if (v === 'settings') return 'profile'
   } catch {
     /* noop */
   }

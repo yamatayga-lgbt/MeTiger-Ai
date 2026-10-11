@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { groupChats } from '../lib/chatGroups'
 import {
-  Activity,
-  Briefcase,
   Check,
   SquarePen,
   Moon,
@@ -37,19 +35,13 @@ interface SidebarProps {
   newsDot?: boolean
 }
 
-const SECTIONS: { id: ViewId; label: string; icon: typeof Briefcase }[] = [
-  { id: 'cases', label: 'Дела', icon: Briefcase },
-  /* Расход — пунктом раздела, а не строкой в Настройках: в Настройках он дублировал
-     этот же переход, и человек искал его в двух местах вместо одного. */
-  { id: 'usage', label: 'Использование и Лимиты', icon: Activity },
-  /* «Что нового» — первым пунктом: после обновления человек первым делом ищет
-     именно его, а точка на пункте говорит, что версия сменилась. */
+/* Разделы меню (0.159). Владелец попросил убрать «Дела» целиком и «Использование
+   и Лимиты» из разделов: расход и так открывается строкой в профиле, а дела —
+   отдельная функция, которая проекту не нужна. Осталось то, что не дублируется
+   нигде: «Что нового». */
+const SECTIONS: { id: ViewId; label: string; icon: typeof Sparkles }[] = [
   { id: 'whatsnew', label: 'Что нового', icon: Sparkles },
-  /* «Настройки» отсюда убраны (0.155): вход в них один — через профиль, он на
-     аватарке в нижней панели. Два входа путали: человек не понимал, чем
-     настройки в меню отличаются от настроек в профиле. */
 ]
-
 
 export function Sidebar({
   open,

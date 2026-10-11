@@ -4,14 +4,11 @@ import { Topbar } from './components/Topbar'
 import { WorkspaceDrawer } from './components/WorkspaceDrawer'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
-import { CaseEditorModal } from './components/CaseEditorModal'
 import { ChatView } from './views/ChatView'
-import { CasesView } from './views/CasesView'
 /* Экраны грузятся отдельными файлами. lazyView вместо голого lazy (0.157):
    если вкладка открыта с прошлой выкладки, файл старой версии уже удалён — это
    не ошибка приложения, а отставание на версию, и лечится перезагрузкой
    (см. lib/chunkReload.ts). */
-const SettingsView = lazyView(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })))
 const ProfileView = lazyView(() => import('./views/ProfileView').then((m) => ({ default: m.ProfileView })))
 const PersonalizationView = lazyView(() => import('./views/PersonalizationView').then((m) => ({ default: m.PersonalizationView })))
 const DataView = lazyView(() => import('./views/DataView').then((m) => ({ default: m.DataView })))
@@ -34,7 +31,6 @@ import {
   saveChats,
 } from './lib/persist'
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
-import { caseContext, draftCaseFromChat, loadCases, newCaseDraft, saveCases, type CaseFile } from './lib/cases'
 import { haptic } from './lib/haptic'
 import { lazyView } from './lib/chunkReload'
 import { siteUser, type Person } from './lib/user'
@@ -51,12 +47,11 @@ import {
 
 export type ViewId =
   | 'chat'
-  | 'cases'
-  | 'settings'
   | 'usage'
   | 'whatsnew'
-  /* Экран профиля и всё, что открывается из него (0.155): вход в настройки
-     теперь тут, а сам профиль живёт на аватарке нижней панели. */
+  /* Профиль и всё, что открывается из него. С 0.159 профиль — это и есть
+     настройки: отдельный экран настроек убран, четыре его пункта переехали
+     сюда (просьба владельца: «Профиль и будет читаться как Настройки»). */
   | 'profile'
   | 'personalization'
   | 'data'
@@ -71,8 +66,6 @@ export interface Chat {
 
 const TITLES: Record<ViewId, string> = {
   chat: 'Чат',
-  cases: 'Дела',
-  settings: 'Настройки',
   usage: 'Использование и Лимиты',
   whatsnew: 'Что нового',
   profile: 'Профиль',
@@ -83,17 +76,19 @@ const TITLES: Record<ViewId, string> = {
 
 /* Экраны, которые нельзя рисовать «въезжающей» анимацией: списки на весь экран
    мигают и дёргаются при входе (см. комментарий к .settings-scroll в styles). */
-const NO_ANIM_VIEWS: ViewId[] = ['settings', 'profile', 'personalization', 'data', 'info']
+const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'data', 'info']
 
 /* Куда ведёт стрелка «назад» на вложенных экранах. Не история посещений, а
    постоянный маршрут: с любого экрана назад — туда, откуда в него попадают.
    Так поведение стрелки всегда можно объяснить словами, а не вспоминать. */
 const BACK_TO: Partial<Record<ViewId, ViewId>> = {
   profile: 'chat',
-  settings: 'profile',
   personalization: 'profile',
-  data: 'settings',
-  info: 'settings',
+  data: 'profile',
+  info: 'profile',
+  /* «Использование и лимиты» открывается строкой в профиле — из сайдбара этот
+     пункт убран (0.159): расход и так виден в профиле, дублировать не нужно. */
+  usage: 'profile',
 }
 
 /* Прочитанные версии «Что нового» — на устройстве. Точка на пункте гаснет, как
@@ -161,8 +156,6 @@ const emptyChat = (): Chat => ({
 export default function App() {
   const [view, setView] = useState<ViewId>(() => loadView('chat'))
   const [chats, setChats] = useState<Chat[]>(() => loadChats(emptyChat))
-  const [cases, setCases] = useState<CaseFile[]>(() => loadCases())
-  const [caseEditorDraft, setCaseEditorDraft] = useState<CaseFile | null>(null)
   const [activeChatId, setActiveChatId] = useState<string>(() =>
     loadActiveChatId('c-start'),
   )
@@ -223,16 +216,11 @@ export default function App() {
   }, [])
 
   const activeChat = chats.find((c) => c.id === activeChatId)
-  const activeCase = cases.find((item) => item.chatId === activeChatId)
 
   // Сохраняем реальные чаты, активный чат и раздел (только живые данные)
   useEffect(() => {
     saveChats(chats, activeChatId, view)
   }, [chats, activeChatId, view])
-
-  useEffect(() => {
-    saveCases(cases)
-  }, [cases])
 
   // Разовая подгрузка настоящих байт картинок/файлов из IndexedDB поверх
   // текста, который уже отрисован из localStorage — короткая вспышка
@@ -342,56 +330,6 @@ export default function App() {
     setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title: t.slice(0, TITLE_MAX) } : c)))
   }, [])
 
-  const openCaseEditor = useCallback((chatId?: string, target?: CaseFile) => {
-    const linked = target || (chatId ? cases.find((item) => item.chatId === chatId) : undefined)
-    const chat = chatId ? chats.find((item) => item.id === chatId) : undefined
-    if (chat) {
-      setCaseEditorDraft(draftCaseFromChat(chat, linked))
-      return
-    }
-    setCaseEditorDraft(linked ? { ...linked } : newCaseDraft())
-  }, [cases, chats])
-
-  const saveCase = useCallback((next: CaseFile) => {
-    setCases((prev) => [next, ...prev.filter((item) => item.id !== next.id)])
-    setCaseEditorDraft(null)
-    notify('Контрольная точка сохранена')
-  }, [notify])
-
-  const toggleCaseStatus = useCallback((item: CaseFile) => {
-    const status = item.status === 'done' ? 'active' : 'done'
-    setCases((prev) => prev.map((current) => current.id === item.id
-      ? { ...current, status, updatedAt: Date.now() }
-      : current))
-    notify(status === 'done' ? 'Дело завершено' : 'Дело снова в работе')
-  }, [notify])
-
-  const continueCase = useCallback((item: CaseFile) => {
-    const linkedChat = item.chatId ? chats.find((chat) => chat.id === item.chatId) : undefined
-    if (linkedChat) {
-      selectChat(linkedChat.id)
-      setCases((prev) => prev.map((current) => current.id === item.id && current.status === 'done'
-        ? { ...current, status: 'active', updatedAt: Date.now() }
-        : current))
-      return
-    }
-    haptic('select')
-    const openDraft = chats.find((chat) => chat.id === activeChatId && chat.messages.length === 0)
-    const draft = openDraft && !cases.some((current) => current.id !== item.id && current.chatId === openDraft.id)
-      ? openDraft
-      : emptyChat()
-    setChats((prev) => prev.some((chat) => chat.id === draft.id)
-      ? prev
-      : [...prev.filter((chat) => chat.messages.length > 0), draft])
-    setActiveChatId(draft.id)
-    setCases((prev) => prev.map((current) => current.id === item.id
-      ? { ...current, chatId: draft.id, status: 'active', updatedAt: Date.now() }
-      : current))
-    setTyping(false)
-    setView('chat')
-    setMenuOpen(false)
-  }, [activeChatId, cases, chats, selectChat])
-
   const deleteChat = useCallback(
     (id: string, showNotification = true) => {
       haptic('medium')
@@ -399,9 +337,6 @@ export default function App() {
       // не всю память человека — другие его чаты её по-прежнему разделяют.
       // Best-effort и не блокирует удаление: см. комментарий в lib/api.ts
       forgetThread(id)
-      // Карточка дела остаётся, но теряет ссылку на удалённый разговор;
-      // «Продолжить» откроет новый чат и передаст туда её сохранённый контекст.
-      setCases((prev) => prev.map((item) => item.chatId === id ? { ...item, chatId: undefined } : item))
       setChats((prev) => {
         // удаление окончательное: сам чат и пустые черновики уходят
         const removed = prev.find((c) => c.id === id)
@@ -425,16 +360,6 @@ export default function App() {
     [activeChatId, notify],
   )
 
-  const deleteCase = useCallback((item: CaseFile) => {
-    setCases((prev) => prev.filter((current) => current.id !== item.id))
-    if (item.chatId) {
-      deleteChat(item.chatId, false)
-      notify('Дело и связанная переписка удалены')
-    } else {
-      notify('Дело удалено')
-    }
-  }, [deleteChat, notify])
-
   /* Ответ агента. Этап 1 переноса: имитация из mock.ts уступила место двигателю.
      Мока осталось ровно столько, чтобы «npm run dev» жил без ключей и без сети.
      В проде подмены нет: если движок не ответил, человек видит причину, а не
@@ -443,7 +368,6 @@ export default function App() {
     (text: string, images?: string[], attachments?: Attachment[]) => {
       const chatId = activeChatId
       const current = chats.find((c) => c.id === chatId)
-      const linkedCase = cases.find((item) => item.chatId === chatId)
       const history = (current?.messages ?? []).slice(-8).map((m) => ({ role: m.role, text: m.text }))
       setChats((prev) =>
         prev.map((c) =>
@@ -485,7 +409,6 @@ export default function App() {
             return await sendChat(text, history, {
               signal: ac.signal,
               threadId: chatId,
-              ...(linkedCase ? { caseContext: caseContext(linkedCase) } : {}),
               ...(images && images.length ? { images } : {}),
               ...(attachments && attachments.length ? { attachments } : {}),
               ...(model ? { model } : {}),
@@ -606,7 +529,7 @@ export default function App() {
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
       })()
     },
-    [activeChatId, cases, chats, model, reasoningOn, effort, genParams],
+    [activeChatId, chats, model, reasoningOn, effort, genParams],
   )
   // ⌘K — палитра, ⌘N — новый чат, Esc — закрыть оверлеи
   useEffect(() => {
@@ -678,12 +601,6 @@ export default function App() {
             ? {
                 onRenameChat: (t: string) => renameChat(activeChatId, t),
                 onDeleteChat: () => deleteChat(activeChatId),
-                ...(activeChat && activeChat.messages.length > 0
-                  ? {
-                      onSaveCase: () => openCaseEditor(activeChatId),
-                      saveCaseLabel: activeCase ? 'Обновить дело' : 'Записать как дело',
-                    }
-                  : {}),
               }
             : {})}
         />
@@ -709,23 +626,17 @@ export default function App() {
               />
             </div>
           ) : null}
-          {view === 'cases' ? (
-            <CasesView
-              cases={cases}
-              chats={chats}
-              onNew={() => openCaseEditor()}
-              onEdit={(item) => openCaseEditor(item.chatId, item)}
-              onContinue={continueCase}
-              onToggleStatus={toggleCaseStatus}
-              onDelete={deleteCase}
-            />
-          ) : null}
           <Suspense fallback={null}>
-          {view === 'settings' ? (
-            <SettingsView themePref={pref} onThemePref={setPref} onNavigate={navigate} />
-          ) : null}
+          {/* Профиль — это и есть настройки (0.159): тема выбирается прямо тут,
+              как и на экране настроек прежде. Отдельной вкладки настроек нет. */}
           {view === 'profile' ? (
-            <ProfileView user={user} notify={notify} onNavigate={navigate} />
+            <ProfileView
+              user={user}
+              notify={notify}
+              onNavigate={navigate}
+              themePref={pref}
+              onThemePref={setPref}
+            />
           ) : null}
           {view === 'personalization' ? <PersonalizationView notify={notify} /> : null}
           {view === 'data' ? (
@@ -741,13 +652,6 @@ export default function App() {
       <WorkspaceDrawer
         open={workspaceOpen}
         onClose={() => setWorkspaceOpen(false)}
-      />
-
-      <CaseEditorModal
-        open={caseEditorDraft !== null}
-        initial={caseEditorDraft}
-        onClose={() => setCaseEditorDraft(null)}
-        onSave={saveCase}
       />
 
       {/* Окошко поверх всего: человек вернулся в обновлённое приложение и первым

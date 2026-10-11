@@ -18,7 +18,8 @@ import { readFileSync, existsSync } from 'node:fs';
 
 const app = readFileSync('src/App.tsx', 'utf8');
 const sidebar = readFileSync('src/components/Sidebar.tsx', 'utf8');
-const settings = readFileSync('src/views/SettingsView.tsx', 'utf8');
+/* 0.159: настройки переехали в профиль — проверяем там же. */
+const settings = readFileSync('src/views/ProfileView.tsx', 'utf8');
 const css = readFileSync('src/styles/index.css', 'utf8');
 const version = readFileSync('src/lib/version.ts', 'utf8');
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -79,7 +80,7 @@ ok('U156h «Голос», «Акцентный цвет», «Безопасно�
     && !/Акцентный цвет/.test(settingsCode)
     && !/Безопасность и вход/.test(settingsCode)
     && !/Хранилище/.test(settingsCode));
-ok('U156i в настройках осталось рабочее: Внешний вид, Управление данными, Сообщить об ошибке, Информация',
+ok('U156i в настройках (в профиле) осталось рабочее: Внешний вид, Управление данными, Сообщить об ошибке, Информация',
   ['Внешний вид', 'Управление данными', 'Сообщить об ошибке', 'Информация'].every((t) => settingsCode.includes(t)));
 
 /* --- выпуск --- */

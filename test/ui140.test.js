@@ -6,7 +6,6 @@ const app = readFileSync('src/App.tsx', 'utf8');
 const persist = readFileSync('src/lib/persist.ts', 'utf8');
 const sidebar = readFileSync('src/components/Sidebar.tsx', 'utf8');
 const topbar = readFileSync('src/components/Topbar.tsx', 'utf8');
-const cases = readFileSync('src/components/CaseEditorModal.tsx', 'utf8');
 const chat = readFileSync('src/views/ChatView.tsx', 'utf8');
 const voice = readFileSync('src/lib/voice.ts', 'utf8');
 const css = readFileSync('src/styles/index.css', 'utf8');
@@ -29,7 +28,8 @@ ok('U140b автогенерация и переименование чатов 
   /TITLE_MAX = 30/.test(app) && /maxLength=\{30\}/.test(sidebar) && /maxLength=\{30\}/.test(topbar));
 ok('U140c старые и сохраняемые названия чатов тоже обрезаются до 30',
   /MAX_CHAT_TITLE = 30/.test(persist) && (persist.match(/title: safeChatTitle\(c\.title\)/g) || []).length >= 2);
-ok('U140d лимит названия дела остаётся 50', /maxLength=\{50\}/.test(cases));
+/* U140d (лимит названия дела) снят вместе с «Делами»: раздел убран целиком
+   по просьбе владельца в 0.159, проверять больше нечего. */
 ok('U140e сессия голоса хранит аудио и предоставляет повтор распознавания',
   /canRetry: \(\) => boolean/.test(voice) && /retry: \(\) => boolean/.test(voice)
     && /retry\(\)\s*\{\s*if \(!hasRetryableRecording\(\) \|\| polishBusy\) return false[\s\S]*?transcribeAll\(\)/.test(voice));
@@ -53,4 +53,4 @@ ok('U140j заметка о выпуске и история README содерж
   /version: '0\.140'[\s\S]*?title: 'Чаты короче, голос можно распознать повторно'/.test(notes)
     && /^> \*\*0\.140\*\*/m.test(readme));
 
-console.log('\n10 ✔, 0 ✖');
+console.log('\n9 ✔, 0 ✖');

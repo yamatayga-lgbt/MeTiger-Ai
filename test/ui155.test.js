@@ -18,7 +18,8 @@ import { readFileSync } from 'node:fs';
 
 const app = readFileSync('src/App.tsx', 'utf8');
 const profile = readFileSync('src/views/ProfileView.tsx', 'utf8');
-const settings = readFileSync('src/views/SettingsView.tsx', 'utf8');
+/* 0.159: отдельного экрана настроек нет — четыре его строки живут в профиле. */
+const settings = readFileSync('src/views/ProfileView.tsx', 'utf8');
 const sidebar = readFileSync('src/components/Sidebar.tsx', 'utf8');
 const css = readFileSync('src/styles/index.css', 'utf8');
 const version = readFileSync('src/lib/version.ts', 'utf8');
@@ -75,7 +76,7 @@ ok('U155f профиль — новая вкладка со своим экра�
     && /onBack: \(\) => navigate/.test(app));
 
 /* --- список настроек: только оставленное, в порядке скрина --- */
-ok('U155g в настройках осталось ровно рабочее, в порядке скрина',
+ok('U155g в настройках (теперь в профиле) осталось ровно рабочее, в порядке скрина',
   (() => {
     /* 0.156: «Голос», «Безопасность и вход», «Хранилище» и «Акцентный цвет»
        владелец убрал — это были заглушки. Оставшееся проверяем по порядку. */

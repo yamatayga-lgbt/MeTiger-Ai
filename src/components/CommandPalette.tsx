@@ -2,14 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   ArrowLeftRight,
-  Briefcase,
   Command,
   Database,
   Folder,
   Info,
   MessageSquarePlus,
   Moon,
-  Settings,
   Sun,
   UserRound,
 } from 'lucide-react'
@@ -169,12 +167,6 @@ export function buildActions({
       run: () => navigate('chat'),
     },
     {
-      id: 'go-cases',
-      label: 'Открыть дела',
-      icon: Briefcase,
-      run: () => navigate('cases'),
-    },
-    {
       id: 'go-usage',
       label: 'Использование и Лимиты',
       icon: Activity,
@@ -182,15 +174,9 @@ export function buildActions({
     },
     {
       id: 'go-profile',
-      label: 'Открыть профиль',
+      label: 'Открыть профиль и настройки',
       icon: UserRound,
       run: () => navigate('profile'),
-    },
-    {
-      id: 'go-settings',
-      label: 'Открыть настройки',
-      icon: Settings,
-      run: () => navigate('settings'),
     },
     {
       id: 'go-personalization',

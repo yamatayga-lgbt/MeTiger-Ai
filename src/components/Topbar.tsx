@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Briefcase, ChevronDown, Folder, PanelLeft, PenLine, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Folder, PanelLeft, PenLine, Trash2 } from 'lucide-react'
 import { IconButton } from './ui'
 import { haptic } from '../lib/haptic'
 
@@ -14,21 +14,18 @@ interface TopbarProps {
       своей переписки капсула остаётся обычной неактивной подписью. */
   onRenameChat?: (title: string) => void
   onDeleteChat?: () => void
-  /** Сохранить текущую переписку как дело или обновить его контрольную точку. */
-  onSaveCase?: () => void
-  saveCaseLabel?: string
 }
 
 /** Верхняя панель: круглая кнопка меню слева, капсула с названием чата по центру
     (вместо апселла подписки у ChatGPT — у нас всё бесплатно), круглая кнопка
     Workspace справа. В чате капсула открывает действия: сохранить дело,
     переименовать или удалить переписку. */
-export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameChat, onDeleteChat, onSaveCase, saveCaseLabel }: TopbarProps) {
+export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameChat, onDeleteChat }: TopbarProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(title)
   const inputRef = useRef<HTMLInputElement>(null)
-  const interactive = Boolean(onRenameChat || onDeleteChat || onSaveCase)
+  const interactive = Boolean(onRenameChat || onDeleteChat)
 
   useEffect(() => {
     if (renaming) inputRef.current?.focus()
@@ -128,18 +125,6 @@ export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameCha
               left: Math.max(8, Math.min(menu.x - 88, window.innerWidth - 184)),
             }}
           >
-            {onSaveCase ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setMenu(null)
-                  onSaveCase()
-                }}
-              >
-                <Briefcase size={14} />
-                {saveCaseLabel || 'Записать как дело'}
-              </button>
-            ) : null}
             {onRenameChat ? (
               <button
                 type="button"

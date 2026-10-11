@@ -1332,6 +1332,7 @@ export function ChatView({
               <ParamsPopover
                 params={genParams}
                 onChange={(next) => onGenParamsChange?.(next)}
+                onClose={() => setParamsOpen(false)}
               />
             </>
           ) : null}

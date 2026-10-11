@@ -59,7 +59,8 @@ ok('U157d карусель перезагрузок невозможна: защ
     && /Date\.now\(\) - last < COOLDOWN_MS\) return false/.test(chunk));
 
 ok('U157e ленивые экраны идут через lazyView, а не через голый lazy',
-  (app.match(/lazyView\(/g) || []).length >= 7
+  /* 0.159: экранов стало шесть — настройки переехали в профиль. */
+  (app.match(/lazyView\(/g) || []).length >= 6
     && !/lazy\(\(\) => import\(/.test(app)
     && /export function lazyView/.test(chunk));
 
