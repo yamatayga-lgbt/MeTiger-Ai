@@ -10,7 +10,7 @@
 // сменяется новой, и об этом не нужно вспоминать руками при публикации.
 const CACHE_VERSION = 'v0151'
 const CACHE_NAME = `metiger-shell-${CACHE_VERSION}`
-const SHELL_URLS = ['./', './index.html', './favicon.png', './favicon.svg', './manifest.webmanifest']
+const SHELL_URLS = ['./', './index.html', './favicon.png', './favicon.svg', './manifest.webmanifest', './offline.html']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -31,13 +31,15 @@ self.addEventListener('activate', (event) => {
   )
 })
 
+const OFFLINE_URL = './offline.html'
+
 self.addEventListener('fetch', (event) => {
   const req = event.request
   if (req.method !== 'GET') return // POST /api/chat и прочее — мимо кэша, не трогаем
 
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return // чужие хосты (CDN, провайдеры) — не кэшируем
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/telegram/')) return // живые данные всегда с сети
+  if (url.pathname && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/telegram/'))) return // живые данные всегда с сети
 
   // Network-first: пока есть сеть — всегда свежая версия (проект обновляется часто),
   // кэш — только подстраховка на случай обрыва связи или холодного повторного запуска.
@@ -50,6 +52,12 @@ self.addEventListener('fetch', (event) => {
         }
         return res
       })
-      .catch(() => caches.match(req).then((cached) => cached || caches.match('./index.html')))
+      .catch(() => {
+        // Если API недоступен, возвращаем offline страницу
+        if (url.pathname && url.pathname.startsWith('/api/')) {
+          return caches.match(OFFLINE_URL)
+        }
+        return caches.match(req).then((cached) => cached || caches.match('./index.html'))
+      })
   )
 })

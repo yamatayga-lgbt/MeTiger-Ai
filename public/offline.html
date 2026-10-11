@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0A0A0C" />
+    <title>MeTiger Ai — Оффлайн</title>
+    <style>
+      :root {
+        --bg: #0a0a0c;
+        --surface: #131317;
+        --border: rgba(255, 255, 255, 0.075);
+        --text: #edeef2;
+        --text-2: #9ba1ae;
+        --accent: #e9e9ee;
+        --accent-fg: #111114;
+      }
+      
+      [data-theme="light"] {
+        --bg: #f7f6f2;
+        --surface: #ffffff;
+        --border: rgba(23, 21, 18, 0.1);
+        --text: #171512;
+        --text-2: #6e6a62;
+        --accent: #17151a;
+        --accent-fg: #ffffff;
+      }
+      
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      html, body {
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      
+      .offline-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        padding: 20px;
+      }
+      
+      .offline-card {
+        max-width: 500px;
+        width: 100%;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 40px 30px;
+        text-align: center;
+      }
+      
+      .offline-icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 20px;
+        background: var(--accent);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent-fg);
+      }
+      
+      .offline-icon svg {
+        width: 32px;
+        height: 32px;
+      }
+      
+      .offline-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin: 0 0 12px;
+      }
+      
+      .offline-text {
+        color: var(--text-2);
+        line-height: 1.5;
+        margin: 0 0 24px;
+      }
+      
+      .offline-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 24px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        border: none;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 550;
+        cursor: pointer;
+        transition: filter 0.2s, transform 0.1s;
+      }
+      
+      .offline-btn:hover {
+        filter: brightness(1.05);
+      }
+      
+      .offline-btn:active {
+        transform: scale(0.98);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="offline-container">
+      <div class="offline-card">
+        <div class="offline-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <h1 class="offline-title">Нет подключения к интернету</h1>
+        <p class="offline-text">
+          MeTiger Ai требует подключения к интернету для работы.<br />
+          Проверьте ваше соединение и перезагрузите страницу.
+        </p>
+        <button class="offline-btn" onclick="window.location.reload()">
+          Перезагрузить
+        </button>
+      </div>
+    </div>
+    <script>
+      // Проверяем подключение каждую секунду и перезагружаем, если появилось
+      setInterval(() => {
+        if (navigator.onLine) {
+          window.location.reload();
+        }
+      }, 1000);
+    </script>
+  </body>
+</html>

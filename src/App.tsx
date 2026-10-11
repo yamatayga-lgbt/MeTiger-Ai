@@ -17,7 +17,7 @@ import { APP_VERSION } from './lib/version'
 import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
-import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep } from './lib/api'
+import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep, type ChatResult } from './lib/api'
 import {
   hydrateChatMedia,
   loadActiveChatId,
@@ -417,42 +417,54 @@ export default function App() {
       setDraftWebSteps([])
       const ac = new AbortController()
       abortRef.current = ac
-      void (async () => {
-        const r = await sendChat(text, history, {
-          signal: ac.signal,
-          threadId: chatId,
-          ...(linkedCase ? { caseContext: caseContext(linkedCase) } : {}),
-          ...(images && images.length ? { images } : {}),
-          ...(attachments && attachments.length ? { attachments } : {}),
-          ...(model ? { model } : {}),
-          gender: genderForRequest(readGender()),
-          /* ответ показывается по мере чтения провайдера; null — попытка ушла в запасной
-             пул, обрывки с экрана убираем */
-          onDraft: (t) => setDraft(t),
-          onWebSteps: (steps) => setDraftWebSteps(steps),
-          ...(allowThink
-            ? {
-                onReasoning: (t: string | null) => {
-                  if (t) {
-                    thinkEndedAt = Date.now()
-                    setDraftThinkingSec(Math.max(1, Math.round((thinkEndedAt - startedAt) / 1000)))
-                  } else if (t === null) {
-                    thinkEndedAt = 0
+      
+      // Retry logic для sendChat
+      const retrySendChat = async (maxRetries: number = 3, delay: number = 1000): Promise<ChatResult> => {
+        let lastError: unknown
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            return await sendChat(text, history, {
+              signal: ac.signal,
+              threadId: chatId,
+              ...(linkedCase ? { caseContext: caseContext(linkedCase) } : {}),
+              ...(images && images.length ? { images } : {}),
+              ...(attachments && attachments.length ? { attachments } : {}),
+              ...(model ? { model } : {}),
+              gender: genderForRequest(readGender()),
+              onDraft: (t) => setDraft(t),
+              onWebSteps: (steps) => setDraftWebSteps(steps),
+              ...(allowThink
+                ? {
+                    onReasoning: (t: string | null) => {
+                      if (t) {
+                        thinkEndedAt = Date.now()
+                        setDraftThinkingSec(Math.max(1, Math.round((thinkEndedAt - startedAt) / 1000)))
+                      } else if (t === null) {
+                        thinkEndedAt = 0
+                      }
+                      setDraftReasoning(t)
+                    },
+                    reasoningEffort: effort,
                   }
-                  setDraftReasoning(t)
-                },
-                /* Усилие рассуждения — настройка человека. Глубину (и «сколько
-                   думать») с 0.123 выбирает агент на сервере: он сам поднимает
-                   усилие, когда судья глубины поднял глубину. */
-                reasoningEffort: effort,
-              }
-            : {}),
-          temperature: genParams.temperature,
-          ...(genParams.maxTokens > 0 ? { maxTokens: genParams.maxTokens } : {}),
-          topP: genParams.topP,
-          presencePenalty: genParams.presencePenalty,
-          frequencyPenalty: genParams.frequencyPenalty,
-        })
+                : {}),
+              temperature: genParams.temperature,
+              ...(genParams.maxTokens > 0 ? { maxTokens: genParams.maxTokens } : {}),
+              topP: genParams.topP,
+              presencePenalty: genParams.presencePenalty,
+              frequencyPenalty: genParams.frequencyPenalty,
+            })
+          } catch (error) {
+            lastError = error
+            if (attempt === maxRetries - 1) throw error
+            // Подождать перед повторной попыткой
+            await new Promise(resolve => setTimeout(resolve, delay * (attempt + 1)))
+          }
+        }
+        throw lastError
+      }
+      
+      void (async () => {
+        const r = await retrySendChat()
         if (r.ok) {
           recordModelTelemetry(
             model || r.model,

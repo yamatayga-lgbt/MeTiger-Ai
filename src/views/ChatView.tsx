@@ -585,7 +585,23 @@ export function ChatView({
   const photoRef = useRef<HTMLInputElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const threadScrollRef = useRef<HTMLDivElement>(null)
   const empty = messages.length === 0
+
+  /* Автоскролл вниз при новых сообщениях */
+  useEffect(() => {
+    if (threadScrollRef.current && !empty) {
+      const { scrollTop, scrollHeight, clientHeight } = threadScrollRef.current
+      const isAtBottom = scrollHeight - (scrollTop + clientHeight) < 100
+      if (isAtBottom) {
+        setTimeout(() => {
+          if (threadScrollRef.current) {
+            threadScrollRef.current.scrollTop = threadScrollRef.current.scrollHeight
+          }
+        }, 0)
+      }
+    }
+  }, [messages, empty])
 
   /* «N минут назад» под сообщениями сама не обновится без перерисовки —
      тикаем раз в полминуты, этого достаточно и не грузит телефон. */
@@ -912,7 +928,7 @@ export function ChatView({
           отпустите — приложу фото или файл
         </div>
       ) : null}
-      <div className="thread-scroll">
+      <div className="thread-scroll" ref={threadScrollRef}>
       {empty ? null : (
         <div className="thread">
           {messages.map((m) =>
