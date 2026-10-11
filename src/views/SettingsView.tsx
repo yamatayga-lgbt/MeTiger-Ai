@@ -1,35 +1,22 @@
 /**
- * Настройки (0.155) — список как в приложении ChatGPT, только с нашими пунктами.
+ * Настройки (0.155–0.156) — список как в приложении ChatGPT, только с нашими пунктами.
  *
  * Владелец вычеркнул красным то, чего у нас нет и не будет по смыслу (Общие,
  * Уведомления, Безопасность и благополучие, Удаленное управление, Центр
- * конфиденциальности, Управление рекламой) — их здесь нет. Осталось то, что есть
- * на скрине, и то, что проекту действительно нужно:
+ * конфиденциальности, Управление рекламой) — их здесь нет. В 0.156 он убрал ещё
+ * четыре строки: «Голос», «Безопасность и вход», «Хранилище» и «Акцентный цвет» —
+ * это были заглушки, а «Акцентный цвет» к тому же показывал единственный цвет,
+ * который и так зашит в приложение (синий, --brand). Осталось ровно рабочее:
  *
- *   • «Внешний вид» и «Акцентный цвет» — первая карточка, как на скрине;
- *   • Голос, Безопасность и вход, Хранилище, Сообщить об ошибке — пока заглушки,
- *     каждая помечена честным «Скоро»: кнопка не притворяется живой;
- *   • «Управление данными» и «Информация» — рабочие экраны (0.155), в них
- *     переехало всё, что раньше жило строками здесь.
+ *   • «Внешний вид» — первая карточка: раскрывается, тема переключается по-настоящему;
+ *   • «Управление данными» и «Информация» — рабочие экраны;
+ *   • «Сообщить об ошибке» — заглушка с честным «Скоро».
  *
  * Раньше на этом экране были профиль, род агента, уведомления, звуки, тема,
  * модели и версия — профиль и род агента ушли в «Персонализацию» (через профиль),
- * модели и версия — в «Информацию», уведомления и звуки убраны как ненастоящие
- * (они ничего не делали, а владелец их и не просил).
+ * модели и версия — в «Информацию», уведомления и звуки убраны как ненастоящие.
  */
-import {
-  AudioLines,
-  Bug,
-  ChevronDown,
-  Database,
-  HardDrive,
-  Info,
-  LockKeyhole,
-  Monitor,
-  Moon,
-  Palette,
-  Sun,
-} from 'lucide-react'
+import { Bug, ChevronDown, Database, Info, Monitor, Moon, Sun } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Segmented } from '../components/ui'
 import { haptic } from '../lib/haptic'
@@ -92,43 +79,11 @@ export function SettingsView({ themePref, onThemePref, onNavigate }: SettingsVie
               <span className="rows-hint">Тема приложения</span>
             </div>
           ) : null}
-
-          <div className="rows-row is-soon">
-            <span className="rows-ic" aria-hidden="true">
-              <Palette size={20} />
-            </span>
-            <span className="rows-name">Акцентный цвет</span>
-            <span className="rows-dot" aria-hidden="true" />
-            <span className="rows-val">Синий</span>
-            <Badge tone="gray">Скоро</Badge>
-            <ChevronDown size={17} className="rows-chev" aria-hidden="true" />
-          </div>
         </div>
       </div>
 
       <div className="settings-group">
         <div className="settings-card">
-          <div className="rows-row is-soon">
-            <span className="rows-ic" aria-hidden="true">
-              <AudioLines size={20} />
-            </span>
-            <span className="rows-name">Голос</span>
-            <Badge tone="gray">Скоро</Badge>
-          </div>
-          <div className="rows-row is-soon">
-            <span className="rows-ic" aria-hidden="true">
-              <LockKeyhole size={20} />
-            </span>
-            <span className="rows-name">Безопасность и вход</span>
-            <Badge tone="gray">Скоро</Badge>
-          </div>
-          <div className="rows-row is-soon">
-            <span className="rows-ic" aria-hidden="true">
-              <HardDrive size={20} />
-            </span>
-            <span className="rows-name">Хранилище</span>
-            <Badge tone="gray">Скоро</Badge>
-          </div>
           <button
             type="button"
             className="rows-row tappable"

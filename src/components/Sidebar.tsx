@@ -4,7 +4,7 @@ import {
   Activity,
   Briefcase,
   Check,
-  MessageSquarePlus,
+  SquarePen,
   Moon,
   PenLine,
   Search,
@@ -207,11 +207,6 @@ export function Sidebar({
       <aside className={`sidebar${open ? ' open' : ''}`}>
         <Logo />
 
-        <button type="button" className="new-chat-btn" onClick={onNewChat}>
-          <MessageSquarePlus size={15} />
-          Новый чат
-        </button>
-
         <button type="button" className="side-item" onClick={onOpenPalette}>
           <Search size={16} />
           Поиск
@@ -247,6 +242,16 @@ export function Sidebar({
             </div>
           ))}
         </div>
+
+        {/* Кнопка нового чата — внизу меню, НАД строкой профиля (правка
+            владельца, 0.156). В 0.155 она уехала в полосу под полем ввода —
+            это было неверно: кнопка оказывалась под окном ввода, а не в меню,
+            и рядом появлялась вторая иконка профиля. Вход в профиль один —
+            строка ниже. */}
+        <button type="button" className="side-newchat" onClick={onNewChat}>
+          <SquarePen size={17} aria-hidden="true" />
+          Чат
+        </button>
 
         <div className="side-foot-row">
           <button type="button" className="user-row" onClick={() => onNavigate('profile')}>

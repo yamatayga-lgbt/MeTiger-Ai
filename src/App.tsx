@@ -1,7 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
-import { BottomBar } from './components/BottomBar'
 import { WorkspaceDrawer } from './components/WorkspaceDrawer'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
@@ -732,18 +731,6 @@ export default function App() {
           {view === 'whatsnew' ? <WhatsNewView /> : null}
           </Suspense>
         </main>
-
-        {/* Нижняя панель — как в приложении ChatGPT: слева капсула «Чат» (новый
-            разговор), справа аватарка (профиль, а через него настройки). Стоит
-            отдельным блоком в колонке, а не position:fixed — тогда ей не нужно
-            подкладывать отступ под содержимое, и на коротких экранах ничего
-            не перекрывается. */}
-        <BottomBar
-          user={user}
-          onNewChat={newChat}
-          onProfile={() => navigate('profile')}
-          profileActive={view === 'profile'}
-        />
       </div>
 
       <WorkspaceDrawer

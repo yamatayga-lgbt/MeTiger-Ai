@@ -405,31 +405,6 @@ a {
   padding: 2px 7px;
 }
 
-.new-chat-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 12px;
-  border-radius: var(--r-md);
-  background: var(--accent-grad);
-  color: var(--accent-fg);
-  font-weight: 600;
-  font-size: 13.5px;
-  letter-spacing: -0.005em;
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--t-fast), filter var(--t-fast), box-shadow var(--t-fast);
-}
-
-.new-chat-btn:hover {
-  filter: brightness(1.05);
-  box-shadow: var(--shadow-md);
-}
-
-.new-chat-btn:active {
-  transform: scale(0.98);
-}
-
 .side-section {
   margin-top: 10px;
   padding: 0 8px;
@@ -4002,28 +3977,19 @@ kbd {
   line-height: 1.7;
 }
 
-/* ---------- Нижняя панель и экраны профиля (0.155) ----------
+/* ---------- Кнопка «Чат» в меню и экраны профиля (0.155–0.156) ----------
 
-   Оболочка «как в приложении ChatGPT»: кнопка нового чата переехала СНИЗУ, а
-   вход в настройки — в профиль по аватарке. Панель — обычный блок в колонке
-   .main (не position: fixed): под неё не нужно подкладывать отступ, и она
-   никогда не перекрывает последние строки переписки. */
-.bottombar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px max(14px, calc((100% - var(--content-max)) / 2))
-    calc(8px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border);
-  background: var(--bg-elevated);
-}
-
-.bottombar-chat {
+   0.156, правка владельца: кнопка нового чата стоит ВНИЗУ МЕНЮ, над строкой
+   профиля. В 0.155 она уехала в полосу под полем ввода — владелец справедливо
+   спросил «почему кнопки внизу под окном ввода?»: это место вне меню, да ещё и
+   второй иконкой профиля рядом. Теперь кнопка в меню, вход в профиль один —
+   строка ниже неё. */
+.side-newchat {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  align-self: flex-start;
+  margin: 4px 0 0;
   padding: 11px 20px;
   border: 0;
   border-radius: var(--r-full);
@@ -4034,44 +4000,24 @@ kbd {
   font-weight: 650;
   box-shadow: 0 2px 10px var(--brand-soft);
   cursor: pointer;
+  flex: none;
 }
 
-.bottombar-chat:active {
+.side-newchat:active {
   transform: scale(0.97);
   filter: brightness(0.94);
 }
 
-.bottombar-avatar {
-  width: 40px;
-  height: 40px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--accent-border);
-  border-radius: 50%;
-  background: var(--accent-grad);
-  color: var(--accent-fg);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  user-select: none;
-}
 
-.bottombar-avatar.is-active {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-
-/* ---------- Списки строк (профиль, настройки) — как в ChatGPT ----------
+/* ---------- Списки строк (профиль, настройки, информация) — как в ChatGPT ----------
 
    Одна строка = иконка, подпись, при необходимости значение справа и шеврон.
    Строка-кнопка нажимается целиком; строка-заглушка (is-soon) нажатию не
    поддаётся и приглушена — видно, что она пока не работает, вместе с бейджем
    «Скоро». Это и просил владелец: «сделай только визуально». */
-/* Отступ сверху — воздух перед новым разделом: без него подпись раздела
-   липнет к карточке выше (проверено на скриншоте рядом с приложением ChatGPT). */
 .rows-label {
+  /* Отступ сверху — воздух перед новым разделом: без него подпись раздела
+     липнет к карточке выше. */
   margin: 22px 0 10px 2px;
   color: var(--text-3);
   font-size: 11px;
@@ -4099,8 +4045,7 @@ kbd {
   background: none;
   color: var(--text);
   font: inherit;
-  /* 15.5px — размер строки из приложения ChatGPT: на 14.5px список выглядел
-     мельче референса и хуже читался на телефоне. */
+  /* 15.5px — размер строки из приложения ChatGPT. */
   font-size: 15.5px;
   text-align: left;
 }
@@ -6004,10 +5949,6 @@ button.rows-row:hover {
     width: min(280px, 60vw);
   }
   
-  .new-chat-btn {
-    font-size: 14px;
-  }
-  
   .chat-item {
     padding: 8px 10px;
   }
@@ -6195,7 +6136,7 @@ button,
 .side-item,
 .chat-item,
 .chat-select,
-.new-chat-btn {
+.side-newchat {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
