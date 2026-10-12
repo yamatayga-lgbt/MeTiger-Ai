@@ -15,6 +15,7 @@
  *     думает, что картинку не рассмотрели, а её не прочитали.
  */
 
+import { noteOf, noteLine } from './audionote.js';
 import { parse as parseDoc, describeLine, MAX_BYTES as DOC_MAX } from './docparse.js';
 
 /** Имя вместо MIME: галерея и iOS частенько отдают `application/octet-stream`. */
@@ -77,7 +78,11 @@ export async function readVoiceBytes(bytes, mime, o) {
   if (!stt) return { ok: false, why: 'распознавание голоса не подключено (слоя STT нет)' };
   try {
     const r = await stt.transcribe({ bytes, mime });
-    if (r && r.ok) return { ok: true, text: r.text, via: r.via };
+    if (r && r.ok) {
+      /* Отрезки речи наружу (0.180): из них собирается конспект с таймкодами
+         (engine/audionote.js). Источник их не отдал — работаем по тексту. */
+      return { ok: true, text: r.text, via: r.via, segments: r.segments || [], seconds: r.seconds || 0 };
+    }
     return { ok: false, why: (r && r.why) || 'пусто', via: r && r.via };
   } catch (e) {
     const why = String((e && e.message) || e).slice(0, 120);
@@ -105,9 +110,16 @@ export function compose(media, got, text) {
   const defer = !!(media && media.defer);
   const parts = [];
   const spoken = got && got.voiceText ? String(got.voiceText).trim() : '';
-  /* Голос плюс подпись — это один ход: и то и другое должно дойти до модели.
-     Раньше при наличии расшифровки подпись человека терялась. */
-  if (spoken) parts.push(base ? '[Голосом: ' + spoken + ']\n' + base : spoken);
+  /* Запись — это не всегда «голосом вопрос» (0.180). Длинное аудио человек
+     присылает, чтобы получить конспект с таймкодами, и тогда в сообщении едет
+     дорожка с метками времени, а в системную подсказку — указание, как отвечать
+     (см. engine/audionote.js). Короткая голосовая остаётся прежней подписью
+     «[Голосом: …]»: конспект из одного пункта человеку не нужен. */
+  const voice = spoken
+    ? noteOf({ text: spoken, segments: got && got.voiceSegments, seconds: got && got.voiceSeconds, name: got && got.voiceName })
+    : null;
+  if (voice && voice.mode === 'note') parts.push(base ? voice.block + '\n' + base : voice.block);
+  else if (spoken) parts.push(base ? '[Голосом: ' + spoken + ']\n' + base : spoken);
   else if (base) parts.push(base);
   else if (got && (got.notes || []).length) parts.push('(ни слов, ни расшифровки — смотри примечание)');
 
@@ -130,5 +142,11 @@ export function compose(media, got, text) {
   if (notes.length) out = (out ? out + '\n\n' : '') + notes.join('\n');
   if (!out) out = 'Посмотри, что в вложении, и скажи по делу.';
   const images = (got && got.images) || [];
-  return { text: out.slice(0, 120000), images, files: blocks.length, notes, docBlocks };
+  return {
+    text: out.slice(0, 120000), images, files: blocks.length, notes, docBlocks,
+    /* Указание по записи и строка о ней — наружу: указание уезжает в системную
+       подсказку движка (functions/api/chat.js), строка показывается человеку. */
+    directive: (voice && voice.directive) || '',
+    voice: voice ? { mode: voice.mode, stamps: voice.stamps, seconds: voice.seconds, words: voice.words, line: noteLine(voice) } : null,
+  };
 }

@@ -5,7 +5,7 @@
  * отказа не течёт токен.
  * Запуск: node test/voicein.test.js
  */
-import { createStt, hasWords, sttLimits } from '../engine/voicein.js';
+import { createStt, hasWords, readSegments, secondsOf, sttLimits } from '../engine/voicein.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -266,6 +266,49 @@ console.log('V — расшифровка голоса: три источник�
   const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/wav', via: 'cloudflare' });
   ok('V40: отказ обеих форм виден целиком, с обеими причинами',
     r.ok === false && /\/ai\/run/.test(r.why) && /audio\/transcriptions/.test(r.why), r.why.slice(0, 160));
+}
+
+console.log('S — таймкоды из ответа Whisper (0.180): конспект с «где это сказано»');
+{
+  /* Форму ответа задаёт источник, и вторая форма встречается в совместимых
+     реализациях. Разобрать надо обе, а мусор — отбросить, а не напечатать. */
+  const s1 = readSegments({ segments: [
+    { start: 0, end: 3.42, text: ' Добрый день. ' },
+    { start: 3.42, end: 9.1, text: 'Обсудим сроки.' },
+  ] });
+  ok('S1: форма Groq (start/end) разобрана, текст очищен',
+    s1.length === 2 && s1[0].from === 0 && s1[0].to === 3.4 && s1[0].text === 'Добрый день.'
+      && s1[1].text === 'Обсудим сроки.', JSON.stringify(s1));
+
+  const s2 = readSegments({ result: { segments: [{ from: 12, to: 15, segment: 'вторая форма' }] } });
+  ok('S2: совместимая форма (from/to, segment) тоже понята — она встречается в ответах',
+    s2.length === 1 && s2[0].from === 12 && s2[0].text === 'вторая форма', JSON.stringify(s2));
+
+  ok('S3: мусор не превращается в отрезок — пустой текст и нечисловое время отброшены',
+    readSegments({ segments: [{ start: 'нет', end: 3, text: 'текст' }, { start: 1, end: 2, text: '  ' }, null, 'строка'] }).length === 0
+      && readSegments({}).length === 0 && readSegments({ segments: 'нет' }).length === 0);
+
+  ok('S4: длина записи — по последнему отрезку',
+    secondsOf(s1) === 9.1 && secondsOf([]) === 0);
+
+  /* Живьём: расшифровка Groq с отрезками должна доехать до результата целиком —
+     иначе конспект останется без таймкодов, и никто этого не заметит. */
+  const n = net({ groq: [json({
+    text: 'Первое. Второе.',
+    language: 'ru',
+    segments: [{ start: 0, end: 2, text: 'Первое.' }, { start: 2.5, end: 4, text: 'Второе.' }],
+  })] });
+  const s = createStt({ env: { GROQ_KEYS: 'gk1' }, fetch: n.fetchImpl, log: () => {} });
+  const r = await s.transcribe({ bytes: AUDIO, mime: 'audio/ogg', lang: 'ru' });
+  ok('S5: transcribe отдаёт и текст, и отрезки, и длину — без второго запроса',
+    r.ok && r.text === 'Первое. Второе.' && r.segments.length === 2 && r.seconds === 4
+      && n.calls.length === 1, JSON.stringify({ ok: r.ok, seg: (r.segments || []).length, calls: n.calls.length }));
+
+  const n2 = net({ groq: [json({ text: 'Только текст.', language: 'ru' })] });
+  const s2c = createStt({ env: { GROQ_KEYS: 'gk1' }, fetch: n2.fetchImpl, log: () => {} });
+  const r2 = await s2c.transcribe({ bytes: AUDIO, mime: 'audio/ogg' });
+  ok('S6: источник без отрезков не ломает расшифровку — отрезков просто нет',
+    r2.ok && r2.text === 'Только текст.' && Array.isArray(r2.segments) && r2.segments.length === 0 && r2.seconds === 0);
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

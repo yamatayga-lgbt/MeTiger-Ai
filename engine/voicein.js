@@ -106,6 +106,35 @@ export function hasWords(text) {
   return /[\p{L}\p{N}]/u.test(t);
 }
 
+/**
+ * Отрезки речи из ответа Whisper в наш вид: { from, to, text }.
+ *
+ * Терпимо к форме: Groq зовёт поля start/end, а в ответах встречались и
+ * from/to (совместимые реализации). Что не разобралось — просто не попадает в
+ * список: молча потерять таймкод хуже, чем не показать его (конспект тогда
+ * выйдет без меток, и это честно).
+ */
+export function readSegments(j) {
+  const raw = (j && (j.segments || (j.result && j.result.segments))) || [];
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const s of raw) {
+    if (!s) continue;
+    const from = Number(s.start != null ? s.start : s.from);
+    const to = Number(s.end != null ? s.end : s.to);
+    const text = tidy(s.text != null ? s.text : s.segment);
+    if (!text || !Number.isFinite(from)) continue;
+    out.push({ from: Math.max(0, Math.round(from * 10) / 10), to: Number.isFinite(to) ? Math.max(0, Math.round(to * 10) / 10) : 0, text });
+  }
+  return out.slice(0, 4000);
+}
+
+/** Длина записи по последнему отрезку: показываем человеку «3 мин 20 с». */
+export function secondsOf(segments) {
+  const last = (segments || []).reduce((a, s) => Math.max(a, Number(s.to) || 0), 0);
+  return Math.round(last * 10) / 10;
+}
+
 function fmtsOf(mime) {
   const m = String(mime || '').toLowerCase();
   return FMT[m] || ['ogg'];
@@ -184,7 +213,17 @@ export function createStt(o) {
       let j = null;
       try { j = await r.json(); } catch { last = 'ответ не JSON'; continue; }
       const text = tidy(j && j.text);
-      return { ok: hasWords(text), text: hasWords(text) ? text : '', via: 'groq/' + groqModel, lang: (j && j.language) || '', why: hasWords(text) ? '' : 'речи в аудио не было' };
+      /* Таймкоды (0.180). Мы и раньше просили verbose_json, но из ответа брали
+         только текст — а в нём уже лежат отрезки с началом и концом. Человек
+         присылает получасовую запись и хочет конспект с «где это сказано»;
+         второй раз дёргать распознавание ради тех же данных незачем: Whisper
+         отдал их в первом же ответе. Форма отрезков у Groq: {start, end, text}. */
+      const segments = readSegments(j);
+      return {
+        ok: hasWords(text), text: hasWords(text) ? text : '', via: 'groq/' + groqModel,
+        lang: (j && j.language) || '', segments, seconds: secondsOf(segments),
+        why: hasWords(text) ? '' : 'речи в аудио не было',
+      };
     }
     return { ok: false, why: last, via: 'groq' };
   }

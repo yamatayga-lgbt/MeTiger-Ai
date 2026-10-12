@@ -58,8 +58,11 @@ ok('U161d потолок окна поднят не меньше чем до 120
   (() => { const m = /export const CTX_WINDOW_MAX = (\d+);/.exec(bare(ctxfit)); return !!m && Number(m[1]) >= 120000; })(),
   (() => { const m = /export const CTX_WINDOW_MAX = (\d+);/.exec(bare(ctxfit)); return m ? m[1] : 'не найдено'; })());
 ok('U161e сборщик вложений умеет отдать документ движку отдельным полем (defer → docBlocks)',
+  /* Строку возврата посимвольно не сверяем: в 0.180 к ней добавились указание по
+     записи и строка о ней, и прибитая «notes, docBlocks }» упала бы на живой
+     правке вместо поломки. Проверяем, что поле уезжает наружу. */
   /media && media\.defer/.test(bare(attach)) && /docBlocks\.push\(/.test(bare(attach))
-    && /notes, docBlocks \}/.test(bare(attach)));
+    && /docBlocks,/.test(bare(attach)));
 ok('U161f без defer (бот) документ по-прежнему вклеен в сообщение — поведение канала не сломано',
   /if \(!defer\) \{/.test(bare(attach)) && /'\[Файл: ' \+ d\.name/.test(bare(attach)));
 

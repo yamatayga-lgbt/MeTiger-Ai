@@ -118,7 +118,7 @@ const mb = (n) => Math.round((n / 1048576) * 10) / 10;
  * сеть, а её здесь нет: байты уже в теле запроса.
  */
 export async function readAttachments(list, env, fetchImpl, log) {
-  const got = { images: [], docs: [], voiceText: '', notes: [], tried: 0 };
+  const got = { images: [], docs: [], voiceText: '', voiceSegments: [], voiceSeconds: 0, voiceName: '', notes: [], tried: 0 };
   const all = Array.isArray(list) ? list : [];
   if (!all.length) return got;
   const chars = Math.max(2000, Number(env.ATTACH_DOC_CHARS) || DOC_CHARS);
@@ -154,7 +154,13 @@ export async function readAttachments(list, env, fetchImpl, log) {
     const isVoice = a.kind === 'voice' || a.kind === 'audio' || /^audio\//.test(mime);
     if (isVoice) {
       const v = await readVoiceBytes(bytes, mime || 'audio/ogg', { stt, log });
-      if (v.ok) got.voiceText = v.text;
+      if (v.ok) {
+        got.voiceText = v.text;
+        /* Отрезки и длина — для конспекта с таймкодами (0.180). */
+        got.voiceSegments = v.segments || [];
+        got.voiceSeconds = v.seconds || 0;
+        got.voiceName = name;
+      }
       else got.notes.push('запись не расшифрована: ' + v.why + (v.via ? ' [' + v.via + ']' : ''));
       continue;
     }
@@ -537,7 +543,12 @@ async function handlePost(context) {
     showReasoning: wantReasoning,
     deep: wantDeep || undefined,
     depthWhy: depthWhy || undefined,
-    system: norm.system || PERSONA_SYSTEM,
+    /* Указание по записи (0.180) липнет к системной подсказке — тем же путём, что
+       указание инструментов в движке: человек прислал длинное аудио, и ответ
+       должен быть конспектом с таймкодами. Свою `system` человека не трогаем:
+       если он её прислал, он и решает, как отвечать. */
+    system: (norm.system || PERSONA_SYSTEM)
+      + (!norm.system && composed && composed.directive ? '\n\n' + composed.directive : ''),
     /* Род агента — настройка человека из приложения (Авто/М/Ж). Сюда идёт pick(), а
        не normalize(): распознанное значение едет в движок, пустое и мусорное — не
        едет вовсе, и тогда работает AGENT_GENDER развертывания. С normalize() поле

@@ -81,6 +81,30 @@ console.log('\nS163 — свежесть источников');
   ok('S163h дата прочитанной страницы приклеивается к источнику', sr.ok && sr.sources[0] && sr.sources[0].date === '2026-10-04', JSON.stringify(sr.sources && sr.sources[0]));
   ok('S163i в блоке для модели дата названа словами «· от»', /· от 2026-10-04/.test(block), block.split('\n').slice(1, 3).join(' | '));
   ok('S163j модели сказано, что делать со старыми данными', /больше года/.test(block));
+
+  /* ── 0.180: свежесть названа возрастом, а не только датой ─────────────────── */
+  const { sourceAge, STALE_DAYS } = await import('../engine/search.js');
+  const NOW = Date.UTC(2026, 9, 12);
+  const юное = sourceAge('2026-10-05', NOW);
+  const старое = sourceAge('2019-04-02', NOW);
+  ok('S180a возраст источника считается в днях, месяцах и годах',
+    юное.days === 7 && юное.old === false && старое.years === 7 && старое.months > 80,
+    JSON.stringify([юное, старое]));
+  ok('S180b «давний» — полтора года, а не год: свежие обзоры и цены за прошлый сезон не пугают зря',
+    STALE_DAYS === 545 && sourceAge('2025-06-01', NOW).old === false && sourceAge('2024-10-01', NOW).old === true
+      && sourceAge('', NOW).old === false && sourceAge('не дата', NOW).old === false,
+    JSON.stringify([sourceAge('2025-06-01', NOW), sourceAge('2024-10-01', NOW)]));
+
+  /* Дата-обманка: модель видит пометку там же, где берёт факты, — в строке источника. */
+  const oldBlock = searchBlock('ставка рефинансирования', {
+    engine: 'google', summary: 'сводка', sources: [{ title: 'Старая статья', url: 'https://a.by/x', date: '2019-04-02' },
+      { title: 'Свежая статья', url: 'https://b.by/y', date: '2026-10-09' }], reads: [],
+  });
+  ok('S180c давний источник помечен в строке, свежий — нет',
+    /https:\/\/a\.by\/x · от 2019-04-02 · ДАВНИЙ/.test(oldBlock)
+      && /https:\/\/b\.by\/y · от 2026-10-09\)/.test(oldBlock) && !/b\.by\/y[^\n]*ДАВНИЙ/.test(oldBlock),
+    oldBlock.split('\n').slice(1, 3).join(' | '));
+  ok('S180d модели сказано, что делать с пометкой «ДАВНИЙ»', /ДАВНИЙ» свежесть под вопросом/.test(oldBlock));
 }
 
 console.log(`\n${pass} ✔, ${fail} ✖`);
