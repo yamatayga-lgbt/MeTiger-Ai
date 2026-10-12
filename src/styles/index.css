@@ -830,7 +830,12 @@ a {
 /* ---------- Topbar ---------- */
 .topbar {
   display: grid;
-  grid-template-columns: 44px 1fr 44px;
+  /* Боковые колонки одной ширины (--topbar-side): справа теперь кольцо лимитов и
+     папка, и без выравнивания капсула с названием чата уехала бы влево от центра
+     экрана. Ширина переменной, а не подгонкой «на глаз»: на узких экранах её
+     уменьшает правило ниже. */
+  --topbar-side: 118px;
+  grid-template-columns: var(--topbar-side) 1fr var(--topbar-side);
   align-items: center;
   height: var(--header-h);
   padding: 0 12px;
@@ -854,6 +859,92 @@ a {
 
 .topbar-right {
   justify-content: flex-end;
+  gap: 2px;
+}
+
+/* Кольцо лимитов агента (0.179) — кнопка «Просмотреть лимиты» рядом с Workspace. */
+.limits-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  /* Оттенок приходит переменной (--ring-h) от запаса: 120° зелёный на 100 %,
+     60° жёлтый на 50 %, 0° красный на нуле. Насыщенность и светлота — здесь, и
+     числа те же, что в src/lib/limits.ts (RING_SAT/RING_LIGHT): проверка U179q
+     сверяет их согласие, чтобы правило в стилях не разошлось с кодом. */
+  color: hsl(var(--ring-h, 120) 62% 42%);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+/* Тёмная тема: тот же оттенок, но светлее — на почти чёрном фоне 42 % тускнеет
+   (хуже всех читалось красное при малом запасе). */
+[data-theme='dark'] .limits-btn {
+  color: hsl(var(--ring-h, 120) 62% 58%);
+}
+
+.limits-btn:hover {
+  background: var(--surface-hover);
+}
+
+.limits-btn:active {
+  transform: scale(0.96);
+}
+
+.limits-btn .limits-ring {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Процент с десятыми: табличные цифры — иначе «98,9 %» дёргается при смене числа. */
+.limits-pct {
+  font-size: 12.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Запас кончился — красное мигает (просьба владельца: «0 % красный мигает»).
+   Шагами, а не плавно: это предупреждение, а не украшение. */
+.limits-btn.is-empty {
+  animation: limits-blink 1.06s steps(1, end) infinite;
+}
+
+@keyframes limits-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+/* Кому движение мешает — тот всё равно видит красное кольцо, но без мигания. */
+@media (prefers-reduced-motion: reduce) {
+  .limits-btn.is-empty {
+    animation: none;
+  }
+}
+
+/* На очень узких экранах (до 360 px) подпись уступает место капсуле с названием:
+   кольцо и цвет остаются, лишние знаки уходят, и боковые колонки сжимаются
+   ровно на столько, сколько освободила скрытая подпись. */
+@media (max-width: 359px) {
+  .topbar {
+    --topbar-side: 92px;
+  }
+
+  .limits-pct {
+    display: none;
+  }
 }
 
 .topbar .page-title {
@@ -4911,6 +5002,42 @@ button.rows-row:hover {
   gap: 10px;
   margin: 18px 0 26px;
 }
+/* Общий запас агента (0.179): та же цифра, что на кольце в шапке, — первым
+   блоком панели, чтобы «Просмотреть лимиты» начиналось с ответа на вопрос. */
+.usage-pool {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin: 12px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+}
+
+.usage-pool-ring {
+  display: inline-flex;
+  flex-shrink: 0;
+  /* Та же дорога цвета, что у кольца в шапке (см. .limits-btn). */
+  color: hsl(var(--ring-h, 120) 62% 42%);
+}
+
+[data-theme='dark'] .usage-pool-ring {
+  color: hsl(var(--ring-h, 120) 62% 58%);
+}
+
+.usage-pool-n {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.usage-pool-d {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
 .usage-card {
   border: 1px solid var(--border);
   border-radius: var(--r-lg);

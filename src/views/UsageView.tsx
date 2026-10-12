@@ -8,9 +8,11 @@
  * смешиваются в одно число, потому что означают разное.
  */
 import { Activity, RefreshCw, RotateCcw } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { LimitsRingGlyph } from '../components/LimitsRing'
 import { Toast } from '../components/Toast'
 import { Badge, Button, cx } from '../components/ui'
+import { fmtPct, poolLine, ringHue } from '../lib/limits'
 import { clearSpeed, fmtSec, speedSummary, telemetrySummary, type SpeedSummary } from '../lib/models'
 import { fmtAgo, fmtDuration } from '../lib/time'
 import { useUsageLive, type UsageRow } from '../lib/usage'
@@ -155,6 +157,22 @@ export function UsageView() {
           Обновить
         </Button>
       </div>
+
+      {/* Общий запас агента (0.179) — та же цифра, что на кольце в шапке: человек
+          нажал «посмотреть лимиты» и первым делом видит, откуда взялся процент. */}
+      {data && data.pool && data.pool.pct != null ? (
+        <div className="usage-pool">
+          <span className="usage-pool-ring" style={{ '--ring-h': String(Math.round(ringHue(data.pool.pct!) * 10) / 10) } as CSSProperties}>
+            <LimitsRingGlyph pct={data.pool.pct} size={36} stroke={3.4} />
+          </span>
+          <div className="grow">
+            <div className="usage-pool-n">Общий запас агента: {fmtPct(data.pool.pct)}</div>
+            <div className="usage-pool-d">
+              {poolLine(data.pool)} · источников за цифрой: {data.pool.live}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="usage-cards">
         <div className="usage-card">

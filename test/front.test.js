@@ -1062,7 +1062,11 @@ console.log('L2 — песочница: Python через Pyodide (второй 
     ok('M31: список моделей в пикере прокручивается (grid-template-rows: minmax(0, 1fr))',
       /class="topbar-side topbar-left"/.test(htmlTopbar)
         && /class="topbar-side topbar-right"/.test(htmlTopbar)
-        && cssSrc.includes('grid-template-columns: 44px 1fr 44px')
+        /* Колонки шапки были зашиты числом (44px 1fr 44px). С 0.179 справа стоят
+           кольцо лимитов и папка, поэтому ширина боковых колонок — переменная:
+           капсула с названием чата остаётся посередине (проверяет U179s). */
+        && /--topbar-side:\s*\d+px/.test(cssSrc)
+        && cssSrc.includes('grid-template-columns: var(--topbar-side) 1fr var(--topbar-side)')
         && cssSrc.includes('grid-template-rows: minmax(0, 1fr)'));
     ok('M31b: вместо апселла подписки («Подключить» как у ChatGPT) — капсула по центру показывает НАЗВАНИЕ ЧАТА, и НЕ открывает настройки по клику (это была ошибка 0.073, убрано)',
       /class="topbar-pill"[^>]*title="Новый чат"/.test(htmlTopbar)

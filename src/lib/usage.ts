@@ -12,6 +12,7 @@
  * числа: «не обновилось» и «расход ноль» — разные вещи.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { LimitsPool } from './limits'
 
 export interface UsagePause {
   until: number
@@ -46,6 +47,9 @@ export interface UsageSnapshot {
   kv: boolean
   off: boolean
   totals: { attempt: number; ok: number; refused: number; dead: number }
+  /** Общий запас агента (0.179) — та же цифра, что у кольца в шапке: сервер
+      складывает дневные потолки живых источников и уже сделанный расход. */
+  pool: LimitsPool
   providers: UsageRow[]
   rate: { max: number; windowMs: number; on: boolean; why: string }
   /** Подхват: имена моделей, живущие у двух и более провайдеров. */

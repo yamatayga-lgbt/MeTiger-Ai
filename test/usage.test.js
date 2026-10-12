@@ -9,7 +9,7 @@
  *
  *   node test/usage.test.js
  */
-import { createUsage, sharedUsage, resetSharedUsage, dayKeyOf, minuteOf, storeOf, USAGE_DAY_TTL_SEC } from '../engine/usage.js';
+import { createUsage, sharedUsage, resetSharedUsage, dayKeyOf, minuteOf, poolOf, storeOf, USAGE_DAY_TTL_SEC } from '../engine/usage.js';
 import { createEngine } from '../engine/chat.js';
 import { onRequestGet as usageGet } from '../functions/api/usage.js';
 
@@ -369,6 +369,68 @@ console.log('W — дверь GET /api/usage');
     JSON.stringify({ kv: data2.kv, rate: data2.rate, groq: g2 }));
   ok('W8: доля израсходованного посчитана для полосы в панели',
     g2.pct === 0 && g2.lastAt > 0 && g2.model === 'qwen/qwen3.8-27b', JSON.stringify({ pct: g2.pct, lastAt: g2.lastAt }));
+}
+
+console.log('X — общий запас агента (0.179)');
+{
+  /* Счёт запаса: живые источники складываются, мёртвые — нет. Это то, что человек
+     видит в кольце в шапке, поэтому проверяем на числах, а не на «поле есть». */
+  const p0 = poolOf([]);
+  ok('X1: нет живых источников — запаса нет, а не «100 %»',
+    p0.capacity === 0 && p0.remaining === 0 && p0.pct === null && p0.live === 0,
+    JSON.stringify(p0));
+
+  const p1 = poolOf([
+    { live: true, dayLimit: 1000, attempt: 100 },
+    { live: true, dayLimit: 250, attempt: 25 },
+    { live: false, dayLimit: 1000, attempt: 900 },   /* нет ключа — не запас */
+    { live: true, dayLimit: 0, attempt: 0 },          /* потолка нет — тоже не запас */
+  ]);
+  ok('X2: потолки живых сложены, расход вычтен, мёртвые и беспотолочные не в счёте',
+    p1.live === 2 && p1.capacity === 1250 && p1.used === 125 && p1.remaining === 1125
+      && Math.abs(p1.pct - 90) < 0.001,
+    JSON.stringify(p1));
+
+  /* Числа как на живом проде: потолок 9 900, расход 112 — 98,8686 % остатка.
+     Целые проценты на таком запасе стояли бы «на 99 %» неделями, и владелец просил
+     именно десятые («только проценты до сотых: 100.0 %, 91,2 %»). */
+  const p2 = poolOf([{ live: true, dayLimit: 1000, attempt: 5 }, { live: true, dayLimit: 8900, attempt: 107 }]);
+  ok('X3: доля остатка считается с десятыми — «на большом запасе целые стоят на месте»',
+    p2.capacity === 9900 && p2.used === 112 && Math.abs(p2.pct - 98.8686) < 0.01 && !Number.isInteger(p2.pct),
+    JSON.stringify(p2));
+
+  const p3 = poolOf([{ live: true, dayLimit: 100, attempt: 400 }]);
+  ok('X4: расход сверх потолка не уводит процент в минус',
+    p3.remaining === 0 && p3.pct === 0);
+
+  /* Дверь: та же цифра наружу, и она сходится с строками провайдеров, которые
+     панель показывает рядом. */
+  const data3 = await (await usageGet({ env: { GROQ_KEYS: 'g1', MEMORY: fakeKv() }, request: new Request('https://metiger-ai.pages.dev/api/usage') })).json();
+  const живой = data3.providers.filter((r) => r.live && r.dayLimit > 0);
+  const cap = живой.reduce((a, r) => a + r.dayLimit, 0);
+  const used = живой.reduce((a, r) => a + r.attempt, 0);
+  ok('X5: дверь отдаёт запас готовым и он сходится со строками провайдеров',
+    !!data3.pool && data3.pool.capacity === cap && data3.pool.used === used
+      && data3.pool.remaining === Math.max(0, cap - used)
+      && data3.pool.live === живой.length
+      && (cap ? Math.abs(data3.pool.pct - (Math.max(0, cap - used) / cap) * 100) < 0.001 : data3.pool.pct === null),
+    JSON.stringify(data3.pool));
+
+  /* Своё хранилище и свой трекер: два запроса к groq уезжают в KV, а дверь их
+     видит — так проверяется не только счёт, но и то, что кольцо смотрит на расход,
+     а не на выдуманный ноль. */
+  const kvX = fakeKv();
+  const tx = createUsage({ env: { USAGE_STORE: kvX }, now: () => T0 });
+  tx.attempt('groq', 'qwen/qwen3.8-27b');
+  tx.outcome('groq', 'ok');
+  tx.attempt('groq', 'qwen/qwen3.8-27b');
+  tx.outcome('groq', 'refused');
+  await tx.flush({ force: true });
+  const data4 = await (await usageGet({ env: { GROQ_KEYS: 'g1', MEMORY: kvX }, request: new Request('https://metiger-ai.pages.dev/api/usage?refresh=1') })).json();
+  ok('X6: после двух запросов запас в кольце меньше ровно на два',
+    data4.pool.used === 2 && data4.pool.remaining === data4.pool.capacity - 2
+      && data4.pool.pct < 100 && data4.pool.pct > 99,
+    JSON.stringify(data4.pool));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

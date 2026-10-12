@@ -677,6 +677,9 @@ export default function App() {
           title={title}
           onOpenMenu={() => setMenuOpen(true)}
           onOpenWorkspace={() => setWorkspaceOpen(true)}
+          /* Кольцо запаса агента ведёт на экран, где та же цифра разложена по
+             источникам: «Просмотреть лимиты» — это он и есть (0.179). */
+          onOpenLimits={() => navigate('usage')}
           {...(BACK_TO[view] ? { onBack: () => navigate(BACK_TO[view] as ViewId) } : {})}
           {...(view === 'chat'
             ? {

@@ -16,7 +16,7 @@
  *   ?refresh=1 — не верить кэшу изолята и перечитать хранилище
  */
 import { buildTable } from '../../engine/providers.js';
-import { createUsage } from '../../engine/usage.js';
+import { createUsage, poolOf } from '../../engine/usage.js';
 import { limitsInfo } from '../../engine/limits.js';
 import { memoryStore, limitsStore } from './chat.js';
 
@@ -112,6 +112,10 @@ export async function onRequestGet(context) {
   };
 
   const rate = limitsInfo(env, limitsStore(env));
+  /* Общий запас агента (0.179) — одна цифра для кольца в шапке: сколько запросов
+     ко всем живым источникам ещё можно сделать сегодня и сколько это в долях.
+     Считает движок (poolOf) — дверь только отдаёт наружу. */
+  const pool = poolOf(rows);
   return json({
     ok: true,
     at: snap.at,
@@ -121,6 +125,7 @@ export async function onRequestGet(context) {
     kv: !!store,
     off: !!snap.off,
     totals: snap.totals,
+    pool,
     providers: rows,
     rate: { max: rate.rateMax, windowMs: rate.windowMs, on: rate.on, why: rate.why || '' },
     failover,
