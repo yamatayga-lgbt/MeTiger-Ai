@@ -89,6 +89,11 @@ ok('V172k стили режима — переменными темы, а не �
 
 ok('V172l новый тест подключён к цепочке прогона', /node test\/ui172\.test\.js/.test(chain))
 
+ok('V172n отправленный ход не возвращается в поле поздним уточнением (иначе уехал бы вторым)',
+  /talkSentRef/.test(chat)
+    && /if \(talkSentRef\.current\) \{/.test(chat)
+    && /talkSentRef\.current = true/.test(chat))
+
 ok('V172m включение режима не читает прошлую переписку — вслух звучит только новое',
   /talkArmedRef/.test(chat)
     && /last\.ts < talkArmedRef\.current\)\)\s*return/.test(chat)

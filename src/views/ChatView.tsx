@@ -674,6 +674,9 @@ export function ChatView({
   const talkArmedRef = useRef(0)
   /* Расшифровка едет сервером (браузерный движок молчит) — см. voice.ts. */
   const serverLayersRef = useRef(false)
+  /* Ход разговора уже отправлен: позднее уточнение того же куска не должно вернуть
+     отправленный текст в поле — иначе он уехал бы вторым сообщением. */
+  const talkSentRef = useRef(false)
 
   useEffect(() => {
     talkRef.current = talk
@@ -768,6 +771,7 @@ export function ChatView({
     if (talkRef.current) {
       if (composed.trim()) {
         talkSendRef.current = false
+        talkSentRef.current = true
         submit(composed)
       } else {
         talkSendRef.current = true
@@ -818,6 +822,7 @@ export function ChatView({
     heardRef.current = false
     lastLoudRef.current = 0
     serverLayersRef.current = false
+    talkSentRef.current = false
     setSeconds(0)
     setLevels(new Array(BARS).fill(0))
     setListening(true)
@@ -880,6 +885,15 @@ export function ChatView({
            в поле до микрофона, остаётся на месте. */
         onPolished: (text) => {
           const composed = joinText(preVoiceRef.current, text)
+          /* Разговор вслух: этот ход уже ушёл (текст отправился сразу, как только
+             человек договорил). Уточнение приехало позже и лишь подтверждает его —
+             в поле его возвращать нельзя. */
+          if (talkSentRef.current) {
+            talkSentRef.current = false
+            sessionRef.current = null
+            setPolishing(false)
+            return
+          }
           baseRef.current = composed
           interimRef.current = ''
           sessionRef.current = null
