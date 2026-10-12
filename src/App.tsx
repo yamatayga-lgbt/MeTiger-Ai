@@ -469,12 +469,24 @@ export default function App() {
       const ac = new AbortController()
       abortRef.current = ac
       
+      /* Повтор при обрыве связи (0.180).
+         Прежний повтор ловил только ИСКЛЮЧЕНИЯ, а обрыв приходит ответом
+         {ok:false, error:'связь оборвалась…'} — и человек читал предупреждение там,
+         где достаточно было молча спросить ещё раз. Живой стенд 12 окт: так
+         закончились 4 вопроса из 20.
+         Повторяем, только если ничего не показано (не partial — иначе человек уже
+         читал текст), человек не останавливал запрос и беда сетевая, а не смысловая:
+         «сервер ответил 400/503 про лимиты» повторять бессмысленно. */
+      const TRANSPORT_BREAK = /время вышло|связь оборвалась|оборвался|сеть недоступна/
+      const worthRetry = (r: ChatResult): boolean => !r.ok && !r.stopped && !r.partial
+        && TRANSPORT_BREAK.test(String(r.error || ''))
+
       // Retry logic для sendChat
       const retrySendChat = async (maxRetries: number = 3, delay: number = 1000): Promise<ChatResult> => {
         let lastError: unknown
         for (let attempt = 0; attempt < maxRetries; attempt++) {
           try {
-            return await sendChat(text, history, {
+            const r = await sendChat(text, history, {
               signal: ac.signal,
               threadId: chatId,
               ...(images && images.length ? { images } : {}),
@@ -506,6 +518,13 @@ export default function App() {
               presencePenalty: genParams.presencePenalty,
               frequencyPenalty: genParams.frequencyPenalty,
             })
+            if (worthRetry(r) && attempt < maxRetries - 1) {
+              // Черновик мог остаться от оборванной попытки — снимаем, чтобы не мигал.
+              setDraft(null)
+              await new Promise(resolve => setTimeout(resolve, delay * (attempt + 1)))
+              continue
+            }
+            return r
           } catch (error) {
             lastError = error
             if (attempt === maxRetries - 1) throw error
