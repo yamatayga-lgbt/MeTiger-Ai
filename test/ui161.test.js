@@ -103,7 +103,11 @@ ok('U161p выписки достаются только на вопрос пр�
 ok('U161q вход отдаёт движку документы отдельно и знает про defer',
   /composeAttach\(\{ has: true, defer: true \}/.test(bare(apiChat)) && /docs: \(composed && composed\.docBlocks/.test(bare(apiChat)));
 ok('U161r список прочитанного под ответом собирает движок, читалка — только дополняет',
-  /function attachmentsOut\(att, r\)/.test(apiChat) && /attachments: attachmentsOut\(att, r\)/.test(apiChat)
+  /* У функции появился третий довод — запись (0.180): она тоже вложение, и её
+     строка стоит под ответом первой. Проверяем обе части вызова, а не форму
+     списка доводов целиком: прибитая форма падала бы на живой правке. */
+  /function attachmentsOut\(att, r, voice\)/.test(apiChat)
+    && /attachments: attachmentsOut\(att, r, composed && composed\.voice\)/.test(apiChat)
     && /for \(const x of \(\(r && r\.docs\) \|\| \[\]\)\)/.test(apiChat));
 
 ok('U161s новые тесты в цепочке прогона (longdoc, bigdoc, ui161)',

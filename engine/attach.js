@@ -147,6 +147,6 @@ export function compose(media, got, text) {
     /* Указание по записи и строка о ней — наружу: указание уезжает в системную
        подсказку движка (functions/api/chat.js), строка показывается человеку. */
     directive: (voice && voice.directive) || '',
-    voice: voice ? { mode: voice.mode, stamps: voice.stamps, seconds: voice.seconds, words: voice.words, line: noteLine(voice) } : null,
+    voice: voice ? { mode: voice.mode, stamps: voice.stamps, seconds: voice.seconds, words: voice.words, name: (got && got.voiceName) || '', line: noteLine(voice) } : null,
   };
 }

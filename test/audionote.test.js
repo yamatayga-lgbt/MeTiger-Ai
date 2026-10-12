@@ -140,6 +140,10 @@ ok('N8: длинная запись или разговор с репликам�
       && /не выдумывай/i.test(noSeg.directive) && /\[00:00\]/.test(noSeg.directive),
     noSeg.directive.slice(-90))
 
+  ok('N10e: пункты просим своими словами и без цитат — иначе конспект превращается в пересказ дорожки',
+    /своими словами/.test(rec.directive) && /без цитат в кавычках/.test(rec.directive)
+      && /до ~15 слов на пункт/.test(rec.directive))
+
   ok('N12: строка человеку говорит длину, объём и обещание конспекта',
     noteLine(rec) === 'Запись 1 мин 10 с · расшифровка, 11 слов · конспект с таймкодами'
       && wordsWord(1) === 'слово' && wordsWord(3) === 'слова' && wordsWord(11) === 'слов'
@@ -198,6 +202,11 @@ ok('N17: readVoiceBytes отдаёт отрезки наружу, а readSegment
 ok('N18: конспект не заводит новых ключей и сервисов — работает на той же расшифровке',
   !/https?:\/\//.test(bare(read('engine/audionote.js')))
     && /verbosе_json|verbose_json/.test(voiceinSrc))
+
+ok('N17b: под ответом видна строка о записи — что это было за аудио и что конспект с таймкодами',
+  /if \(voice && voice\.line\) out\.push\(\{ name: voice\.name \|\| 'запись'/.test(door)
+    && /attachmentsOut\(att, r, composed && composed\.voice\)/.test(door)
+    && /name: \(got && got\.voiceName\) \|\| ''/.test(attachSrc), 'дверь и сборщик')
 
 ok('N18b: конспект записи идёт по умной полосе — слабая модель отвечает про файл, а не по делу',
   /composed && composed\.voice && composed\.voice\.mode === 'note' && !norm\.model \? 'smart'/.test(door)

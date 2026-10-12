@@ -36,9 +36,14 @@ export function realClientIp(request, env) {
  * этого «прочитан по частям (7 из 12)» человек не увидел бы вовсе, а без файла в
  * этом ходе (вопрос по присланному раньше) список остался бы пустым.
  */
-function attachmentsOut(att, r) {
+function attachmentsOut(att, r, voice) {
   const seen = new Set();
   const out = [];
+  /* Запись — первой строкой (0.180): человек видит под ответом, что это было за
+     аудио — длину, объём расшифровки и то, что конспект с таймкодами. Раньше в
+     списке вложений её не было вовсе, и «откуда взялся конспект» оставалось
+     догадкой. */
+  if (voice && voice.line) out.push({ name: voice.name || 'запись', ok: true, line: voice.line, how: 'voice' });
   for (const x of ((r && r.docs) || [])) {
     seen.add(String(x.name || ''));
     out.push({ name: x.name, ok: true, line: x.line || '', how: x.how || '' });
@@ -628,7 +633,7 @@ async function handlePost(context) {
     ctxFit: r.cxFit || undefined,
     /* чем обернулись приложенные файлы: что прочитано (имя · формат · знаков) и почему
        остальное не дошло — человек должен видеть это под ответом, а не в логах */
-    attachments: attachmentsOut(att, r),
+    attachments: attachmentsOut(att, r, composed && composed.voice),
     attachNotes: att && att.notes.length ? att.notes : undefined,
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
