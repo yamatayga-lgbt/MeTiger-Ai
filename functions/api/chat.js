@@ -527,7 +527,12 @@ async function handlePost(context) {
     /* Прочитанные документы — движку: он решит, целиком они влезают в окно или
        их надо читать по частям (engine/longdoc.js). */
     docs: (composed && composed.docBlocks && composed.docBlocks.length) ? composed.docBlocks : undefined,
-    tier: body.tier === 'fast' || body.tier === 'smart' ? body.tier : undefined,
+    /* Конспект записи — задача умная (0.180): слабая модель отвечает на неё одной
+       строкой про сам файл (живая проба 12 окт). Свой выбор человека уважаем: если
+       он выбрал модель или полосу, ничего не подменяем. */
+    tier: body.tier === 'fast' || body.tier === 'smart'
+      ? body.tier
+      : (composed && composed.voice && composed.voice.mode === 'note' && !norm.model ? 'smart' : undefined),
     only: norm.provider,
     /* Человек выбрал модель в окне ввода — она и отвечает. Советы голов в этом
        режиме выключены: «взято большинство» переписало бы ответ той самой модели,

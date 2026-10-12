@@ -41,7 +41,7 @@ const chain = String(pkg.scripts.test || '')
 const bare = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 /* Настоящие модули, а не пересказ: и конспект, и сборка вложений — те же, что в бою. */
-const { fmtStamp, fmtDuration, timeline, wantsNote, noteOf, noteLine, wordsWord, NOTE_MIN_SEC, NOTE_MIN_SEGMENTS, GAP_SEC } = await import('../engine/audionote.js')
+const { fmtStamp, fmtDuration, timeline, wantsNote, noteOf, noteLine, wordsWord, NOTE_ASK, NOTE_MIN_SEC, NOTE_MIN_SEGMENTS, GAP_SEC } = await import('../engine/audionote.js')
 const { compose, readVoiceBytes } = await import('../engine/attach.js')
 
 const v = versionsAligned()
@@ -124,6 +124,16 @@ ok('N8: длинная запись или разговор с репликам�
       && /по СОДЕРЖАНИЮ записи/.test(rec.directive) && /3–7 коротких пунктов/.test(rec.directive),
     rec.directive.slice(0, 120))
 
+  ok('N10c: у указания есть пример формы — на первом живом прогоне модель без него отвечала одной строкой',
+    /Пример формы/.test(rec.directive) && /– \[0:00\] Бюджет/.test(rec.directive))
+
+  /* Просьба в конце сообщения: то место, которое модель слушает сильнее всего, и
+     заодно «в сообщении нет ни одного слова человека» перестаёт быть дырой. */
+  ok('N10d: после дорожки стоит просьба сделать конспект',
+    rec.block.endsWith(NOTE_ASK) && /Сделай конспект этой записи/.test(rec.block)
+      && /\[1:05\] И про подрядчика\.\n\nСделай конспект/.test(rec.block),
+    rec.block.slice(-80))
+
   const noSeg = noteOf({ text: 'Очень длинная запись без отрезков. ' .repeat(30), segments: [], seconds: 240 })
   ok('N11: без отрезков конспект всё равно есть, но выдумывать метки прямо запрещено',
     noSeg.mode === 'note' && noSeg.stamps === 0 && !/\[\d+:\d\d\]/.test(noSeg.block)
@@ -152,6 +162,7 @@ ok('N8: длинная запись или разговор с репликам�
   const out = compose({ has: true, defer: true }, got, 'послушай и скажи, что решили')
   ok('N13: дорожка уезжает движку вместе с подписью человека, а указание — отдельным полем',
     /\[0:00\]/.test(out.text) && /\[1:01\]/.test(out.text) && /послушай и скажи/.test(out.text)
+      && out.text.indexOf(NOTE_ASK) < out.text.indexOf('послушай и скажи')
       && /конспект/i.test(out.directive) && out.voice && out.voice.mode === 'note' && out.voice.stamps === 3,
     JSON.stringify({ voice: out.voice }))
 
@@ -187,6 +198,10 @@ ok('N17: readVoiceBytes отдаёт отрезки наружу, а readSegment
 ok('N18: конспект не заводит новых ключей и сервисов — работает на той же расшифровке',
   !/https?:\/\//.test(bare(read('engine/audionote.js')))
     && /verbosе_json|verbose_json/.test(voiceinSrc))
+
+ok('N18b: конспект записи идёт по умной полосе — слабая модель отвечает про файл, а не по делу',
+  /composed && composed\.voice && composed\.voice\.mode === 'note' && !norm\.model \? 'smart'/.test(door)
+    && /Свой выбор человека уважаем/.test(door), 'functions/api/chat.js')
 
 ok('N19: проверка подключена к общему прогону',
   /test\/audionote\.test\.js/.test(chain) && /test\/voicein\.test\.js/.test(chain))
