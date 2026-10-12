@@ -20,11 +20,6 @@ const WhatsNewView = lazyView(() => import('./views/WhatsNewView').then((m) => (
    качать его вместе с чатом незачем. */
 const ReportsView = lazyView(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
-/* 0.174: аккаунт вместо анонимного устройства. Сессию проверяем ДО отрисовки
-   приложения: без входа в чат не попасть (так решил владелец), а чаты и профиль
-   грузятся уже под своим аккаунтом — иначе первый кадр показал бы чужую полку. */
-import { AuthView } from './views/AuthView'
-import { accountName, logout as accountLogout, me as accountMe, type Account } from './lib/auth'
 import { useTheme } from './hooks/useTheme'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
 import { APP_VERSION } from './lib/version'
@@ -38,7 +33,6 @@ import {
   loadChats,
   loadView,
   saveChats,
-  setStorageScope,
 } from './lib/persist'
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
@@ -169,14 +163,11 @@ const emptyChat = (): Chat => ({
 })
 
 export default function App() {
-  /* Готовность входа. Пока не знаем, кто пришёл, — показываем заставку: грузить
-     чаты «наугад» нельзя, они лежат на полке аккаунта. */
-  const [account, setAccount] = useState<Account | null>(null)
-  const [booted, setBooted] = useState(false)
-  const [authNotice, setAuthNotice] = useState('')
-  const [view, setView] = useState<ViewId>('chat')
-  const [chats, setChats] = useState<Chat[]>([])
-  const [activeChatId, setActiveChatId] = useState<string>('c-start')
+  const [view, setView] = useState<ViewId>(() => loadView('chat'))
+  const [chats, setChats] = useState<Chat[]>(() => loadChats(emptyChat))
+  const [activeChatId, setActiveChatId] = useState<string>(() =>
+    loadActiveChatId('c-start'),
+  )
   const [typing, setTyping] = useState(false)
   /* Запрос, который сейчас в полёте — чтобы кнопка «Остановить» реально обрывала
      именно его, а не просто прятала «Печатает» на экране. Один слот: второй запрос
@@ -233,50 +224,22 @@ export default function App() {
   const [newsOpen, setNewsOpen] = useState<boolean>(() => shouldShowNews())
   const newsNote = noteFor(APP_VERSION)
 
-  /* Вход: спрашиваем сервер один раз при запуске. Кэш на устройстве нужен лишь
-     чтобы не показать экран входа тому, кто уже вошёл, когда сети нет: сам доступ
-     он не даёт — без живой сессии сервер не примет ни одного запроса. */
   useEffect(() => {
-    let alive = true
-    void accountMe().then((r) => {
-      if (!alive) return
-      setAccount(r.user)
-      if (r.offline && r.user) setAuthNotice('сети нет — показываю последний вход')
-      setBooted(true)
-    })
-    return () => { alive = false }
+    setUser(siteUser())
   }, [])
-
-  /* Полка аккаунта: переписки, активный чат и раздел читаются ТОЛЬКО после того,
-     как стал известен аккаунт (см. setStorageScope в persist). */
-  useEffect(() => {
-    if (!booted) return
-    if (!account) {
-      setChats([])
-      return
-    }
-    setStorageScope(account.id)
-    setChats(loadChats(emptyChat))
-    setActiveChatId(loadActiveChatId('c-start'))
-    setView(loadView('chat'))
-    setUser({ ...siteUser(), name: accountName(account) })
-  }, [booted, account])
 
   const activeChat = chats.find((c) => c.id === activeChatId)
 
-  // Сохраняем реальные чаты, активный чат и раздел (только живые данные).
-  // До входа полки нет — писать нечего и нельзя (записали бы в чужую).
+  // Сохраняем реальные чаты, активный чат и раздел (только живые данные)
   useEffect(() => {
-    if (!account || !booted) return
     saveChats(chats, activeChatId, view)
-  }, [chats, activeChatId, view, account, booted])
+  }, [chats, activeChatId, view])
 
   // Разовая подгрузка настоящих байт картинок/файлов из IndexedDB поверх
   // текста, который уже отрисован из localStorage — короткая вспышка
   // «картинки ещё грузятся» при холодном старте приемлема, лишь бы сама
   // переписка открывалась мгновенно, как раньше.
   useEffect(() => {
-    if (!account || !booted) return
     let cancelled = false
     void hydrateChatMedia(chats).then((hydrated) => {
       if (cancelled) return
@@ -284,7 +247,7 @@ export default function App() {
     })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account, booted])
+  }, [])
 
   // Починка ссылок: активный чат должен существовать
   useEffect(() => {
@@ -628,38 +591,6 @@ export default function App() {
 
   const title = view === 'chat' ? activeChat?.title || NEW_CHAT_TITLE : TITLES[view]
 
-  /* Заставка: пока не знаем, кто пришёл. Пустой кадр без объяснения выглядел бы
-     поломкой, поэтому вместо него — имя продукта. */
-  if (!booted) {
-    return (
-      <div className="auth-screen">
-        <div className="auth-boot">
-          <div className="auth-logo">MT</div>
-          <div className="auth-boot-text">MeTiger Ai</div>
-        </div>
-      </div>
-    )
-  }
-
-  /* Вход обязателен: память, профиль и обращения живут на аккаунте (решение
-     владельца в 0.174). Ошибку возврата от сети (например, «вход отменён»)
-     передаём словами сервера — человек должен видеть, что случилось. */
-  if (!account) {
-    const notice = authNotice
-      || new URLSearchParams(location.search).get('auth')
-      || ''
-    return (
-      <AuthView
-        notice={notice}
-        onDone={() => {
-          setAuthNotice('')
-          if (location.search) history.replaceState(null, '', location.pathname)
-          void accountMe().then((r) => setAccount(r.user))
-        }}
-      />
-    )
-  }
-
   return (
     <div className="app">
       {/* Кружок обновления: живёт за верхней кромкой и выезжает за пальцем.
@@ -735,13 +666,6 @@ export default function App() {
               onNavigate={navigate}
               themePref={pref}
               onThemePref={setPref}
-              account={account}
-              onSignOut={() => {
-                void accountLogout().then(() => {
-                  setAccount(null)
-                  setAuthNotice('')
-                })
-              }}
             />
           ) : null}
           {view === 'personalization' ? <PersonalizationView notify={notify} /> : null}

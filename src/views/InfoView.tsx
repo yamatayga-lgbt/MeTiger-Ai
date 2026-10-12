@@ -9,11 +9,13 @@
  * Строки — того же вида, что и в профиле/настройках (.rows-row): иконка, подпись,
  * значение справа, кнопка или шеврон. Экран читается как список, а не как форма.
  */
-import { ChevronRight, Cpu, Info, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ChevronRight, Cpu, Info, Loader2, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, IconButton } from '../components/ui'
 import { fetchCounters } from '../lib/api'
 import { APP_VERSION, forceAppUpdate } from '../lib/version'
+import { checkOwnerCode, ownerEnabled, setOwnerCode } from '../lib/report'
+import { haptic } from '../lib/haptic'
 import type { ViewId } from '../App'
 
 interface InfoViewProps {
@@ -21,11 +23,32 @@ interface InfoViewProps {
   onNavigate: (v: ViewId) => void
 }
 
+/* Сколько тапов по строке версии открывают служебный вход и за какое время.
+   Пять быстрых касаний — как «режим разработчика» в Android: владелец знает, куда
+   нажать, случайный человек не откроет это, листая настройки. */
+const OWNER_TAPS = 5
+const OWNER_TAPS_MS = 3000
+
 export function InfoView({ notify, onNavigate }: InfoViewProps) {
   const [models, setModels] = useState('считаю…')
-  /* 0.174: служебного входа по коду здесь больше нет — владелец сказал «без
-     всякого кода». Он входит обычным аккаунтом, и «Обращения» появляются в
-     профиле сами: сервер знает, чей это аккаунт (engine/accounts.js). */
+  /* Служебный вход (0.173): пять тапов по версии → поле для кода владельца.
+     Открыт ли вход — живёт только в этом заходе на экран: приложение не должно
+     держать открытой «дверь» с прошлого раза. */
+  const [ownerOpen, setOwnerOpen] = useState(false)
+  const [ownerOn, setOwnerOn] = useState(() => ownerEnabled())
+  const [code, setCode] = useState('')
+  const [ownerBusy, setOwnerBusy] = useState(false)
+  const taps = useRef<number[]>([])
+
+  const tapVersion = () => {
+    const now = Date.now()
+    taps.current = taps.current.filter((t) => now - t < OWNER_TAPS_MS).concat(now)
+    if (taps.current.length >= OWNER_TAPS) {
+      taps.current = []
+      haptic('medium')
+      setOwnerOpen(true)
+    }
+  }
 
   async function refreshModels() {
     setModels('обновляю…')
@@ -38,6 +61,29 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
   useEffect(() => {
     void refreshModels()
   }, [])
+
+  const applyCode = async () => {
+    const v = code.trim()
+    if (!v) return
+    setOwnerBusy(true)
+    const ok = await checkOwnerCode(v)
+    setOwnerBusy(false)
+    if (ok) {
+      setOwnerCode(v)
+      setOwnerOn(true)
+      setCode('')
+      notify('Ведомство включено: «Обращения» появились в профиле')
+    } else {
+      notify('Код не подошёл — проверьте и попробуйте ещё раз')
+    }
+  }
+
+  const dropCode = () => {
+    setOwnerCode('')
+    setOwnerOn(false)
+    setOwnerOpen(false)
+    notify('Ведомство выключено на этом устройстве')
+  }
 
   return (
     <div className="container view info-view">
@@ -53,7 +99,7 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
       <div className="rows-card">
         {/* Короткая строка (просьба владельца из 0.113): только номер и кнопка —
             без длинного пояснения под названием. */}
-        <div className="rows-row">
+        <div className="rows-row" onPointerDown={tapVersion}>
           <span className="rows-ic" aria-hidden="true">
             <Info size={20} />
           </span>
@@ -70,6 +116,49 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
             Обновить
           </Button>
         </div>
+
+        {ownerOpen ? (
+          /* Служебный вход: виден только тому, кто пять раз коснулся версии.
+             Поясняем словами, что это и как выключить, — «непонятная дверь» хуже,
+             чем её отсутствие. */
+          <div className="rows-row is-plain owner-box">
+            <div className="owner-title">Служебный вход</div>
+            {ownerOn ? (
+              <>
+                <div className="rows-hint">
+                  Ведомство включено на этом устройстве: в профиле есть «Обращения».
+                </div>
+                <Button variant="ghost" onClick={dropCode}>
+                  Выключить
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="rows-hint">Введите код владельца — он даёт доступ к обращениям об ошибках.</div>
+                <div className="owner-row">
+                  <input
+                    className="owner-input"
+                    type="text"
+                    inputMode="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="Код владельца"
+                    aria-label="Код владельца"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void applyCode()
+                    }}
+                  />
+                  <Button variant="primary" onClick={() => void applyCode()} disabled={ownerBusy || !code.trim()}>
+                    {ownerBusy ? <Loader2 size={14} className="rep-spin" /> : null}
+                    Включить
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
 
         <button
           type="button"

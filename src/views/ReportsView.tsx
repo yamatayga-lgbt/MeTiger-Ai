@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom'
 import { Bug, Check, Image as ImageIcon, Inbox, Loader2, RefreshCw, X } from 'lucide-react'
 import { Badge, Button, Segmented } from '../components/ui'
 import {
-  humanDate, loadReport, loadReports, setReportVerdict,
+  humanDate, loadReport, loadReports, ownerCode, setReportVerdict,
   type ReportFull, type ReportSummary,
 } from '../lib/report'
 import { haptic } from '../lib/haptic'
@@ -92,8 +92,8 @@ export function ReportsView({ notify }: ReportsViewProps) {
         <div className="grow">
           <h1>Обращения</h1>
           <p className="sub">
-            Сообщения об ошибках от людей. Видны вам — потому что это ваш аккаунт:
-            аккаунт владельца. Сообщения остальных людей сюда не попадают.
+            Сообщения об ошибках от людей. Только на этом устройстве: код владельца{' '}
+            {ownerCode() ? 'введён' : 'не введён'}.
           </p>
         </div>
         <Inbox size={22} color="var(--text-3)" style={{ marginTop: 4, flexShrink: 0 }} />

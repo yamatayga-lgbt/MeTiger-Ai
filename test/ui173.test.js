@@ -71,14 +71,12 @@ ok('V173i «встряхните телефон» нет: детектора т�
   !/devicemotion|shake|тряхн/i.test(sheet.replace(/\/\*[\s\S]*?\*\//g, ''))
     && !/devicemotion|shake|тряхн/i.test(lib.replace(/\/\*[\s\S]*?\*\//g, '')))
 
-ok('V173j служебного входа по коду больше нет — в 0.174 владелец входит аккаунтом',
-  /* Владелец сказал «без всякого кода»: пять тапов по версии убраны. Здесь держим
-     именно это — что старый вход не вернулся по привычке. */
-  !/OWNER_TAPS/.test(info.replace(/\/\*[\s\S]*?\*\//g, '')) && !/tapVersion/.test(info)
-    && !/checkOwnerCode/.test(info) && /forceAppUpdate/.test(info))
+ok('V173j служебная кнопка владельца спрятана: пять тапов по версии в «Информации»',
+  /OWNER_TAPS = 5/.test(info) && /tapVersion/.test(info) && /onPointerDown=\{tapVersion\}/.test(info)
+    && /checkOwnerCode/.test(info) && /setOwnerCode\(/.test(info))
 
-ok('V173k карточка «Ведомство» появляется только у владельца — по аккаунту, не по устройству',
-  /owner = /.test(profile) && /account\?\.owner/.test(profile) && /\{owner \? \(/.test(profile)
+ok('V173k карточка «Ведомство» появляется только там, где введён код владельца',
+  /ownerEnabled\(\)/.test(profile) && /\{owner \? \(/.test(profile)
     && /Ведомство/.test(profile) && /label="Обращения"/.test(profile) && /onNavigate\('reports'\)/.test(profile))
 
 ok('V173l у каждой заявки две кнопки — «Рассмотрено» и «Отказано», и обе живые',
@@ -86,9 +84,9 @@ ok('V173l у каждой заявки две кнопки — «Рассмот�
     && /verdict\(r\.id, 'done'\)/.test(reportsView) && /verdict\(r\.id, 'declined'\)/.test(reportsView)
     && /setReportVerdict/.test(lib))
 
-ok('V173m обращения уходят и приходят через свой вход, и на сервере он под замком владельца',
-  /'\/api\/report\?owner=1'/.test(lib) && !/x-mt-owner/.test(lib.replace(/\/\*[\s\S]*?\*\//g, ''))
-    && /isOwnerAccount/.test(endpoint) && /sessionUser\(request, env\)/.test(endpoint)
+ok('V173m обращения уходят и приходят через свой вход, и на сервере он под замком',
+  /'\/api\/report\?owner=1'/.test(lib) && /x-mt-owner/.test(lib)
+    && /x-mt-owner/.test(endpoint) && /isOwnerCode\(/.test(endpoint)
     /* Правила приёма живут в engine/reports.js — там же, где их проверяет тест. */
     && /не больше \$\{REPORT_LIMITS\.MAX_PHOTOS\}/.test(engine)
     && /MAX_CHARS: 2000/.test(engine))
@@ -101,9 +99,8 @@ ok('V173o статус «Отказано» нарисован тихо (сер�
   /\.rep-status\.is-declined \{[^}]*--text-3/.test(css.replace(/\n/g, ' '))
     && !/\.rep-status\.is-declined \{[^}]*--danger/.test(css.replace(/\n/g, ' ')))
 
-ok('V173p стили обращений — переменными темы; поле кода владельца из 0.173 вычищено',
-  /\.rep-sheet \{/.test(css) && /\.rep-card \{/.test(css) && !/\.owner-input \{/.test(css)
-    && !/\.owner-box \{/.test(css)
+ok('V173p стили обращений — переменными темы, без чужих констант',
+  /\.rep-sheet \{/.test(css) && /\.rep-card \{/.test(css) && /\.owner-input \{/.test(css)
     && /var\(--accent-grad\)/.test(css.slice(css.indexOf('.rep-send {'))))
 
 ok('V173r окна живут порталом, а шапка шторки — липкая (иначе окно уезжает за экран)',
