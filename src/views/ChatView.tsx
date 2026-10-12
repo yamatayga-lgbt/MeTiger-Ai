@@ -485,9 +485,19 @@ function ImageProgressBlock({ steps, live = false }: { steps: ImageStep[]; live?
      `edits` означает «умеет править», и путать их нельзя: обычный рисунок
      показывался бы правкой. */
   const edit = steps.some((x) => x.state === 'start' && x.edit)
-  const failed = steps.filter((x) => x.state === 'failed')
+  /* Канал показываем один раз, по последнему слову о нём: «канал 1 — рисовал» и
+     следом «канал 1 — не ответил» читались бы как два разных канала. */
+  const byIndex = new Map<string, ImageStep>()
+  for (const x of steps) {
+    if (x.state === 'start') continue
+    const key = String(x.index || byIndex.size + 1)
+    const prev = byIndex.get(key)
+    byIndex.set(key, prev ? { ...prev, ...x } : x)
+  }
+  const rows = [...byIndex.values()].sort((a, b) => (a.index || 0) - (b.index || 0))
+  const failed = rows.filter((x) => x.state === 'failed')
   let trying: ImageStep | null = null
-  for (let i = steps.length - 1; i >= 0; i--) if (steps[i].state === 'trying') { trying = steps[i]; break }
+  for (let i = rows.length - 1; i >= 0; i--) if (rows[i].state === 'trying') { trying = rows[i]; break }
   const title = trying
     ? (edit ? 'Editing the image' : 'Drawing the image')
     : failed.length
@@ -503,8 +513,7 @@ function ImageProgressBlock({ steps, live = false }: { steps: ImageStep[]; live?
         </span>
       </summary>
       <div className="img-prog-steps">
-        {steps
-          .filter((x) => x.state !== 'start')
+        {rows
           .map((x, idx) => (
             <div key={`i-${idx}`} className={x.state === 'failed' ? 'img-prog-row is-failed' : 'img-prog-row'}>
               {x.state === 'failed' ? (
