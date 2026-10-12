@@ -213,6 +213,115 @@ function geminiSource(env) {
   };
 }
 
+/**
+ * Cloudflare Workers AI (0.177) — картинки без единого ключа.
+ *
+ * Почему это главный канал, а не «ещё один»: воркеру достаточно привязки `AI`
+ * (wrangler.toml: `[ai] binding = "AI"`), а ключей и внешних лимитов нет вовсе —
+ * аккаунт Cloudflare сам даёт бесплатный запас в сутки. Для человека это значит
+ * «картинка есть», а не «у бесплатных источников кончился лимит», как с анонимным
+ * Pollinations. Владелец просил токен Pollinations — с привязкой он больше не нужен;
+ * если токен всё-таки появится, он подхватится ниже и снимет анонимный лимит.
+ *
+ * Моделей две: flux-1-schnell (быстрая, 4 шага, отвечает base64 в `image`) и
+ * SDXL Lightning — на случай, если первая на аккаунте выключена или в отказе.
+ * Через привязку ответ — объект с `image` (base64) или поток байт; через REST
+ * (CF_AI_TOKEN + CF_ACCOUNT, для проб вне воркера) — либо JSON, либо сами байты.
+ */
+function workersAiSource(env) {
+  if (env.IMGGEN_WORKERS_AI === 'off') return null;
+  const binding = env.AI && typeof env.AI.run === 'function' ? env.AI : null;
+  const token = String(env.CF_AI_TOKEN || '');
+  const account = String(env.CF_ACCOUNT || '');
+  const rest = token && account ? { token, account } : null;
+  if (!binding && !rest) return null;
+  const models = String(env.IMGGEN_AI_MODELS || '')
+    .split(',').map((x) => x.trim()).filter(Boolean);
+  const list = models.length ? models : ['@cf/black-forest-labs/flux-1-schnell', '@cf/bytedance/stable-diffusion-xl-lightning'];
+
+  /** base64 → байты: buf.from нужен и в воркере, и в тестах (atob там нет). */
+  const bytesOf = (value) => {
+    if (!value) return null;
+    if (value instanceof Uint8Array) return value;
+    if (value instanceof ArrayBuffer) return new Uint8Array(value);
+    if (typeof value === 'string') {
+      try {
+        const bin = (typeof atob === 'function' ? atob(value) : Buffer.from(value, 'base64').toString('binary'));
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const asBytes = async (out) => {
+    if (!out) return null;
+    if (out.image) return bytesOf(out.image);
+    /* REST-ответ Cloudflare заворачивает результат в `result`, привязка — нет */
+    if (out.result) return asBytes(out.result);
+    const direct = bytesOf(out);
+    if (direct) return direct;
+    /* поток или Blob: у воркера картинка может приезжать телом ответа */
+    if (typeof out.arrayBuffer === 'function') {
+      try { return new Uint8Array(await out.arrayBuffer()); } catch (e) { return null; }
+    }
+    if (typeof out.getReader === 'function') {
+      try { return new Uint8Array(await new Response(out).arrayBuffer()); } catch (e) { return null; }
+    }
+    return null;
+  };
+
+  const steps = Math.max(1, Math.min(8, Math.round(Number(env.IMGGEN_AI_STEPS) || 4)) || 4);
+
+  return {
+    id: 'workersai',
+    edits: false,
+    async generate({ prompt, fetchImpl }) {
+      let lastWhy = '';
+      for (const model of list) {
+        try {
+          let bytes = null;
+          if (binding) {
+            const out = await binding.run(model, { prompt: String(prompt || '').slice(0, 2048), steps });
+            bytes = await asBytes(out);
+          } else {
+            const url = 'https://api.cloudflare.com/client/v4/accounts/' + encodeURIComponent(rest.account)
+              + '/ai/run/' + model;
+            const r = await fetchImpl(url, {
+              method: 'POST',
+              headers: { authorization: 'Bearer ' + rest.token, 'content-type': 'application/json' },
+              body: JSON.stringify({ prompt: String(prompt || '').slice(0, 2048), steps }),
+            });
+            if (!r.ok) {
+              let why = 'http ' + r.status;
+              try { const j = await r.json(); why = (j && j.errors && j.errors[0] && j.errors[0].message) || why; } catch (e) { /* не json */ }
+              const err = new Error(model.split('/').pop() + ': ' + why);
+              err.status = r.status;
+              throw err;
+            }
+            const type = String((r.headers && r.headers.get && r.headers.get('content-type')) || '');
+            bytes = /json/i.test(type) ? await asBytes(await r.json()) : new Uint8Array(await r.arrayBuffer());
+          }
+          if (bytes && bytes.length > 512) return { bytes, url: '', mime: IMG_MIME(bytes) };
+          lastWhy = model.split('/').pop() + ': источник ответил, но без картинки';
+        } catch (e) {
+          const why = String((e && e.message) || e).slice(0, 140);
+          lastWhy = why;
+          /* «нет такой модели» — не повод ронять весь канал: пробуем следующую */
+          const err = e instanceof Error ? e : new Error(why);
+          err.message = why;
+          if (/401|403|authentication/i.test(why)) throw err;
+        }
+      }
+      throw new Error(lastWhy || 'Workers AI не ответил');
+    },
+    async edit() { throw new Error('правка картинок у этого источника не умеет'); },
+  };
+}
+
 /** Pollinations: без ключа, но с 2026 года отдаёт только то, что уже есть в кэше (402 иначе). */
 function pollinationsSource(env, state) {
   if (env.IMGGEN_POLLINATIONS === 'off') return null;
@@ -222,6 +331,11 @@ function pollinationsSource(env, state) {
      Начинаем с голой: она дешевле. */
   const st = state || { form: 'bare' };
   const prefer = () => st.form;
+  /* Токен auth.pollinations.ai (0.177): с ним сняты и анонимный лимит «раз в 15 с»,
+     и водяной знак. Присылать его не обязательно — привязка Workers AI выше уже
+     даёт картинки без ключей; токен нужен лишь как второй живой канал. */
+  const token = String(env.POLLINATIONS_TOKEN || env.IMGGEN_POLL_TOKEN || '').trim();
+  const authHeaders = token ? { authorization: 'Bearer ' + token } : {};
   const urlsOf = (prompt, size) => {
     const [w, h] = String(size || DEFAULT_SIZE).split('x');
     const bare = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`;
@@ -244,7 +358,12 @@ function pollinationsSource(env, state) {
       let lastBare = null;
       let lastFull = null;
       for (const [form, url] of order) {
-        const r = await fetchImpl(url, { headers: { accept: 'image/*' } });
+        let r = await fetchImpl(url, { headers: { accept: 'image/*', ...authHeaders } });
+        /* Токен протух или не подошёл — это не повод остаться без картинки: одна
+           повторная попытка анонимно (у анонимного адреса свой лимит, но он есть). */
+        if (token && (r.status === 401 || r.status === 403)) {
+          r = await fetchImpl(url, { headers: { accept: 'image/*' } });
+        }
         if (!r.ok) {
           let why = 'http ' + r.status;
           try { const j = await r.json(); why = (j && (j.error && (j.error.code || j.error.message) || j.message)) || why; } catch { /* тело не json */ }
@@ -308,7 +427,9 @@ export function createImggen(o) {
   const only = String(env.IMGGEN_SOURCE || '').trim();
   /* Общее состояние источников на слой: у Pollinations — какая форма адреса сработала. */
   const pollState = { form: 'bare' };
-  const builders = [geminiSource, odirouterSource, (env) => pollinationsSource(env, pollState)];
+  /* Порядок: сначала то, что не зависит от чужих лимитов и ключей (привязка
+     Workers AI), затем источники владельца, затем анонимный Pollinations. */
+  const builders = [workersAiSource, geminiSource, odirouterSource, (env) => pollinationsSource(env, pollState)];
 
   const fail = new Map();          /* id → { why, until } */
   const alive = new Set();         /* id, который уже хоть раз ответил */
@@ -385,7 +506,7 @@ export function createImggen(o) {
   function status() {
     if (off) return { on: false, why: 'IMGGEN=off', sources: [] };
     const list = chain();
-    if (!list.length) return { on: false, why: 'нет ни одного источника: нужны GEMINI_KEYS или ODIROUTER_KEYS', sources: [] };
+    if (!list.length) return { on: false, why: 'нет ни одного источника: нужна привязка AI, GEMINI_KEYS или ODIROUTER_KEYS', sources: [] };
     return {
       on: true,
       why: list.every((s) => skip(s.id) && !alive.has(s.id)) ? 'все источники сейчас отказывают' : '',
@@ -408,9 +529,17 @@ export function createImggen(o) {
   async function run(kind, args) {
     if (off) return { ok: false, why: 'генерация картинок выключена (IMGGEN=off)' };
     const tried = [];
-    for (const s of chain()) {
+    /* Честный прогресс (0.177): человек видит, что картинка рисуется и на каком
+       канале мы стоим, а не смотрит на «печатает…» минуту. События уезжают тем же
+       потоком, что куски текста; без потока (curl, тесты) колбэка просто нет. */
+    const step = typeof args.step === 'function' ? args.step : null;
+    const all = chain();
+    let index = 0;
+    for (const s of all) {
+      index++;
       if (skip(s.id)) { tried.push(`${s.id}: ${fail.get(s.id).why} (ждём ${Math.ceil((fail.get(s.id).until - now()) / 1000)} с)`); continue; }
       if (kind === 'edit' && !s.edits) { tried.push(`${s.id}: правка не поддерживается`); continue; }
+      if (step) step({ state: 'trying', channel: s.id, index, total: all.length, edits: !!s.edits });
       try {
         const out = await withTimeout(s[kind](Object.assign({}, args, { fetchImpl })), timeoutMs, s.id);
         if (!out.bytes && out.url) {
@@ -434,6 +563,7 @@ export function createImggen(o) {
         const busy = status === 402 || status === 429 || /(^|\D)(402|429)(\D|$)/.test(why);
         fail.set(s.id, { why, until: now() + (busy ? busyTtl : failTtl) });
         tried.push(`${s.id}: ${why}`);
+        if (step) step({ state: 'failed', channel: s.id, index, total: all.length, why });
         log('imggen', s.id, why);
       }
     }
@@ -443,6 +573,8 @@ export function createImggen(o) {
   return {
     generate: (args) => run('generate', args),
     edit: (args) => run('edit', args),
+    /** Сколько каналов сейчас в цепочке — для правдивой подписи прогресса. */
+    channels: () => chain().length,
     status,
     /** Подтянуть «кто отвечал» из общего хранилища (один раз на изолят). */
     hydrate,
@@ -508,6 +640,7 @@ export async function packImages(answer, o) {
   const src = String(answer || '');
   const gen = opts.generate || (async () => ({ ok: false, why: 'слой картинок не подключён' }));
   const ed = opts.edit || (async () => ({ ok: false, why: 'правка недоступна' }));
+  const step = typeof opts.step === 'function' ? opts.step : null;
   const images = Array.isArray(opts.images) ? opts.images : [];
   const files = [];
   const notes = [];
@@ -525,7 +658,8 @@ export async function packImages(answer, o) {
      а нам важнее получить честную причину от первого, чем три ошибки разом */
   for (const b of blocks.slice(0, 2)) {
     const needEdit = images.length > 0 && /(убер|уба\w*|удал\w*|замени|поменя|перекрас|дорисуй|фон|правк|retouch|inpaint|remove|change|background|crop|обреж)/i.test(b.prompt);
-    const r = await (needEdit ? ed : gen)({ prompt: b.prompt, images });
+    if (step) step({ state: 'start', name: b.name || '', edit: needEdit });
+    const r = await (needEdit ? ed : gen)({ prompt: b.prompt, images, step });
     if (!r.ok) { notes.push('картинка «' + (b.name || 'без имени') + '» не вышла: ' + whyWithRaw(humanWhy(r.why), r.why)); continue; }
     files.push(fileOf(r, b.name));
   }
@@ -536,7 +670,8 @@ export async function packImages(answer, o) {
     const p = describeRequest(opts.text);
     if (p) {
       const needEdit = images.length > 0 && wantsEdit(opts.text, images);
-      const r = await (needEdit ? ed : gen)({ prompt: p, images });
+      if (step) step({ state: 'start', name: '', edit: needEdit });
+      const r = await (needEdit ? ed : gen)({ prompt: p, images, step });
       if (r.ok) files.push(fileOf(r, cleanName(p).slice(0, 40)));
       else notes.push('картинка не вышла: ' + whyWithRaw(humanWhy(r.why), r.why));
     }
@@ -610,6 +745,18 @@ function cleanName(s) {
  * Поэтому и /api/skills, и чат смотрят в ОДНО зеркало.
  */
 let shared = null;
+/**
+ * Сбросить общий слой — для тестов и перезапуска окружения.
+ *
+ * В воркере окружение живёт вместе с изолятом, поэтому общий слой создаётся один
+ * раз и это правильно. Но в прогоне тестов окружения разные (то привязка AI, то
+ * сломанная привязка), и без сброса первый попавшийся env решал бы за всех —
+ * проверка «отказ канала» молча шла бы по живому каналу.
+ */
+export function forgetSharedImggen() {
+  shared = null;
+}
+
 export function sharedImggen(env, fetchImpl, log) {
   if (!shared) {
     shared = createImggen({ env: env || {}, fetch: fetchImpl, log });

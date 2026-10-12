@@ -16,7 +16,7 @@ import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
    виден как есть (pre-wrap), так что пустого места не бывает. */
 const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
-import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, sourceDate, type Attachment, type WebStep } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 import { enterKeySends } from '../lib/platform'
@@ -466,6 +466,91 @@ function FetchedPageGlyph() {
   )
 }
 
+/**
+ * «Drawing the image · channel 2 of 3» (0.177) — честный прогресс рисования.
+ *
+ * Картинка рисуется десятками секунд, и раньше человек всё это время видел только
+ * готовый текст ответа и мог решить, что картинки не будет. Теперь видно: заказ
+ * принят, какой канал сейчас работает и что мы не застряли, а перебираем дальше.
+ * Провайдеров по именам не показываем — это служебное (правило «в пузыре нет
+ * модели и провайдера»), видно только «канал N из M». Блок живёт лишь во время
+ * запроса: в готовом ответе место картинке, а не каналу.
+ */
+function ImageProgressBlock({ steps, live = false }: { steps: ImageStep[]; live?: boolean }) {
+  if (!steps.length) return null
+  const total = steps.reduce((m, x) => Math.max(m, x.total || 0), 0) || 1
+  let name = ''
+  for (let i = steps.length - 1; i >= 0; i--) if (steps[i].name) { name = steps[i].name || ''; break }
+  /* «Editing» — только по заказу на правку (шаг start). У шагов каналов поле
+     `edits` означает «умеет править», и путать их нельзя: обычный рисунок
+     показывался бы правкой. */
+  const edit = steps.some((x) => x.state === 'start' && x.edit)
+  const failed = steps.filter((x) => x.state === 'failed')
+  let trying: ImageStep | null = null
+  for (let i = steps.length - 1; i >= 0; i--) if (steps[i].state === 'trying') { trying = steps[i]; break }
+  const title = trying
+    ? (edit ? 'Editing the image' : 'Drawing the image')
+    : failed.length
+      ? 'Image channel failed — trying the next one'
+      : 'Drawing the image'
+  return (
+    <details className="msg-img-prog" open>
+      <summary className="img-prog-head">
+        <BrushGlyph className={live ? 'img-prog-icon is-pulsing' : 'img-prog-icon'} />
+        <span className={live ? 'img-prog-title is-shimmer' : 'img-prog-title'}>
+          {title}
+          {name ? ` · ${name}` : ''}
+        </span>
+      </summary>
+      <div className="img-prog-steps">
+        {steps
+          .filter((x) => x.state !== 'start')
+          .map((x, idx) => (
+            <div key={`i-${idx}`} className={x.state === 'failed' ? 'img-prog-row is-failed' : 'img-prog-row'}>
+              {x.state === 'failed' ? (
+                <>
+                  <span className="img-prog-mark">✕</span>
+                  <span className="img-prog-label">
+                    Channel {x.index || idx + 1} of {x.total || total} didn&apos;t answer — trying the next
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="img-prog-mark is-working">•</span>
+                  <span className="img-prog-label">
+                    Channel {x.index || idx + 1} of {x.total || total} is drawing
+                  </span>
+                </>
+              )}
+            </div>
+          ))}
+      </div>
+    </details>
+  )
+}
+
+/** Кисточка: значок рисования (та же линия, что у остальных инструментов). */
+function BrushGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9.5 14.5 4 20" />
+      <path d="M13 3.5 20.5 11l-6.6 6.6a3 3 0 0 1-4.2 0l-3.3-3.3a3 3 0 0 1 0-4.2Z" />
+      <path d="M7.6 11.4 12.6 16.4" />
+    </svg>
+  )
+}
+
 function WebSearchBlock({ steps, live = false }: { steps: WebStep[]; live?: boolean }) {
   if (!steps.length) return null
   return (
@@ -539,6 +624,8 @@ interface ChatViewProps {
   draftThinkingSec?: number
   /** Живые шаги поиска в интернете (Searching the web -> Searched for / Fetched) */
   draftWebSteps?: WebStep[]
+  /** Этапы рисования картинки во время запроса (0.177). */
+  draftImgSteps?: ImageStep[]
   /** Переключатель глубокого поиска («поиск») в панели ввода */
   searchOn?: boolean
   onToggleSearch?: () => void
@@ -562,6 +649,7 @@ export function ChatView({
   draftReasoning,
   draftThinkingSec = 1,
   draftWebSteps = [],
+  draftImgSteps = [],
   onSend,
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
@@ -1221,6 +1309,9 @@ export function ChatView({
             <div className="msg msg-ai">
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ai-name">MeTiger Ai</div>
+                {Array.isArray(draftImgSteps) && draftImgSteps.length ? (
+                  <ImageProgressBlock steps={draftImgSteps} live />
+                ) : null}
                 {Array.isArray(draftWebSteps) && draftWebSteps.length ? (
                   <WebSearchBlock steps={draftWebSteps} live={!draft} />
                 ) : null}

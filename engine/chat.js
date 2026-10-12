@@ -797,9 +797,15 @@ export function createEngine(opts) {
          с причиной, а не выдуманная ссылка. */
       if (out.ok && out.reply && imgWanted) {
         try {
+          /* Шаги «рисую… канал 2 из 3» уезжают в поток тем же путём, что куски текста
+             (0.177). Если потока нет — no-op: curl и тесты ничего не замечают. */
+          const imgStep = (ev) => {
+            if (typeof o.onDelta === 'function') o.onDelta({ kind: 'image', step: ev });
+          };
           const packed = await packImages(out.reply, {
-            generate: (i) => imggen.generate(i),
-            edit: (i) => imggen.edit(images.length ? { ...i, images } : i),
+            step: imgStep,
+            generate: (i) => imggen.generate({ ...i, step: imgStep }),
+            edit: (i) => imggen.edit(images.length ? { ...i, images, step: imgStep } : i),
             wanted: imgRequested,
             images,
             text,

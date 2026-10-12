@@ -437,6 +437,151 @@ console.log('── J · лимит — не поломка: минута ожи
     !r2.ok && c2.length === n2, `${r2.why} | запросов ${c2.length - n2}`);
 }
 
+/* ── AI: картинки без ключей (0.177) ───────────────────────────────────────
+ * Владелец должен получать картинку, а не «у бесплатных источников кончился
+ * лимит». Токен Pollinations он так и не прислал — и не нужно: привязка AI даёт
+ * Workers AI прямо в воркере. Здесь проверяем весь путь привязки: успех, отказ,
+ * пустой ответ, REST-путь с токеном и то, что правка этим каналом не обещается.
+ */
+const AI_BYTES = img('image/jpeg');
+const AI_B64 = b64(AI_BYTES);
+const aiEnv = (run, extra) => ({ ...(extra || {}), AI: { run } });
+{
+  const seen = [];
+  const layer = createImggen({
+    env: aiEnv(async (model, opts) => { seen.push([model, opts && opts.steps, String(opts && opts.prompt).slice(0, 20)]); return { image: AI_B64 }; }),
+    fetch: async () => { throw new Error('сеть не должна зваться: привязка локальна'); },
+    log: () => {},
+  });
+  const st = layer.status();
+  ok('K1: привязка AI без единого ключа — источник есть и стоит первым',
+    st.on === true && st.sources.length > 0 && st.sources[0].id === 'workersai',
+    JSON.stringify(st.sources.map((x) => x.id)));
+  const r = await layer.generate({ prompt: 'a red cat on a windowsill' });
+  ok('K2: flux-1-schnell отвечает base64 — картинка распознаётся как JPEG',
+    r.ok && r.source === 'workersai' && r.mime === 'image/jpeg' && r.bytes.length === AI_BYTES.length,
+    JSON.stringify({ ok: r.ok, src: r.source, mime: r.mime, n: r.bytes && r.bytes.length }));
+  ok('K3: модель спрашивается по имени, шаги в разумном пределе (у flux максимум 8)',
+    seen.length === 1 && seen[0][0] === '@cf/black-forest-labs/flux-1-schnell' && seen[0][1] >= 1 && seen[0][1] <= 8,
+    JSON.stringify(seen[0]));
+  const st2 = layer.status();
+  ok('K4: канал отмечен в статусе как живой — строку показывает /api/chat',
+    /источник/.test(lineOf(st2)) && st2.sources[0].id === 'workersai', lineOf(st2).slice(0, 80));
+}
+{
+  /* flux выключен на аккаунте или в отказе — молча идём на вторую модель */
+  const tried = [];
+  const layer = createImggen({
+    env: aiEnv(async (model) => {
+      tried.push(model);
+      if (/flux/.test(model)) throw new Error('No such model');
+      return { image: AI_B64 };
+    }),
+    fetch: async () => { throw new Error('сеть не нужна'); },
+    log: () => {},
+  });
+  const r = await layer.generate({ prompt: 'кот' });
+  ok('K5: одна модель отвалилась — канал пробует следующую, а не сдаётся',
+    r.ok && r.source === 'workersai' && tried.length === 2 && /flux/.test(tried[0]) && !/flux/.test(tried[1]),
+    JSON.stringify(tried));
+}
+{
+  /* пустой ответ привязки — это не картинка: идём дальше по цепочке */
+  const layer = createImggen({
+    env: aiEnv(async () => ({}), ENV),
+    fetch: stub({ 'generativelanguage': () => geminiOk() }),
+    log: () => {},
+  });
+  const r = await layer.generate({ prompt: 'кот' });
+  ok('K6: привязка ответила без картинки — берём следующий живой канал (gemini)',
+    r.ok && r.source === 'gemini', JSON.stringify({ ok: r.ok, src: r.source, why: r.why }));
+}
+{
+  /* привязки нет вовсе — источника нет и в статусе (не «мёртвый канал в списке») */
+  const layer = createImggen({ env: { GEMINI_KEYS: 'gk' }, fetch: stub({ 'generativelanguage': () => geminiOk() }), log: () => {} });
+  ok('K7: без привязки AI источника workersai нет — цепочка прежняя',
+    !layer.status().sources.some((x) => x.id === 'workersai'),
+    JSON.stringify(layer.status().sources.map((x) => x.id)));
+}
+{
+  /* правку приложенной картинки этот канал не умеет — и не притворяется */
+  const layer = createImggen({ env: aiEnv(async () => ({ image: AI_B64 })), fetch: async () => { throw new Error('сеть не нужна'); }, log: () => {} });
+  const r = await layer.edit({ prompt: 'убери фон', images: [{ mime: 'image/png', data: 'AA' }] });
+  ok('K8: каналу честно нечего делать с правкой — причина названа, а не выдумана картинка',
+    !r.ok && /правка не поддерживается/.test(r.why), r.why.slice(0, 120));
+}
+{
+  /* REST-путь: пригодится пробам вне воркера (CF_AI_TOKEN + CF_ACCOUNT) */
+  const calls = [];
+  const layer = createImggen({
+    env: { CF_AI_TOKEN: 't', CF_ACCOUNT: 'acc' },
+    fetch: async (u, i) => { calls.push(String(u)); return json({ result: { image: AI_B64 }, success: true }); },
+    log: () => {},
+  });
+  const r = await layer.generate({ prompt: 'кот' });
+  ok('K9: без привязки, но с токеном и аккаунтом — тот же канал по REST',
+    r.ok && r.source === 'workersai' && /api\.cloudflare\.com\/client\/v4\/accounts\/acc\/ai\/run/.test(calls[0]),
+    calls[0]);
+}
+{
+  /* токен Pollinations: с ним снят анонимный лимит, но если он не подошёл — картинка всё равно нужна */
+  const heads = [];
+  const layer = createImggen({
+    env: { IMGGEN_SOURCE: 'pollinations', POLLINATIONS_TOKEN: 'pt' },
+    fetch: async (u, i) => {
+      const h = (i && i.headers) || {};
+      heads.push(String(h.authorization || ''));
+      if (h.authorization) return json({ error: 'bad token' }, 401);
+      return binary(img('image/jpeg'));
+    },
+    log: () => {},
+  });
+  const r = await layer.generate({ prompt: 'кот' });
+  ok('K10: токен подставляется в запрос, а на отказ токена идёт анонимный повтор — картинка не теряется',
+    r.ok && heads[0] === 'Bearer pt' && heads[1] === '', JSON.stringify(heads));
+}
+{
+  /* честный прогресс: этапы уходят наружу и говорят правду о канале */
+  const steps = [];
+  const layer = createImggen({
+    env: ENV,
+    fetch: stub({ gemini: err('quota', 'RESOURCE_EXHAUSTED', 429), odirouter: () => odirOk() }),
+    log: () => {},
+  });
+  const r = await layer.generate({ prompt: 'кот', step: (e) => steps.push(e) });
+  const trying = steps.filter((x) => x.state === 'trying');
+  const failed = steps.filter((x) => x.state === 'failed');
+  ok('K11: пока рисуем — видно, какой канал работает и сколько их всего',
+    r.ok && trying.length === 2 && trying[0].index === 1 && trying[1].index === 2
+      && trying[0].total === trying[1].total && trying[0].total >= 3,
+    JSON.stringify(steps));
+  ok('K12: отказ канала назван и не выглядит зависанием (failed → следующий trying)',
+    failed.length === 1 && failed[0].channel === 'gemini' && /429|RESOURCE/.test(failed[0].why)
+      && steps.indexOf(failed[0]) < steps.indexOf(trying[1]),
+    JSON.stringify(steps));
+}
+{
+  /* шаги доходят и из упаковки ответа — там же, где «start» на каждую картинку */
+  const steps = [];
+  const layer = createImggen({ env: ENV, fetch: stub({ 'generativelanguage': () => geminiOk() }), log: () => {} });
+  const r = await packImages(blocks, { generate: layer.generate, step: (e) => steps.push(e), wanted: true, text: 'нарисуй кота' });
+  ok('K13: packImages передаёт шаги генерации наружу — клиент видит «рисую» по каждому блоку',
+    r.files.length === 1 && steps.some((x) => x.state === 'start' && x.name === 'котик') && steps.some((x) => x.state === 'trying'),
+    JSON.stringify(steps));
+}
+{
+  /* без колбэка всё прежнее: curl, боты и тесты ничего не замечают */
+  const layer = createImggen({ env: ENV, fetch: stub({ 'generativelanguage': () => geminiOk() }), log: () => {} });
+  const r = await layer.generate({ prompt: 'кот' });
+  ok('K14: без слушателя шагов генерация идёт ровно как раньше', r.ok && r.source === 'gemini');
+}
+{
+  /* статус без всего: сказано, чего не хватает, включая привязку */
+  const layer = createImggen({ env: { IMGGEN_POLLINATIONS: 'off' }, fetch: stub({}), log: () => {} });
+  ok('K15: когда рисовать нечем — причина называет привязку AI первой',
+    layer.status().on === false && /привязка AI/.test(layer.status().why), layer.status().why);
+}
+
 console.log(`\n${pass} пройдено, ${fail} провалено`);
 if (fail) process.exitCode = 1;
 void assert;

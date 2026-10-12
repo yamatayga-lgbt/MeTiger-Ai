@@ -1808,6 +1808,83 @@ kbd {
   padding-left: 22px;
 }
 
+/* «Drawing the image · channel 2 of 3» (0.177): честный прогресс рисования.
+   Строки появляются по мере перебора каналов, поэтому отказ одного канала не
+   выглядит как «зависло» — рядом с ним сразу встаёт попытка следующего. */
+.msg-img-prog {
+  margin: 2px 0 8px;
+}
+
+.img-prog-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 14px;
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+}
+
+.img-prog-head::-webkit-details-marker {
+  display: none;
+}
+
+.img-prog-icon {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--text) 64%, transparent);
+}
+
+.img-prog-icon.is-pulsing {
+  animation: brainBreath 1.8s ease-in-out infinite;
+}
+
+.img-prog-title.is-shimmer {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text) 42%, transparent) 0%,
+    color-mix(in srgb, var(--text) 95%, transparent) 48%,
+    color-mix(in srgb, var(--text) 42%, transparent) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinkingShimmer 1.75s linear infinite;
+}
+
+.img-prog-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 24px;
+}
+
+.img-prog-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text) 58%, transparent);
+}
+
+.img-prog-row.is-failed {
+  color: color-mix(in srgb, var(--text) 44%, transparent);
+}
+
+.img-prog-mark {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.img-prog-mark.is-working {
+  animation: brainBreath 1.4s ease-in-out infinite;
+}
+
 /* «Write <файл> · N lines» — строка на каждый файл, который агент оформил
    filegen'ом, над ответом рядом с used <tool> / Searching the web / Explored reads. */
 .msg-write-files {

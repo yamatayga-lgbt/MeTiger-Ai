@@ -25,6 +25,24 @@ export interface SourceLink {
   date?: string
 }
 
+/**
+ * Этап рисования картинки (0.177). Пока источник рисует (а это десятки секунд),
+ * человек должен видеть, что работа идёт и что мы не стоим на одном канале.
+ */
+export interface ImageStep {
+  /** start — заказ принят, trying — пробуем канал, failed — канал не ответил. */
+  state: 'start' | 'trying' | 'failed'
+  /** Имя картинки из блока ```img``` — по нему видно, какую именно рисуем. */
+  name?: string
+  /** id канала (workersai/gemini/…) — служебное, наружу в пузырь не идёт. */
+  channel?: string
+  index?: number
+  total?: number
+  edits?: boolean
+  edit?: boolean
+  why?: string
+}
+
 export interface WebStep {
   kind: 'search' | 'fetch'
   query?: string
@@ -111,6 +129,8 @@ export interface SseEvent {
   model?: string
   text?: string
   step?: WebStep
+  /** `kind: 'image'` — этап рисования картинки (0.177). */
+  img?: ImageStep
   status?: number
   payload?: unknown
   /** `kind: 'depth'` — решение судьи глубины, приходит раньше текста ответа. */
@@ -161,6 +181,8 @@ async function readDraftStream(
   onDraft?: (text: string | null) => void,
   onReasoning?: (text: string | null) => void,
   onWebSteps?: (steps: WebStep[]) => void,
+  /** Этапы рисования картинки — чтобы «рисую…» было честным, а не пустым ожиданием. */
+  onImageSteps?: (steps: ImageStep[]) => void,
   /** Поток жив: каждое прочитанное событие — повод перенастроить сторожок времени. */
   onAlive?: () => void,
   /** Куда положить прочитанное, если финала не будет (см. PartialDraft). */
@@ -173,6 +195,7 @@ async function readDraftStream(
   const dec = new TextDecoder()
   let buf = ''
   let draft: string | null = null
+  const imgSteps: ImageStep[] = []
   let final: Partial<ChatResult> | null = null
   let reason: string | null = null
   const webSteps: WebStep[] = []
@@ -193,6 +216,9 @@ async function readDraftStream(
       } else if (ev.kind === 'web' && ev.step) {
         webSteps.push(ev.step)
         if (onWebSteps) onWebSteps(webSteps.slice())
+      } else if (ev.kind === 'image' && ev.img) {
+        imgSteps.push(ev.img)
+        if (onImageSteps) onImageSteps(imgSteps.slice())
       } else if (ev.kind === 'draft' && ev.channel === 'reasoning') {
         reason = (reason || '') + String(ev.text || '')
         if (onReasoning) onReasoning(reason)
@@ -472,6 +498,8 @@ export async function sendChat(
     onReasoning?: (text: string | null) => void
     /** Живые шаги поиска в интернете (Searched for / Fetched) по мере работы инструментов. */
     onWebSteps?: (steps: WebStep[]) => void
+    /** Этапы рисования картинки (0.177): «рисую…», «канал 2 из 3». */
+    onImageSteps?: (steps: ImageStep[]) => void
     /**
      * Явная просьба глубже — для внешних вызовов (curl, скрипты, прежние версии
      * приложения). С 0.123 интерфейс её не отправляет: решение принимает агент
@@ -576,7 +604,7 @@ export async function sendChat(
       // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
       // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
       const partial: PartialDraft = { text: '', reasoning: '' }
-      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, onAlive, partial, onDepthEvent)) as Partial<ChatResult> | null
+      const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, opts.onImageSteps, onAlive, partial, onDepthEvent)) as Partial<ChatResult> | null
       if (!fin) {
         // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
         // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост.

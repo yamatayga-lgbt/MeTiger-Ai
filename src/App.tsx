@@ -30,7 +30,7 @@ import { APP_VERSION } from './lib/version'
 import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
-import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep, type ChatResult } from './lib/api'
+import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep, type ImageStep, type ChatResult } from './lib/api'
 import {
   hydrateChatMedia,
   loadActiveChatId,
@@ -191,6 +191,9 @@ export default function App() {
   const [draftThinkingSec, setDraftThinkingSec] = useState<number>(1)
   /* живые шаги веб-поиска и чтения страниц (Searching the web -> Searched for / Fetched) */
   const [draftWebSteps, setDraftWebSteps] = useState<WebStep[]>([])
+  /* Этапы рисования картинки (0.177): человек видит «рисую…» и «канал 2 из 3»,
+     а не пустое ожидание на минуту. Гасится вместе с черновиком. */
+  const [draftImgSteps, setDraftImgSteps] = useState<ImageStep[]>([])
   /* Это Агент, а не витрина чужих моделей: выбор модели убран из интерфейса
      (0.057) — движок сам решает, кем ответить, под капотом (model: '' = Авто).
      «Думает» стала постоянной функцией: включена всегда, когда авто-модель это
@@ -462,6 +465,7 @@ export default function App() {
       setDraftReasoning(allowThink ? '' : null)
       setDraftThinkingSec(1)
       setDraftWebSteps([])
+      setDraftImgSteps([])
       const ac = new AbortController()
       abortRef.current = ac
       
@@ -482,6 +486,7 @@ export default function App() {
                 setDraft(t)
               },
               onWebSteps: (steps) => setDraftWebSteps(steps),
+              onImageSteps: (steps) => setDraftImgSteps(steps),
               ...(allowThink
                 ? {
                     onReasoning: (t: string | null) => {
@@ -535,6 +540,7 @@ export default function App() {
           setDraft(null)
           setDraftReasoning(null)
           setDraftWebSteps([])
+          setDraftImgSteps([])
           setToast('Остановлено')
           return
         }
@@ -597,6 +603,7 @@ export default function App() {
         setDraft(null)
         setDraftReasoning(null)
         setDraftWebSteps([])
+        setDraftImgSteps([])
         /* поток мог оборваться в самом конце: текст на экране, хвоста нет — это
            не причина звать ответ неудачным, но сказать про него надо */
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)
@@ -693,6 +700,7 @@ export default function App() {
                 draftReasoning={draftReasoning}
                 draftThinkingSec={draftThinkingSec}
                 draftWebSteps={draftWebSteps}
+                draftImgSteps={draftImgSteps}
                 onSend={sendMessage}
                 ctxUsage={ctxInfo}
                 onStop={stopGeneration}

@@ -11,3 +11,10 @@ compatibility_date = "2026-09-30"
 [[kv_namespaces]]
 binding = "MEMORY"
 id = "9b4e1328fbce439db03a57fdb7971145"
+
+# Картинки без ключей (0.177). Привязка AI даёт воркеру Cloudflare Workers AI прямо
+# в рантайме: flux-1-schnell и SDXL Lightning рисуют по ней, и никакого токена
+# владельцу присылать не нужно. Первый заход — «рисовать» пробуем здесь, а чужие
+# каналы (Gemini, OdiRouter, Pollinations) остаются страховкой на отказ.
+[ai]
+binding = "AI"

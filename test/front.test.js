@@ -1807,7 +1807,7 @@ console.log('── N · плоский интерфейс (0.144: стекло 
 
   ok('N52: время ответа продлевается, пока поток живой, а молчание и общий потолок остаются',
     /const onAlive = \(\) => \{/.test(apiDeep)
-      && /readDraftStream\(res, opts\.onDraft, opts\.onReasoning, opts\.onWebSteps, onAlive, partial, onDepthEvent\)/.test(apiDeep)
+      && /readDraftStream\(res, opts\.onDraft, opts\.onReasoning, opts\.onWebSteps, opts\.onImageSteps, onAlive, partial, onDepthEvent\)/.test(apiDeep)
       && /if \(got\.events\.length && onAlive\) onAlive\(\)/.test(apiDeep)
       && /SILENCE_MS = 45_000/.test(apiDeep)
       /* потолок перестал быть константой: его поднимает событие depth от судьи */
