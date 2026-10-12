@@ -55,6 +55,63 @@ globalThis.fetch = async (_url, init) => {
   return { json: async () => ({ ok: true, text: 'Проверка, раз два.' }) };
 };
 
+/* 0.172: сторож молчащего движка браузера.
+   Движок принял сессию и не сказал ни слова — раньше человек видел «Слушаю» и
+   пустое поле, и починить это было нечем: серверные слои включались только после
+   явной ошибки. Здесь проверяем оба конца: молчащий движок переключает работу на
+   сервер, а живой — не тратит ни одного запроса (обещание 0.150 в силе). */
+async function watchdogCase() {
+  const pass = [];
+  const run = async (RecognitionCtor) => {
+    audio = undefined // иначе ждём «микрофон» от прошлой сессии, а он уже был
+    let serverCalls = 0;
+    const events = [];
+    globalThis.fetch = async () => { serverCalls++; return { json: async () => ({ ok: true, text: 'Серверный текст.' }) } };
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { AudioContext: FakeAudioContext, SpeechRecognition: RecognitionCtor },
+    });
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { language: 'ru-RU', mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } },
+    });
+    const session = voice.startVoice({
+      onFinal() {}, onInterim() {}, onLevel() {}, onError() {},
+      onServerLayers() { events.push('server'); },
+    }, 'ru-RU');
+    for (let i = 0; i < 20 && !audio?.processor; i++) await new Promise((r) => setTimeout(r, 0));
+    const chunk = new Float32Array(4096).fill(0.25);
+    /* 20 кадров по 4096 сэмплов при 16 кГц = 5,1 с речи: хватает и сторожу
+       (4 с), и уточнению на лету (кусок 4 с). */
+    /* Кадры идут с уступкой событийному циклу: живой движок успевает отдать текст
+       между кадрами — так же, как в настоящем времени. */
+    for (let i = 0; i < 20; i++) {
+      audio.processor.onaudioprocess({ inputBuffer: { getChannelData: () => chunk } });
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    for (let i = 0; i < 40; i++) await new Promise((r) => setTimeout(r, 0));
+    session.cancel();
+    return { serverCalls, flipped: events.includes('server') };
+  };
+  class SilentEngine { start() {} stop() {} abort() {} }
+  class TalkingEngine {
+    start() {
+      setTimeout(() => {
+        this.onresult?.({ resultIndex: 0, results: { length: 1, 0: { isFinal: true, 0: { transcript: 'Привет' } } } });
+      }, 0);
+    }
+    stop() {} abort() {}
+  }
+  const silent = await run(SilentEngine);
+  assert.equal(silent.flipped, true, 'сторож заметил молчащий движок');
+  assert.ok(silent.serverCalls >= 1, 'расшифровку взял сервер, а не пустое поле');
+  pass.push('✔ молчащий движок: через 4 с слово берёт сервер (запросов: ' + silent.serverCalls + ')');
+  const talking = await run(TalkingEngine);
+  assert.equal(talking.serverCalls, 0, 'живой движок не тратит серверные запросы');
+  pass.push('✔ живой движок: сервер не дёргается ни разу (обещание 0.150)');
+  return pass;
+}
+
 try {
   const events = [];
   let transcript = '';
@@ -92,7 +149,10 @@ try {
   session.cancel();
   assert.equal(track.stopped, true, 'microphone is stopped');
   console.log('  ✔ failed transcription keeps PCM; retry succeeds and returns text');
-  console.log('\n1 ✔, 0 ✖');
+  globalThis.fetch = oldFetch;
+  const watchdog = await watchdogCase();
+  for (const line of watchdog) console.log('  ' + line);
+  console.log('\n' + (1 + watchdog.length) + ' ✔, 0 ✖');
 } finally {
   if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow);
   else delete globalThis.window;

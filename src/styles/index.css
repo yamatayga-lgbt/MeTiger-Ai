@@ -6242,6 +6242,76 @@ button,
 }
 
 /* Индикатор использования контекста */
+/* «Разговор вслух» (0.172): тонкая строка над полем в том же месте, где полоска
+   контекста. Режим меняет поведение микрофона, и человек должен видеть, что он
+   включён, — иначе «микрофон сам открылся» выглядело бы поломкой. */
+.talk-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--accent);
+  margin: 0 8px 6px;
+}
+
+.talk-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: talk-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes talk-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Переключатель в меню «+»: справа, как у пунктов со значением. */
+.talk-switch {
+  margin-left: auto;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+  flex-shrink: 0;
+  transition: background var(--t-med);
+}
+
+.talk-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--t-med);
+}
+
+.talk-switch.is-on {
+  background: var(--accent);
+}
+
+.talk-switch.is-on::after {
+  transform: translateX(14px);
+}
+
+.attach-menu-item.is-on {
+  color: var(--accent);
+}
+
+/* Кнопка микрофона в разговоре: пока агент говорит, она значит «перебить». */
+.voice-btn.is-talk {
+  color: var(--accent);
+}
+
 /* Полоска заполнения контекста живёт СТРОКОЙ НАД полем ввода, а не внутри «пилюли»:
    внутри неё текст ломался на две строки и поджимал кнопки (снимок с прода 0.170).
    Поэтому — без переносов, мелко и вправо, где глазу ничего не стоит. */

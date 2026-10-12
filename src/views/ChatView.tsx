@@ -162,6 +162,13 @@ function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
    разницы между «шепчет» и «молчит». */
 const BARS = 14
 
+/* Пороги разговора вслух. TALK_LOUD — уровень, с которого считаем, что человек
+   говорит (шкала та же, что у столбиков: 0…1). TALK_SILENCE_MS — сколько тишины
+   после речи считать концом хода: 1,8 с хватает, чтобы не обрывать фразу на паузе,
+   и не заставляет ждать после «спасибо, всё». */
+const TALK_LOUD = 0.18
+const TALK_SILENCE_MS = 1800
+
 function BrainGlyph({ className = 'reason-brain-icon' }: { className?: string }) {
   return (
     <svg
@@ -644,6 +651,35 @@ export function ChatView({
      но запись идёт и точный текст придёт после остановки). Красным такое красить
      нельзя — человек решит, что всё сломалось, и бросит диктовать. */
   const [voiceNote, setVoiceNote] = useState('')
+  /* «Разговор вслух» (0.172): сказал — услышал — снова сказал, не касаясь экрана.
+     Режим помнится устройством: человек включает его не на одну реплику. */
+  /* Говорит ли агент прямо сейчас (разговор вслух). У кнопки «озвучить» в подписи
+     пузыря своё состояние — здесь режим, который рулит микрофоном. */
+  const [talkSpeaking, setTalkSpeaking] = useState(false)
+  const [talk, setTalk] = useState(() => {
+    try { return localStorage.getItem('mt-talk') === '1' } catch { return false }
+  })
+  const talkRef = useRef(talk)
+  /* Ждём точный текст, чтобы отправить его, а не пустое поле: расшифровку делает
+     сервер (браузерный движок молчит). */
+  const talkSendRef = useRef(false)
+  /* В этой записи уже была речь и когда её слышали в последний раз — по этому
+     разговор вслух понимает «человек договорил», не дожидаясь кнопки. */
+  const heardRef = useRef(false)
+  const lastLoudRef = useRef(0)
+  /* Какой ответ уже прочитан вслух: id + длина текста (ответ могли дописать). */
+  const spokeRef = useRef('')
+  /* С какого времени режим включён: ответы, пришедшие раньше, вслух не читаются —
+     иначе включение режима начинало бы читать прошлую переписку с последнего ответа. */
+  const talkArmedRef = useRef(0)
+  /* Расшифровка едет сервером (браузерный движок молчит) — см. voice.ts. */
+  const serverLayersRef = useRef(false)
+
+  useEffect(() => {
+    talkRef.current = talk
+    try { localStorage.setItem('mt-talk', talk ? '1' : '0') } catch { /* приватный режим */ }
+  }, [talk])
+
   const sessionRef = useRef<VoiceSession | null>(null)
   const baseRef = useRef('') // подтверждённый текст (ввод + финальные куски)
   const interimRef = useRef('') // незакреплённый кусок (для синхронного чтения)
@@ -682,6 +718,38 @@ export function ChatView({
   // при уходе со экрана микрофон выключается
   useEffect(() => () => sessionRef.current?.cancel(), [])
 
+  /* Режим помнится устройством, но прошлая переписка при открытии вслух не звучит:
+     заводим «включено с этого момента» на входе в чат. */
+  useEffect(() => {
+    if (talkRef.current) talkArmedRef.current = Date.now()
+  }, [])
+
+  /* Разговор вслух: новый ответ читается сам. Ключ — id ответа и длина текста:
+     ответ мог дописаться потоком, и тогда его надо прочитать заново. */
+  useEffect(() => {
+    if (typing || !talk) return
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || !String(last.text || '').trim()) return
+    const key = last.id + ':' + last.text.length
+    if (spokeRef.current === key) return
+    spokeRef.current = key
+    /* Режим включён только что, а это — ответ из прошлого (или другой переписки):
+       молчим. Читаем только то, что пришло после включения. */
+    if (talkArmedRef.current && (!last.ts || last.ts < talkArmedRef.current)) return
+    void speakAndListen(last.text)
+  }, [typing, messages, talk])
+
+  /* Разговор вслух: человек договорил — ход закрывается сам. Порог тишины
+     намеренный: короткая пауза внутри фразы не должна обрывать человека. */
+  useEffect(() => {
+    if (!listening || !talk) return
+    const id = window.setInterval(() => {
+      if (!heardRef.current) return
+      if (Date.now() - lastLoudRef.current >= TALK_SILENCE_MS) stopVoiceInput()
+    }, 200)
+    return () => window.clearInterval(id)
+  }, [listening, talk])
+
   /* После остановки оставляем сессию в памяти до успеха: если сервер не ответил,
      запись можно будет отправить на расшифровку повторно, не говоря заново. */
   const stopVoiceInput = (): string => {
@@ -694,6 +762,17 @@ export function ChatView({
     setLevels(new Array(BARS).fill(0))
     if (session) session.stop()
     haptic('light')
+    /* Разговор вслух: ход отправляется сам. Текст браузерного движка уже в поле —
+       можно отправлять сразу; если расшифровку делает сервер, ждём её (onPolished),
+       иначе ушло бы пустое и разговор оборвался бы на первом же ходу. */
+    if (talkRef.current) {
+      if (composed.trim()) {
+        talkSendRef.current = false
+        submit(composed)
+      } else {
+        talkSendRef.current = true
+      }
+    }
     return composed
   }
 
@@ -736,6 +815,9 @@ export function ChatView({
     preVoiceRef.current = value
     baseRef.current = value
     interimRef.current = ''
+    heardRef.current = false
+    lastLoudRef.current = 0
+    serverLayersRef.current = false
     setSeconds(0)
     setLevels(new Array(BARS).fill(0))
     setListening(true)
@@ -753,7 +835,13 @@ export function ChatView({
           setValue(joinText(baseRef.current, chunk))
         },
         /* Столбики уровня: живая история сигнала, а не выдуманная волна. */
-        onLevel: (l) => setLevels((prev) => [...prev.slice(1), l]),
+        onLevel: (l) => {
+          setLevels((prev) => [...prev.slice(1), l])
+          if (talkRef.current && l > TALK_LOUD) {
+            heardRef.current = true
+            lastLoudRef.current = Date.now()
+          }
+        },
         onError: (message) => {
           setVoiceError(message)
           cancelVoiceInput()
@@ -774,6 +862,11 @@ export function ChatView({
           setValue(baseRef.current)
         },
         onLiveBusy: (busy) => setLiveBusy(busy),
+        /* Движок браузера молчит — расшифровку делает сервер. Разговору вслух это
+           важно знать: отправка хода ждёт точный текст, а не пустое поле. */
+        onServerLayers: () => {
+          serverLayersRef.current = true
+        },
         onLiveOff: (why) => {
           /* Слой уточнения на лету не поехал — говорим мягко и не мешаем диктовать:
              текст всё равно придёт точным после остановки. */
@@ -794,6 +887,11 @@ export function ChatView({
           setPolishing(false)
           setVoiceError('')
           haptic('light')
+          /* Разговор вслух: вот он, точный текст, которого ждала отправка. */
+          if (talkSendRef.current && talkRef.current) {
+            talkSendRef.current = false
+            submit(composed)
+          }
         },
         onPolish: (state, reason) => {
           if (state === 'start') {
@@ -815,20 +913,51 @@ export function ChatView({
     sessionRef.current = session
   }
 
-  const submit = () => {
+  /**
+   * Прочитать ответ вслух и, если разговор продолжается, снова открыть микрофон.
+   *
+   * Ждём именно конца речи: speak() возвращает управление, когда звук только
+   * начался. Страховка по времени нужна на случай, когда событие конца не придёт
+   * вовсе (звук не запустился): без неё разговор встал бы навсегда.
+   */
+  const speakAndListen = async (text: string) => {
+    const clean = String(text || '').trim()
+    if (!clean) return
+    setTalkSpeaking(true)
+    await new Promise<void>((resolve) => {
+      let settled = false
+      const done = () => {
+        if (settled) return
+        settled = true
+        resolve()
+      }
+      void speak(clean, {
+        gender: 'female',
+        onState: (состояние) => {
+          setTalkSpeaking(состояние === 'play')
+          if (состояние === 'end' || состояние === 'error' || состояние === 'нет голоса') done()
+        },
+      })
+      window.setTimeout(done, Math.min(120000, 6000 + clean.length * 80))
+    })
+    /* Человек мог выключить режим или начать диктовать сам, пока ответ читался. */
+    if (talkRef.current && !sessionRef.current) startVoiceInput()
+  }
+
+  const submit = (forced?: string) => {
     /* Пока предыдущий ответ ещё не пришёл — второй запрос не копим поверх первого:
        клавиатура (Enter на компьютере) могла бы это сделать в обход disabled у кнопки,
        которая на это время сама превращается в «Остановить». */
     if (typing) return
     /* Отправка во время записи/уточнения: берём видимый черновик и гасим запрос,
        иначе точный текст вернётся в уже очищенное поле после отправки. */
-    let text = value
-    if (listening) {
+    let text = typeof forced === 'string' ? forced : value
+    if (listening && typeof forced !== 'string') {
       text = stopVoiceInput()
       sessionRef.current?.cancel()
       sessionRef.current = null
       setPolishing(false)
-    } else if (polishing) {
+    } else if (polishing && typeof forced !== 'string') {
       sessionRef.current?.cancel()
       sessionRef.current = null
       setPolishing(false)
@@ -1296,13 +1425,24 @@ export function ChatView({
               {voiceSupported ? (
                 <button
                   type="button"
-                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}`}
-                  aria-label={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-                  title={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}${(talkSpeaking && talk) ? ' is-talk' : ''}`}
+                  aria-label={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  title={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
                   disabled={polishing}
-                  onClick={() => (listening ? stopVoiceInput() : startVoiceInput())}
+                  onClick={() => {
+                    /* Разговор вслух: пока агент говорит, микрофон — это «перебить».
+                       Одним касанием замолкает и открывается на человека. */
+                    if (talkSpeaking) {
+                      stopSpeech()
+                      setTalkSpeaking(false)
+                      if (!listening) startVoiceInput()
+                      return
+                    }
+                    if (listening) stopVoiceInput()
+                    else startVoiceInput()
+                  }}
                 >
-                  {listening ? <Square size={13} /> : <Mic size={17} />}
+                  {talkSpeaking && talk ? <Square size={13} /> : listening ? <Square size={13} /> : <Mic size={17} />}
                 </button>
               ) : null}
 
@@ -1343,6 +1483,20 @@ export function ChatView({
                 onPhoto={() => photoRef.current?.click()}
                 onUploadFiles={() => uploadRef.current?.click()}
                 onPickHistory={addFromHistory}
+                talk={talk}
+                onToggleTalk={() => {
+                  const next = !talkRef.current
+                  talkRef.current = next
+                  setTalk(next)
+                  talkArmedRef.current = next ? Date.now() : 0
+                  haptic('light')
+                  /* Включаем — и сразу слушаем: человек включил режим, чтобы говорить. */
+                  if (next && !listening && !talkSpeaking) startVoiceInput()
+                  if (!next) {
+                    stopSpeech()
+                    setTalkSpeaking(false)
+                  }
+                }}
                 onClose={() => setAddMenuOpen(false)}
               />
             </>
@@ -1363,6 +1517,12 @@ export function ChatView({
             сначала поставили в саму пилюлю, и на телефоне он растолкал кнопки
             (снимок с прода: текст в две строки, «+» прижался к проценту). Здесь
             он никому не мешает, а человек всё равно видит его перед отправкой. */}
+        {talk ? (
+          <div className="talk-chip" role="status">
+            <span className="talk-dot" aria-hidden="true" />
+            {listening ? 'Разговор вслух · слушаю' : talkSpeaking ? 'Разговор вслух · говорю' : 'Разговор вслух'}
+          </div>
+        ) : null}
         {contextInfo.maxTokens > 0 ? (
           <ContextUsageIndicator
             usedTokens={contextInfo.usedTokens}

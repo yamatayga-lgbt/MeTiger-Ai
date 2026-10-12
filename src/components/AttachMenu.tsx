@@ -17,7 +17,7 @@
  * стили) — тоже.
  */
 import { useEffect, useState } from 'react'
-import { Camera, ChevronLeft, FileText, Image as ImageIcon, Paperclip, Puzzle, Upload } from 'lucide-react'
+import { Camera, ChevronLeft, FileText, Image as ImageIcon, MessagesSquare, Paperclip, Puzzle, Upload } from 'lucide-react'
 import { fileHref, fileSize } from '../lib/api'
 import { listHistory, type HistoryItem } from '../lib/attachHistory'
 import { haptic } from '../lib/haptic'
@@ -27,6 +27,9 @@ interface AttachMenuProps {
   onPhoto: () => void
   onUploadFiles: () => void
   onPickHistory: (item: HistoryItem) => void
+  /** «Разговор вслух» включён (0.172). */
+  talk?: boolean
+  onToggleTalk?: () => void
   onClose: () => void
 }
 
@@ -41,7 +44,7 @@ function timeAgo(ms: number): string {
   return `${d} дн назад`
 }
 
-export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, onClose }: AttachMenuProps) {
+export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, talk = false, onToggleTalk, onClose }: AttachMenuProps) {
   const [view, setView] = useState<'menu' | 'files'>('menu')
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
 
@@ -121,16 +124,32 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, on
         <span className="attach-menu-icon"><Paperclip size={18} /></span>
         Файлы
       </button>
+      {/* «Разговор вслух» — единственный переключатель меню, и он здесь по делу:
+          это не свойство сообщения, а режим всего разговора (сказал — услышал).
+          Раньше авточтение жило здесь же (0.121-0.123) и было убрано, потому что
+          молчало, когда серверный голос недоступен; теперь у него есть запасной
+          голос устройства и продолжение хода — микрофон открывается сам. */}
+      {onToggleTalk ? (
+        <button
+          type="button"
+          className={`attach-menu-item${talk ? ' is-on' : ''}`}
+          role="menuitemcheckbox"
+          aria-checked={talk}
+          onClick={() => onToggleTalk()}
+        >
+          <span className="attach-menu-icon"><MessagesSquare size={18} /></span>
+          Разговор вслух
+          <span className={`talk-switch${talk ? ' is-on' : ''}`} aria-hidden="true" />
+        </button>
+      ) : null}
       <button type="button" className="attach-menu-item is-soon" role="menuitem" disabled aria-disabled="true" title="Скоро">
         <span className="attach-menu-icon"><Puzzle size={18} /></span>
         Плагины
         <span className="attach-menu-soon">скоро</span>
       </button>
-      {/* Ни переключателя глубины, ни выбора голоса: с 0.121–0.123 меню содержит
-          только то, что добавляет к сообщению (камера, фото, файлы) и заготовку
-          плагинов. Глубину размышления выбирает агент сам (engine/depth.js), а
-          озвучка живёт кнопкой «озвучить» у ответа — просить об этом в меню
-          больше нечего. */}
+      {/* Ни выбора голоса, ни переключателя глубины: голос выбирается сам по роду
+          агента, глубину решает engine/depth.js. Из переключателей остался один —
+          разговор вслух (0.172): он меняет ход всего разговора, а не сообщения. */}
     </div>
   )
 }

@@ -8,6 +8,7 @@
  * глазами на пробах, и всё это закреплено ниже.
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -16,7 +17,24 @@ function ok(name, cond, extra) {
 }
 
 const m = await import('../engine/voiceout.js');
-const { gecToken, speechText, clampSpeech, pickVoice, guessLang, languageTag, parseFrame, synthesize, VOICES, TTS_LIMITS } = m;
+const { gecToken, speechText, clampSpeech, pickVoice, guessLang, languageTag, parseFrame, synthesize, VOICES, TTS_LIMITS, TTS_ENDPOINT } = m;
+const voiceoutSource = readFileSync('engine/voiceout.js', 'utf8');
+
+console.log('E — адрес службы голоса (12 окт 2026: переезд)');
+{
+  /* 12 окт 2026 POST /api/tts на проде вернул «служба голоса не дала соединения»:
+     Microsoft закрыла speech.platform.bing.com — на рукопожатие он отвечает 403.
+     Тот же протокол живёт на api.msedgeservices.com, но параметр ключа в нём
+     другой: Ocp-Apim-Subscription-Key вместо TrustedClientToken. Адрес и это
+     имя закреплены здесь, чтобы «озвучка молчит» не повторилось молча. */
+  ok('E1: адрес службы — api.msedgeservices.com, а не закрытый speech.platform.bing.com',
+    /^wss:\/\/api\.msedgeservices\.com\//.test(TTS_ENDPOINT) && !/['"]wss:\/\/speech\.platform/.test(voiceoutSource),
+    TTS_ENDPOINT);
+  ok('E2: ключ уходит как Ocp-Apim-Subscription-Key (старое имя параметра удалено)',
+    /Ocp-Apim-Subscription-Key/.test(voiceoutSource) && !/TrustedClientToken=/.test(voiceoutSource));
+  ok('E3: голоса для чтения берутся с того же хоста (список — не с закрытого)',
+    /voices\/list/.test(voiceoutSource) && /api\.msedgeservices\.com/.test(voiceoutSource.slice(voiceoutSource.indexOf('voices/list') - 120, voiceoutSource.indexOf('voices/list'))));
+}
 
 console.log('G — подпись времени (Sec-MS-GEC)');
 {

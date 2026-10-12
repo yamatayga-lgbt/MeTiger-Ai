@@ -49,6 +49,19 @@ export function joinLive(prev: string, next: string): string {
   return nextWords.slice(drop).join(' ').trim()
 }
 
+/**
+ * Сколько секунд речи ждать от браузерного движка, прежде чем признать его молчащим.
+ *
+ * Зачем сторож. С 0.150 текст браузера — финал, и серверные слои включались только
+ * после ЯВНОЙ ошибки движка (srDead). Но у движка есть третье состояние: он принял
+ * сессию, не сказал ни слова и не пожаловался. Так ведёт себя Chrome, когда служба
+ * распознавания недоступна устройству. Человек при этом видит «Слушаю», микрофон
+ * работает, а текста нет — ровно это и приехало 12 окт («почини голосовой ввод»).
+ * Четырёх секунд речи хватает, чтобы отличить молчащий движок от медленного: рабочий
+ * отдаёт первый результат за доли секунды.
+ */
+export const SILENT_DRAFT_SEC = 4
+
 interface SpeechResultLike {
   isFinal: boolean
   0: { transcript: string }
@@ -197,6 +210,12 @@ export interface VoiceHandlers {
   liveContext?: () => string
   /** Ход уточнения: 'start' — пошёл запрос, 'fail' — не вышло, с причиной. */
   onPolish?: (state: 'start' | 'fail', reason?: string) => void
+  /**
+   * Браузерный движок молчит, текст пойдёт сервером (сработал сторож). Человеку
+   * об этом говорить нечем и незачем: он просто получает текст — но разговору
+   * вслух нужно знать, что расшифровка ещё в пути, и не отправлять пустое.
+   */
+  onServerLayers?: () => void
   /** Запись сама остановилась на потолке длины (дальше уточнение). */
   onCap?: () => void
 }
@@ -221,6 +240,11 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
   let stopped = false
   let cancelled = false
   let srDead = false
+  /* Сторож молчащего черновика: был ли от движка хоть один текст, шёл ли звук
+     выше тишины, и не сработал ли сторож уже. */
+  let draftGot = false
+  let draftHeard = false
+  let draftFlip = false
   let asked = false // запрос точного текста по всей записи уже ушёл
   let abortRef: AbortController | null = null
   let rec: RecognitionLike | null = null
@@ -402,6 +426,7 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
         const r = ev.results[i]
         const text = (r[0]?.transcript || '').trim()
         if (!text) continue
+        draftGot = true
         if (r.isFinal) handlers.onFinal(text)
         else handlers.onInterim(text)
       }
@@ -516,6 +541,19 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
         pending.push(samples)
         pendingLen += samples.length
         emitLevel(samples)
+        if (peakOf(samples) >= SILENCE_PEAK) draftHeard = true
+        /* Сторож: звук идёт, а движок за SILENT_DRAFT_SEC не сказал ни слова —
+           значит расшифровку берёт на себя сервер (см. SILENT_DRAFT_SEC). */
+        if (!draftFlip && !srDead && !draftGot && draftHeard && pcmLen >= SILENT_DRAFT_SEC * WHISPER_RATE) {
+          draftFlip = true
+          srDead = true
+          try {
+            rec?.abort()
+          } catch {
+            /* движок уже мёртв — тем более работаем сервером */
+          }
+          handlers.onServerLayers?.()
+        }
         void flushLive()
       },
       onFail: (why) => handlers.onLiveOff?.(why),

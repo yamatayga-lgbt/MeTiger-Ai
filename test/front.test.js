@@ -1229,8 +1229,11 @@ console.log('L2 — песочница: Python через Pyodide (второй 
       /aria-label="Отправить"/.test(htmlTypingOff) && !/stop-btn/.test(htmlTypingOff));
 
     const chatSrc2 = readFileSync('src/views/ChatView.tsx', 'utf8');
+    /* 0.172: submit() принимает готовый текст — так его зовёт «Разговор вслух»,
+       когда ход закрылся сам. Обещание прежнее: проверка «typing» идёт первой
+       строкой, поэтому второй Enter поверх идущего ответа по-прежнему ничего не копит. */
     ok('M38: второй Enter поверх ещё не пришедшего ответа ничего не копит — submit() сам это проверяет',
-      /const submit = \(\) => \{\s*(\/\*[\s\S]*?\*\/\s*)?if \(typing\) return/.test(chatSrc2));
+      /const submit = \([^)]*\) => \{\s*(\/\*[\s\S]*?\*\/\s*)?if \(typing\) return/.test(chatSrc2));
     ok('M39: Enter без Shift отправляет только там, где рядом мышь/трекпад — на телефоне это просто перенос строки',
       /e\.key === 'Enter' && !e\.shiftKey && enterKeySends\(\)/.test(chatSrc2)
         && chatSrc2.includes("import { enterKeySends } from '../lib/platform'"));
@@ -1544,9 +1547,17 @@ console.log('── N · плоский интерфейс (0.144: стекло 
   const entryDeep = readFileSync('functions/api/chat.js', 'utf8');
   const engineDeep = readFileSync('engine/chat.js', 'utf8');
 
+  /* 0.172: в меню вернулся ровно один переключатель — «Разговор вслух». Запрет
+     здесь не на переключатель вообще, а на ПЕРЕКЛЮЧАТЕЛЬ ГЛУБИНЫ: глубину попрежнему
+     выбирает агент (engine/depth.js). Поэтому имя ручки и подпись глубины ловим как
+     раньше, а чужой переключатель в меню считаем допустимым только если он про
+     разговор: у него своя ручка onToggleTalk и своё состояние talk. */
   ok('N48: пункта «Размышлять глубже» в меню «+» нет — глубину выбирает агент сам',
     !/attach-deep/.test(deepMenu) && !/Размышлять глубже/.test(deepMenu)
-      && !/menuitemcheckbox/.test(deepMenu) && !/onDeep/.test(deepMenu)
+      && !/onDeep/.test(deepMenu)
+      && (deepMenu.match(/role="menuitemcheckbox"/g) || []).length
+        === (/aria-checked=\{talk\}/.test(deepMenu) ? 1 : 0)
+      && !/aria-checked=\{(deep|depth|reason)/.test(deepMenu)
       /* «Плагины» остались заготовкой: меню не опустело целиком */
       && /attach-menu-item is-soon/.test(deepMenu)
       && /Камера/.test(deepMenu) && /Фото/.test(deepMenu) && /Файлы/.test(deepMenu),
@@ -1695,11 +1706,18 @@ console.log('── N · плоский интерфейс (0.144: стекло 
     const appSrcVoice = readFileSync('src/App.tsx', 'utf8');
     const chatVoiceBare = noComments(chatVoice);
 
+    /* 0.121–0.123 убрали из меню авточтение и глубину: авточтение молчало, когда
+       серверный голос недоступен. 0.172 вернула один пункт — «Разговор вслух», и он
+       не то же самое: это режим всего разговора (сказал — услышал), а не свойство
+       одного сообщения. Старые имена (Отвечать голосом, speak, Volume2) остаются
+       под запретом: они обещали чтение там, где слышно не всегда. */
     ok('N66: авточтения ответов в меню «+» больше нет — ни кнопки, ни её класса, ни её ручки',
       menu.indexOf('Отвечать голосом') < 0 && !/attach-speak/.test(menu)
         && !/onSpeak/.test(menu) && !/\bspeak\b/.test(menu) && !/Volume2/.test(menu)
-        /* переключателей в меню не осталось вовсе: глубина уехала в судью (0.123) */
-        && (menu.match(/role="menuitemcheckbox"/g) || []).length === 0
+        /* переключатель в меню ровно один и он про разговор (0.172), глубина — нет */
+        && (menu.match(/role="menuitemcheckbox"/g) || []).length
+          === (/aria-checked=\{talk\}/.test(menu) ? 1 : 0)
+        && /Разговор вслух/.test(menu)
         && /Камера/.test(menu) && /Файлы/.test(menu),
       'в меню найдено: ' + JSON.stringify((menu.match(/attach-speak|onSpeak|Отвечать голосом|menuitemcheckbox/g) || []).slice(0, 3)));
 

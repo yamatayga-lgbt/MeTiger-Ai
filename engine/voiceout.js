@@ -28,11 +28,22 @@
  * код пропускается, ссылки — своим текстом, таблицы — строками.
  */
 
+/* Служба голоса Microsoft переехала: старый адрес
+   speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1 отвечает
+   на рукопожатие 403 (проверено живьём 12 окт 2026 — 403 даже с верной подписью
+   времени). Тот же протокол живёт на новом адресе, и параметр ключа в нём другой:
+   вместо TrustedClientToken — Ocp-Apim-Subscription-Key. Значение ключа то же
+   (открытый ключ расширения Edge «читать вслух»), поэтому ключей продукта это не
+   касается: наша озвучка по-прежнему ни от чьего платного аккаунта не зависит. */
 const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
 const CHROMIUM = '143.0.3650.75';
-const WSS = 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
+const WSS = 'wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1';
+const VOICES_URL = 'https://api.msedgeservices.com/tts/cognitiveservices/voices/list';
 
 /** Голоса по языкам. Русских два — мужской и женский; это и есть выбор человека. */
+export const TTS_ENDPOINT = WSS;
+export const TTS_VOICES_URL = VOICES_URL;
+
 export const VOICES = {
   ru: { male: 'ru-RU-DmitryNeural', female: 'ru-RU-SvetlanaNeural' },
   en: { male: 'en-US-AndrewNeural', female: 'en-US-AriaNeural' },
@@ -383,7 +394,7 @@ async function синтезОдин(text, opts = {}, заход = 1) {
   const connect = opts.connect || wsConnect;
   const now = opts.now || Date.now;
 
-  const url = WSS + '?TrustedClientToken=' + TRUSTED_CLIENT_TOKEN
+  const url = WSS + '?Ocp-Apim-Subscription-Key=' + TRUSTED_CLIENT_TOKEN
     + '&ConnectionId=' + (opts.connectionId || randomId())
     + '&Sec-MS-GEC=' + (await gecToken(now()))
     + '&Sec-MS-GEC-Version=1-' + CHROMIUM;
