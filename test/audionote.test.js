@@ -118,6 +118,12 @@ ok('N8: длинная запись или разговор с репликам�
       && /таймкод/i.test(rec.directive) && /\[2:15\]/.test(rec.directive),
     rec.block.slice(0, 120))
 
+  ok('N10b: модели прямо запрещено пересказывать файл и расшифровку вместо содержания',
+    /Не описывай файл, расшифровку и сам блок/.test(rec.directive)
+      && /указано название файла/.test(rec.directive)
+      && /по СОДЕРЖАНИЮ записи/.test(rec.directive) && /3–7 коротких пунктов/.test(rec.directive),
+    rec.directive.slice(0, 120))
+
   const noSeg = noteOf({ text: 'Очень длинная запись без отрезков. ' .repeat(30), segments: [], seconds: 240 })
   ok('N11: без отрезков конспект всё равно есть, но выдумывать метки прямо запрещено',
     noSeg.mode === 'note' && noSeg.stamps === 0 && !/\[\d+:\d\d\]/.test(noSeg.block)
