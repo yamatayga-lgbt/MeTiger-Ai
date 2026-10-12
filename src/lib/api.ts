@@ -216,9 +216,15 @@ async function readDraftStream(
       } else if (ev.kind === 'web' && ev.step) {
         webSteps.push(ev.step)
         if (onWebSteps) onWebSteps(webSteps.slice())
-      } else if (ev.kind === 'image' && ev.img) {
-        imgSteps.push(ev.img)
-        if (onImageSteps) onImageSteps(imgSteps.slice())
+      } else if (ev.kind === 'image') {
+        /* Дверь шлёт этап в поле `step` (тем же именем, что поиск), а `img` —
+           запасное имя для будущих правок формы: читаем оба, чтобы смена имени
+           на одной стороне не выключила прогресс молча (0.177). */
+        const stage = (ev.img || ev.step) as unknown as ImageStep | undefined
+        if (stage) {
+          imgSteps.push(stage)
+          if (onImageSteps) onImageSteps(imgSteps.slice())
+        }
       } else if (ev.kind === 'draft' && ev.channel === 'reasoning') {
         reason = (reason || '') + String(ev.text || '')
         if (onReasoning) onReasoning(reason)

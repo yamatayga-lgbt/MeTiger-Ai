@@ -66,7 +66,11 @@ ok('U177g токен Pollinations подхватывается, но карти�
 
 ok('U177h прогресс рисования уезжает в поток тем же путём, что куски текста',
   /kind: 'image'/.test(engineChat) && /kind === 'image'/.test(door)
-    && /onImageSteps/.test(api) && /export interface ImageStep/.test(api))
+    && /onImageSteps/.test(api) && /export interface ImageStep/.test(api)
+    /* Дверь кладёт этап в `step`, клиент обязан читать именно его: расхождение
+       имён уже один раз молча выключило прогресс на проде. */
+    && /context\.__send\(\{ kind: 'image', step: ev\.step \}\)/.test(door)
+    && /ev\.img \|\| ev\.step/.test(api))
 
 ok('U177i человек видит «рисую… канал N из M», и это только во время работы',
   /ImageProgressBlock/.test(view) && /draftImgSteps/.test(view)
