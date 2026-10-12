@@ -124,11 +124,11 @@ export class SmartChatMemory {
     // Если мало сообщений - сжимаем все, кроме последнего
     const messagesToCompress = this.messages.length >= MIN_MESSAGES_FOR_COMPRESSION
       ? this.messages.slice(0, Math.floor(this.messages.length / 2))
-      : this.messages.slice(0, this.messages.length - 1);
+      : (this.messages.length > 1 ? this.messages.slice(0, this.messages.length - 1) : []);
     
     const newMessages = this.messages.length >= MIN_MESSAGES_FOR_COMPRESSION
       ? this.messages.slice(Math.floor(this.messages.length / 2))
-      : this.messages.slice(this.messages.length - 1);
+      : (this.messages.length > 1 ? this.messages.slice(this.messages.length - 1) : this.messages.slice());
     
     if (messagesToCompress.length < 1) {
       return { success: false, summaryAdded: false };

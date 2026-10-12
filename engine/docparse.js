@@ -377,7 +377,12 @@ function streamHead(bytes) {
 function streamText(bytes) {
   if (bytes.length > 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
     let s = '';
-    for (let i = 2; i + 1 < bytes.length; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+    for (let i = 2; i + 1 < bytes.length; i += 2) {
+      const hi = bytes[i];
+      const lo = bytes[i + 1];
+      if (hi === undefined || lo === undefined) break;
+      s += String.fromCharCode((hi << 8) | lo);
+    }
     return s;
   }
   const latin = decodeLatin1(bytes);
