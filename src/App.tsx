@@ -19,7 +19,11 @@ const WhatsNewView = lazyView(() => import('./views/WhatsNewView').then((m) => (
    как и остальные экраны: у обычного человека он не откроется ниоткуда, и
    качать его вместе с чатом незачем. */
 const ReportsView = lazyView(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })))
+/* «Админ» (0.176) — устройства и обращения владельцу. Отдельным файлом по той же
+   причине: обычному человеку этот экран не нужен и грузить его незачем. */
+const AdminView = lazyView(() => import('./views/AdminView').then((m) => ({ default: m.AdminView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
+import { IdCard } from './components/IdCard'
 import { useTheme } from './hooks/useTheme'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
 import { APP_VERSION } from './lib/version'
@@ -37,6 +41,8 @@ import {
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
 import { lazyView } from './lib/chunkReload'
+import { idAsked, pingDevice, type MyDevice } from './lib/devid'
+import { ownerEnabled } from './lib/report'
 import { siteUser, type Person } from './lib/user'
 import { usePersistentState } from './hooks/usePersistentState'
 import {
@@ -60,9 +66,10 @@ export type ViewId =
   | 'personalization'
   | 'data'
   | 'info'
-  /* «Обращения» — экран владельца: без кода он не откроется ни из профиля, ни
-     отсюда. Тип нужен всем, потому что маршрут один на всё приложение. */
+  /* «Обращения» и «Админ» — экраны владельца: без кода они не откроются ни из
+     профиля, ни отсюда. Тип нужен всем, потому что маршрут один на всё приложение. */
   | 'reports'
+  | 'admin'
 
 export interface Chat {
   id: string
@@ -80,11 +87,12 @@ const TITLES: Record<ViewId, string> = {
   data: 'Управление данными',
   info: 'Информация',
   reports: 'Обращения',
+  admin: 'Админ',
 }
 
 /* Экраны, которые нельзя рисовать «въезжающей» анимацией: списки на весь экран
    мигают и дёргаются при входе (см. комментарий к .settings-scroll в styles). */
-const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'data', 'info', 'reports']
+const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'data', 'info', 'reports', 'admin']
 
 /* Куда ведёт стрелка «назад» на вложенных экранах. Не история посещений, а
    постоянный маршрут: с любого экрана назад — туда, откуда в него попадают.
@@ -95,6 +103,7 @@ const BACK_TO: Partial<Record<ViewId, ViewId>> = {
   data: 'profile',
   info: 'profile',
   reports: 'profile',
+  admin: 'profile',
   /* «Использование и лимиты» открывается строкой в профиле — из сайдбара этот
      пункт убран (0.159): расход и так виден в профиле, дублировать не нужно. */
   usage: 'profile',
@@ -212,6 +221,11 @@ export default function App() {
      чистим их при переключении разговора и при новом чате. */
   const [ctxInfo, setCtxInfo] = useState<{ used: number; window: number } | null>(null)
   const [user, setUser] = useState<Person>(siteUser())
+  /* 0.176: ID устройства и его карточка. Владелец просил: вместо профилей — ID,
+     устройство узнаётся по телефону, у него самого ID #Dev и доступ разработчика. */
+  const [device, setDevice] = useState<MyDevice | null>(null)
+  const [idCard, setIdCard] = useState(false)
+  const owner = ownerEnabled()
 
   const { pref, resolved, setPref, toggle } = useTheme()
   /* Обновление смахиванием вниз: оболочка заперта (0.143), палец двигает только
@@ -226,6 +240,36 @@ export default function App() {
 
   useEffect(() => {
     setUser(siteUser())
+  }, [])
+
+  /* Визит на сервер: он запоминает модель телефона, версию и время захода — это
+     и есть «данные для устройства» в админ-панели. Заодно владельцу сервер
+     ставит ID #Dev: «у меня сразу будет стоять айди». */
+  const refreshDevice = () => {
+    void pingDevice(true).then((d) => {
+      if (!d) return
+      setDevice(d)
+      setUser(siteUser())
+    })
+  }
+
+  useEffect(() => {
+    let alive = true
+    void pingDevice().then((d) => {
+      if (!alive || !d) return
+      setDevice(d)
+      setUser(siteUser())
+      /* ID ещё не выбран и про него не спрашивали — показываем карточку один раз. */
+      if (!d.id && !idAsked()) setIdCard(true)
+    })
+    /* После служебного входа (или выключения) спрашиваем сервер заново: именно он
+       ставит ID #Dev владельцу, и увидеть это надо сразу, а не при следующем старте. */
+    const onOwner = () => refreshDevice()
+    window.addEventListener('mt-owner', onOwner)
+    return () => {
+      alive = false
+      window.removeEventListener('mt-owner', onOwner)
+    }
   }, [])
 
   const activeChat = chats.find((c) => c.id === activeChatId)
@@ -618,6 +662,7 @@ export default function App() {
         onToggleTheme={toggle}
         onOpenPalette={() => setPaletteOpen(true)}
         newsDot={newsSeen !== APP_VERSION}
+        owner={owner}
       />
 
       <div className="main">
@@ -666,6 +711,9 @@ export default function App() {
               onNavigate={navigate}
               themePref={pref}
               onThemePref={setPref}
+              device={device}
+              onDevice={setDevice}
+              owner={owner}
             />
           ) : null}
           {view === 'personalization' ? <PersonalizationView notify={notify} /> : null}
@@ -674,6 +722,7 @@ export default function App() {
           ) : null}
           {view === 'info' ? <InfoView notify={notify} onNavigate={navigate} /> : null}
           {view === 'reports' ? <ReportsView notify={notify} /> : null}
+          {view === 'admin' ? <AdminView notify={notify} /> : null}
           {view === 'usage' ? <UsageView /> : null}
           {view === 'whatsnew' ? <WhatsNewView /> : null}
           </Suspense>
@@ -688,6 +737,20 @@ export default function App() {
       {/* Окошко поверх всего: человек вернулся в обновлённое приложение и первым
           делом видит, что изменилось. Крестик закрывает. */}
       {newsOpen && newsNote ? <WhatsNewModal note={newsNote} onClose={closeNews} /> : null}
+
+      {/* Карточка «придумайте себе ID» (0.176). Показывается один раз и не запирает:
+          чат под ней живой, «позже» — тоже честный ответ. Владелец просил, чтобы
+          человек сам выбирал себе ID, а не получал номерок от машины. */}
+      {idCard ? (
+        <IdCard
+          owner={owner}
+          onDone={(d) => {
+            setIdCard(false)
+            if (d) setDevice(d)
+            setUser(siteUser())
+          }}
+        />
+      ) : null}
 
       <CommandPalette
         open={paletteOpen}

@@ -8,6 +8,7 @@
    его память. Язык берём у браузера: он нужен подсказке распознавания голоса. */
 
 import { ensureDeviceUserId, identityLine } from './identity'
+import { myId, modelCached } from './devid'
 
 export interface Person {
   name: string
@@ -39,6 +40,14 @@ export function savePersonName(name: string): void {
   }
 }
 
+/** Строка «кто это» в меню и профиле: #ID · модель, а без ID — прежняя подпись. */
+function handleLine(uid: string): string {
+  const id = myId()
+  if (!id) return identityLine(uid)
+  const model = modelCached()
+  return '#' + id + (model ? ' · ' + model : '')
+}
+
 function browserLang(): string {
   /* `readonly string[]` — таким его видит TS; свой список удобнее не копировать. */
   const nav = globalThis.navigator as { language?: string; languages?: readonly string[] } | undefined
@@ -49,7 +58,9 @@ function browserLang(): string {
 export function siteUser(): Person {
   return {
     name: storedName().trim() || 'Гость',
-    handle: identityLine(ensureDeviceUserId()),
+    /* 0.176: «вместо профилей будет ID:Аккаунтов». Если человек выбрал себе ID —
+       в меню видно именно его и модель телефона; иначе прежняя подпись ключа. */
+    handle: handleLine(ensureDeviceUserId()),
     photo_url: '',
     language_code: browserLang(),
   }

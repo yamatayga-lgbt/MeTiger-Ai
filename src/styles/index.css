@@ -6779,3 +6779,155 @@ button,
 
 .owner-input::placeholder { color: var(--text-3); letter-spacing: 0; }
 .owner-input:focus { border-color: var(--accent-border); }
+
+/* ── ID устройства (0.176) ────────────────────────────────────────────────────
+   Карточка «придумайте себе ID» поверх чата. Не запирает: клик мимо закрывает,
+   «Позже» — честный ответ. Кнопки и поля — теми же классами, что у входа: это
+   одна и та же работа с одним полем, и выглядеть она должна одинаково. */
+
+.idc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.42);
+  padding: 16px;
+}
+
+.idc-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 16px 16px 14px;
+  box-shadow: var(--shadow-lg);
+  margin-bottom: 8px;
+}
+
+.idc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.idc-title {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text);
+  flex: 1;
+}
+
+.idc-close {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.idc-sub {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+  margin: 0 0 12px;
+}
+
+.idc-field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 0 12px;
+  margin-bottom: 6px;
+  color: var(--text-3);
+}
+
+.idc-field:focus-within {
+  border-color: var(--accent-border);
+}
+
+.idc-field input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+  padding: 12px 0;
+}
+
+.idc-field input::placeholder {
+  color: var(--text-3);
+}
+
+.idc-field.is-bad {
+  border-color: var(--danger);
+}
+
+.idc-field.is-bad {
+  border-color: var(--danger);
+}
+
+.idc-hash {
+  color: var(--text-3);
+  font-size: 15px;
+}
+
+.idc-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+  min-height: 16px;
+  margin-bottom: 10px;
+}
+
+.idc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Строки устройств в админ-панели: одна карточка — одно устройство. */
+
+.dev-row {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.dev-row .rows-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+}
+
+.dev-meta {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.dev-when {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.rep-view.is-embedded {
+  padding: 0;
+}
+
+.rep-who {
+  font-weight: 650;
+  color: var(--text-2);
+}

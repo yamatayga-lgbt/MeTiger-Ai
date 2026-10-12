@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, IconButton } from '../components/ui'
 import { fetchCounters } from '../lib/api'
 import { APP_VERSION, forceAppUpdate } from '../lib/version'
+import { announceOwnerChange } from '../lib/devid'
 import { checkOwnerCode, ownerEnabled, setOwnerCode } from '../lib/report'
 import { haptic } from '../lib/haptic'
 import type { ViewId } from '../App'
@@ -72,6 +73,9 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
       setOwnerCode(v)
       setOwnerOn(true)
       setCode('')
+      /* Одно событие — и ID #Dev, и пункт «Админ» встают на место сразу: ждать
+         следующего запуска после ввода кода было бы похоже на «не сработало». */
+      announceOwnerChange()
       notify('Ведомство включено: «Обращения» появились в профиле')
     } else {
       notify('Код не подошёл — проверьте и попробуйте ещё раз')
@@ -82,6 +86,7 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
     setOwnerCode('')
     setOwnerOn(false)
     setOwnerOpen(false)
+    announceOwnerChange()
     notify('Ведомство выключено на этом устройстве')
   }
 

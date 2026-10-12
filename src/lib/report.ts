@@ -14,6 +14,7 @@
 
 import { APP_VERSION } from './version'
 import { ensureDeviceUserId } from './identity'
+import { deviceKey, deviceModel, myId } from './devid'
 
 const OWNER_KEY = 'mt-owner'
 
@@ -29,6 +30,9 @@ export interface ReportSummary {
   id: string
   at: number
   uid: string
+  /** 0.176: ID устройства и модель телефона — владельцу видно, кто и с чего писал. */
+  did: string
+  model: string
   ver: string
   text: string
   photos: number
@@ -124,6 +128,12 @@ export async function sendReport(text: string, photos: string[]): Promise<{ ok: 
         text,
         photos: photos.slice(0, REPORT_MAX_PHOTOS),
         uid: ensureDeviceUserId(),
+        /* 0.176: вместе с заявкой уходят ID устройства и модель телефона — владелец
+           просил видеть это и в обращениях. Само обращение отправляется как было:
+           без переписки и без файлов. */
+        device: deviceKey(),
+        did: myId(),
+        model: await deviceModel(),
         ver: APP_VERSION,
       }),
     })

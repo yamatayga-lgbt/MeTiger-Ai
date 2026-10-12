@@ -22,12 +22,14 @@ import { haptic } from '../lib/haptic'
 
 interface ReportsViewProps {
   notify: (msg: string) => void
+  /** Внутри админ-панели (0.176) экран идёт без своего заголовка: он уже есть. */
+  embedded?: boolean
 }
 
 const статусСловом = (s: ReportSummary['status']) =>
   s === 'done' ? 'Рассмотрено' : s === 'declined' ? 'Отказано' : 'Новое'
 
-export function ReportsView({ notify }: ReportsViewProps) {
+export function ReportsView({ notify, embedded = false }: ReportsViewProps) {
   const [list, setList] = useState<ReportSummary[] | null>(null)
   const [fresh, setFresh] = useState(0)
   const [filter, setFilter] = useState<'new' | 'all'>('all')
@@ -87,17 +89,19 @@ export function ReportsView({ notify }: ReportsViewProps) {
   const shown = (list || []).filter((r) => (filter === 'new' ? r.status === 'new' : true))
 
   return (
-    <div className="container view rep-view">
-      <div className="page-head">
-        <div className="grow">
-          <h1>Обращения</h1>
-          <p className="sub">
-            Сообщения об ошибках от людей. Только на этом устройстве: код владельца{' '}
-            {ownerCode() ? 'введён' : 'не введён'}.
-          </p>
+    <div className={embedded ? 'rep-view is-embedded' : 'container view rep-view'}>
+      {embedded ? null : (
+        <div className="page-head">
+          <div className="grow">
+            <h1>Обращения</h1>
+            <p className="sub">
+              Сообщения об ошибках от людей. Видно только владельцу: вход по коду{' '}
+              {ownerCode() ? 'выполнен' : 'не выполнен'}.
+            </p>
+          </div>
+          <Inbox size={22} color="var(--text-3)" style={{ marginTop: 4, flexShrink: 0 }} />
         </div>
-        <Inbox size={22} color="var(--text-3)" style={{ marginTop: 4, flexShrink: 0 }} />
-      </div>
+      )}
 
       <div className="rep-toolbar">
         <Segmented
@@ -134,8 +138,12 @@ export function ReportsView({ notify }: ReportsViewProps) {
               </div>
               <div className="rep-card-text">{r.text}</div>
               <div className="rep-card-meta">
+                {/* 0.176: видно, кто это и с какого телефона — владелец просил
+                    «данные для устройства … и в обращениях тоже». */}
+                <span className="rep-who">{r.did ? '#' + r.did : 'без ID'}</span>
+                {r.model ? <span>{r.model}</span> : null}
                 <span>версия {r.ver || '—'}</span>
-                <span>устройство {r.uid ? r.uid.slice(0, 4) + '…' + r.uid.slice(-2) : '—'}</span>
+                <span>ключ {r.uid ? r.uid.slice(0, 4) + '…' + r.uid.slice(-2) : '—'}</span>
                 {r.photos > 0 ? (
                   <button type="button" className="rep-photo-link" onClick={() => { haptic('light'); void openOne(r.id) }}>
                     {opening === r.id ? <Loader2 size={13} className="rep-spin" /> : <ImageIcon size={13} />}

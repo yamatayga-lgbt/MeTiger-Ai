@@ -6,6 +6,7 @@ import {
   Moon,
   PenLine,
   Search,
+  ShieldCheck,
   Sparkles,
   Sun,
   Trash2,
@@ -33,6 +34,8 @@ interface SidebarProps {
   onOpenPalette: () => void
   /** Есть непрочитанное обновление — точка на пункте «Что нового». */
   newsDot?: boolean
+  /** 0.176: владелец получает пункт «Админ» в разделах. */
+  owner?: boolean
 }
 
 /* Разделы меню (0.159). Владелец попросил убрать «Дела» целиком и «Использование
@@ -42,6 +45,14 @@ interface SidebarProps {
 const SECTIONS: { id: ViewId; label: string; icon: typeof Sparkles }[] = [
   { id: 'whatsnew', label: 'Что нового', icon: Sparkles },
 ]
+
+/* 0.176: «в разделах будет пункт меню админа» — пункт владельца. Обычному человеку
+   его не показываем вовсе: не «спрятано», а не существует, и это честнее. */
+const OWNER_SECTION: { id: ViewId; label: string; icon: typeof Sparkles } = {
+  id: 'admin',
+  label: 'Админ',
+  icon: ShieldCheck,
+}
 
 export function Sidebar({
   open,
@@ -59,6 +70,7 @@ export function Sidebar({
   onToggleTheme,
   onOpenPalette,
   newsDot = false,
+  owner = false,
 }: SidebarProps) {
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -206,7 +218,7 @@ export function Sidebar({
 
         <div className="side-section">Разделы</div>
         <nav className="side-nav">
-          {SECTIONS.map((item) => (
+          {(owner ? [...SECTIONS, OWNER_SECTION] : SECTIONS).map((item) => (
             <button
               key={item.id}
               type="button"

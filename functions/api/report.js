@@ -23,6 +23,7 @@ import {
   REPORT_LIMITS, cleanReportPhotos, cleanReportText, cleanVerdict, isOwnerCode,
   makeReport, newReportId, photoKey, reportKey, reportSummary,
 } from '../../engine/reports.js';
+import { deviceKeyOf, deviceRecordKey } from '../../engine/devid.js';
 
 /* Своя карта частоты — как у голоса: отправка заявки не должна ни съедать, ни
    съедаться лимитами чата. Потолок мягкий: пять обращений в минуту — это уже
@@ -54,7 +55,9 @@ function reportStore(env) {
   };
 }
 
-async function ownerOk(request, env) {
+/* Замок владельца нужен двум дверям — обращениям и админ-панели устройств,
+   поэтому он экспортируется, а не переписывается второй раз. */
+export async function ownerOk(request, env) {
   const code = request.headers.get('x-mt-owner') || '';
   return isOwnerCode(code, env && env.REPORT_OWNER_HASH);
 }
@@ -168,10 +171,29 @@ export async function onRequestPost(context) {
   const id = newReportId();
   const { rec, photos } = makeReport({
     now: at, id, uid: body && body.uid, ver: body && body.ver, text, photos: pics.photos,
+    did: body && body.did, model: body && body.model,
   });
   const key = reportKey(at, id);
   await store.put(key, rec);
   for (let i = 0; i < photos.length; i++) await store.put(photoKey(id, i), { data: photos[i] });
+
+  /* Счётчик обращений в записи устройства: владелец видит в админ-панели, кто
+     сколько раз писал. Пишем ПОСЛЕ заявки и не роняем приём, если не вышло:
+     заявка важнее счётчика. */
+  try {
+    const dev = deviceKeyOf(body && body.device);
+    if (dev) {
+      const recKey = deviceRecordKey(dev);
+      const drec = await store.get(recKey);
+      if (drec && typeof drec === 'object') {
+        drec.reports = Number(drec.reports || 0) + 1;
+        drec.lastReportAt = at;
+        await store.put(recKey, drec);
+      }
+    }
+  } catch (e) {
+    /* счётчик не сложился — не беда */
+  }
 
   return json({ ok: true, id, at, photos: photos.length });
 }

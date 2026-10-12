@@ -17,6 +17,7 @@
  * кнопка не притворяется живой, а человек сразу видит, что за ней пока ничего нет.
  */
 import {
+  AtSign,
   BarChart3,
   Bug,
   ChevronDown,
@@ -24,7 +25,6 @@ import {
   ChevronRight,
   Database,
   Info,
-  Mail,
   Map,
   Monitor,
   Moon,
@@ -33,9 +33,10 @@ import {
   Sun,
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Badge, Segmented } from '../components/ui'
+import { Badge, Button, Segmented } from '../components/ui'
 import { ReportSheet } from '../components/ReportSheet'
 import { loadReports, ownerEnabled } from '../lib/report'
+import { claimId, idProblemLocal, idShown, myId, waitText, type MyDevice } from '../lib/devid'
 import { haptic } from '../lib/haptic'
 import type { ThemePref } from '../hooks/useTheme'
 
@@ -50,6 +51,11 @@ interface ProfileViewProps {
      раньше открывали отдельный экран настроек. */
   themePref: ThemePref
   onThemePref: (p: ThemePref) => void
+  /* 0.176: ID устройства и его карточка — «вместо профилей будет ID:Аккаунтов». */
+  device?: MyDevice | null
+  onDevice?: (d: MyDevice | null) => void
+  /** Владелец определяется кодом на устройстве; у него же ID #Dev и «Админ». */
+  owner?: boolean
 }
 
 /** Строка списка: иконка, подпись, справа — значение, «Скоро» или шеврон. */
@@ -98,7 +104,7 @@ function Row({
   )
 }
 
-export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }: ProfileViewProps) {
+export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, device = null, onDevice, owner: ownerProp = false }: ProfileViewProps) {
   const name = displayName(user)
   const soon = (what: string) => () => notify(what + ' — скоро')
   /* «Внешний вид» — раскрывающаяся строка: тема выбирается прямо под подписью,
@@ -110,6 +116,34 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
   const [reportOpen, setReportOpen] = useState(false)
   const [owner, setOwner] = useState(() => ownerEnabled())
   const [freshReports, setFreshReports] = useState(0)
+  /* 0.176: строка «Мой ID» — раскрывается в поле. Значение берём из карточки
+     устройства (её приносит сервер), а не из localStorage: сервер — хозяин ID. */
+  const [idOpen, setIdOpen] = useState(false)
+  const [idDraft, setIdDraft] = useState('')
+  const [idNote, setIdNote] = useState('')
+  const [idBusy, setIdBusy] = useState(false)
+  const myIdValue = device?.id || myId()
+
+  useEffect(() => {
+    if (ownerProp) setOwner(true)
+  }, [ownerProp])
+
+  /* Сохранение ID: окончательное слово за сервером — он один знает, занят ли ID,
+     служебное ли имя и прошла ли неделя с прошлой смены. */
+  const saveIdNow = async () => {
+    if (idBusy) return
+    setIdBusy(true)
+    setIdNote('')
+    const r = await claimId(idDraft.trim())
+    setIdBusy(false)
+    if (!r.ok) {
+      setIdNote(String(r.error || 'не получилось — попробуйте ещё раз'))
+      return
+    }
+    if (r.device) onDevice?.(r.device)
+    setIdNote(r.note ? String(r.note) : 'сохранено: ' + idShown(r.device?.id || idDraft.trim()))
+    notify('Ваш ID: ' + idShown(r.device?.id || idDraft.trim()))
+  }
 
   useEffect(() => {
     if (!ownerEnabled()) return
@@ -164,21 +198,100 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
           chevron
           onClick={() => onNavigate('usage')}
         />
-        <Row
-          icon={<Mail size={20} />}
-          label="Электронная почта"
-          value="не указана"
-          soon
-          onClick={soon('Почта')}
-        />
+        {/* 0.176: вместо профилей — ID, который человек выбирает сам («При новом
+            пользователе с устройства он сам будет вызначать себе айди»). Срок
+            смены считает сервер; здесь только поле и слова. */}
+        <button
+          type="button"
+          className="rows-row tappable"
+          aria-label="Мой ID"
+          onClick={() => {
+            haptic('light')
+            setIdOpen((v) => !v)
+            setIdNote('')
+            setIdDraft(myIdValue)
+          }}
+        >
+          <span className="rows-ic" aria-hidden="true">
+            <AtSign size={20} />
+          </span>
+          <span className="rows-name">Мой ID</span>
+          <span className="rows-val">{myIdValue ? idShown(myIdValue) : 'не задан'}</span>
+          {device?.locked ? <Badge tone="blue">закреплён</Badge> : null}
+          <ChevronDown size={17} className={`rows-chev${idOpen ? ' is-open' : ''}`} aria-hidden="true" />
+        </button>
+        {idOpen ? (
+          <div className="rows-row is-plain acc-box">
+            <div className="rows-hint">
+              {device?.locked
+                ? 'Это ID владельца — он закреплён за этим устройством и не меняется.'
+                : device?.renameInDays
+                  ? `Следующая смена — ${waitText(device.renameInDays)}: менять можно раз в неделю.`
+                  : 'Только латинские буквы, от 4 до 15. Менять можно раз в неделю.'}
+              {device?.model ? ` Телефон: ${device.model}.` : ''}
+            </div>
+            <div className={`idc-field${idDraft && idProblemLocal(idDraft) ? ' is-bad' : ''}`}>
+              <input
+                type="text"
+                inputMode="text"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="Ваш ID — только буквы"
+                aria-label="Ваш ID"
+                value={idDraft}
+                disabled={!!device?.locked}
+                onChange={(e) => {
+                  setIdDraft(e.target.value.replace(/[^A-Za-z]/g, ''))
+                  setIdNote('')
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !device?.locked) void saveIdNow()
+                }}
+              />
+            </div>
+            <div className="rows-hint">
+              {device?.locked
+                ? 'ID владельца неизменен.'
+                : idProblemLocal(idDraft) || (idDraft && idDraft === myIdValue ? 'это ваш нынешний ID' : '')}
+            </div>
+            {idNote ? <div className="rows-hint">{idNote}</div> : null}
+            {device?.locked ? null : (
+              <div className="acc-out">
+                <Button
+                  variant="primary"
+                  disabled={
+                    idBusy ||
+                    !idDraft.trim() ||
+                    !!idProblemLocal(idDraft) ||
+                    idDraft.trim() === myIdValue
+                  }
+                  onClick={() => void saveIdNow()}
+                >
+                  {idBusy ? 'Сохраняю…' : myIdValue ? 'Сменить ID' : 'Сохранить ID'}
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {/* Настройки приложения — прямо здесь, а не на отдельном экране: владелец
           попросил убрать вкладку настроек и перенести эти четыре строки в профиль. */}
       {owner ? (
         <>
-          <div className="rows-label">Ведомство</div>
+          <div className="rows-label">Разработчик</div>
           <div className="rows-card">
+            <Row
+              icon={<Inbox size={20} />}
+              label="Админ-панель"
+              value="устройства и обращения"
+              chevron
+              onClick={() => {
+                haptic('light')
+                onNavigate('admin')
+              }}
+            />
             <Row
               icon={<Inbox size={20} />}
               label="Обращения"

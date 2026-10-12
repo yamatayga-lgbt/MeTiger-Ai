@@ -124,13 +124,18 @@ export function newReportId(rand) {
  * ни имени, ни почты; владельцу этого хватает, чтобы понимать, одно устройство
  * пишет или разные.
  */
-export function makeReport({ now, id, uid, ver, text, photos }) {
+export function makeReport({ now, id, uid, ver, text, photos, did, model }) {
   const pics = Array.isArray(photos) ? photos.slice(0, REPORT_LIMITS.MAX_PHOTOS) : [];
   return {
     rec: {
       id: String(id || ''),
       at: Math.floor(Number(now) || Date.now()),
       uid: sanitizeUserId(uid),
+      /* 0.176: в обращении видно, кто это и с какого телефона — владелец просил
+         «в обращениях тоже» данные устройства. ID показываем как есть (человек сам
+         его выбрал), буквы и регистр не портим. */
+      did: String(did || '').replace(/^#+/, '').slice(0, 15),
+      model: String(model || '').replace(/\s+/g, ' ').trim().slice(0, 40),
       ver: String(ver || '').replace(/[^\w.\-+]/g, '').slice(0, 24),
       text: cleanReportText(text),
       photoCount: pics.length,
@@ -154,6 +159,8 @@ export function reportSummary(rec) {
     id: String(r.id || ''),
     at: Math.floor(Number(r.at) || 0),
     uid: String(r.uid || '').slice(0, 12),
+    did: String(r.did || '').slice(0, 15),
+    model: String(r.model || '').slice(0, 40),
     ver: String(r.ver || ''),
     text: cleanReportText(r.text),
     photos: Math.max(0, Math.floor(Number(r.photoCount) || 0)),
