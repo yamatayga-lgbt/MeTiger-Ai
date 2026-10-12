@@ -42,7 +42,21 @@ const bare = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/
 
 /* Настоящие модули, а не пересказ: и конспект, и сборка вложений — те же, что в бою. */
 const { fmtStamp, fmtDuration, timeline, wantsNote, noteOf, noteLine, wordsWord, NOTE_ASK, NOTE_MIN_SEC, NOTE_MIN_SEGMENTS, GAP_SEC } = await import('../engine/audionote.js')
+const { classifyTask, tierFor } = await import('../engine/route.js')
+
 const { compose, readVoiceBytes } = await import('../engine/attach.js')
+
+/* Сообщение, которое уходит модели вместе с длинной записью: дорожка с метками
+   времени и просьба конспекта. На нём и проверяем, что это не «заказ кода». */
+const noteMsg = compose([], {
+  voiceName: 'совещание.mp3', voiceSeconds: 80,
+  voiceText: 'Сначала про бюджет. Дальше про сроки. Теперь про подрядчика.',
+  voiceSegments: [
+    { from: 0, to: 12, text: 'Сначала про бюджет.' },
+    { from: 20, to: 40, text: 'Дальше про сроки.' },
+    { from: 60, to: 80, text: 'Теперь про подрядчика.' },
+  ],
+}, '').text
 
 const v = versionsAligned()
 ok('U180a все источники версии синхронизированы', v.ok, v.why)
@@ -202,6 +216,10 @@ ok('N17: readVoiceBytes отдаёт отрезки наружу, а readSegment
 ok('N18: конспект не заводит новых ключей и сервисов — работает на той же расшифровке',
   !/https?:\/\//.test(bare(read('engine/audionote.js')))
     && /verbosе_json|verbose_json/.test(voiceinSrc))
+
+ok('N15b: сообщение с записью не выглядит как заказ программы — «код» в слове «таймкод» ловился',
+  classifyTask(noteMsg, []) !== 'code' && tierFor(classifyTask(noteMsg, [])) === 'smart',
+  'намерение: ' + classifyTask(noteMsg, []));
 
 ok('N17b: под ответом видна строка о записи — что это было за аудио и что конспект с таймкодами',
   /if \(voice && voice\.line\) out\.push\(\{ name: voice\.name \|\| 'запись'/.test(door)
