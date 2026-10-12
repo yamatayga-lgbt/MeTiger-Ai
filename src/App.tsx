@@ -5,6 +5,7 @@ import { WorkspaceDrawer } from './components/WorkspaceDrawer'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
+import { lazyView } from './lib/chunkReload'
 /* Экраны грузятся отдельными файлами. lazyView вместо голого lazy (0.157):
    если вкладка открыта с прошлой выкладки, файл старой версии уже удалён — это
    не ошибка приложения, а отставание на версию, и лечится перезагрузкой
