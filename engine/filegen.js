@@ -265,6 +265,219 @@ function makeDocx(md) {
   ]);
 }
 
+/* ================= PPTX ================= */
+
+/* Презентация — тот же OOXML, что DOCX и XLSX, только «сцена» другая: ворд-страница
+   одна и длинная, а слайдов много и они короткие. Разметка берётся та же — модель
+   уже умеет Markdown-заголовки и пункты, а перевод в слайды делаем здесь:
+   «# Заголовок» открывает новый слайд, «- пункт» и «1. пункт» становятся пунктами,
+   таблица разворачивается построчно. Второго уровня внутри слайда нет: презентация —
+   последовательность слайдов, а не глава с подглавами, и подзаголовок тут был бы
+   просто большой строкой, за которую никто не отвечает. */
+
+const PPT_MAX_SLIDES = 40;      /* больше 40 слайдов за один ответ не соберём */
+const PPT_MAX_BULLETS = 12;     /* на слайде — не больше 12 строк, иначе не читается */
+const PPT_BULLET_CHARS = 240;   /* строка слайда: длинную режем, а не вылезаем за край */
+const PPT_TEXT_COLOR = '3A4152';
+const PPT_TITLE_COLOR = '1F2430';
+
+/** Разбор контента модели в слайды: [{ title, bullets[] }]. */
+function pptSlides(md) {
+  const blocks = mdBlocks(md);
+  const slides = [];
+  let cur = null;
+  const push = () => {
+    if (cur && (cur.title || cur.bullets.length)) slides.push(cur);
+    cur = null;
+  };
+  for (const b of blocks) {
+    if (b.k === 'h1' || b.k === 'h2') { push(); cur = { title: b.text, bullets: [] }; continue; }
+    if (!cur) cur = { title: '', bullets: [] };
+    if (b.k === 'table') { for (const row of b.rows) cur.bullets.push(row.join(' — ')); continue; }
+    cur.bullets.push(b.text);
+  }
+  push();
+  /* Ни одного заголовка, а текст есть — режем на слайды по PPT_MAX_BULLETS строк:
+     «сделай презентацию» без разметки должно дать файл, а не пустоту. */
+  if (!slides.length) {
+    const lines = String(md || '').split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
+    for (let i = 0; i < lines.length; i += PPT_MAX_BULLETS) {
+      slides.push({ title: i === 0 ? lines[0] : '', bullets: lines.slice(i, i + PPT_MAX_BULLETS) });
+    }
+  }
+  return slides.slice(0, PPT_MAX_SLIDES).map((s) => ({
+    title: limitChars(s.title, 90),
+    bullets: s.bullets.slice(0, PPT_MAX_BULLETS).map((b) => limitChars(b, PPT_BULLET_CHARS)),
+  }));
+}
+
+/** Параграф-пункт слайда: маркер • и (по **жирному** в тексте) разбивка на прогоны. */
+function pptParagraph(text, opts) {
+  const o = opts || {};
+  const sz = o.sz || 1800;
+  const runs = boldRuns(text).map((r) =>
+    '<a:r>' +
+    `<a:rPr lang="ru-RU" sz="${sz}"${r.b ? ' b="1"' : ''}><a:solidFill><a:srgbClr val="${PPT_TEXT_COLOR}"/></a:solidFill></a:rPr>` +
+    `<a:t>${escXml(r.t)}</a:t></a:r>`).join('');
+  const pPr = o.bullet
+    ? '<a:pPr marL="342900" indent="-342900"><a:buFont typeface="Arial"/><a:buChar char="•"/></a:pPr>'
+    : '<a:pPr algn="l"/>';
+  return '<a:p>' + pPr + runs + '</a:p>';
+}
+
+function pptTextBox(id, name, off, ext, paragraphs, anchor) {
+  return '<p:sp><p:nvSpPr>' +
+    `<p:cNvPr id="${id}" name="${escXml(name)}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr/>` +
+    '</p:nvSpPr><p:spPr>' +
+    `<a:xfrm><a:off x="${off[0]}" y="${off[1]}"/><a:ext cx="${ext[0]}" cy="${ext[1]}"/></a:xfrm>` +
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>' +
+    `<p:txBody><a:bodyPr wrap="square" anchor="${anchor || 't'}"><a:normAutofit/></a:bodyPr><a:lstStyle/>` +
+    paragraphs + '</p:txBody></p:sp>';
+}
+
+/** Один слайд: заголовок сверху, пункты ниже. Пустой заголовок — просто пустое место. */
+function pptSlideXml(slide) {
+  const tree =
+    '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
+    '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>' +
+    '<a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>' +
+    (slide.title
+      ? pptTextBox(2, 'Заголовок', [838200, 457200], [10515600, 1190625],
+        pptParagraph(slide.title, { sz: 3000 }), 'ctr')
+      : '') +
+    (slide.bullets.length
+      ? pptTextBox(3, 'Текст', [838200, 1825625], [10515600, 4114800],
+        slide.bullets.map((b) => pptParagraph(b, { bullet: true })).join(''), 't')
+      : '');
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+    'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">' +
+    '<p:cSld><p:spTree>' + tree + '</p:spTree></p:cSld>' +
+    '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
+}
+
+/** Оформление презентации — минимально достаточное: цвета, шрифты, три набора заливок.
+    Готовый шаблон не тянем: он весит больше самой презентации. */
+function pptThemeXml() {
+  const solid = (v) => `<a:solidFill><a:srgbClr val="${v}"/></a:solidFill>`;
+  const ln = '<a:ln w="6350" cap="flat" cmpd="sng" algn="ctr">' + solid('phClr') + '<a:prstDash val="solid"/></a:ln>';
+  const fillStyle = '<a:fillStyleLst>' + solid('phClr') + solid('phClr') + solid('phClr') + '</a:fillStyleLst>';
+  const effect = '<a:effectStyle><a:effectLst/></a:effectStyle>';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="MeTiger">' +
+    '<a:themeElements><a:clrScheme name="MeTiger">' +
+    `<a:dk1><a:srgbClr val="${PPT_TITLE_COLOR}"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1>` +
+    `<a:dk2><a:srgbClr val="${PPT_TEXT_COLOR}"/></a:dk2><a:lt2><a:srgbClr val="F5F7FA"/></a:lt2>` +
+    '<a:accent1><a:srgbClr val="2563EB"/></a:accent1><a:accent2><a:srgbClr val="16A34A"/></a:accent2>' +
+    '<a:accent3><a:srgbClr val="F59E0B"/></a:accent3><a:accent4><a:srgbClr val="EF4444"/></a:accent4>' +
+    '<a:accent5><a:srgbClr val="8B5CF6"/></a:accent5><a:accent6><a:srgbClr val="0891B2"/></a:accent6>' +
+    '<a:hlink><a:srgbClr val="2563EB"/></a:hlink><a:folHlink><a:srgbClr val="8B5CF6"/></a:folHlink>' +
+    '</a:clrScheme>' +
+    '<a:fontScheme name="MeTiger">' +
+    '<a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>' +
+    '<a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont>' +
+    '</a:fontScheme><a:fmtScheme name="MeTiger">' +
+    fillStyle +
+    '<a:lnStyleLst>' + ln + ln + ln + '</a:lnStyleLst>' +
+    '<a:effectStyleLst>' + effect + effect + effect + '</a:effectStyleLst>' +
+    '<a:bgFillStyleLst>' + solid('phClr') + solid('phClr') + solid('phClr') + '</a:bgFillStyleLst>' +
+    '</a:fmtScheme></a:themeElements></a:theme>';
+}
+
+/** Пустая группа фигур — обязательная часть любой «сцены» OOXML. */
+const PPT_TREE_EMPTY =
+  '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
+  '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/>' +
+  '<a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>';
+
+function makePptx(md) {
+  const slides = pptSlides(md);
+  if (!slides.length) throw new Error('в презентации нет ни одного слайда');
+  const ids = slides.map((_, i) => 256 + i);
+
+  const types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>' +
+    '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>' +
+    '<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>' +
+    '<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>' +
+    slides.map((_, i) => `<Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join('') +
+    '</Types>';
+
+  const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>' +
+    '</Relationships>';
+
+  const presentation = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+    'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" saveSubsetFonts="1">' +
+    '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>' +
+    '<p:sldIdLst>' + ids.map((id, i) => `<p:sldId id="${id}" r:id="rId${i + 2}"/>`).join('') + '</p:sldIdLst>' +
+    /* 16:9 — то, что просят по умолчанию в 2026: и в Zoom, и в школах, и в офисах. */
+    '<p:sldSz cx="12192000" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/>' +
+    '</p:presentation>';
+
+  const presRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>' +
+    slides.map((_, i) => `<Relationship Id="rId${i + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i + 1}.xml"/>`).join('') +
+    `<Relationship Id="rId${slides.length + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>` +
+    '</Relationships>';
+
+  const master = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+    'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">' +
+    '<p:cSld><p:spTree>' + PPT_TREE_EMPTY + '</p:spTree></p:cSld>' +
+    '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" ' +
+    'accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>' +
+    '<p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst>' +
+    '</p:sldMaster>';
+
+  const masterRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>' +
+    '</Relationships>';
+
+  const layout = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+    'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1">' +
+    '<p:cSld name="Пустой"><p:spTree>' + PPT_TREE_EMPTY + '</p:spTree></p:cSld>' +
+    '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>';
+
+  const layoutRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/>' +
+    '</Relationships>';
+
+  const emptyRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>';
+
+  const parts = [
+    { name: '[Content_Types].xml', data: types },
+    { name: '_rels/.rels', data: rels },
+    { name: 'ppt/presentation.xml', data: presentation },
+    { name: 'ppt/_rels/presentation.xml.rels', data: presRels },
+    { name: 'ppt/slideMasters/slideMaster1.xml', data: master },
+    { name: 'ppt/slideMasters/_rels/slideMaster1.xml.rels', data: masterRels },
+    { name: 'ppt/slideLayouts/slideLayout1.xml', data: layout },
+    { name: 'ppt/slideLayouts/_rels/slideLayout1.xml.rels', data: layoutRels },
+    { name: 'ppt/theme/theme1.xml', data: pptThemeXml() },
+  ];
+  slides.forEach((s, i) => {
+    parts.push({ name: `ppt/slides/slide${i + 1}.xml`, data: pptSlideXml(s) });
+    parts.push({ name: `ppt/slides/_rels/slide${i + 1}.xml.rels`, data: emptyRels });
+  });
+  return zipStore(parts);
+}
+
 /* ================= XLSX ================= */
 
 function colName(i) { /* 0 → A, 25 → Z, 26 → AA */
@@ -467,6 +680,7 @@ function makeHtml(md, title) {
 const FMT = {
   docx: { ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
   xlsx: { ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  pptx: { ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
   csv:  { ext: 'csv',  mime: 'text/csv' },
   txt:  { ext: 'txt',  mime: 'text/plain' },
   md:   { ext: 'md',   mime: 'text/markdown' },
@@ -488,11 +702,12 @@ function generate(opts) {
 
   /* Модель частенько кладёт расширение в имя («Смета.xlsx») — режем, чтобы
      не вышло «Смета.xlsx.xlsx»; чистое имя идёт и в лист xlsx. */
-  const rawName = String(o.name || 'файл').trim().replace(/\.(docx|xlsx|csv|txt|md|html?)$/i, '');
+  const rawName = String(o.name || 'файл').trim().replace(/\.(docx|xlsx|pptx|csv|txt|md|html?)$/i, '');
   const base = limitChars(rawName.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' '), 80) || 'файл';
 
   let buf;
   if (fmt === 'docx') buf = makeDocx(content);
+  else if (fmt === 'pptx') buf = makePptx(content);
   else if (fmt === 'xlsx') buf = makeXlsx(content, o.sheet || rawName);
   else if (fmt === 'csv') buf = makeCsv(parseTsv(content));
   else if (fmt === 'html') buf = makeHtml(content, rawName);
@@ -526,6 +741,9 @@ const FORMATS = Object.keys(FMT);
 /** Формат по просьбе человека: docx/xlsx/csv/html/md/txt (по умолчанию docx). */
 export function formatFromText(text) {
   const t = String(text || '').toLowerCase();
+  /* Презентация проверяется ПЕРВОЙ: «сделай слайды в файле» содержит и «файл», и
+     «таблиц»-подобные слова реже, но «презентация» обязана побеждать docx-умолчание. */
+  if (/pptx|powerpoint|презентац|слайд/.test(t)) return 'pptx';
   if (/xlsx|эксель|таблиц[^\s]{0,8}(файлом|в файл)/.test(t) || /\bxls\b/.test(t)) return 'xlsx';
   if (/\bcsv\b|запят[а-яё]*\s+csv/.test(t)) return 'csv';
   if (/html|htm\b|страниц[а-яё]\s+файлом/.test(t)) return 'html';
@@ -536,11 +754,20 @@ export function formatFromText(text) {
 
 /** Имя файла по просьбе: «оформи в файл смету на ремонт» → «смета на ремонт». */
 export function nameFromText(text) {
+  const out = nameFromTextRaw(text);
+  /* «нужны слайды в файле» после чистки оставляет предлог — именем он быть не может:
+     пустое имя означает «возьми умолчание», а не файл с названием «в». */
+  return /^[\p{L}]{1,2}$/u.test(out) ? '' : out;
+}
+
+function nameFromTextRaw(text) {
   const raw = String(text || '')
     .replace(/^\s*(и|также|ещё|пожалуйста)[,.\s]+/i, '')
-    .replace(/оформи|сделай|приложи|отправ|отдай|пришли|скинь|выложи|верни|напиши|файлом|файл|docx|xlsx|csv|html|markdown|\bmd\b|\btxt\b|документ(ом)?|таблиц[а-яё]+|пожалуйста/gi, ' ')
+    .replace(/оформи|сделай|собери|подготовь|приложи|отправ|отдай|пришли|скинь|выложи|верни|напиши|нужн[а-яё]*|файл[а-яё]*|docx|xlsx|pptx|csv|html|markdown|\bmd\b|\btxt\b|документ(ом)?|презентац[а-яё]*|слайд[а-яё]*|powerpoint|таблиц[а-яё]+|пожалуйста/gi, ' ')
     .replace(/^[^\p{L}\p{N}\p{M}]+|[^\p{L}\p{N}\p{M}]+$/gu, '')
     .replace(/^(?:в|на|из|до|для|о|об|как|с)\s+/i, '')
+    /* «презентацию на 10 слайдов» → после чистки остаётся «на 10»: это счёт, а не имя. */
+    .replace(/\s+на\s+\d+\s*$/i, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return limitChars(raw, 60) || 'ответ агента';
@@ -608,4 +835,4 @@ function cleanName(s) {
   return limitChars(String(s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim(), 60) || 'файл';
 }
 
-export { generate, zipStore, crc32, mdBlocks, makeDocx, makeXlsx, makeCsv, makeHtml, parseTsv, colName, csvCell, boldRuns, htmlBlocks, FMT, bytesOf, catBytes, b64s, dec, enc };
+export { generate, zipStore, crc32, mdBlocks, makeDocx, makeXlsx, makePptx, pptSlides, makeCsv, makeHtml, parseTsv, colName, csvCell, boldRuns, htmlBlocks, FMT, bytesOf, catBytes, b64s, dec, enc };

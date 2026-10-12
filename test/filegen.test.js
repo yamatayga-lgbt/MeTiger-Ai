@@ -8,6 +8,7 @@
  */
 import { generate, packFiles, formatFromText, nameFromText, crc32, zipStore, sizeOf, FMT } from '../engine/filegen.js';
 import { createEngine } from '../engine/chat.js';
+import { TOOLS } from '../engine/tools.js';
 
 let pass = 0; let fail = 0;
 const ok = (name, cond, detail) => {
@@ -82,6 +83,42 @@ const unicodeXml = new TextDecoder().decode(readZip(Buffer.from(unicodeDoc.b64, 
 ok('A8b: docx сохраняет греческий, китайский, арабский, разложенную диакритику и emoji',
   unicodeText.split(' · ').every((part) => unicodeXml.includes(part)), unicodeXml.slice(-180));
 
+/* 0.171: презентация — тот же OOXML, что docx и xlsx, поэтому проверяем не «файл
+   создался», а что он собран по правилам пакета: части на месте, слайдов ровно
+   столько, сколько заголовков, текст слайда читается, а XML не битый. */
+const pptMd = '# Отчёт за год\n- Выручка выросла **на 12%**\n- Расходы под контролем\n\n# Планы\n- Запуск в двух городах\n- Найм команды\n\n# Спасибо!\n';
+const ppt = generate({ format: 'pptx', name: 'Отчёт за год', content: pptMd });
+const pz = readZip(Buffer.from(ppt.b64, 'base64'));
+const slideNames = Object.keys(pz).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort();
+const slide1 = new TextDecoder().decode(pz['ppt/slides/slide1.xml'].data);
+const slide2 = new TextDecoder().decode(pz['ppt/slides/slide2.xml'].data);
+ok('A15: pptx — это zip с частями презентации (типы, мастер, макет, тема, слайды)',
+  !pz.error && !!pz['[Content_Types].xml'] && !!pz['ppt/presentation.xml'] && !!pz['ppt/slideMasters/slideMaster1.xml']
+  && !!pz['ppt/slideLayouts/slideLayout1.xml'] && !!pz['ppt/theme/theme1.xml'] && !!pz['ppt/_rels/presentation.xml.rels'],
+  Object.keys(pz).join(','));
+ok('A16: слайдов ровно три — по числу заголовков, а не сколько получится',
+  slideNames.length === 3, slideNames.join(','));
+ok('A17: заголовок и пункты лежат в своём слайде, кириллица цела, жирный — отдельным прогоном',
+  slide1.includes('Отчёт за год') && slide1.includes('Расходы под контролем') && slide1.includes('b="1"')
+  && slide2.includes('Запуск в двух городах'), slide1.slice(0, 120));
+ok('A18: размер 16:9 — презентация не «письмо на слайде»',
+  new TextDecoder().decode(pz['ppt/presentation.xml'].data).includes('cx="12192000" cy="6858000"'));
+ok('A19: тип файла и имя — pptx, расширение не дублируется',
+  ppt.name === 'Отчёт за год.pptx' && ppt.mime === FMT.pptx.mime && ppt.size > 512, ppt.name + ' ' + ppt.size);
+const pptNoHeads = generate({ format: 'pptx', name: 'Заметки', content: 'Первая строка\nвторая строка\nтретья строка' });
+ok('A20: презентация без заголовков тоже собирается — строки становятся слайдом',
+  readZip(Buffer.from(pptNoHeads.b64, 'base64'))['ppt/slides/slide1.xml'] !== undefined);
+ok('A21: пустой контент честно отказывается собираться',
+  (() => { try { generate({ format: 'pptx', name: 'x', content: '   ' }); return false; } catch (e) { return /пустое содержимое/.test(e.message); } })(),
+  '');
+ok('A22: просьба про слайды распознаётся как презентация, имя чистится от «презентацию»',
+  formatFromText('сделай презентацию про космос на 10 слайдов') === 'pptx'
+  && formatFromText('нужны слайды в файле') === 'pptx'
+  && /pptx/.test(formatFromText('пришли файл .pptx'))
+  && nameFromText('сделай презентацию про космос на 10 слайдов') === 'про космос'
+  && nameFromText('оформи в файл смету на ремонт, пожалуйста') === 'смету на ремонт',
+  JSON.stringify([formatFromText('сделай презентацию про космос на 10 слайдов'), nameFromText('сделай презентацию про космос на 10 слайдов')]));
+
 const xlsx = generate({ format: 'xlsx', name: 'Смета', content: 'Товар\tКол-во\tЦена\nМолоко\t2\t1,5\nИтого\t\t2,3' });
 const xz = readZip(Buffer.from(xlsx.b64, 'base64'));
 const sheet = new TextDecoder().decode(xz['xl/worksheets/sheet1.xml'].data);
@@ -149,7 +186,21 @@ ok('B7: больше трёх файлов за ответ не отдаём —
 ok('B8: формат и имя берутся из просьбы человека',
   formatFromText('сделай таблицу xlsx') === 'xlsx' && formatFromText('голым текстом') === 'txt'
   && nameFromText('оформи в файл смету на ремонт, пожалуйста') === 'смету на ремонт', '');
-ok('B9: список форматов у инструмента и у постобработки один', Object.keys(FMT).join() === 'docx,xlsx,csv,txt,md,html', Object.keys(FMT).join());
+{
+  /* Список форматов у инструмента и у постобработки обязан совпадать — и обязан
+     переживать добавление формата (0.171 добавила pptx, и прибитый литерал упал бы
+     не сигналом «это поломка», а сигналом «список изменился»). Поэтому сверяем не
+     строку, а согласие: те форматы, что названы модели, — ровно те, что упаковщик умеет. */
+  const fg = TOOLS.find((t) => t.id === 'filegen');
+  const hint = await fg.run({ text: 'оформи презентацию файлом pptx' });
+  const named = String(hint).match(/Форматы: ([^.]+)\./);
+  const list = named ? named[1].split(', ').map((x) => x.trim()) : [];
+  ok('B9: список форматов у инструмента и у постобработки один',
+    list.join() === Object.keys(FMT).join() && list.includes('pptx'),
+    list.join() + ' | ' + Object.keys(FMT).join());
+  ok('B9b: на презентацию инструмент даёт правило про слайды, а не про абзацы',
+    /# Заголовок слайда/.test(hint) && /file:pptx/.test(hint), String(hint).slice(0, 100));
+}
 ok('B10: у готового файла есть число строк исходного текста — для «Write <файл> · N lines» над ответом',
   generate({ format: 'txt', name: 'x', content: 'одна\nдве\nтри' }).lines === 3
   && generate({ format: 'docx', name: 'x', content: 'без переносов' }).lines === 1, '');
