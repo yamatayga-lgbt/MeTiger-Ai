@@ -31,6 +31,10 @@ import { onRequestGet as usageGet } from '../functions/api/usage.js';
 /* Обращения об ошибках (0.173) — тоже дверью: форму «Сообщить об ошибке» и
    служебный список владельца надо проверять локально, а не заявками на проде. */
 import { onRequestGet as reportGet, onRequestPost as reportPost } from '../functions/api/report.js';
+/* Вход и регистрация (0.174) — тоже дверью: экран входа при разработке обязан
+   работать так же, как в проде, иначе 0.174 проверялся бы только выкладкой.
+   Печенька сессии проезжает через эту обёртку как обычный заголовок. */
+import { onRequestGet as authGet, onRequestPost as authPost } from '../functions/api/auth.js';
 import * as modelreg from '../engine/modelreg.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -135,13 +139,16 @@ createServer((req, res) => {
       if (path === '/api/report') {
         return reply(req.method === 'GET' ? await reportGet(context) : await reportPost(context));
       }
+      if (path === '/api/auth') {
+        return reply(req.method === 'GET' ? await authGet(context) : await authPost(context));
+      }
       if (path === '/api/profile') {
         if (req.method === 'PUT') return reply(await profilePut(context));
         if (req.method === 'DELETE') return reply(await profileDelete(context));
         return reply(await profileGet(context));
       }
       const index = {
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills', 'GET /api/usage', 'GET|POST /api/report'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills', 'GET /api/usage', 'GET|POST /api/report', 'GET|POST /api/auth'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       };
       /* Прод на неизвестный путь не отвечает 200: Pages отдаёт либо заглушку

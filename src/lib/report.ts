@@ -15,8 +15,6 @@
 import { APP_VERSION } from './version'
 import { ensureDeviceUserId } from './identity'
 
-const OWNER_KEY = 'mt-owner'
-
 /** Сколько фото и знаков принимает форма — то же, что на сервере (engine/reports.js). */
 export const REPORT_MAX_CHARS = 2000
 export const REPORT_MAX_PHOTOS = 4
@@ -41,29 +39,11 @@ export interface ReportFull extends ReportSummary {
   photoData?: string[]
 }
 
-/* ---------- код владельца: только на его устройстве ---------- */
+/* ---------- владелец ---------- */
 
-export function ownerCode(): string {
-  try {
-    return String(localStorage.getItem(OWNER_KEY) || '')
-  } catch {
-    return ''
-  }
-}
-
-export function setOwnerCode(code: string): void {
-  try {
-    const v = String(code || '').trim()
-    if (v) localStorage.setItem(OWNER_KEY, v)
-    else localStorage.removeItem(OWNER_KEY)
-  } catch {
-    /* приватный режим — ведомство просто не включится, это не поломка приложения */
-  }
-}
-
-export function ownerEnabled(): boolean {
-  return !!ownerCode()
-}
+/* 0.174: «Обращения» открывает аккаунт, а не код. В запросе теперь нет никакого
+   заголовка с кодом — сервер сам смотрит сессию в печеньке и чужому отвечает 403.
+   Служебный вход из 0.173 убран целиком: владелец сказал «без всякого кода». */
 
 /* ---------- снимок: ужать в браузере, чтобы уехало быстро ---------- */
 
@@ -134,22 +114,10 @@ export async function sendReport(text: string, photos: string[]): Promise<{ ok: 
   }
 }
 
-/** Владелец: проверка кода. Возвращает true, если замок открылся. */
-export async function checkOwnerCode(code: string): Promise<boolean> {
-  try {
-    const r = await fetch('/api/report?owner=1', { headers: { 'x-mt-owner': String(code || '').trim() } })
-    if (r.status === 403) return false
-    const d = await json(r)
-    return !!d.ok
-  } catch {
-    return false
-  }
-}
-
 /** Владелец: список обращений. */
 export async function loadReports(): Promise<{ ok: boolean; reports: ReportSummary[]; fresh: number; error?: string }> {
   try {
-    const r = await fetch('/api/report?owner=1', { headers: { 'x-mt-owner': ownerCode() } })
+    const r = await fetch('/api/report?owner=1')
     if (r.status === 403) return { ok: false, reports: [], fresh: 0, error: 'нет доступа' }
     const d = await json(r)
     if (!d.ok) return { ok: false, reports: [], fresh: 0, error: String(d.error || 'не загрузилось') }
@@ -162,7 +130,7 @@ export async function loadReports(): Promise<{ ok: boolean; reports: ReportSumma
 /** Владелец: одна заявка целиком, с фото. */
 export async function loadReport(id: string): Promise<{ ok: boolean; report?: ReportFull; error?: string }> {
   try {
-    const r = await fetch('/api/report?owner=1&id=' + encodeURIComponent(id), { headers: { 'x-mt-owner': ownerCode() } })
+    const r = await fetch('/api/report?owner=1&id=' + encodeURIComponent(id))
     const d = await json(r)
     return d.ok ? { ok: true, report: d.report } : { ok: false, error: String(d.error || 'не открылось') }
   } catch {
@@ -175,7 +143,7 @@ export async function setReportVerdict(id: string, verdict: 'done' | 'declined')
   try {
     const r = await fetch('/api/report?owner=1', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-mt-owner': ownerCode() },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, verdict }),
     })
     const d = await json(r)
@@ -185,7 +153,7 @@ export async function setReportVerdict(id: string, verdict: 'done' | 'declined')
   }
 }
 
-/** Сколько раз подряд нажали на строку версии — вход в «ведомство». */
+/** Дата по-человечески: сегодня — время, дальше — день и время. */
 export function humanDate(ms: number): string {
   const d = new Date(Math.max(0, Number(ms) || 0))
   const t = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })

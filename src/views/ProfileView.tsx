@@ -33,9 +33,10 @@ import {
   Sun,
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Badge, Segmented } from '../components/ui'
+import { Badge, Button, Segmented } from '../components/ui'
 import { ReportSheet } from '../components/ReportSheet'
-import { loadReports, ownerEnabled } from '../lib/report'
+import { changePassword, type Account } from '../lib/auth'
+import { loadReports } from '../lib/report'
 import { haptic } from '../lib/haptic'
 import type { ThemePref } from '../hooks/useTheme'
 
@@ -43,6 +44,9 @@ import { displayName, initials, type Person } from '../lib/user'
 import type { ViewId } from '../App'
 
 interface ProfileViewProps {
+  /** Аккаунт, под которым человек вошёл (0.174). Гостя больше нет. */
+  account?: Account | null
+  onSignOut?: () => void
   user: Person
   notify: (msg: string) => void
   onNavigate: (v: ViewId) => void
@@ -98,7 +102,7 @@ function Row({
   )
 }
 
-export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }: ProfileViewProps) {
+export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, account = null, onSignOut }: ProfileViewProps) {
   const name = displayName(user)
   const soon = (what: string) => () => notify(what + ' — скоро')
   /* «Внешний вид» — раскрывающаяся строка: тема выбирается прямо под подписью,
@@ -108,19 +112,24 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
      новых обращений. Счётчик читаем при открытии профиля: владелец должен видеть
      «есть новое» сразу, а не после захода в сам список. */
   const [reportOpen, setReportOpen] = useState(false)
-  const [owner, setOwner] = useState(() => ownerEnabled())
+  /* Владелец — это аккаунт (0.174), а не код: «Обращения» появляются у того, кто
+     вошёл владельцем. Сервер сам решает, кто это, и отдаёт список только ему. */
+  const owner = !!account?.owner
   const [freshReports, setFreshReports] = useState(0)
+  const [passOpen, setPassOpen] = useState(false)
+  const [passOld, setPassOld] = useState('')
+  const [passNew, setPassNew] = useState('')
+  const [passBusy, setPassBusy] = useState(false)
+  const [passNote, setPassNote] = useState('')
 
   useEffect(() => {
-    if (!ownerEnabled()) return
+    if (!owner) return
     let alive = true
     void loadReports().then((r) => {
-      if (!alive) return
-      if (r.ok) setOwner(true)
-      setFreshReports(r.fresh)
+      if (alive) setFreshReports(r.fresh)
     })
     return () => { alive = false }
-  }, [])
+  }, [owner])
 
   return (
     <div className="container view profile-view">
@@ -164,13 +173,92 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
           chevron
           onClick={() => onNavigate('usage')}
         />
-        <Row
-          icon={<Mail size={20} />}
-          label="Электронная почта"
-          value="не указана"
-          soon
-          onClick={soon('Почта')}
-        />
+        {/* Аккаунт (0.174): вместо прежней строки «Электронная почта — не указана»
+            здесь то, что человек реально завёл. Смена пароля — там же, рядом с
+            выходом: это два действия про один и тот же вход. */}
+        <button
+          type="button"
+          className="rows-row tappable"
+          aria-label="Аккаунт"
+          onClick={() => {
+            haptic('light')
+            setPassOpen((v) => !v)
+            setPassNote('')
+          }}
+        >
+          <span className="rows-ic" aria-hidden="true">
+            <Mail size={20} />
+          </span>
+          <span className="rows-name">Аккаунт</span>
+          <span className="rows-val">{account?.email || 'без почты'}</span>
+          <ChevronDown size={17} className={`rows-chev${passOpen ? ' is-open' : ''}`} aria-hidden="true" />
+        </button>
+        {passOpen ? (
+          <div className="rows-row is-plain acc-box">
+            <div className="rows-hint">
+              {account?.providers && account.providers.length
+                ? 'Входы: ' + account.providers.join(', ') + '. '
+                : ''}
+              Пароль меняется здесь и сразу: следующий вход — уже с новым.
+            </div>
+            {/* Поля — теми же классами, что на экране входа: это одно и то же
+                действие про один и тот же пароль, и выглядеть оно должно так же. */}
+            <div className="auth-field">
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="Текущий пароль"
+                aria-label="Текущий пароль"
+                value={passOld}
+                onChange={(e) => setPassOld(e.target.value)}
+              />
+            </div>
+            <div className="auth-field">
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="Новый пароль (от 8 знаков)"
+                aria-label="Новый пароль"
+                value={passNew}
+                onChange={(e) => setPassNew(e.target.value)}
+              />
+              <Button
+                variant="primary"
+                disabled={passBusy || passNew.length < 8 || !passOld}
+                onClick={() => {
+                  void (async () => {
+                    setPassBusy(true)
+                    const r = await changePassword(passOld, passNew)
+                    setPassBusy(false)
+                    if (r.ok) {
+                      setPassOld('')
+                      setPassNew('')
+                      setPassNote('пароль изменён')
+                    } else {
+                      setPassNote(String(r.error || 'не получилось'))
+                    }
+                  })()
+                }}
+              >
+                Сменить
+              </Button>
+            </div>
+            {passNote ? <div className="rows-hint">{passNote}</div> : null}
+            {onSignOut ? (
+              <div className="acc-out">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    haptic('light')
+                    onSignOut()
+                  }}
+                >
+                  Выйти из аккаунта
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {/* Настройки приложения — прямо здесь, а не на отдельном экране: владелец

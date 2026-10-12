@@ -73,6 +73,17 @@ import * as modelreg from '../../engine/modelreg.js';
 import { lineOf as imgLineOf } from '../../engine/imggen.js';
 import { normalizeFields, stats as ctxStats } from '../../engine/ctxfit.js';
 import { createProfile, memoryKey, sanitizeUserId } from '../../engine/profile.js';
+/* Аккаунт (0.174): если человек вошёл, адресом его памяти становится АККАУНТ, а не
+   устройство — иначе память не переезжала бы за ним на другое устройство, а с
+   одного устройства разные аккаунты делили бы одну память. */
+import { sessionUser } from './auth.js';
+
+/** Адрес памяти: аккаунт, если вошёл; иначе — прежний ключ устройства. */
+export async function memoryOwner(request, env, body) {
+  const who = await sessionUser(request, env);
+  if (who && who.rec && who.rec.id) return who.rec.id;
+  return sanitizeUserId(body && body.userId);
+}
 /* Тот же безопасный алфавит, что у sanitizeUserId: это проверка ЛЮБОГО
    стабильного идентификатора без мусора (id чата приложения — не «юзер», но
    требование к форме то же самое) — отдельного имени ради одной мысли не стоит
@@ -254,7 +265,7 @@ async function handlePost(context) {
      трогаются и агент продолжает помнить то, что было в них. */
   const forgetThreadId = sanitizeOrigin(body && body.forgetThread);
   if (forgetThreadId) {
-    const uid0 = sanitizeUserId(body.userId)
+    const uid0 = (await memoryOwner(request, context.env, body))
       || (/^tg_[0-9]{3,}$/.test(String(body.chatId || '')) ? String(body.chatId) : '');
     const chatId0 = memoryKey(uid0, String(body.chatId || request.headers.get('x-mt-chat') || 'web').replace(/[\u0000-\u001f]/g, '').slice(0, 80));
     const store0 = memoryStore(env);
@@ -332,7 +343,7 @@ async function handlePost(context) {
   // Карточка «Дела» — короткие, подтверждённые пользователем данные. Ограничиваем
   // её размер на сервере; движок добавит её к пользовательскому запросу как данные.
   const caseContext = typeof body.caseContext === 'string' ? body.caseContext.slice(0, 3600) : '';
-  const userId = sanitizeUserId(body.userId)
+  const userId = await memoryOwner(request, context.env, body)
     || (/^tg_[0-9]{3,}$/.test(String(norm.chatId || '')) ? norm.chatId : '');
   const chatId = memoryKey(userId, norm.chatId || String(request.headers.get('x-mt-chat') || 'web').slice(0, 80));
   /* Чей конкретно это чат в приложении (Chat.id из src/App.tsx) — метка вклада

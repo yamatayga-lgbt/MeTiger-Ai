@@ -21,6 +21,29 @@ const CHATS_KEY = 'mt-chats'
 const ACTIVE_KEY = 'mt-active-chat'
 const VIEW_KEY = 'mt-view'
 
+/*
+ * 0.174: переписки разводятся по аккаунтам. Раньше ключи были одни на устройство —
+ * с аккаунтами это значило бы, что после смены аккаунта человек видит ЧУЖИЕ
+ * переписки (свои старые и те, что остались от другого входа). Теперь к ключу
+ * добавляется хвост аккаунта: у каждого своя полка.
+ *
+ * Старые записи не теряются: при первом входе полка аккаунта пуста, и загрузка
+ * забирает то, что лежало в общих ключах (это переписки того же человека —
+ * гость был один на устройство).
+ */
+let scope = ''
+
+export function setStorageScope(uid: string): void {
+  /* В полке — весь идентификатор аккаунта, а не первые двенадцать знаков: обрезание
+     сближало разные аккаунты (совпали первые знаки — и переписки легли бы в одну
+     полку). Пусто — общая полка, она осталась только у старых записей до входа.
+     Знаки вне a-z0-9 убираем: ключ идёт в localStorage, а там двоеточие — разделитель. */
+  const clean = String(uid || '').replace(/[^a-zA-Z0-9]/g, '')
+  scope = clean ? ':a-' + clean : ''
+}
+
+const keyOf = (base: string) => base + scope
+
 const MAX_MESSAGES_PER_CHAT = 300
 const MAX_CHAT_TITLE = 30
 
@@ -126,7 +149,11 @@ function sanitizeChat(raw: unknown): Chat | null {
     сразу после, чтобы дорисовать настоящие байты из IndexedDB. */
 export function loadChats(makeDraft: () => Chat): Chat[] {
   try {
-    const raw = localStorage.getItem(CHATS_KEY)
+    const own = localStorage.getItem(keyOf(CHATS_KEY))
+    /* Первый вход на этом устройстве: полка аккаунта пуста, а в общих ключах
+       лежат переписки прежнего гостя — забираем их себе (один раз). */
+    const raw = own || (scope ? localStorage.getItem(CHATS_KEY) : null)
+    if (own && scope) localStorage.removeItem(CHATS_KEY)
     if (raw) {
       const parsed: unknown = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -175,7 +202,7 @@ export async function hydrateChatMedia(chats: Chat[]): Promise<Chat[]> {
 
 export function loadActiveChatId(fallback: string): string {
   try {
-    const raw = localStorage.getItem(ACTIVE_KEY)
+    const raw = localStorage.getItem(keyOf(ACTIVE_KEY))
     if (raw) {
       const id: unknown = JSON.parse(raw)
       if (typeof id === 'string' && id) return id
@@ -188,7 +215,7 @@ export function loadActiveChatId(fallback: string): string {
 
 export function loadView(fallback: ViewId): ViewId {
   try {
-    const raw = localStorage.getItem(VIEW_KEY)
+    const raw = localStorage.getItem(keyOf(VIEW_KEY))
     const v: unknown = JSON.parse(raw ?? '')
     if (
       v === 'chat' ||
@@ -197,7 +224,9 @@ export function loadView(fallback: ViewId): ViewId {
       v === 'profile' ||
       v === 'personalization' ||
       v === 'data' ||
-      v === 'info'
+      v === 'info' ||
+      /* 0.173: экран владельца — тоже запоминаем, иначе возврат в него терялся. */
+      v === 'reports'
     )
       return v
     /* Разделы, которых больше нет (0.159): «Дела» убраны целиком, «Настройки»
@@ -239,9 +268,9 @@ export function saveChats(chats: Chat[], activeChatId: string, view: ViewId): vo
         title: safeChatTitle(c.title),
         messages: c.messages.slice(-MAX_MESSAGES_PER_CHAT).map(stripMediaForStorage),
       }))
-    localStorage.setItem(CHATS_KEY, JSON.stringify(real))
-    localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeChatId))
-    localStorage.setItem(VIEW_KEY, JSON.stringify(view))
+    localStorage.setItem(keyOf(CHATS_KEY), JSON.stringify(real))
+    localStorage.setItem(keyOf(ACTIVE_KEY), JSON.stringify(activeChatId))
+    localStorage.setItem(keyOf(VIEW_KEY), JSON.stringify(view))
   } catch {
     /* noop */
   }

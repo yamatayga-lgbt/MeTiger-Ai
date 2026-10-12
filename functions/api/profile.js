@@ -19,6 +19,7 @@
  */
 import { cfgOf as limitsCfg, createRateLimiter } from '../../engine/limits.js';
 import { createProfile, memoryKey, sanitizeUserId, CAPS } from '../../engine/profile.js';
+import { sessionUser } from './auth.js';
 import { limitsStore, memoryStore } from './chat.js';
 
 const CORS = {
@@ -35,9 +36,15 @@ const json = (data, status = 200) =>
    без неё лимит считался бы заново в каждом вызове). */
 const WRITE_LOCAL = new Map();
 
-function uidOf(request, body) {
+async function uidOf(request, env, body) {
+  /* 0.174: вошедшему адрес профиля даёт аккаунт — профиль (имя, профессия, «о себе»)
+     переезжает за человеком на другое устройство, как и память. Гостю-устройству
+     остаётся прежний путь: у нас его больше нет, но старые записи живут. */
+  const who = await sessionUser(request, env);
   const fromBody = body && body.userId;
-  const uid = sanitizeUserId(fromBody) || sanitizeUserId(new URL(request.url).searchParams.get('id'));
+  const uid = (who && who.rec && who.rec.id)
+    || sanitizeUserId(fromBody)
+    || sanitizeUserId(new URL(request.url).searchParams.get('id'));
   return uid;
 }
 
@@ -69,7 +76,7 @@ export async function onRequestOptions() {
 
 export async function onRequestGet(context) {
   const { request, env } = context;
-  const uid = uidOf(request, null);
+  const uid = await uidOf(request, env, null);
   if (!uid) return json({ ok: false, error: 'нужен идентификатор пользователя: /api/profile?id=…' }, 400);
   const got = await store(env).get(uid);
   if (!got.ok) return json({ ok: false, error: got.why, id: uid }, 503);
@@ -85,7 +92,7 @@ export async function onRequestPut(context) {
     return json({ ok: false, error: 'тело должно быть JSON: { name, job, about }' }, 400);
   }
   if (!body || typeof body !== 'object') return json({ ok: false, error: 'пустое тело — сохранять нечего' }, 400);
-  const uid = uidOf(request, body);
+  const uid = await uidOf(request, env, body);
   if (!uid) {
     return json({ ok: false, error: 'профиль пишется на человека: передай userId (в браузере он заводится сам)' }, 400);
   }
@@ -108,7 +115,7 @@ export async function onRequestPut(context) {
 
 export async function onRequestDelete(context) {
   const { request, env } = context;
-  const uid = uidOf(request, null);
+  const uid = await uidOf(request, env, null);
   if (!uid) return json({ ok: false, error: 'нужен идентификатор пользователя: /api/profile?id=…' }, 400);
   const got = await store(env).clear(uid);
   if (!got.ok) return json({ ok: false, error: got.why }, 503);

@@ -19,6 +19,7 @@
  */
 import { cfgOf as limitsCfg, createRateLimiter } from '../../engine/limits.js';
 import { limitsStore, realClientIp } from './chat.js';
+import { isOwnerAccount, sessionUser } from './auth.js';
 import {
   REPORT_LIMITS, cleanReportPhotos, cleanReportText, cleanVerdict, isOwnerCode,
   makeReport, newReportId, photoKey, reportKey, reportSummary,
@@ -54,7 +55,15 @@ function reportStore(env) {
   };
 }
 
+/**
+ * Кто владелец (0.174). Раньше это был код, который владелец вводил на устройстве
+ * («служебный вход»). Теперь — аккаунт: владелец входит как все, и «Обращения»
+ * появляются у него сами. Код остался только служебным мостиком для одноразовой
+ * настройки (engine/reports.js) — в интерфейсе его больше нет.
+ */
 async function ownerOk(request, env) {
+  const who = await sessionUser(request, env);
+  if (who && (await isOwnerAccount(who.rec, env))) return true;
   const code = request.headers.get('x-mt-owner') || '';
   return isOwnerCode(code, env && env.REPORT_OWNER_HASH);
 }
@@ -166,8 +175,13 @@ export async function onRequestPost(context) {
 
   const at = Date.now();
   const id = newReportId();
+  /* Автор обращения — аккаунт, если человек вошёл (0.174): тогда владелец видит,
+     от кого пришло, и может ответить в следующей версии не «всем», а ему. */
+  const who = await sessionUser(request, env);
   const { rec, photos } = makeReport({
-    now: at, id, uid: body && body.uid, ver: body && body.ver, text, photos: pics.photos,
+    now: at, id,
+    uid: (who && who.rec && who.rec.id) || (body && body.uid),
+    ver: body && body.ver, text, photos: pics.photos,
   });
   const key = reportKey(at, id);
   await store.put(key, rec);
