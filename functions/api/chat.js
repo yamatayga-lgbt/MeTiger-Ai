@@ -21,6 +21,7 @@ import { createBrave } from '../../engine/brave.js';
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
 import { classifyTask } from '../../engine/route.js';
+import { needsWeb } from '../../engine/webrules.js';
 import * as depthJudge from '../../engine/depth.js';
 import { stats as skillStats } from '../../engine/skills.js';
 
@@ -532,12 +533,18 @@ async function handlePost(context) {
     /* Прочитанные документы — движку: он решит, целиком они влезают в окно или
        их надо читать по частям (engine/longdoc.js). */
     docs: (composed && composed.docBlocks && composed.docBlocks.length) ? composed.docBlocks : undefined,
-    /* Конспект записи — задача умная (0.180): слабая модель отвечает на неё одной
-       строкой про сам файл (живая проба 12 окт). Свой выбор человека уважаем: если
-       он выбрал модель или полосу, ничего не подменяем. */
+    /* Полоса ответа (0.180 «Свежесть»). Два случая, где дешёвая полоса портит ответ:
+       конспект записи (слабая модель отвечает одной строкой про сам файл) и живой
+       вопрос — тот, ради которого идёт поиск («курс доллара сегодня», «что с ценами»,
+       «какая погода»). Живой стенд 12 окт: такие ответы писала крошечная модель
+       (liquid/lfm-2.5-2.6b) и половина выходила мусором — «в предоставленных данных
+       нет…» по кривой выдаче, хотя источники под ответом были. Полосу поднимаем
+       только у живой темы и только если человек не выбрал модель или полосу сам. */
     tier: body.tier === 'fast' || body.tier === 'smart'
       ? body.tier
-      : (composed && composed.voice && composed.voice.mode === 'note' && !norm.model ? 'smart' : undefined),
+      : (!norm.model && ((composed && composed.voice && composed.voice.mode === 'note') || needsWeb(String(norm.text || text || '')).need)
+          ? 'smart'
+          : undefined),
     only: norm.provider,
     /* Человек выбрал модель в окне ввода — она и отвечает. Советы голов в этом
        режиме выключены: «взято большинство» переписало бы ответ той самой модели,

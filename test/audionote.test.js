@@ -227,8 +227,10 @@ ok('N17b: под ответом видна строка о записи — чт
     && /name: \(got && got\.voiceName\) \|\| ''/.test(attachSrc), 'дверь и сборщик')
 
 ok('N18b: конспект записи идёт по умной полосе — слабая модель отвечает про файл, а не по делу',
-  /composed && composed\.voice && composed\.voice\.mode === 'note' && !norm\.model \? 'smart'/.test(door)
-    && /Свой выбор человека уважаем/.test(door), 'functions/api/chat.js')
+  /* Форму проверяем по частям, а не прибитой строкой: в 0.180 к этому же правилу
+     добавился живой вопрос (`needsWeb`), и точная строка менялась на живой правке. */
+  /composed\.voice\.mode === 'note'/.test(door) && /!norm\.model/.test(door)
+    && /needsWeb\(String\(norm\.text/.test(door) && /'smart'/.test(door), 'functions/api/chat.js')
 
 ok('N19: проверка подключена к общему прогону',
   /test\/audionote\.test\.js/.test(chain) && /test\/voicein\.test\.js/.test(chain))

@@ -33,6 +33,19 @@ const src = extractSources(block);
 ok('S133c нумерация блока = порядок плашек', src[0] && src[0].url === 'https://nbrb.by/rates' && src[1].url === 'https://myfin.by/usd', JSON.stringify(src));
 ok('S133d директива про сноски', /\[1\]/.test(SEARCH_DIRECTIVE));
 
+/* ── 0.180 «Свежесть»: дата источника, давние пометки, просьба о свежем ─────── */
+{
+  const src = await import('node:fs').then((m) => m.readFileSync(new URL('../engine/search.js', import.meta.url), 'utf8'));
+  ok('S180e поиск просит свежие и официальные источники и дату данных',
+    /Отдавай предпочтение свежим и официальным источникам/.test(src)
+      && /обязательно указывай, на какую дату/.test(src)
+      && /предпочитай официальные источники и назови, на какую дату данные/.test(src));
+  ok('S180f живой вопрос отвечает умная полоса, а не крошечная модель',
+    /needsWeb\(String\(norm\.text \|\| text \|\| ''\)\)\.need/.test(
+      await import('node:fs').then((m) => m.readFileSync(new URL('../functions/api/chat.js', import.meta.url), 'utf8'))
+    ));
+}
+
 const c2 = [];
 const r2 = await smartSearch({ q: 'другой запрос про курс', env: { GEMINI_KEYS: 'k1', GROQ_KEYS: 'g1' }, fetch: fakeFetch(c2, { gemini: false }) });
 ok('S133e запасной Groq', r2.ok && r2.sources[0].url === 'https://nbrb.by/x' && !/【/.test(r2.summary), JSON.stringify(r2).slice(0, 300));
