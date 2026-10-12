@@ -12,9 +12,6 @@ const CACHE_VERSION = 'v0181'
 const CACHE_NAME = `metiger-shell-${CACHE_VERSION}`
 const SHELL_URLS = ['./', './index.html', './favicon.png', './favicon.svg', './manifest.webmanifest', './offline.html']
 
-// Глобальная переменная для отслеживания новой версии
-let NEW_VERSION_AVAILABLE = false
-
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
@@ -22,8 +19,7 @@ self.addEventListener('install', (event) => {
       .then((cache) => cache.addAll(SHELL_URLS))
       .catch(() => {})
   )
-  // Не пропускаем wait, чтобы можно было проверить обновление
-  // self.skipWaiting() — убрали, чтобы можно было показать уведомление
+  self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {
@@ -33,35 +29,6 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   )
-})
-
-// Проверяем, есть ли новая версия service worker
-self.addEventListener('updatefound', () => {
-  NEW_VERSION_AVAILABLE = true
-  // Отправляем сообщение всем клиентам о доступном обновлении
-  self.clients.matchAll().then((clients) => {
-    clients.forEach((client) => {
-      client.postMessage({
-        type: 'NEW_VERSION_AVAILABLE',
-        version: CACHE_VERSION
-      })
-    })
-  })
-})
-
-// Обработка сообщений от клиентов
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting()
-  }
-  if (event.data && event.data.type === 'CHECK_FOR_UPDATES') {
-    // Проверяем, есть ли новая версия
-    event.source.postMessage({
-      type: 'UPDATE_STATUS',
-      hasUpdate: NEW_VERSION_AVAILABLE,
-      version: CACHE_VERSION
-    })
-  }
 })
 
 const OFFLINE_URL = './offline.html'

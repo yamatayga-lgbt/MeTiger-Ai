@@ -5,7 +5,6 @@ import { WorkspaceDrawer } from './components/WorkspaceDrawer'
 import { CommandPalette, buildActions, type PaletteAction } from './components/CommandPalette'
 import { Toast } from './components/Toast'
 import { ChatView } from './views/ChatView'
-import { lazyView } from './lib/chunkReload'
 /* Экраны грузятся отдельными файлами. lazyView вместо голого lazy (0.157):
    если вкладка открыта с прошлой выкладки, файл старой версии уже удалён — это
    не ошибка приложения, а отставание на версию, и лечится перезагрузкой
@@ -41,7 +40,7 @@ import {
 } from './lib/persist'
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
-import { usePWAUpdate } from './hooks/usePWAUpdate'
+import { lazyView } from './lib/chunkReload'
 import { idAsked, markIdAsked, pingDevice, type MyDevice } from './lib/devid'
 import { ownerEnabled } from './lib/report'
 import { siteUser, type Person } from './lib/user'
@@ -241,22 +240,6 @@ export default function App() {
      запуске: версия запомнена другой — значит человек только что обновился. */
   const [newsOpen, setNewsOpen] = useState<boolean>(() => shouldShowNews())
   const newsNote = noteFor(APP_VERSION)
-  
-  // Автообновление PWA
-  const { hasUpdate, skipWaiting } = usePWAUpdate({
-    onUpdateAvailable: (version) => {
-      setToast(`Доступна новая версия ${version}. Нажмите для обновления.`)
-    },
-    checkInterval: 3600000, // Проверка раз в час
-  })
-  
-  // Обработка нажатия на уведомление об обновлении
-  useEffect(() => {
-    if (hasUpdate && toast) {
-      const timer = setTimeout(() => setToast(null), 10000)
-      return () => clearTimeout(timer)
-    }
-  }, [hasUpdate, toast])
 
   useEffect(() => {
     setUser(siteUser())
@@ -808,15 +791,7 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         actions={actions}
       />
-      <Toast 
-        message={toast} 
-        onDone={() => setToast(null)} 
-        onClick={hasUpdate ? () => {
-          skipWaiting()
-          setToast(null)
-        } : undefined}
-        actionLabel={hasUpdate ? 'Обновить' : undefined}
-      />
+      <Toast message={toast} onDone={() => setToast(null)} />
     </div>
   )
 }
