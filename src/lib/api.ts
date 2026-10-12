@@ -59,6 +59,8 @@ export interface ChatResult {
   sources?: SourceLink[]
   /** Шаги поиска в интернете и чтения сайтов (Searched for / Fetched). */
   webSteps?: WebStep[]
+  /** Сколько контекста занял запрос и в какое окно он влез (0.170). */
+  ctx?: { used: number; window: number }
   /** Навыки, которые включились по смыслу вопроса (engine/skills.js). */
   skills?: string[]
   /** Документы, которые модель оформила файлом: имя, mime, вес и base64 целиком. */

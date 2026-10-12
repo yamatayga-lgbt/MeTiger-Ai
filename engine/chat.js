@@ -1052,6 +1052,11 @@ export function createEngine(opts) {
           }
           const hit = {
             reply, reasoning: r.reasoning, provider: id, model, intent, tier,
+            /* Сколько контекста занял этот запрос и в какое окно он влезал — по этим
+               двум числам индикатор у поля ввода показывает заполнение честно, без
+               догадок фронта. Числа берутся из подгонки, которая реально уехала
+               голове (fitNow), а не из «лучшего окна» каталога. */
+            ctxUsed: fitNow.tokens, ctxWindow: fitNow.window,
             /* выбор человека не состоялся — говорим об этом прямо, а не молча
                подменяем: подпись «xkiro · wide/model-b» скрывала бы подмену */
             pinned: pin ? pin.model : undefined,
@@ -1304,6 +1309,8 @@ export function createEngine(opts) {
       /* Ответ подтверждён инструментом: по нему и совет голов пропускается, и
          самопроверка не зовёт починку (см. withMeta). */
       toolProof: hit ? (hit.toolProof || '') : '',
+      /* Контекст: сколько занято и в какое окно — для индикатора у поля ввода. */
+      ctx: hit && hit.ctxWindow ? { used: hit.ctxUsed || 0, window: hit.ctxWindow } : undefined,
       /* Поля, которые withMeta ставит поверх результата: finish() собирает объект
          ЗАНОВО, поэтому без этих строк глубина и самопроверка терялись по дороге
          ко входу (payload приходил без deep и без checkNotes — поймано проверкой

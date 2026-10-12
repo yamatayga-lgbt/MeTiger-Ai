@@ -15,6 +15,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { versionsAligned } from './version-sync.js';
 
 const attach = readFileSync('engine/attach.js', 'utf8');
 const longdoc = readFileSync('engine/longdoc.js', 'utf8');
@@ -43,18 +44,19 @@ const ok = (name, condition) => {
    всех источников — это и есть то, что может сломаться по невнимательности. */
 const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U161a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
-  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
-    && pkg.version === currentVersion && lock.version === currentVersion)
-    && (new RegExp('# Version ' + String(currentVersion).replace('.', '\\.')).test(vmd)
-      || new RegExp('^' + String(currentVersion) + '$').test(vmd.trim())),
-  [currentVersion, pkg.version, lock.version].join('/'));
+  versionsAligned().ok, versionsAligned().why);
 ok('U161b «Что нового» и README знают про 0.161 (человек узнаёт, что изменилось)',
   /version: '0\.161'/.test(notes) && /title: 'Большие документы читаются по частям'/.test(notes) && /\*\*0\.161\*\*/.test(readme));
 
-ok('U161c текст файла принимается до 160 000 знаков (было 24 000)',
-  /export const DOC_CHARS = 160000;/.test(bare(attach)));
-ok('U161d потолок окна поднят до 120 000 токенов (файл доезжает широкой голове целиком)',
-  /export const CTX_WINDOW_MAX = 120000;/.test(bare(ctxfit)));
+/* Порог, а не литерал: 0.161 обещала «не меньше 160 000 знаков», а 0.170 подняла
+   потолок до 200 000. Прибитый к числу страж ловит подъём потолка как поломку —
+   ровно так упал Deploy 0.170. Проверяем обещание, а не конкретную цифру. */
+ok('U161c текст файла принимается не меньше чем до 160 000 знаков (0.161; сейчас — больше)',
+  (() => { const m = /export const DOC_CHARS = (\d+);/.exec(bare(attach)); return !!m && Number(m[1]) >= 160000; })(),
+  (() => { const m = /export const DOC_CHARS = (\d+);/.exec(bare(attach)); return m ? m[1] : 'не найдено'; })());
+ok('U161d потолок окна поднят не меньше чем до 120 000 токенов (файл доезжает широкой голове целиком)',
+  (() => { const m = /export const CTX_WINDOW_MAX = (\d+);/.exec(bare(ctxfit)); return !!m && Number(m[1]) >= 120000; })(),
+  (() => { const m = /export const CTX_WINDOW_MAX = (\d+);/.exec(bare(ctxfit)); return m ? m[1] : 'не найдено'; })());
 ok('U161e сборщик вложений умеет отдать документ движку отдельным полем (defer → docBlocks)',
   /media && media\.defer/.test(bare(attach)) && /docBlocks\.push\(/.test(bare(attach))
     && /notes, docBlocks \}/.test(bare(attach)));

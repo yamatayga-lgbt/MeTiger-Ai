@@ -543,6 +543,9 @@ interface ChatViewProps {
   /** Параметры генерации (temperature, top_p) */
   genParams?: GenParams
   onGenParamsChange?: (next: GenParams) => void
+  /** Контекст последнего ответа: сколько токенов занял запрос и в какое окно влез.
+      Нет данных — индикатора нет: пустая полоска «0 %» врала бы про пустой контекст. */
+  ctxUsage?: { used: number; window: number } | null
 }
 
 export function ChatView({
@@ -557,6 +560,7 @@ export function ChatView({
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
   onGenParamsChange,
+  ctxUsage = null,
 }: ChatViewProps) {
   /* Стабильная ссылка на «выполнить код и вернуть вывод в чат»: Markdown
      обёрнут в memo и сверяет props по ссылке. Без useCallback каждая буква
@@ -581,7 +585,12 @@ export function ChatView({
   const [paramsOpen, setParamsOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   /* Информация о контексте для индикатора */
-  const [contextInfo] = useState({ usedTokens: 0, maxTokens: 0 })
+  /* Цифры приходят из ответа движка (props.ctxUsage), а не считаются здесь: фронт
+     не знает ни системных подсказок, ни окна выбранной модели — любая его оценка
+     была бы выдумкой. До первого ответа показывать нечего. */
+  const contextInfo = ctxUsage && ctxUsage.window > 0
+    ? { usedTokens: ctxUsage.used, maxTokens: ctxUsage.window }
+    : { usedTokens: 0, maxTokens: 0 }
   /* Полноэкранный просмотр любой картинки из переписки (своей или от модели) —
      тап открывает её целиком вместо скачивания/мелкого превью. */
   const [lightbox, setLightbox] = useState<{ src: string; name?: string } | null>(null)

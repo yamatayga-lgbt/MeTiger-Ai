@@ -631,6 +631,9 @@ async function handlePost(context) {
     tools: r.tools || [],
     /* Проверенные ссылки из поиска, вики, новостей или прочитанной страницы — кликабельно под ответом. */
     sources: r.sources && r.sources.length ? r.sources : undefined,
+    /* Сколько контекста заняла эта реплика и в какое окно она влезла (0.170) —
+       для индикатора заполнения у поля ввода. Числа движка, не догадки фронта. */
+    ctx: r.ctx || undefined,
     /* Шаги веб-поиска и чтения страниц (Searched for / Fetched) для блока Searching the web. */
     webSteps: r.webSteps && r.webSteps.length ? r.webSteps : undefined,
     /* навыки (engine/skills.js): чем именно модель себя правила на этом вопросе, и

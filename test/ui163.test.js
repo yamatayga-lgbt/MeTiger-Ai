@@ -10,6 +10,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { versionsAligned } from './version-sync.js';
 
 const search = readFileSync('engine/search.js', 'utf8');
 const tools = readFileSync('engine/tools.js', 'utf8');
@@ -32,10 +33,7 @@ const ok = (name, condition) => {
 
 const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U163a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
-  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
-    && pkg.version === currentVersion && lock.version === currentVersion
-    && vmd.indexOf('# Version ' + currentVersion) >= 0),
-  [currentVersion, pkg.version].join('/'));
+  versionsAligned().ok, versionsAligned().why);
 ok('U163b «Что нового» и README знают про 0.163',
   /version: '0\.163'/.test(notes) && /У источников видно дату/.test(notes) && /\*\*0\.163\*\*/.test(readme));
 

@@ -12,6 +12,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { versionsAligned } from './version-sync.js';
 
 const backup = readFileSync('src/lib/backup.ts', 'utf8');
 const dataView = readFileSync('src/views/DataView.tsx', 'utf8');
@@ -33,10 +34,7 @@ const ok = (name, condition) => {
 
 const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U162a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
-  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
-    && pkg.version === currentVersion && lock.version === currentVersion
-    && new RegExp('# Version ' + String(currentVersion).replace('.', '\\.')).test(vmd)),
-  [currentVersion, pkg.version].join('/'));
+  versionsAligned().ok, versionsAligned().why);
 ok('U162b «Что нового» и README знают про 0.162',
   /version: '0\.162'/.test(notes) && /title: 'Переписка переезжает на новый телефон одним файлом'/.test(notes) && /\*\*0\.162\*\*/.test(readme));
 

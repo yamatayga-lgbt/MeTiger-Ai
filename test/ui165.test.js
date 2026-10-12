@@ -8,6 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { versionsAligned } from './version-sync.js';
 
 const tools = readFileSync('engine/tools.js', 'utf8');
 const chat = readFileSync('engine/chat.js', 'utf8');
@@ -26,10 +27,7 @@ const ok = (name, condition, extra) => {
 
 const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U165a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
-  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
-    && pkg.version === currentVersion && lock.version === currentVersion
-    && vmd.indexOf('# Version ' + currentVersion) >= 0),
-  [currentVersion, pkg.version]);
+  versionsAligned().ok, versionsAligned().why);
 ok('U165b «Что нового» и README знают про 0.165',
   /version: '0\.165'/.test(notes) && /\*\*0\.165\*\*/.test(readme));
 

@@ -683,5 +683,17 @@ console.log('V — картинка не должна доставаться с�
       && !sentSystem.includes('【Язык и слова】'))
 }
 
+/* 0.170: числа контекста — для индикатора у поля ввода. Раньше фича молчала, потому
+   что фронт показывал зашитый ноль; здесь проверяем источник правды — сам движок. */
+{
+  const e = eng(() => ({ body: chat('Привет! Я на связи.') }), ENV);
+  const r = await e.run({ text: 'привет, как дела' });
+  ok('C170a: ответ несёт числа контекста — сколько занято и в какое окно влезло',
+    r.ok && r.ctx && Number.isFinite(r.ctx.used) && r.ctx.used > 0 && r.ctx.window > 0,
+    JSON.stringify(r.ctx));
+  ok('C170b: занято меньше окна — числа не выдуманы, а согласованы',
+    r.ctx.used < r.ctx.window, JSON.stringify(r.ctx));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

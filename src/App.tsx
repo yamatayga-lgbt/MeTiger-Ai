@@ -198,6 +198,10 @@ export default function App() {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  /* Контекст последнего ответа (0.170): сколько токенов занял запрос и в какое окно
+     он влез. Живёт до смены чата — старые числа не должны выглядеть текущими, поэтому
+     чистим их при переключении разговора и при новом чате. */
+  const [ctxInfo, setCtxInfo] = useState<{ used: number; window: number } | null>(null)
   const [user, setUser] = useState<Person>(siteUser())
 
   const { pref, resolved, setPref, toggle } = useTheme()
@@ -364,6 +368,9 @@ export default function App() {
      Мока осталось ровно столько, чтобы «npm run dev» жил без ключей и без сети.
      В проде подмены нет: если движок не ответил, человек видит причину, а не
      красивый текст из таблички. */
+  /* Смена разговора — цифры контекста прошлого разговора больше не правда. */
+  useEffect(() => { setCtxInfo(null) }, [activeChatId])
+
   const sendMessage = useCallback(
     (text: string, images?: string[], attachments?: Attachment[]) => {
       const chatId = activeChatId
@@ -453,6 +460,7 @@ export default function App() {
       
       void (async () => {
         const r = await retrySendChat()
+        if (r.ok && r.ctx && r.ctx.window > 0) setCtxInfo(r.ctx)
         if (r.ok) {
           recordModelTelemetry(
             model || r.model,
@@ -632,6 +640,7 @@ export default function App() {
                 draftThinkingSec={draftThinkingSec}
                 draftWebSteps={draftWebSteps}
                 onSend={sendMessage}
+                ctxUsage={ctxInfo}
                 onStop={stopGeneration}
                 genParams={genParams}
                 onGenParamsChange={setGenParams}

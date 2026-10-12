@@ -8,6 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { versionsAligned } from './version-sync.js';
 
 const app = readFileSync('src/App.tsx', 'utf8');
 const models = readFileSync('src/lib/models.ts', 'utf8');
@@ -28,10 +29,7 @@ const ok = (name, condition, extra) => {
 
 const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U164a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
-  Boolean(currentVersion && /^0\.\d{3}$/.test(currentVersion)
-    && pkg.version === currentVersion && lock.version === currentVersion
-    && vmd.indexOf('# Version ' + currentVersion) >= 0),
-  [currentVersion, pkg.version]);
+  versionsAligned().ok, versionsAligned().why);
 ok('U164b «Что нового» и README знают про 0.164',
   /version: '0\.164'/.test(notes) && /\*\*0\.164\*\*/.test(readme));
 
