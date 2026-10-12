@@ -41,6 +41,7 @@ import {
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
 import { lazyView } from './lib/chunkReload'
+import { usePWAUpdate } from './hooks/usePWAUpdate'
 import { idAsked, markIdAsked, pingDevice, type MyDevice } from './lib/devid'
 import { ownerEnabled } from './lib/report'
 import { siteUser, type Person } from './lib/user'
@@ -240,6 +241,14 @@ export default function App() {
      запуске: версия запомнена другой — значит человек только что обновился. */
   const [newsOpen, setNewsOpen] = useState<boolean>(() => shouldShowNews())
   const newsNote = noteFor(APP_VERSION)
+  
+  // Автообновление PWA
+  const { hasUpdate, skipWaiting } = usePWAUpdate({
+    onUpdateAvailable: (version) => {
+      setToast(`Доступна новая версия ${version}. Нажмите для обновления.`)
+    },
+    checkInterval: 3600000, // Проверка раз в час
+  })
 
   useEffect(() => {
     setUser(siteUser())
@@ -791,7 +800,15 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         actions={actions}
       />
-      <Toast message={toast} onDone={() => setToast(null)} />
+      <Toast 
+        message={toast} 
+        onDone={() => setToast(null)} 
+        onClick={hasUpdate ? () => {
+          skipWaiting()
+          setToast(null)
+        } : undefined}
+        actionLabel={hasUpdate ? 'Обновить' : undefined}
+      />
     </div>
   )
 }
