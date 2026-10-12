@@ -13,7 +13,7 @@
  * если файла там нет, берётся `.dev.vars` в корне — как привыкли старые руки.
  */
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, unlinkSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { onRequestPost, onRequestGet, onRequestOptions } from '../functions/api/chat.js';
@@ -28,6 +28,9 @@ import { onRequestGet as skillsGet } from '../functions/api/skills.js';
 /* Расход провайдеров — панель «Использование и Лимиты» в настройках. Локально она
    обязана работать так же, как в проде: иначе счётчик проверялся бы только выкладкой. */
 import { onRequestGet as usageGet } from '../functions/api/usage.js';
+/* Обращения об ошибках (0.173) — тоже дверью: форму «Сообщить об ошибке» и
+   служебный список владельца надо проверять локально, а не заявками на проде. */
+import { onRequestGet as reportGet, onRequestPost as reportPost } from '../functions/api/report.js';
 import * as modelreg from '../engine/modelreg.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,7 +58,13 @@ const env = loadEnv();
  */
 function fileKV(dirName) {
   const dir = join(root, dirName);
-  const pathFor = (key) => join(dir, key.replace(/[^a-zA-Z0-9_.-]/g, '_') + '.json');
+  /* Двоеточие в имени файла хранить нельзя, но и терять его нельзя: ключи заявок
+     (`rep:<время>:<хвост>`) должны читаться списком по префиксу, а список обязан
+     отдавать имена такими же, какими их звал код. Поэтому ':' кодируется обратимо,
+     а всё остальное небезопасное — по-прежнему подчёркиванием (0.173). */
+  const enc = (k) => k.replace(/%/g, '%25').replace(/:/g, '%3A').replace(/[^a-zA-Z0-9_.%-]/g, '_');
+  const dec = (n) => n.replace(/%3A/g, ':').replace(/%25/g, '%');
+  const pathFor = (key) => join(dir, enc(key) + '.json');
   return {
     async get(key) {
       try {
@@ -72,6 +81,26 @@ function fileKV(dirName) {
       try {
         unlinkSync(pathFor(key));
       } catch (e) {}
+    },
+    /* Список по префиксу — тот же контракт, что у настоящего KV (`list` отдаёт
+       ключи по алфавиту, а мы пишем ключи с временем в начале, значит по времени).
+       Без него обращению об ошибке (0.173) локально было нечего показывать: на
+       проде список есть, а тут — «kv.list is not a function». */
+    async list(opts) {
+      const prefix = String((opts && opts.prefix) || '');
+      let names = [];
+      try {
+        names = readdirSync(dir);
+      } catch (e) {
+        return { keys: [] };
+      }
+      const keys = names
+        .filter((n) => n.endsWith('.json'))
+        .map((n) => dec(n.slice(0, -'.json'.length)))
+        .filter((k) => k.startsWith(prefix))
+        .sort()
+        .map((name) => ({ name }));
+      return { keys };
     },
   };
 }
@@ -103,13 +132,16 @@ createServer((req, res) => {
       if (path === '/api/models') return reply(await modelsGet(context));
       if (path === '/api/skills') return reply(await skillsGet(context));
       if (path === '/api/usage') return reply(await usageGet(context));
+      if (path === '/api/report') {
+        return reply(req.method === 'GET' ? await reportGet(context) : await reportPost(context));
+      }
       if (path === '/api/profile') {
         if (req.method === 'PUT') return reply(await profilePut(context));
         if (req.method === 'DELETE') return reply(await profileDelete(context));
         return reply(await profileGet(context));
       }
       const index = {
-        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills', 'GET /api/usage'],
+        ok: true, routes: ['POST /api/chat', 'GET /api/chat', 'GET /api/models', 'GET|PUT|DELETE /api/profile', 'GET /api/skills', 'GET /api/usage', 'GET|POST /api/report'],
         alive: Object.keys(env).filter((k) => /_KEYS?$/.test(k)).map((k) => k.replace(/_KEYS?$|_KEY$/, '').toLowerCase()),
       };
       /* Прод на неизвестный путь не отвечает 200: Pages отдаёт либо заглушку

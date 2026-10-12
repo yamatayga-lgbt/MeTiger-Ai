@@ -7,6 +7,10 @@
  * настройки приложения: «Внешний вид» (раскрывается — светлая/тёмная/системная),
  * «Управление данными», «Сообщить об ошибке», «Информация».
  *
+ * 0.173: «Рабочая область» убрана (просьба владельца), «Сообщить об ошибке»
+ * открывает живую форму, а у владельца — который один раз ввёл код в «Информации» —
+ * добавляется карточка «Ведомство» со строкой «Обращения» и счётчиком новых.
+ *
  * Список повторяет приложение ChatGPT, но без того, что у нас нечего показать
  * (владелец вычеркнул это красным: «Плагины», «Изменить план», «Родительский
  * контроль», «Возраст»). Всё, что пока не работает, помечено честным «Скоро» —
@@ -14,9 +18,9 @@
  */
 import {
   BarChart3,
-  Briefcase,
   Bug,
   ChevronDown,
+  Inbox,
   ChevronRight,
   Database,
   Info,
@@ -28,8 +32,10 @@ import {
   Smile,
   Sun,
 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Badge, Segmented } from '../components/ui'
+import { ReportSheet } from '../components/ReportSheet'
+import { loadReports, ownerEnabled } from '../lib/report'
 import { haptic } from '../lib/haptic'
 import type { ThemePref } from '../hooks/useTheme'
 
@@ -98,6 +104,23 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
   /* «Внешний вид» — раскрывающаяся строка: тема выбирается прямо под подписью,
      как в приложении ChatGPT. Свёрнута по умолчанию, чтобы список оставался списком. */
   const [appearanceOpen, setAppearanceOpen] = useState(false)
+  /* 0.173: живая форма «Сообщить об ошибке» и — только у владельца — счётчик
+     новых обращений. Счётчик читаем при открытии профиля: владелец должен видеть
+     «есть новое» сразу, а не после захода в сам список. */
+  const [reportOpen, setReportOpen] = useState(false)
+  const [owner, setOwner] = useState(() => ownerEnabled())
+  const [freshReports, setFreshReports] = useState(0)
+
+  useEffect(() => {
+    if (!ownerEnabled()) return
+    let alive = true
+    void loadReports().then((r) => {
+      if (!alive) return
+      if (r.ok) setOwner(true)
+      setFreshReports(r.fresh)
+    })
+    return () => { alive = false }
+  }, [])
 
   return (
     <div className="container view profile-view">
@@ -130,15 +153,11 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
         <Row icon={<Map size={20} />} label="Память" soon onClick={soon('Память')} />
       </div>
 
+      {/* «Рабочая область» убрана по просьбе владельца (0.173). Остальные строки
+          раздела на месте: «Использование и лимиты» — расход, «Электронная
+          почта» — заготовка входа по адресу. */}
       <div className="rows-label">Учетная запись</div>
       <div className="rows-card">
-        <Row
-          icon={<Briefcase size={20} />}
-          label="Рабочая область"
-          value="Личное"
-          soon
-          onClick={soon('Рабочая область')}
-        />
         <Row
           icon={<BarChart3 size={20} />}
           label="Использование и лимиты"
@@ -156,6 +175,30 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
 
       {/* Настройки приложения — прямо здесь, а не на отдельном экране: владелец
           попросил убрать вкладку настроек и перенести эти четыре строки в профиль. */}
+      {owner ? (
+        <>
+          <div className="rows-label">Ведомство</div>
+          <div className="rows-card">
+            <Row
+              icon={<Inbox size={20} />}
+              label="Обращения"
+              chevron
+              onClick={() => {
+                haptic('light')
+                onNavigate('reports')
+              }}
+            />
+            {freshReports > 0 ? (
+              <div className="rows-row is-plain">
+                <span className="rows-hint">
+                  Новых обращений: {freshReports}. Это окно видят только устройства с кодом владельца.
+                </span>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
       <div className="rows-label">Приложение</div>
       <div className="rows-card">
         <button
@@ -206,13 +249,22 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
           </span>
           <span className="rows-name">Управление данными</span>
         </button>
-        <div className="rows-row is-soon">
+        {/* 0.173: форма ожила — «Скоро» снято. Описали проблему, приложили до
+            четырёх снимков, отправили владельцу. */}
+        <button
+          type="button"
+          className="rows-row tappable"
+          aria-label="Сообщить об ошибке"
+          onClick={() => {
+            haptic('light')
+            setReportOpen(true)
+          }}
+        >
           <span className="rows-ic" aria-hidden="true">
             <Bug size={20} />
           </span>
           <span className="rows-name">Сообщить об ошибке</span>
-          <Badge tone="gray">Скоро</Badge>
-        </div>
+        </button>
         <button
           type="button"
           className="rows-row tappable"
@@ -227,6 +279,8 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref }
           <span className="rows-name">Информация</span>
         </button>
       </div>
+
+      {reportOpen ? <ReportSheet onClose={() => setReportOpen(false)} /> : null}
 
       <div className="app-foot">
         MeTiger Ai © 2026

@@ -15,6 +15,10 @@ const DataView = lazyView(() => import('./views/DataView').then((m) => ({ defaul
 const InfoView = lazyView(() => import('./views/InfoView').then((m) => ({ default: m.InfoView })))
 const UsageView = lazyView(() => import('./views/UsageView').then((m) => ({ default: m.UsageView })))
 const WhatsNewView = lazyView(() => import('./views/WhatsNewView').then((m) => ({ default: m.WhatsNewView })))
+/* «Обращения» (0.173) — служебный экран владельца. Грузится отдельным файлом,
+   как и остальные экраны: у обычного человека он не откроется ниоткуда, и
+   качать его вместе с чатом незачем. */
+const ReportsView = lazyView(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })))
 import { WhatsNewModal } from './components/WhatsNewModal'
 import { useTheme } from './hooks/useTheme'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
@@ -56,6 +60,9 @@ export type ViewId =
   | 'personalization'
   | 'data'
   | 'info'
+  /* «Обращения» — экран владельца: без кода он не откроется ни из профиля, ни
+     отсюда. Тип нужен всем, потому что маршрут один на всё приложение. */
+  | 'reports'
 
 export interface Chat {
   id: string
@@ -72,11 +79,12 @@ const TITLES: Record<ViewId, string> = {
   personalization: 'Персонализация',
   data: 'Управление данными',
   info: 'Информация',
+  reports: 'Обращения',
 }
 
 /* Экраны, которые нельзя рисовать «въезжающей» анимацией: списки на весь экран
    мигают и дёргаются при входе (см. комментарий к .settings-scroll в styles). */
-const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'data', 'info']
+const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'data', 'info', 'reports']
 
 /* Куда ведёт стрелка «назад» на вложенных экранах. Не история посещений, а
    постоянный маршрут: с любого экрана назад — туда, откуда в него попадают.
@@ -86,6 +94,7 @@ const BACK_TO: Partial<Record<ViewId, ViewId>> = {
   personalization: 'profile',
   data: 'profile',
   info: 'profile',
+  reports: 'profile',
   /* «Использование и лимиты» открывается строкой в профиле — из сайдбара этот
      пункт убран (0.159): расход и так виден в профиле, дублировать не нужно. */
   usage: 'profile',
@@ -664,6 +673,7 @@ export default function App() {
             <DataView chats={chats} notify={notify} onWipeLocal={wipeLocal} />
           ) : null}
           {view === 'info' ? <InfoView notify={notify} onNavigate={navigate} /> : null}
+          {view === 'reports' ? <ReportsView notify={notify} /> : null}
           {view === 'usage' ? <UsageView /> : null}
           {view === 'whatsnew' ? <WhatsNewView /> : null}
           </Suspense>
