@@ -98,6 +98,13 @@ ok('U177n отказ канала назван словами и парковк�
   /state: 'failed'/.test(imggen) && /state: 'trying'/.test(imggen)
     && /честный прогресс/i.test(imggen))
 
+ok('U177p черновик не показывает служебный блок заказа картинки',
+  /hideServiceBlocks/.test(view)
+    /* черновик печатается через эту же функцию, а не сырым текстом потока */
+    && /\{hideServiceBlocks\(draft\)\}/.test(view)
+    /* и хвост блока, который ещё не закрылся, тоже прячется */
+    && /не закрыт/.test(view))
+
 ok('U177o общий слой картинок сбрасывается для тестов (иначе env изолята решает за всех)',
   /export function forgetSharedImggen/.test(imggen))
 

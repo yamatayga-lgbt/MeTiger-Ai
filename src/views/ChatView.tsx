@@ -560,6 +560,23 @@ function BrushGlyph({ className }: { className?: string }) {
   )
 }
 
+/**
+ * Служебные блоки (```img```, ```file```) во время письма человеку не показываем.
+ *
+ * Движок вынимает их из готового ответа, но по потоку они приходят раньше — и на
+ * проде человек успевал прочитать «```img|cat_on_windowsill» с английским описанием
+ * прямо посреди ответа (замечено 12 окт, 0.177). Прячем и целые блоки, и хвост,
+ * который ещё не закрылся: пока блок не закрыт, это тем более не ответ, а заказ.
+ */
+function hideServiceBlocks(text: string): string {
+  return String(text || '')
+    .replace(/```[ \t]*(?:img|file)(?:[ \t]*[:|][^\n`]*)?[ \t]*\r?\n[\s\S]*?```/gi, '')
+    .replace(/```[ \t]*(?:img|file)(?:[ \t]*[:|][^\n`]*)?[ \t]*\r?\n?[\s\S]*$/i, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function WebSearchBlock({ steps, live = false }: { steps: WebStep[]; live?: boolean }) {
   if (!steps.length) return null
   return (
@@ -1346,7 +1363,7 @@ export function ChatView({
                 {draft ? (
                   /* Текст ответа пишется сверху вниз с плавным проявлением и белой точкой внизу */
                   <div className="msg-text msg-draft" aria-live="polite" aria-label="Ответ пишется">
-                    {draft}
+                    {hideServiceBlocks(draft)}
                     <span className="draft-caret" aria-hidden="true" />
                   </div>
                 ) : draftReasoning === null ? (
