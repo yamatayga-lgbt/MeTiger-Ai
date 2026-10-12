@@ -280,6 +280,9 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, 
           попросил убрать вкладку настроек и перенести эти четыре строки в профиль. */}
       {owner ? (
         <>
+          {/* «Обращения» отдельной строкой здесь больше нет: владелец попросил не
+              делать вторую дверь (12 окт) — они живут вкладкой в админ-панели,
+              а сюда вынесен только счётчик новых и вход в саму панель. */}
           <div className="rows-label">Разработчик</div>
           <div className="rows-card">
             <Row
@@ -294,19 +297,12 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, 
                 onNavigate('admin')
               }}
             />
-            <Row
-              icon={<Inbox size={20} />}
-              label="Обращения"
-              chevron
-              onClick={() => {
-                haptic('light')
-                onNavigate('reports')
-              }}
-            />
             {freshReports > 0 ? (
               <div className="rows-row is-plain">
                 <span className="rows-hint">
-                  Новых обращений: {freshReports}. Это окно видят только устройства с кодом владельца.
+                  {freshReports > 0
+                    ? `Новых обращений: ${freshReports} — они во вкладке «Админ-панель». Это окно видят только устройства с кодом владельца.`
+                    : 'Обращений нет. Это окно видят только устройства с кодом владельца.'}
                 </span>
               </div>
             ) : null}

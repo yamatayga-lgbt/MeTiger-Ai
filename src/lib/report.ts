@@ -195,6 +195,25 @@ export async function setReportVerdict(id: string, verdict: 'done' | 'declined')
   }
 }
 
+/**
+ * Убрать обращение совсем (0.177). Отдельная просьба владельца после живой проверки:
+ * в списке остались пробные заявки времён разработки, а вердикт их только помечает.
+ * Заявка убирается вместе с фотографиями — на сервере это одно действие `delete`.
+ */
+export async function deleteReport(id: string): Promise<boolean> {
+  try {
+    const r = await fetch('/api/report?owner=1', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-mt-owner': ownerCode() },
+      body: JSON.stringify({ id, action: 'delete' }),
+    })
+    const d = await json(r)
+    return !!d.ok
+  } catch {
+    return false
+  }
+}
+
 /** Сколько раз подряд нажали на строку версии — вход в «ведомство». */
 export function humanDate(ms: number): string {
   const d = new Date(Math.max(0, Number(ms) || 0))

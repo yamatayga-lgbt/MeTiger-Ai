@@ -20,7 +20,7 @@
 import { cfgOf as limitsCfg, createRateLimiter } from '../../engine/limits.js';
 import { limitsStore, realClientIp } from './chat.js';
 import {
-  REPORT_LIMITS, cleanReportPhotos, cleanReportText, cleanVerdict, isOwnerCode,
+  REPORT_LIMITS, cleanAction, cleanReportPhotos, cleanReportText, cleanVerdict, isOwnerCode,
   makeReport, newReportId, photoKey, reportKey, reportSummary,
 } from '../../engine/reports.js';
 import { deviceKeyOf, deviceRecordKey } from '../../engine/devid.js';
@@ -51,6 +51,11 @@ function reportStore(env) {
   return {
     get: (key) => Promise.resolve(kv.get(key)).then(parse, () => null),
     put: async (key, value) => { await kv.put(key, JSON.stringify(value)); },
+    /* delete есть у настоящего KV; у чужой заглушки его может не быть — тогда
+       честно говорим «не убралось», а не роняем дверь исключением. */
+    del: (key) => (typeof kv.delete === 'function'
+      ? Promise.resolve(kv.delete(key)).then(() => true, () => false)
+      : Promise.resolve(false)),
     list: (opts) => Promise.resolve(kv.list(opts)).then((r) => (r && r.keys) || [], () => []),
   };
 }
@@ -142,12 +147,26 @@ export async function onRequestPost(context) {
   if (owner) {
     if (!(await ownerOk(request, env))) return json({ ok: false, error: 'нет доступа' }, 403);
     const id = String(body && body.id || '').trim().slice(0, 10);
-    const verdict = cleanVerdict(body && body.verdict);
-    if (!id || !verdict) return json({ ok: false, error: 'нужны id и вердикт: done или declined' }, 400);
+    /* Вердикт (done/declined) или уборка (delete) — «третьего не принимаем» про
+       вердикты осталось: уборка это не вердикт, а отдельное действие. */
+    const verdict = cleanAction(body && (body.action || body.verdict));
+    if (!id || !verdict) return json({ ok: false, error: 'нужны id и вердикт: done или declined (убрать совсем — action: delete)' }, 400);
     const keys = await store.list({ prefix: 'rep:', limit: 1000 });
     const hit = keys.find((k) => k.name.endsWith(':' + id));
     const rec = hit ? await store.get(hit.name) : null;
     if (!rec || !hit) return json({ ok: false, error: 'обращение не найдено' }, 404);
+
+    if (verdict === 'delete') {
+      /* Заявку убираем вместе с фотографиями: иначе в хранилище остаются
+         «rph:…» без владельца — мусор, который никто уже не найдёт. */
+      const pics = Math.max(0, Math.min(REPORT_LIMITS.MAX_PHOTOS, Math.floor(Number(rec.photoCount) || 0)));
+      for (let i = 0; i < pics; i++) {
+        try { await store.del(photoKey(id, i)); } catch (e) { /* фото уже нет — не беда */ }
+      }
+      await store.del(hit.name);
+      return json({ ok: true, id, deleted: true, photos: pics });
+    }
+
     const next = { ...rec, status: verdict, verdictAt: Date.now() };
     await store.put(hit.name, next);
     return json({ ok: true, id, status: verdict, at: next.verdictAt });

@@ -6748,6 +6748,31 @@ button,
 }
 
 .rep-status.is-done { background: var(--ok-soft); color: var(--ok); }
+/* «Убрать» — тихое действие: серая, без рамки, и только на втором нажатии
+   становится заметной («Убрать?»). Так случайный тап в списке ничего не сотрёт. */
+.rep-del {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text) 52%, transparent);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.rep-del.is-asking {
+  color: var(--danger, #d64545);
+  background: color-mix(in srgb, var(--danger, #d64545) 12%, transparent);
+}
+
+.rep-del:disabled {
+  opacity: 0.55;
+}
+
 .rep-status.is-declined { background: var(--surface-2); color: var(--text-3); }
 .rep-status.is-new { background: var(--accent-soft); color: var(--text); }
 

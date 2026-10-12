@@ -33,6 +33,7 @@ function fakeEnv(extra) {
     MEMORY: {
       get: (k) => (mem.has(k) ? mem.get(k) : null),
       put: (k, v) => { mem.set(k, v); },
+      delete: (k) => { mem.delete(k); },
       list: async (o) => ({ keys: [...mem.keys()].filter((k) => !o?.prefix || k.startsWith(o.prefix)).map((name) => ({ name })) }),
     },
   };
@@ -167,6 +168,43 @@ console.log('V — вердикт владельца');
 
   const нетid = await call(onRequestPost, '/api/report?owner=1', { verdict: 'done' }, H);
   ok('V5: вердикт без заявки — понятный отказ', нетid.status === 400);
+}
+
+console.log('W — уборка заявки (0.177, просьба владельца)');
+{
+  /* Владелец увидел в списке пробные обращения времён разработки и сказал, что
+     их быть не должно. Вердикт их только помечает — значит нужна уборка: заявка
+     уходит вместе с фотографиями, и в списке её больше нет. */
+  const др = fakeEnv ? null : null;
+  void др;
+  const создано = await call(onRequestPost, '/api/report', {
+    uid: 'probe-clean', ver: '0.177', text: 'Проверка уборки: эту заявку владелец убирает сам.',
+    photos: ['data:image/png;base64,' + 'A'.repeat(64)],
+  });
+  const тело = await создано.json();
+  const список1 = await (await call(onRequestGet, '/api/report?owner=1', undefined, H)).json();
+  const моя = список1.reports.find((r) => r.id === тело.id);
+  ok('W1: заявка с фото пришла и видна владельцу',
+    создано.status === 200 && !!моя && моя.photos === 1, JSON.stringify(тело));
+
+  const убрал = await call(onRequestPost, '/api/report?owner=1', { id: тело.id, action: 'delete' }, H);
+  const итог = await убрал.json();
+  const список2 = await (await call(onRequestGet, '/api/report?owner=1', undefined, H)).json();
+  ok('W2: «Убрать» убирает заявку из списка совсем (не помечает, а удаляет)',
+    убрал.status === 200 && итог.deleted === true && итог.photos === 1
+      && !список2.reports.some((r) => r.id === тело.id),
+    JSON.stringify({ итог, осталось: список2.reports.length }));
+
+  const ещёраз = await call(onRequestPost, '/api/report?owner=1', { id: тело.id, action: 'delete' }, H);
+  ok('W3: повторная уборка — честное «не найдено», а не тихая удача',
+    ещёраз.status === 404, String(ещёраз.status));
+
+  const чужой = await call(onRequestPost, '/api/report?owner=1', { id: 'неттакого', action: 'delete' });
+  ok('W4: уборка без кода владельца не проходит', чужой.status === 403, String(чужой.status));
+
+  const мусор = await call(onRequestPost, '/api/report?owner=1', { id: тело.id, action: 'снести' }, H);
+  ok('W5: «снести» — не действие: принимаем только done, declined и delete',
+    мусор.status === 400 && /delete/.test((await мусор.json()).error));
 }
 
 console.log('K — код владельца: отпечаток, а не код');

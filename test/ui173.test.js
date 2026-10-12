@@ -75,14 +75,27 @@ ok('V173j служебная кнопка владельца спрятана: �
   /OWNER_TAPS = 5/.test(info) && /tapVersion/.test(info) && /onPointerDown=\{tapVersion\}/.test(info)
     && /checkOwnerCode/.test(info) && /setOwnerCode\(/.test(info))
 
-ok('V173k карточка «Ведомство» появляется только там, где введён код владельца',
+ok('V173k владельцу в профиле виден его раздел — только с кодом владельца',
   /ownerEnabled\(\)/.test(profile) && /\{owner \? \(/.test(profile)
-    && /Ведомство/.test(profile) && /label="Обращения"/.test(profile) && /onNavigate\('reports'\)/.test(profile))
+    && /Разработчик/.test(profile) && /onNavigate\('admin'\)/.test(profile)
+    /* Владелец уточнил 12 окт: «В Профиле-Настройки есть пункт "Обращения" не надо
+       его делать 2 раз, пусть для меня он будет во вкладке Админа». Вторая дверь
+       в обращения из профиля убрана — они открываются вкладкой в админ-панели. */
+    && !/label="Обращения"/.test(profile) && !/onNavigate\('reports'\)/.test(profile))
 
 ok('V173l у каждой заявки две кнопки — «Рассмотрено» и «Отказано», и обе живые',
   /Рассмотрено/.test(reportsView) && /Отказано/.test(reportsView)
     && /verdict\(r\.id, 'done'\)/.test(reportsView) && /verdict\(r\.id, 'declined'\)/.test(reportsView)
     && /setReportVerdict/.test(lib))
+
+ok('V173s лишнюю заявку владелец может убрать совсем, и это спросит подтверждения',
+  /deleteReport/.test(lib) && /action: 'delete'/.test(lib)
+    /* дверь принимает уборку отдельным действием и убирает заявку с фотографиями */
+    && /cleanAction/.test(engine) && /verdict === 'delete'/.test(endpoint)
+    && /store\.del\(hit\.name\)/.test(endpoint)
+    /* на экране: тихая кнопка, которая на втором нажатии превращается в «Убрать?» */
+    && /rep-del/.test(reportsView) && /'Убрать\?'/.test(reportsView)
+    && /\.rep-del \{/.test(css) && /\.rep-del\.is-asking \{/.test(css))
 
 ok('V173m обращения уходят и приходят через свой вход, и на сервере он под замком',
   /'\/api\/report\?owner=1'/.test(lib) && /x-mt-owner/.test(lib)

@@ -19,6 +19,7 @@ import { APP_VERSION } from './version'
 const ID_KEY = 'mt-dev-id'
 const MODEL_KEY = 'mt-dev-model'
 const ASKED_KEY = 'mt-dev-asked'
+const FP_KEY = 'mt-dev-fp'
 
 /** Правила для подсказки в поле (сервер судит теми же числами). */
 export const ID_MIN = 4
@@ -70,6 +71,75 @@ export function markIdAsked(): void {
   } catch {
     /* не запомнилось — карточка вернётся в следующий раз, беды нет */
   }
+}
+
+/**
+ * Отпечаток устройства — из того, что телефон не меняет (0.177).
+ *
+ * Зачем: ключ устройства (mt-uid) случайный и умирает вместе с чисткой данных
+ * сайта. Тогда тот же телефон заводил ВТОРУЮ запись, и в админ-панели одно
+ * устройство выглядело как несколько — владелец увидел три строки «без MT-A546B»
+ * вместо своей одной. Отпечаток считается здесь, на телефоне, и уезжает только
+ * на нашу же дверь: сервер по нему узнаёт уже известное устройство.
+ */
+function hash16(src: string): Promise<string> {
+  const text = String(src || '')
+  const subtle = (globalThis as { crypto?: { subtle?: SubtleCrypto } }).crypto?.subtle
+  if (subtle && typeof subtle.digest === 'function') {
+    try {
+      return subtle
+        .digest('SHA-256', new TextEncoder().encode(text))
+        .then((buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16))
+        .catch(() => hash16Fallback(text))
+    } catch {
+      /* старый браузер без digest — считаем сами */
+    }
+  }
+  return Promise.resolve(hash16Fallback(text))
+}
+
+/** Запасной счёт: djb2 на два регистра — те же 16 знаков, без криптографии. */
+function hash16Fallback(text: string): string {
+  let a = 5381
+  let b = 52711
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    a = ((a * 33) ^ c) >>> 0
+    b = ((b * 31) + c) >>> 0
+  }
+  return (a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0')).slice(0, 16)
+}
+
+export async function deviceFp(): Promise<string> {
+  try {
+    const cached = String(localStorage.getItem(FP_KEY) || '')
+    if (/^[a-f0-9]{16}$/.test(cached)) return cached
+  } catch {
+    /* приватный режим — посчитаем без кэша */
+  }
+  const nav = navigator as unknown as {
+    userAgent?: string; platform?: string; language?: string; languages?: string[]
+    hardwareConcurrency?: number; deviceMemory?: number
+  }
+  const parts = [
+    String(nav.userAgent || ''),
+    String(nav.platform || ''),
+    String(nav.language || ''),
+    Array.isArray(nav.languages) ? nav.languages.join(',') : '',
+    `${screen.width}x${screen.height}x${window.devicePixelRatio || 1}`,
+    String(screen.colorDepth || ''),
+    String(new Date().getTimezoneOffset()),
+    String(nav.hardwareConcurrency || ''),
+    String(nav.deviceMemory || ''),
+    modelCached(),
+  ]
+  const fp = await hash16(parts.join('|'))
+  try {
+    localStorage.setItem(FP_KEY, fp)
+  } catch {
+    /* не запомнилось — посчитаем в следующий раз, результат тот же */
+  }
+  return fp
 }
 
 /**
@@ -159,6 +229,7 @@ export async function pingDevice(force = false): Promise<MyDevice | null> {
       headers: headers(true),
       body: JSON.stringify({
         device: deviceKey(),
+        fp: await deviceFp(),
         id: force ? myId() : undefined,
         model: await deviceModel(),
         ver: APP_VERSION,
@@ -194,7 +265,7 @@ export async function claimId(id: string): Promise<ClaimResult> {
     const r = await fetch('/api/device', {
       method: 'POST',
       headers: headers(true),
-      body: JSON.stringify({ device: deviceKey(), id, model: await deviceModel(), ver: APP_VERSION }),
+      body: JSON.stringify({ device: deviceKey(), fp: await deviceFp(), id, model: await deviceModel(), ver: APP_VERSION }),
     })
     const d = await r.json()
     if (!d || !d.ok) {

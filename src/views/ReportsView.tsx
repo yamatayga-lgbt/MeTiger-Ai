@@ -12,10 +12,10 @@
  */
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Bug, Check, Image as ImageIcon, Inbox, Loader2, RefreshCw, X } from 'lucide-react'
+import { Bug, Check, Image as ImageIcon, Inbox, Loader2, RefreshCw, Trash2, X } from 'lucide-react'
 import { Badge, Button, Segmented } from '../components/ui'
 import {
-  humanDate, loadReport, loadReports, ownerCode, setReportVerdict,
+  deleteReport, humanDate, loadReport, loadReports, ownerCode, setReportVerdict,
   type ReportFull, type ReportSummary,
 } from '../lib/report'
 import { haptic } from '../lib/haptic'
@@ -37,6 +37,10 @@ export function ReportsView({ notify, embedded = false }: ReportsViewProps) {
   const [busy, setBusy] = useState('')
   const [open, setOpen] = useState<ReportFull | null>(null)
   const [opening, setOpening] = useState('')
+  /* Уборка подтверждается вторым нажатием: «Убрать» → «Убрать?» живёт 4 секунды.
+     Владелец просил убрать лишнее с телефона — случайный тап в списке не должен
+     стирать заявку сразу, а модальных окон с «Да/Нет» здесь не хочется. */
+  const [confirming, setConfirming] = useState('')
 
   const load = async () => {
     setError('')
@@ -84,6 +88,30 @@ export function ReportsView({ notify, embedded = false }: ReportsViewProps) {
     if (wasFresh) setFresh((n) => Math.max(0, n - 1))
     setOpen((prev) => (prev && prev.id === id ? { ...prev, status: v, verdictAt: Date.now() } : prev))
     notify(v === 'done' ? 'Помечено «Рассмотрено»' : 'Помечено «Отказано»')
+  }
+
+  const remove = async (id: string) => {
+    if (confirming !== id) {
+      setConfirming(id)
+      try {
+        window.setTimeout(() => setConfirming((cur) => (cur === id ? '' : cur)), 4000)
+      } catch { /* таймера нет — второе нажатие всё равно сработает */ }
+      return
+    }
+    setConfirming('')
+    setBusy(id)
+    const ok = await deleteReport(id)
+    setBusy('')
+    if (!ok) {
+      notify('не убралось — попробуйте ещё раз')
+      return
+    }
+    haptic('medium')
+    const wasFresh = (list || []).some((r) => r.id === id && r.status === 'new')
+    setList((prev) => (prev || []).filter((r) => r.id !== id))
+    if (wasFresh) setFresh((n) => Math.max(0, n - 1))
+    setOpen((prev) => (prev && prev.id === id ? null : prev))
+    notify('Обращение убрано')
   }
 
   const shown = (list || []).filter((r) => (filter === 'new' ? r.status === 'new' : true))
@@ -168,6 +196,17 @@ export function ReportsView({ notify, embedded = false }: ReportsViewProps) {
                   <X size={14} />
                   Отказано
                 </Button>
+                {/* Тихое действие: у пробных и случайных заявок вердикта не хватает —
+                    их нужно убрать совсем, и это просьба владельца (12 окт). */}
+                <button
+                  type="button"
+                  className={confirming === r.id ? 'rep-del is-asking' : 'rep-del'}
+                  onClick={() => void remove(r.id)}
+                  disabled={busy === r.id}
+                >
+                  {busy === r.id ? <Loader2 size={14} className="rep-spin" /> : <Trash2 size={14} />}
+                  {confirming === r.id ? 'Убрать?' : 'Убрать'}
+                </button>
               </div>
             </div>
           ))}
@@ -207,6 +246,15 @@ export function ReportsView({ notify, embedded = false }: ReportsViewProps) {
               <Button variant={open.status === 'declined' ? 'primary' : 'ghost'} onClick={() => void verdict(open.id, 'declined')}>
                 <X size={14} /> Отказано
               </Button>
+              <button
+                type="button"
+                className={confirming === open.id ? 'rep-del is-asking' : 'rep-del'}
+                onClick={() => void remove(open.id)}
+                disabled={busy === open.id}
+              >
+                {busy === open.id ? <Loader2 size={14} className="rep-spin" /> : <Trash2 size={14} />}
+                {confirming === open.id ? 'Убрать?' : 'Убрать'}
+              </button>
               <Badge tone={open.status === 'new' ? 'gray' : 'accent'}>{статусСловом(open.status)}</Badge>
             </div>
           </div>

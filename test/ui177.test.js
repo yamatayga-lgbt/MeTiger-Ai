@@ -42,10 +42,17 @@ const bare = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/
 
 const v = versionsAligned()
 ok('U177a все источники версии синхронизированы', v.ok, v.why)
+
+/* Версия кэша оболочки — из version.ts, а не литералом: U177c проверял «v0177»,
+   и выпуск 0.178 уронил бы проверку 0.177 на ровном месте (тот же урок, что у
+   versionsAligned). Kэш обязан знать ТЕКУЩУЮ версию — иначе телефон отдаёт
+   старую оболочку. */
+const appVer = (read('src/lib/version.ts').match(/APP_VERSION = '([^']+)'/) || [])[1] || ''
+const swVer = 'v' + appVer.replace(/\./g, '')
 ok('U177b «Что нового» и README знают 0.177',
   /version: '0\.177'/.test(notes) && /\*\*0\.177\*\*/.test(readme))
 ok('U177c запись говорит человеку про картинки, а не про внутренности',
-  /картин/i.test(notes) && !/эндпоинт|env\.AI|binding/.test(notes) && /v0177/.test(sw))
+  /картин/i.test(notes) && !/эндпоинт|env\.AI|binding/.test(notes) && sw.includes(swVer))
 
 ok('U177d привязка AI включена в wrangler — картинки без единого токена',
   /\[ai\]/.test(wrangler) && /binding = "AI"/.test(wrangler)
@@ -104,6 +111,15 @@ ok('U177p черновик не показывает служебный блок
     && /\{hideServiceBlocks\(draft\)\}/.test(view)
     /* и хвост блока, который ещё не закрылся, тоже прячется */
     && /не закрыт/.test(view))
+
+ok('U177q одно устройство — одна запись: визит несёт отпечаток, сервер по нему узнаёт телефон',
+  /fingerprintOf/.test(read('engine/devid.js')) && /fpIndexKey/.test(read('engine/devid.js'))
+    && /fpIndexKey\(fp\)/.test(read('functions/api/device.js'))
+    && /deviceFp/.test(read('src/lib/devid.ts')) && /fp: await deviceFp\(\)/.test(read('src/lib/devid.ts')))
+
+ok('U177r дверь профиля не делает вторую дверь в обращения (просьба владельца)',
+  !/label="Обращения"/.test(read('src/views/ProfileView.tsx'))
+    && /Обращения/.test(read('src/views/AdminView.tsx')))
 
 ok('U177o общий слой картинок сбрасывается для тестов (иначе env изолята решает за всех)',
   /export function forgetSharedImggen/.test(imggen))

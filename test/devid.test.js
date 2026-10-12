@@ -184,5 +184,61 @@ console.log('V — двери и связи');
   ok('V4: без ключа устройства запись не создаётся', noDev.status === 400);
 }
 
+console.log('F — одно устройство: одна запись (0.177)');
+{
+  /* Владелец открыл админ-панель и увидел три строки «без ID · SM-A546B» вместо
+     одной. Причина: ключ устройства (mt-uid) случайный и умирает вместе с чисткой
+     данных сайта — тот же телефон заводил вторую запись. Теперь визит приносит ещё
+     и отпечаток устройства, и сервер по нему узнаёт уже знакомый телефон. */
+  const env1 = fakeEnv();
+  const call1 = (fn, path, body, headers) =>
+    fn({ request: new Request('https://mt.test' + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { 'content-type': 'application/json', ...(headers || {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }), env: env1 });
+
+  const fp = 'a1b2c3d4e5f60718';
+  const первый = await (await call1(onRequestPost, '/api/device', { device: 'uid0000000000001', fp, model: 'SM-A546B', ver: '0.177' })).json();
+  ok('F1: первый визит заводит запись устройства', первый.ok === true, JSON.stringify(первый).slice(0, 120));
+
+  const ключи1 = [...env1._mem.keys()].filter((k) => k.startsWith('dev:'));
+  ok('F2: записей ровно одна, и к ней привязан отпечаток',
+    ключи1.length === 1 && [...env1._mem.keys()].some((k) => k === 'fp:' + fp), JSON.stringify(ключи1));
+
+  /* Тот же телефон, но данные сайта почищены: mt-uid новый, отпечаток прежний. */
+  const второй = await (await call1(onRequestPost, '/api/device', { device: 'uid9999999999999', fp, model: 'SM-A546B', ver: '0.177', id: 'Kotik' })).json();
+  const ключи2 = [...env1._mem.keys()].filter((k) => k.startsWith('dev:'));
+  const запись = JSON.parse(env1._mem.get(ключи1[0]));
+  ok('F3: второй заход с чистого localStorage не заводит новую запись — телефон остаётся один',
+    ключи2.length === 1 && второй.ok === true && запись.visits >= 1,
+    JSON.stringify({ ключи: ключи2, visits: запись.visits }));
+  ok('F4: ID, занятый после чистки, лёг в ту же самую запись',
+    второй.device && второй.device.id === 'Kotik' && запись.id === 'Kotik',
+    JSON.stringify({ отв: второй.device, вЗаписи: запись.id }));
+
+  /* А другой телефон (другой отпечаток) обязан остаться отдельной записью. */
+  await call1(onRequestPost, '/api/device', { device: 'uid1111111111111', fp: '9999888877776666', model: 'Pixel 8', ver: '0.177' });
+  const ключи3 = [...env1._mem.keys()].filter((k) => k.startsWith('dev:'));
+  ok('F5: второй телефон — отдельная запись (склейка идёт по отпечатку, а не по модели)',
+    ключи3.length === 2, JSON.stringify(ключи3));
+
+  /* Пустую запись, заведённую новым ключом до склейки, сервер убирает за собой:
+     иначе в админ-панели остаются пустые строки «без ID». */
+  const третий = await (await call1(onRequestPost, '/api/device', { device: 'uid2222222222222', fp, model: 'SM-A546B', ver: '0.177' })).json();
+  const ключи4 = [...env1._mem.keys()].filter((k) => k.startsWith('dev:'));
+  ok('F6: новая пустая запись не остаётся мусором в списке устройств',
+    третий.ok === true && ключи4.length === 2
+      && !ключи4.some((k) => k.includes('uid2222222222222')),
+    JSON.stringify(ключи4));
+
+  /* Отпечаток-мусор не должен ничего склеивать. */
+  const короткий = await (await call1(onRequestPost, '/api/device', { device: 'uid3333333333333', fp: 'ab', model: 'Nokia', ver: '0.177' })).json();
+  const ключи5 = [...env1._mem.keys()].filter((k) => k.startsWith('dev:'));
+  ok('F7: слишком короткий отпечаток не принимается — склейки наугад нет',
+    короткий.ok === true && ключи5.length === 3 && ![...env1._mem.keys()].some((k) => k === 'fp:ab'),
+    JSON.stringify(ключи5));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

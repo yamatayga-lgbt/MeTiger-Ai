@@ -16,7 +16,8 @@
 import { createRateLimiter, cfgOf as limitsCfg } from '../../engine/limits.js';
 import {
   ID_MAX, ID_MIN, DEV_ID, RENAME_MS,
-  canRename, deviceKeyOf, deviceRecordKey, idIndexKey, idProblem, modelFromUa, normalizeId, renameLeft, renameWaitText,
+  canRename, deviceKeyOf, deviceRecordKey, fingerprintOf, fpIndexKey, idIndexKey, idProblem,
+  modelFromUa, normalizeId, renameLeft, renameWaitText,
 } from '../../engine/devid.js';
 import { ownerOk } from './report.js';
 
@@ -132,8 +133,30 @@ export async function onRequestPost(context) {
   } catch {
     body = {};
   }
-  const key = deviceKeyOf(body.device);
-  if (!key) return json({ ok: false, error: 'не понял, с какого вы устройства' }, 400);
+  const asked = deviceKeyOf(body.device);
+  if (!asked) return json({ ok: false, error: 'не понял, с какого вы устройства' }, 400);
+  const fp = fingerprintOf(body.fp);
+
+  /* Одно устройство — одна запись (0.177).
+     Ключ устройства живёт в localStorage и умирает вместе с чисткой данных сайта:
+     тот же телефон заводил вторую запись, и владелец видел в админ-панели три
+     строки «без ID · SM-A546B» вместо одной. Поэтому визит с новым ключом, но
+     известным отпечатком приписываем к уже существующей записи, а пустую (ни ID,
+     ни обращений) — убираем, чтобы не мусорить. */
+  let key = asked;
+  if (fp) {
+    const mapped = await store.get(fpIndexKey(fp));
+    if (mapped && mapped.key && mapped.key !== asked) {
+      const known = await readDevice(store, mapped.key);
+      if (known) {
+        key = mapped.key;
+        const orphan = await readDevice(store, asked);
+        if (orphan && !orphan.id && !Number(orphan.reports || 0)) {
+          try { await store.del(deviceRecordKey(asked)); } catch (e) { /* нечего чистить — не беда */ }
+        }
+      }
+    }
+  }
 
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'anon';
   if (await tooOften(request, env, ip)) return json({ ok: false, error: 'слишком часто — подождите минуту' }, 429);
@@ -205,8 +228,14 @@ export async function onRequestPost(context) {
     }
   }
 
+  rec.key = key;
   await store.put(deviceRecordKey(key), rec);
   if (rec.id) await store.put(idIndexKey(rec.id), { key: rec.key, at: Number(rec.idChangedAt || now) });
+  /* Отпечаток запоминаем всегда: следующая чистка данных на этом телефоне вернёт
+     человека в ЭТУ же запись, а не заведёт новую. */
+  if (fp) {
+    try { await store.put(fpIndexKey(fp), { key, at: now }); } catch (e) { /* указатель не сложился — не беда */ }
+  }
 
   return json({
     ok: true,
