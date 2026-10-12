@@ -285,7 +285,9 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, 
             <Row
               icon={<Inbox size={20} />}
               label="Админ-панель"
-              value="устройства и обращения"
+              /* Хвост короткий: с длинным «устройства и обращения» подпись
+                 обрезалась в «Админ-пан…» — на телефоне это выглядело поломкой. */
+              value="устройства"
               chevron
               onClick={() => {
                 haptic('light')
