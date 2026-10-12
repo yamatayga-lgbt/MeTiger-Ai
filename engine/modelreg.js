@@ -71,6 +71,11 @@ const num = (x, dflt) => {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+/** Очистка ID от потенциально опасных символов */
+function sanitizeId(id) {
+  return String(id || '').replace(/[^a-zA-Z0-9_:.\/-]/g, '').slice(0, 200);
+}
+
 /** Цена нулевая по обеим сторонам? (у Xkiро нет суффикса `:free`, только price) */
 function isFree(m) {
   if (/:(free|zero)$/i.test(String(m && m.id))) return true;
@@ -101,9 +106,11 @@ function fromOpenRouter(m) {
   const outMod = Array.isArray(arch.output_modalities) ? arch.output_modalities : [];
   const knownMod = inMod.length > 0 || typeof arch.modality === 'string';
   const params = Array.isArray(m.supported_parameters) ? m.supported_parameters : [];
-  const lower = m.id.toLowerCase();
+  const id = sanitizeId(m.id);
+  if (!id) return null;
+  const lower = id.toLowerCase();
   return {
-    id: m.id,
+    id: id,
     name: prettyName(m),
     vendor: (m.id.split('/')[0] || '').toUpperCase(),
     src: 'openrouter',
@@ -125,9 +132,11 @@ function fromOpenRouter(m) {
 function fromXkiro(m) {
   if (!m || typeof m.id !== 'string' || !m.id) return null;
   const cap = m.capabilities || {};
-  const lower = m.id.toLowerCase();
+  const id = sanitizeId(m.id);
+  if (!id) return null;
+  const lower = id.toLowerCase();
   return {
-    id: m.id,
+    id: id,
     name: prettyName(m),
     vendor: 'Xkiro',
     src: 'xkiro',
@@ -163,7 +172,9 @@ function textOut(m) {
 function fromProviderList(m, src, opts = {}) {
   if (!m || typeof m.id !== 'string' || !m.id) return null;
   const cap = m.capabilities || {};
-  const lower = m.id.toLowerCase();
+  const id = sanitizeId(m.id);
+  if (!id) return null;
+  const lower = id.toLowerCase();
   const inMod = Array.isArray(m.input_modalities) ? m.input_modalities : [];
   const knownMod = inMod.length > 0 || Array.isArray(m.output_modalities) || typeof m.modality === 'string';
   const vision = knownMod
@@ -172,7 +183,7 @@ function fromProviderList(m, src, opts = {}) {
   const priced = isFree(m) || m.access_tier === 'free' || m.access_tier === 'free_tier';
   const ssp = Array.isArray(m.supported_sampling_parameters) ? m.supported_sampling_parameters : [];
   return {
-    id: m.id,
+    id: id,
     name: prettyName(m),
     vendor: (m.owned_by ? String(m.owned_by) : src).slice(0, 18).toUpperCase(),
     src,
@@ -204,7 +215,7 @@ function fromProviderList(m, src, opts = {}) {
  * и режем всё, что не умеет обычный generateContent (tts, live, embeddings).
  */
 function fromGemini(m) {
-  const id = String((m && m.name) || '').replace(/^models\//, '');
+  const id = sanitizeId(String((m && m.name) || '').replace(/^models\//, ''));
   if (!id) return null;
   const methods = Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : [];
   const lower = id.toLowerCase();

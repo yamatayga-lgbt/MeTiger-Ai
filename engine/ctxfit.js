@@ -53,7 +53,7 @@ export function estTokens(s) {
   const n = Math.min(text.length, 8000);
   for (let i = 0; i < n; i++) {
     const c = text.charCodeAt(i);
-    if ((c >= 0x400 && c <= 0x4ff) || (c >= 0x30 && c <= 0x39)) cyr++;
+    if (c >= 0x400 && c <= 0x4ff) cyr++;
   }
   const share = n ? cyr / n : 0;
   const perToken = CHARS_PER_TOKEN_LATIN - (CHARS_PER_TOKEN_LATIN - CHARS_PER_TOKEN_CYR) * Math.min(1, share * 1.6);

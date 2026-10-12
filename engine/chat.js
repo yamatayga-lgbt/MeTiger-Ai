@@ -197,6 +197,8 @@ export function createEngine(opts) {
     if (n <= 1) return skip && skip.size ? -1 : pickKey(P, id, health);
     const start = (keyTurn.get(id) || 0) % n;
     keyTurn.set(id, start + 1);
+    // Очистка старого состояния
+    if (keyTurn.size > 1000) keyTurn.clear();
     for (let s = 0; s < n; s++) {
       const i = (start + s) % n;
       if (skip && skip.has(i)) continue;

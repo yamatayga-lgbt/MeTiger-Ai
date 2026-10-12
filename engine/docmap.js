@@ -64,11 +64,12 @@ export function splitIntoChunks(text, chunkSize = DEFAULT_CHUNK_SIZE, options = 
         
         currentChunk = line;
         currentPage++;
-        startLine = currentLine;
-      } else {
-        currentChunk += (currentChunk.length > 0 ? '\n' : '') + line;
+        startLine = currentLine + 1;
+        currentLine++;
+        continue;
       }
       
+      currentChunk += (currentChunk.length > 0 ? '\n' : '') + line;
       currentLine++;
     }
     
