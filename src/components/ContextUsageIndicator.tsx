@@ -1,8 +1,9 @@
 /**
  * Заполнение контекста (0.170).
  *
- * Показывает, сколько окна модели занял последний запрос: полоска, процент и — когда
- * места почти не осталось — предупреждение словами. Цифры приходят готовыми из ответа
+ * Показывает, сколько окна модели занял последний запрос: полоска, процент, числа и —
+ * когда места почти не осталось — короткая отметка «почти полон» (полное предложение
+ * на телефоне не влезало в строку и ломало подпись на две). Цифры приходят готовыми из ответа
  * движка (props.ctxUsage): фронт не знает ни системных подсказок, ни окна выбранной
  * модели, поэтому любая его собственная оценка была бы выдумкой. Нет данных — нет
  * индикатора: полоска «0 %» врала бы про пустой контекст.
@@ -42,17 +43,21 @@ export function ContextUsageIndicator({
   const percent = Math.min(100, Math.round((used / maxTokens) * 100));
   const warn = showWarning && percent >= warningThreshold * 100;
   return (
-    <div className="context-usage-indicator" aria-label="Заполнение контекста">
+    <div
+      className="context-usage-indicator"
+      aria-label={`Контекст заполнен на ${percent} процентов`}
+    >
       <div className="context-usage-bar-container" role="presentation">
         <div
           className="context-usage-bar"
           style={{ width: `${percent}%`, backgroundColor: barColor(percent) }}
         />
       </div>
-      <span className={`context-usage-text${warn ? ' context-usage-warning' : ''}`}>
-        {percent}% ({used.toLocaleString('ru-RU')} / {maxTokens.toLocaleString('ru-RU')} токенов)
+      <span className={`context-usage-text${warn ? ' context-usage-warning' : ''}`}>{percent}%</span>
+      <span className="context-usage-nums">
+        {used.toLocaleString('ru-RU')} / {maxTokens.toLocaleString('ru-RU')} токенов
       </span>
-      {warn ? <span className="context-usage-alert">Контекст почти заполнен</span> : null}
+      {warn ? <span className="context-usage-alert">почти полон</span> : null}
     </div>
   );
 }

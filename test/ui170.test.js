@@ -58,9 +58,13 @@ ok('U170h без настоящих чисел индикатор не пока�
   /\{contextInfo\.maxTokens > 0 \? \(/.test(chatView) && /if \(!\(maxTokens > 0\)\) return null/.test(indicator));
 ok('U170i процент считается без мигания: прямо в разметке, без состояния и useEffect',
   !/useEffect/.test(indicator) && !/useState/.test(indicator) && /Math\.min\(100, Math\.round\(\(used \/ maxTokens\) \* 100\)\)/.test(indicator));
-ok('U170j предупреждение — словами и с порога, а не всегда',
-  /context-usage-alert/.test(indicator) && /Контекст почти заполнен/.test(indicator)
+ok('U170j предупреждение — коротко и с порога, а не всегда',
+  /context-usage-alert/.test(indicator) && /почти полон/.test(indicator)
     && /percent >= warningThreshold \* 100/.test(indicator) && /\.context-usage-alert/.test(css));
+ok('U170n индикатор живёт строкой над полем, а не внутри «пилюли» (там он поджимал кнопки)',
+  /contextInfo\.maxTokens > 0 \? \(/.test(chatView)
+    && chatView.indexOf('</form>') < chatView.indexOf('<ContextUsageIndicator')
+    && /white-space: nowrap/.test(css) && /\.context-usage-nums/.test(css));
 ok('U170k версия видна рядом с именем агента в подсказке у поля ввода',
   /composer-hint-version/.test(chatView) && /v\{APP_VERSION\}/.test(chatView));
 ok('U170l новые тесты 0.170 подключены к цепочке прогона (раньше их не запускал никто)',

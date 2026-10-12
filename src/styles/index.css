@@ -6227,18 +6227,29 @@ button,
 }
 
 /* Индикатор использования контекста */
+/* Полоска заполнения контекста живёт СТРОКОЙ НАД полем ввода, а не внутри «пилюли»:
+   внутри неё текст ломался на две строки и поджимал кнопки (снимок с прода 0.170).
+   Поэтому — без переносов, мелко и вправо, где глазу ничего не стоит. */
 .context-usage-indicator {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
+  justify-content: flex-end;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 10.5px;
+  line-height: 1.2;
   color: var(--text-3);
-  margin-top: 8px;
+  margin: 0 8px 6px;
+}
+
+.context-usage-nums {
+  color: var(--text-3);
+  opacity: 0.75;
 }
 
 .context-usage-bar-container {
-  width: 80px;
-  height: 6px;
+  width: 56px;
+  height: 4px;
   background-color: var(--border, rgba(255, 255, 255, 0.1));
   border-radius: 3px;
   overflow: hidden;
@@ -6251,7 +6262,8 @@ button,
 }
 
 .context-usage-text {
-  font-size: 11px;
+  font-size: 10.5px;
+  font-weight: 600;
   color: var(--text-2);
 }
 
@@ -6261,9 +6273,9 @@ button,
 }
 
 .context-usage-alert {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--danger);
-  margin-left: 6px;
+  margin-left: 2px;
   animation: pulse 2s infinite;
 }
 

@@ -1359,13 +1359,17 @@ export function ChatView({
               />
             </>
           ) : null}
-          {contextInfo.maxTokens > 0 ? (
-            <ContextUsageIndicator
-              usedTokens={contextInfo.usedTokens}
-              maxTokens={contextInfo.maxTokens}
-            />
-          ) : null}
         </form>
+        {/* Контекст — строкой над полем, а не внутри «пилюли»: в 0.170 индикатор
+            сначала поставили в саму пилюлю, и на телефоне он растолкал кнопки
+            (снимок с прода: текст в две строки, «+» прижался к проценту). Здесь
+            он никому не мешает, а человек всё равно видит его перед отправкой. */}
+        {contextInfo.maxTokens > 0 ? (
+          <ContextUsageIndicator
+            usedTokens={contextInfo.usedTokens}
+            maxTokens={contextInfo.maxTokens}
+          />
+        ) : null}
         {voiceError ? (
           <div className="voice-error" role="status" aria-live="polite">
             <span>{voiceError}</span>
