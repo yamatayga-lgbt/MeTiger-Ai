@@ -4528,6 +4528,27 @@ button.rows-row:hover {
   color: var(--accent);
 }
 
+.toast-action {
+  margin-left: 12px;
+  padding: 4px 12px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--t-fast);
+}
+
+.toast-action:hover {
+  opacity: 0.9;
+}
+
+.toast-action:active {
+  opacity: 0.8;
+}
+
 /* ---------- Установлено на экран (PWA, display-mode: standalone) ----------
    В обычной вкладке браузера место под чёлку/статус-бар уже занято адресной
    строкой. Без неё контент полез бы под статус-бар — добавляем отступ только
