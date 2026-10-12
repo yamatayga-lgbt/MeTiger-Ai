@@ -392,6 +392,21 @@ a {
   font-weight: 550;
 }
 
+/* Отметка сборки в шапке меню (0.170): стоит по центру зазора между именем и
+   «beta» — ровно там, где владелец обвёл пустое место на снимке 12 окт. */
+.brand-version {
+  margin: 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
 .side-badge {
   margin-left: auto;
   font-size: 10px;
@@ -6284,8 +6299,4 @@ button,
   50% { opacity: 0.5; }
 }
 
-.composer-hint-version {
-  margin-left: 4px;
-  color: var(--text-3);
-  font-size: 9px;
-}
+/* .composer-hint-version удалён в 0.170: версия переехала в шапку меню (.brand-version). */

@@ -17,6 +17,7 @@ const apiFn = readFileSync('functions/api/chat.js', 'utf8');
 const api = readFileSync('src/lib/api.ts', 'utf8');
 const app = readFileSync('src/App.tsx', 'utf8');
 const chatView = readFileSync('src/views/ChatView.tsx', 'utf8');
+const logo = readFileSync('src/components/Logo.tsx', 'utf8');
 const indicatorRaw = readFileSync('src/components/ContextUsageIndicator.tsx', 'utf8');
 /* Комментарии срезаем: они объясняют код словами, и поиск по словам ловил бы в них
    то, чего в самом коде нет (та же ловушка, что с тестами формы в 0.160). */
@@ -65,8 +66,13 @@ ok('U170n индикатор живёт строкой над полем, а н�
   /contextInfo\.maxTokens > 0 \? \(/.test(chatView)
     && chatView.indexOf('</form>') < chatView.indexOf('<ContextUsageIndicator')
     && /white-space: nowrap/.test(css) && /\.context-usage-nums/.test(css));
-ok('U170k версия видна рядом с именем агента в подсказке у поля ввода',
-  /composer-hint-version/.test(chatView) && /v\{APP_VERSION\}/.test(chatView));
+ok('U170k версия видна в шапке меню рядом с именем агента, а из подписи под полем убрана (0.170, просьба владельца)',
+  /<span className="brand-version">v\{APP_VERSION\}<\/span>/.test(logo)
+    && /import \{ APP_VERSION \} from '\.\.\/lib\/version'/.test(logo)
+    && /\.brand-version \{/.test(css)
+    && !/composer-hint-version/.test(chatView)
+    && !/composer-hint-version \{/.test(css)
+    && /ИИ может ошибаться/.test(chatView));
 ok('U170l новые тесты 0.170 подключены к цепочке прогона (раньше их не запускал никто)',
   /node test\/docmap\.test\.js/.test(testChain)
     && /node test\/smartmemory\.test\.js/.test(testChain)

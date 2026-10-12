@@ -18,7 +18,6 @@ import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
 const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
 import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, sourceDate, type Attachment, type WebStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
-import { APP_VERSION } from '../lib/version'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 import { enterKeySends } from '../lib/platform'
 
@@ -1377,8 +1376,9 @@ export function ChatView({
         ) : null}
         {voiceNote ? <div className="voice-note">{voiceNote}</div> : null}
         <p className="composer-hint">
-          <span className="composer-hint-model">MeTiger Ai</span>
-          <span className="composer-hint-version">v{APP_VERSION}</span> · ИИ может ошибаться. Проверяйте важную информацию.
+          {/* Версию отсюда убрали в 0.170 — она переехала в шапку меню (см. Logo.tsx);
+              здесь остаётся только имя и предупреждение. */}
+          <span className="composer-hint-model">MeTiger Ai</span> · ИИ может ошибаться. Проверяйте важную информацию.
         </p>
       </div>
       {lightbox ? (

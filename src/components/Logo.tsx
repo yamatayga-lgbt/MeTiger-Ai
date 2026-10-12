@@ -1,4 +1,5 @@
 import avatarUrl from '../assets/agent-avatar.webp'
+import { APP_VERSION } from '../lib/version'
 
 interface LogoMarkProps {
   size?: number
@@ -35,6 +36,10 @@ export function Logo({ compact = false }: { compact?: boolean }) {
       <div className="brand-name">
         MeTiger <span className="dim">Ai</span>
       </div>
+      {/* Версия — здесь, а не под полем ввода (0.170): в шапке меню её видно сразу,
+          а место между именем и значком beta всё равно пустовало — владелец обвёл
+          его на снимке 12 окт. Номер меняется только с выпуском: это отметка сборки. */}
+      <span className="brand-version">v{APP_VERSION}</span>
       <span className="side-badge">beta</span>
     </div>
   )
