@@ -41,7 +41,7 @@ import {
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
 import { lazyView } from './lib/chunkReload'
-import { idAsked, pingDevice, type MyDevice } from './lib/devid'
+import { idAsked, markIdAsked, pingDevice, type MyDevice } from './lib/devid'
 import { ownerEnabled } from './lib/report'
 import { siteUser, type Person } from './lib/user'
 import { usePersistentState } from './hooks/usePersistentState'
@@ -745,6 +745,10 @@ export default function App() {
         <IdCard
           owner={owner}
           onDone={(d) => {
+            /* Спросили один раз — и запомнили, что спросили. Иначе «Позже» означало
+               бы «спрашивайте при каждом заходе», а это уже приставание. Задать ID
+               потом всегда можно в профиле. */
+            markIdAsked()
             setIdCard(false)
             if (d) setDevice(d)
             setUser(siteUser())
