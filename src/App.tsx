@@ -707,6 +707,7 @@ export default function App() {
           title={title}
           onOpenMenu={() => setMenuOpen(true)}
           onOpenWorkspace={() => setWorkspaceOpen(true)}
+          onOpenLimits={() => navigate('usage')}
           {...(BACK_TO[view] ? { onBack: () => navigate(BACK_TO[view] as ViewId) } : {})}
           {...(view === 'chat'
             ? {

@@ -1886,10 +1886,10 @@ console.log('── N · плоский интерфейс (0.144: стекло 
   ok('N22: кнопки поля ввода — простые круглые кнопки, отправка — акцентная',
     /\n\.composer \.icon-btn,[\s\S]{0,120}\.composer \.params-btn \{[\s\S]{0,400}border-radius: var\(--r-full\)/.test(bareCss)
       && /\n\.composer \.send-btn \{[\s\S]{0,300}border-radius: var\(--r-full\)/.test(bareCss)
-      && /\n\.composer \.send-btn \{[\s\S]{0,300}background: var\(--accent-grad\)/.test(bareCss));
+      && /\n\.composer \.send-btn \{[\s\S]{0,300}background: var\(--brand\)/.test(bareCss));
 
-  ok('N23: кнопки поля ввода плоские — заливка var(--surface-2), без блика и размытия',
-    /\.composer \.icon-btn,[\s\S]{0,200}background-color: var\(--surface-2\)/.test(bareCss));
+  ok('N23: кнопки поля ввода плоские — заливка transparent, без блика и размытия',
+    /\.composer \.icon-btn,[\s\S]{0,200}background-color: transparent/.test(bareCss));
 
   ok('N24: разметка ответа пересобирается только при смене текста (memo), а колбэк вывода кода стабилен (useCallback): иначе каждая буква в поле ввода заново разбирала Markdown всей переписки — это и был лаг печати', 
     /export const Markdown = memo\(/.test(readFileSync('src/components/Markdown.tsx', 'utf8'))

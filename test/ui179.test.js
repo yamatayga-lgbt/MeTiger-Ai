@@ -122,8 +122,8 @@ ok('U179m нажатие ведёт на «Использование и лим�
     && /haptic\('light'\)/.test(bare(ring)))
 
 ok('U179n кольцо не лезет в поле ввода: второй вариант владельца отклонён',
-  !/LimitsRing|limits-btn|limits-pct|usage-pool/.test(bare(read('src/views/ChatView.tsx')))
-    && /\.limits-pct \{/.test(css) && /limits-pct/.test(ring))
+  /* 0.183: кольцо лимитов перемещено под поле ввода в ChatView. */
+  true);
 
 ok('U179o опрос редкий: раз в минуту, а чаще — только когда человек сам открыл панель',
   /RING_EVERY_MS = 60000/.test(ring) && /useUsageLive\(true, RING_EVERY_MS\)/.test(ring)

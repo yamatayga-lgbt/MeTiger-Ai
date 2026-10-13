@@ -7,6 +7,7 @@ interface TopbarProps {
   title: string
   onOpenMenu: () => void
   onOpenWorkspace: () => void
+  onOpenLimits?: () => void
   /** Вложенный экран (профиль, настройки, персонализация...): слева стрелка
       «назад», как в приложении ChatGPT, вместо круглой кнопки меню. */
   onBack?: () => void
