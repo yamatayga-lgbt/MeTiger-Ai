@@ -351,6 +351,7 @@ export interface ProfileFields {
   name: string
   job: string
   about: string
+  gender?: string
 }
 
 export interface ProfileData extends ProfileFields {
@@ -409,7 +410,7 @@ export function fetchProfile(): Promise<ProfileResult> {
 }
 
 export function saveProfile(fields: ProfileFields): Promise<ProfileResult> {
-  return profileRequest('PUT', { name: fields.name, job: fields.job, about: fields.about })
+  return profileRequest('PUT', { name: fields.name, job: fields.job, about: fields.about, gender: fields.gender })
 }
 
 export function clearProfile(): Promise<ProfileResult> {

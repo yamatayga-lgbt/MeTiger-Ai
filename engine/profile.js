@@ -28,7 +28,7 @@
 
 import { kvKey } from './kvkey.js';
 
-export const CAPS = { name: 60, job: 90, about: 1500 };
+export const CAPS = { name: 60, job: 90, about: 1500, gender: 20 };
 /** Минимум между записями одного профиля, мс: защита от «сохраняю каждое нажатие». */
 export const WRITE_MS = 2000;
 
@@ -66,6 +66,13 @@ function field(v, max, keepNewlines) {
   return s;
 }
 
+function fieldGender(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  if (s === 'male' || s === 'мужской' || s === 'м' || s === 'муж') return 'male';
+  if (s === 'female' || s === 'женский' || s === 'ж' || s === 'жен') return 'female';
+  return '';
+}
+
 /** Запись в полном виде. Полей, которых нет здесь, в профиле жить не должно. */
 export function normalize(raw) {
   const d = raw && typeof raw === 'object' ? raw : {};
@@ -73,6 +80,7 @@ export function normalize(raw) {
     name: field(d.name, CAPS.name, false),
     job: field(d.job, CAPS.job, false),
     about: field(d.about, CAPS.about, true),
+    gender: fieldGender(d.gender),
     updatedAt: Number(d.updatedAt) || 0,
   };
   p.filled = !!(p.name || p.job || p.about);
@@ -118,6 +126,10 @@ export function blockOf(p) {
   if (!prof.filled) return '';
   const lines = [];
   lines.push('· Как обращаться: ' + (prof.name || 'без имени'));
+  if (prof.gender) {
+    const genderLabel = prof.gender === 'male' ? 'Мужской' : prof.gender === 'female' ? 'Женский' : prof.gender;
+    lines.push('· Пол: ' + genderLabel);
+  }
   if (prof.job) lines.push('· Чем занимается: ' + prof.job);
   if (prof.about) lines.push('· О себе (его слова): ' + prof.about);
   const sig = signalsOf(prof);
@@ -126,7 +138,7 @@ export function blockOf(p) {
     + lines.join('\n');
 }
 
-const clone = (p) => ({ name: p.name, job: p.job, about: p.about, updatedAt: p.updatedAt, filled: p.filled });
+const clone = (p) => ({ name: p.name, job: p.job, about: p.about, gender: p.gender, updatedAt: p.updatedAt, filled: p.filled });
 
 /**
  * Профиль на хранилище. o: { env, store, log } — `store` тот же, что у памяти

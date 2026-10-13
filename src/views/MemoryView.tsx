@@ -3,9 +3,9 @@
  * Перенесено из Персонализации, чтобы разделить настройки агента и личные данные.
  * Сохраняет текущий UI "Подробнее о вас" с textarea, которую можно тянуть пальцем.
  */
-import { Fingerprint, Save, Trash2, UserRound } from 'lucide-react'
+import { Fingerprint, Save, Trash2, UserRound, User } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button } from '../components/ui'
+import { Badge, Button, Segmented } from '../components/ui'
 import {
   clearProfile,
   fetchProfile,
@@ -17,20 +17,27 @@ import {
 import { currentUserId, identityLine } from '../lib/identity'
 import { savePersonName } from '../lib/user'
 
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Мужской', short: 'М', hint: 'Агент будет отвечать как мужчина' },
+  { value: 'female', label: 'Женский', short: 'Ж', hint: 'Агент будет отвечать как женщина' },
+]
+
 interface MemoryViewProps {
   notify: (msg: string) => void
 }
 
 export function MemoryView({ notify }: MemoryViewProps) {
-  const [prof, setProf] = useState<ProfileFields>({ name: '', job: '', about: '' })
+  const [prof, setProf] = useState<ProfileFields>({ name: '', job: '', about: '', gender: '' })
   const [profStatus, setProfStatus] = useState('читаю…')
   const [profSignals, setProfSignals] = useState('')
   const [busy, setBusy] = useState(false)
+  const [userGender, setUserGender] = useState('')
 
   const loadProfile = useCallback(async () => {
     const r = await fetchProfile()
     if (r.ok && r.profile) {
-      setProf({ name: r.profile.name || '', job: r.profile.job || '', about: r.profile.about || '' })
+      setProf({ name: r.profile.name || '', job: r.profile.job || '', about: r.profile.about || '', gender: r.profile.gender || '' })
+      setUserGender(r.profile.gender || '')
       setProfStatus(profileStatusLine(r))
       setProfSignals(signalsLine(r))
     } else {
@@ -44,7 +51,7 @@ export function MemoryView({ notify }: MemoryViewProps) {
 
   async function onSave() {
     setBusy(true)
-    const r = await saveProfile(prof)
+    const r = await saveProfile({ ...prof, gender: userGender })
     if (r.ok) {
       setProfStatus(r.unchanged ? 'ничего не изменилось — сохранилось как было' : profileStatusLine(r))
       setProfSignals(signalsLine(r))
@@ -61,7 +68,8 @@ export function MemoryView({ notify }: MemoryViewProps) {
     setBusy(true)
     const r = await clearProfile()
     if (r.ok) {
-      setProf({ name: '', job: '', about: '' })
+      setProf({ name: '', job: '', about: '', gender: '' })
+      setUserGender('')
       setProfStatus('профиль забыт · поля пустые')
       setProfSignals('')
       savePersonName('')
@@ -104,6 +112,33 @@ export function MemoryView({ notify }: MemoryViewProps) {
       <div className="settings-group">
         <div className="settings-label">О вас</div>
         <div className="settings-card">
+          <div className="settings-row">
+            <div className="icon-wrap">
+              <User size={16} />
+            </div>
+            <div className="grow">
+              <div className="n">Ваш пол</div>
+              <div className="d">
+                Агент будет подстраиваться под ваш пол и отвечать соответствующим образом
+              </div>
+            </div>
+            <Segmented
+              value={userGender}
+              onChange={(v) => {
+                setUserGender(v as string)
+              }}
+              options={GENDER_OPTIONS.map((c) => ({
+                value: c.value,
+                label: (
+                  <>
+                    <span className="seg-long">{c.label}</span>
+                    <span className="seg-short">{c.short}</span>
+                  </>
+                ),
+                title: c.hint,
+              }))}
+            />
+          </div>
           <div className="settings-form">
             <label>
               <span>Как вас зовут</span>
@@ -133,7 +168,7 @@ export function MemoryView({ notify }: MemoryViewProps) {
                 onChange={(e) => setProf({ ...prof, about: e.target.value })}
               />
               <span className="hint">
-                Три поля уходят агенту в каждый запрос. Он опирается на них и не
+                Поля уходят агенту в каждый запрос. Он опирается на них и не
                 выдумывает сверх написанного; в разговоре их не пересказывает.
               </span>
             </label>
