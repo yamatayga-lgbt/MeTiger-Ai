@@ -1639,7 +1639,6 @@ export function ChatView({
           <SlidersHorizontal size={15} />
           <span className="params-dot" aria-hidden="true" />
         </button>
-        {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
         {voiceError ? (
           <div className="voice-error" role="status" aria-live="polite">
             <span>{voiceError}</span>
