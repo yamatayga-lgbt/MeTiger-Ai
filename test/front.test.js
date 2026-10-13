@@ -483,6 +483,10 @@ console.log('K — Настройки: счётчик моделей, адрес
     'src/views/MemoryView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
     '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + join(dir, 'memory.mjs'), '--log-level=error',
   ], { stdio: 'inherit' });
+  execFileSync(bin, [
+    'src/views/MemoryView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
+    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + join(dir, 'memory.mjs'), '--log-level=error',
+  ], { stdio: 'inherit' });
   const { MemoryView } = await import(join(dir, 'memory.mjs'));
   const html = renderToStaticMarkup(React.createElement(MemoryView, { notify() {} }));
   ok('K18: поля памяти есть и названы в нужной формулировке (экран «Память»)',
@@ -1350,6 +1354,15 @@ console.log('── N · плоский интерфейс (0.144: стекло 
   const firstVer = (notesSrc.match(/version: '([^']+)'/) || [])[1] || '';
   ok('N29: «Что нового» знает текущую версию — свежая запись совпадает с APP_VERSION',
     appVer === firstVer && appVer.length > 0, 'версия ' + appVer + ' против записи ' + firstVer);
+
+  /* N35: правило хранения — в «Что нового» не больше 30 записей, и идут они от новой
+     к старой. Без этого список снова вырастет до 80+ записей (так и было). */
+  const noteVers = [...notesSrc.matchAll(/version: '([^']+)'/g)].map((m) => m[1]);
+  const verNum = (v) => Number(String(v).replace('0.', ''));
+  ok('N35: в «Что нового» не больше 30 записей, новые сверху, старые убраны',
+    noteVers.length > 0 && noteVers.length <= 30
+      && noteVers.every((v, i) => i === 0 || verNum(v) < verNum(noteVers[i - 1])),
+    'записей ' + noteVers.length);
 
   const newsView = readFileSync('src/views/WhatsNewView.tsx', 'utf8');
   const sidebarSrc = readFileSync('src/components/Sidebar.tsx', 'utf8');

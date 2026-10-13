@@ -38,8 +38,8 @@ ok('U137d крупные блоки настроек не анимируются
   /\.profile-view,\s*\.profile-view \.page-head,\s*\.profile-view \.settings-card,/.test(css));
 ok('U137e касание карточки настроек не запускает перерисовку блика (0.144: блик удалён вместе со стеклом)',
   glassGone && !/useLiquidGlass/.test(app));
-ok('U137f заметка о выпуске и история README содержат 0.137',
-  /version: '0\.137'[\s\S]*?title: 'Настройки прокручиваются без мерцания'/.test(notes)
-    && /^> \*\*0\.137\*\*/m.test(readme));
+/* старше окна «Что нового» (30 записей) — история только в README и в git */
+ok('U137f история README содержит 0.137',
+  /^> \*\*0\.137\*\*/m.test(readme));
 
 console.log('\n6 ✔, 0 ✖');
