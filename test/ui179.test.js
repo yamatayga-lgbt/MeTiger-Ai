@@ -116,14 +116,18 @@ ok('U179l кольцо стоит в шапке рядом с Workspace, а не
   true,
   'порядок в разметке')
 
+/* 0.183: кольцо переехало из шапки под поле ввода (ChatView), шапка его больше не знает. */
+const chatView = read('src/views/ChatView.tsx')
 ok('U179m нажатие ведёт на «Использование и лимиты», а не в никуда',
   /onOpenLimits=\{\(\) => navigate\('usage'\)\}/.test(app)
-    && /onOpenLimits\?: \(\) => void/.test(topbar)
+    && /onOpenLimits\?: \(\) => void/.test(chatView)
+    && (chatView.match(/<LimitsRing onOpen=\{onOpenLimits\}/g) || []).length === 1
     && /haptic\('light'\)/.test(bare(ring)))
 
-ok('U179n кольцо не лезет в поле ввода: второй вариант владельца отклонён',
-  /* 0.183: кольцо лимитов перемещено под поле ввода в ChatView. */
-  true);
+/* 0.183: владелец попросил кольцо ПОД полем ввода справа — ровно один раз в ChatView. */
+ok('U179n кольцо стоит под полем ввода ровно один раз (0.183)',
+  (bare(read('src/views/ChatView.tsx')).match(/<LimitsRing onOpen=\{onOpenLimits\}/g) || []).length === 1
+    && /\.limits-pct \{/.test(css) && /limits-pct/.test(ring))
 
 ok('U179o опрос редкий: раз в минуту, а чаще — только когда человек сам открыл панель',
   /RING_EVERY_MS = 60000/.test(ring) && /useUsageLive\(true, RING_EVERY_MS\)/.test(ring)
