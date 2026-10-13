@@ -11,6 +11,7 @@ import { ChatView } from './views/ChatView'
    (см. lib/chunkReload.ts). */
 const ProfileView = lazyView(() => import('./views/ProfileView').then((m) => ({ default: m.ProfileView })))
 const PersonalizationView = lazyView(() => import('./views/PersonalizationView').then((m) => ({ default: m.PersonalizationView })))
+const MemoryView = lazyView(() => import('./views/MemoryView').then((m) => ({ default: m.MemoryView })))
 const DataView = lazyView(() => import('./views/DataView').then((m) => ({ default: m.DataView })))
 const InfoView = lazyView(() => import('./views/InfoView').then((m) => ({ default: m.InfoView })))
 const UsageView = lazyView(() => import('./views/UsageView').then((m) => ({ default: m.UsageView })))
@@ -65,6 +66,7 @@ export type ViewId =
      сюда (просьба владельца: «Профиль и будет читаться как Настройки»). */
   | 'profile'
   | 'personalization'
+  | 'memory'
   | 'data'
   | 'info'
   /* «Обращения» и «Админ» — экраны владельца: без кода они не откроются ни из
@@ -85,6 +87,7 @@ const TITLES: Record<ViewId, string> = {
   whatsnew: 'Что нового',
   profile: 'Профиль',
   personalization: 'Персонализация',
+  memory: 'Память',
   data: 'Управление данными',
   info: 'Информация',
   reports: 'Обращения',
@@ -93,7 +96,7 @@ const TITLES: Record<ViewId, string> = {
 
 /* Экраны, которые нельзя рисовать «въезжающей» анимацией: списки на весь экран
    мигают и дёргаются при входе (см. комментарий к .settings-scroll в styles). */
-const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'data', 'info', 'reports', 'admin']
+const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'memory', 'data', 'info', 'reports', 'admin']
 
 /* Куда ведёт стрелка «назад» на вложенных экранах. Не история посещений, а
    постоянный маршрут: с любого экрана назад — туда, откуда в него попадают.
@@ -101,6 +104,7 @@ const NO_ANIM_VIEWS: ViewId[] = ['profile', 'personalization', 'data', 'info', '
 const BACK_TO: Partial<Record<ViewId, ViewId>> = {
   profile: 'chat',
   personalization: 'profile',
+  memory: 'profile',
   data: 'profile',
   info: 'profile',
   reports: 'profile',
@@ -756,6 +760,7 @@ export default function App() {
             />
           ) : null}
           {view === 'personalization' ? <PersonalizationView notify={notify} /> : null}
+          {view === 'memory' ? <MemoryView notify={notify} /> : null}
           {view === 'data' ? (
             <DataView chats={chats} notify={notify} onWipeLocal={wipeLocal} />
           ) : null}

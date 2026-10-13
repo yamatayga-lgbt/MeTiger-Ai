@@ -106,7 +106,6 @@ function Row({
 
 export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, device = null, onDevice, owner: ownerProp = false }: ProfileViewProps) {
   const name = displayName(user)
-  const soon = (what: string) => () => notify(what + ' — скоро')
   /* «Внешний вид» — раскрывающаяся строка: тема выбирается прямо под подписью,
      как в приложении ChatGPT. Свёрнута по умолчанию, чтобы список оставался списком. */
   const [appearanceOpen, setAppearanceOpen] = useState(false)
@@ -184,7 +183,12 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, 
           chevron
           onClick={() => onNavigate('personalization')}
         />
-        <Row icon={<Map size={20} />} label="Память" soon onClick={soon('Память')} />
+        <Row
+          icon={<Map size={20} />}
+          label="Память"
+          chevron
+          onClick={() => onNavigate('memory')}
+        />
       </div>
 
       {/* «Рабочая область» убрана по просьбе владельца (0.173). Остальные строки
