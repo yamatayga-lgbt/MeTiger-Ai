@@ -4255,11 +4255,12 @@ kbd {
   padding: 9px 16px;
   border: 0;
   border-bottom: 1px solid var(--border);
-  background: none;
-  color: var(--text);
+  background: white;
+  color: black;
   font: inherit;
   /* 15.5px — размер строки из приложения ChatGPT. */
   font-size: 15.5px;
+  font-weight: 600;
   text-align: left;
 }
 
@@ -4273,13 +4274,13 @@ button.rows-row {
 }
 
 button.rows-row:hover {
-  background: var(--surface-hover);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .rows-ic {
   display: inline-flex;
   flex: none;
-  color: var(--text-2);
+  color: black;
 }
 
 .rows-name {
