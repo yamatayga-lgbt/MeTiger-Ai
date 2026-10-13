@@ -95,6 +95,7 @@ export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameCha
               setMenu((m) => (m ? null : { x: rect.left + rect.width / 2, y: rect.bottom }))
             }}
           >
+            {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
             <span>{title}</span>
             <ChevronDown size={14} />
           </button>
@@ -102,14 +103,12 @@ export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameCha
           // Не экран чата (например, «Настройки») — переименовывать и удалять
           // нечего, капсула просто подписывает раздел, без кнопки под ней.
           <div className="topbar-pill topbar-pill-static" title={title}>
+            {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
             <span>{title}</span>
           </div>
         )}
 
         <div className="topbar-side topbar-right">
-          {/* Кольцо лимитов — слева от Workspace: запас агента важнее папки с файлами,
-              но владелец просил именно рядом с папкой, а не вместо неё (0.179). */}
-          {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
           <IconButton
             icon={Folder}
             label="Workspace"

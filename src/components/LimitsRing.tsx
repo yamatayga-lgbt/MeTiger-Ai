@@ -77,19 +77,19 @@ export function LimitsRing({ onOpen }: { onOpen: () => void }) {
   return (
     <button
       type="button"
-      className={'limits-btn' + (empty ? ' is-empty' : '')}
+      className={'limits-btn compact' + (empty ? ' is-empty' : '')}
       /* Тон уезжает в CSS переменной, а светлота — в правилах тем: одна и та же
          дорога «зелёное → красное» работает и на светлом, и на тёмном фоне. */
       style={{ '--ring-h': String(Math.round(ringHue(pct) * 10) / 10) } as CSSProperties}
-      aria-label={`Просмотреть лимиты: общий запас агента ${fmtPct(pct)} (${poolLine(pool)})`}
+      aria-label={`Общий запас агента ${fmtPct(pct)}`}
       title={`Общий запас агента: ${fmtPct(pct)} · ${poolLine(pool)}`}
       onClick={() => {
         haptic('light')
         onOpen()
       }}
     >
-      <LimitsRingGlyph pct={pct} />
-      <span className="limits-pct">{fmtPct(pct)}</span>
+      <LimitsRingGlyph pct={pct} size={18} stroke={2} />
+      <span className="limits-pct">{Math.round(pct)}%</span>
     </button>
   )
 }

@@ -882,6 +882,13 @@ a {
   transition: background 0.15s ease, transform 0.15s ease;
 }
 
+/* Компактный режим: только кольцо и процент, без текста */
+.limits-btn.compact {
+  padding: 0 6px;
+  gap: 4px;
+  height: 28px;
+}
+
 /* Тёмная тема: тот же оттенок, но светлее — на почти чёрном фоне 42 % тускнеет
    (хуже всех читалось красное при малом запасе). */
 [data-theme='dark'] .limits-btn {
