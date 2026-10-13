@@ -50,8 +50,8 @@ ok('U145f индикатор подключён: кружок .ptr в App вне
     && /\.ptr\.is-busy svg \{/.test(css)
     && /pointer-events: none/.test(stripCss(css).slice(stripCss(css).indexOf('.ptr {'))));
 
-ok('U145g заметка о выпуске и история README содержат 0.145',
-  /version: '0\.145'[\s\S]*?title: 'Смахни вниз — страница обновится'/.test(notes)
-    && /^> \*\*0\.145\*\*/m.test(readme));
+/* старше окна «Что нового» (30 записей) — история только в README и в git */
+ok('U145g история README содержит 0.145',
+  /^> \*\*0\.145\*\*/m.test(readme));
 
 console.log('\n7 ✔, 0 ✖');

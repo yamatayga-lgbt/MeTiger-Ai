@@ -63,7 +63,8 @@ ok('U155c вычеркнутое красным в профиль не попа�
 ok('U155d нерабочие строки профиля помечены «Скоро», а живые — нет',
   /is-soon/.test(profile)
     && /<Badge tone="gray">Скоро<\/Badge>/.test(profile)
-    && /Память/.test(profile) && /onClick=\{soon\('Память'\)\}/.test(profile)
+    /* «Память» стала живой строкой (76ffdc5): ведёт на свой экран, «Скоро» не нужно */
+    && /Память/.test(profile) && /onNavigate\('memory'\)/.test(profile)
     /* 0.176: «Мой ID» — живая строка: она раскрывается в поле и сохраняет ID,
        поэтому «Скоро» на ней быть не должно. */
     && /Мой ID/.test(profile) && /aria-label="Мой ID"/.test(profile)

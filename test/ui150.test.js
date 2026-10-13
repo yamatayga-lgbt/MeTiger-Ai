@@ -39,5 +39,6 @@ ok('U150d при неудаче запасного пути — мягкая з�
   /if \(!hasDraft\) setVoiceNote\(/.test(chat)
     && /\{voiceNote \? <div className="voice-note">\{voiceNote\}<\/div> : null\}/.test(chat));
 
-ok('U150e заметка о выпуске и история README содержат 0.150',
-  /version: '0\.150'/.test(notes) && /^> \*\*0\.150\*\*/m.test(readme));
+/* старше окна «Что нового» (30 записей) — история только в README и в git */
+ok('U150e история README содержит 0.150',
+  /^> \*\*0\.150\*\*/m.test(readme));
