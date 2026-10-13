@@ -227,7 +227,6 @@ export default function App() {
   /* Контекст последнего ответа (0.170): сколько токенов занял запрос и в какое окно
      он влез. Живёт до смены чата — старые числа не должны выглядеть текущими, поэтому
      чистим их при переключении разговора и при новом чате. */
-  const [ctxInfo, setCtxInfo] = useState<{ used: number; window: number } | null>(null)
   const [user, setUser] = useState<Person>(siteUser())
   /* 0.176: ID устройства и его карточка. Владелец просил: вместо профилей — ID,
      устройство узнаётся по телефону, у него самого ID #Dev и доступ разработчика. */
@@ -438,7 +437,7 @@ export default function App() {
      В проде подмены нет: если движок не ответил, человек видит причину, а не
      красивый текст из таблички. */
   /* Смена разговора — цифры контекста прошлого разговора больше не правда. */
-  useEffect(() => { setCtxInfo(null) }, [activeChatId])
+  useEffect(() => {}, [activeChatId])
 
   const sendMessage = useCallback(
     (text: string, images?: string[], attachments?: Attachment[]) => {
@@ -550,7 +549,6 @@ export default function App() {
       
       void (async () => {
         const r = await retrySendChat()
-        if (r.ok && r.ctx && r.ctx.window > 0) setCtxInfo(r.ctx)
         if (r.ok) {
           recordModelTelemetry(
             model || r.model,
@@ -709,9 +707,6 @@ export default function App() {
           title={title}
           onOpenMenu={() => setMenuOpen(true)}
           onOpenWorkspace={() => setWorkspaceOpen(true)}
-          /* Кольцо запаса агента ведёт на экран, где та же цифра разложена по
-             источникам: «Просмотреть лимиты» — это он и есть (0.179). */
-          onOpenLimits={() => navigate('usage')}
           {...(BACK_TO[view] ? { onBack: () => navigate(BACK_TO[view] as ViewId) } : {})}
           {...(view === 'chat'
             ? {
@@ -725,8 +720,9 @@ export default function App() {
           className={`content${NO_ANIM_VIEWS.includes(view) ? ' settings-scroll' : ''}`}
         >
           {view === 'chat' ? (
-            <div className="chat-shell">
-              <ChatView
+            <div className="screen-wrap">
+              <div className="chat-shell">
+                <ChatView
                 key={activeChatId}
                 user={user}
                 messages={activeChat?.messages ?? []}
@@ -737,38 +733,71 @@ export default function App() {
                 draftWebSteps={draftWebSteps}
                 draftImgSteps={draftImgSteps}
                 onSend={sendMessage}
-                ctxUsage={ctxInfo}
                 onStop={stopGeneration}
                 genParams={genParams}
                 onGenParamsChange={setGenParams}
-              />
+                onOpenLimits={() => navigate('usage')}
+                />
+              </div>
             </div>
           ) : null}
           <Suspense fallback={null}>
           {/* Профиль — это и есть настройки (0.159): тема выбирается прямо тут,
               как и на экране настроек прежде. Отдельной вкладки настроек нет. */}
           {view === 'profile' ? (
-            <ProfileView
-              user={user}
-              notify={notify}
-              onNavigate={navigate}
-              themePref={pref}
-              onThemePref={setPref}
-              device={device}
-              onDevice={setDevice}
-              owner={owner}
-            />
+            <div className="screen-wrap">
+              <ProfileView
+                user={user}
+                notify={notify}
+                onNavigate={navigate}
+                themePref={pref}
+                onThemePref={setPref}
+                device={device}
+                onDevice={setDevice}
+                owner={owner}
+              />
+            </div>
           ) : null}
-          {view === 'personalization' ? <PersonalizationView notify={notify} /> : null}
-          {view === 'memory' ? <MemoryView notify={notify} /> : null}
+          {view === 'personalization' ? (
+            <div className="screen-wrap">
+              <PersonalizationView notify={notify} />
+            </div>
+          ) : null}
+          {view === 'memory' ? (
+            <div className="screen-wrap">
+              <MemoryView notify={notify} />
+            </div>
+          ) : null}
           {view === 'data' ? (
-            <DataView chats={chats} notify={notify} onWipeLocal={wipeLocal} />
+            <div className="screen-wrap">
+              <DataView chats={chats} notify={notify} onWipeLocal={wipeLocal} />
+            </div>
           ) : null}
-          {view === 'info' ? <InfoView notify={notify} onNavigate={navigate} /> : null}
-          {view === 'reports' ? <ReportsView notify={notify} /> : null}
-          {view === 'admin' ? <AdminView notify={notify} /> : null}
-          {view === 'usage' ? <UsageView /> : null}
-          {view === 'whatsnew' ? <WhatsNewView /> : null}
+          {view === 'info' ? (
+            <div className="screen-wrap">
+              <InfoView notify={notify} onNavigate={navigate} />
+            </div>
+          ) : null}
+          {view === 'reports' ? (
+            <div className="screen-wrap">
+              <ReportsView notify={notify} />
+            </div>
+          ) : null}
+          {view === 'admin' ? (
+            <div className="screen-wrap">
+              <AdminView notify={notify} />
+            </div>
+          ) : null}
+          {view === 'usage' ? (
+            <div className="screen-wrap">
+              <UsageView />
+            </div>
+          ) : null}
+          {view === 'whatsnew' ? (
+            <div className="screen-wrap">
+              <WhatsNewView />
+            </div>
+          ) : null}
           </Suspense>
         </main>
       </div>

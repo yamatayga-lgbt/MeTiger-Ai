@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ChevronDown, Folder, PanelLeft, PenLine, Trash2 } from 'lucide-react'
 import { IconButton } from './ui'
-import { LimitsRing } from './LimitsRing'
 import { haptic } from '../lib/haptic'
 
 interface TopbarProps {
   title: string
   onOpenMenu: () => void
   onOpenWorkspace: () => void
-  /** Кольцо общего запаса агента (0.179): нажатие открывает «Использование и лимиты». */
-  onOpenLimits?: () => void
   /** Вложенный экран (профиль, настройки, персонализация...): слева стрелка
       «назад», как в приложении ChatGPT, вместо круглой кнопки меню. */
   onBack?: () => void
@@ -20,10 +17,9 @@ interface TopbarProps {
 }
 
 /** Верхняя панель: круглая кнопка меню слева, капсула с названием чата по центру
-    (вместо апселла подписки у ChatGPT — у нас всё бесплатно), справа — кольцо
-    общего запаса агента (0.179) и круглая кнопка Workspace. В чате капсула
-    открывает действия: сохранить дело, переименовать или удалить переписку. */
-export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameChat, onDeleteChat, onOpenLimits }: TopbarProps) {
+    (вместо апселла подписки у ChatGPT — у нас всё бесплатно), справа — круглая кнопка Workspace. 
+    В чате капсула открывает действия: сохранить дело, переименовать или удалить переписку. */
+export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameChat, onDeleteChat }: TopbarProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState(title)
@@ -95,7 +91,6 @@ export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameCha
               setMenu((m) => (m ? null : { x: rect.left + rect.width / 2, y: rect.bottom }))
             }}
           >
-            {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
             <span>{title}</span>
             <ChevronDown size={14} />
           </button>
@@ -103,7 +98,6 @@ export function Topbar({ title, onOpenMenu, onOpenWorkspace, onBack, onRenameCha
           // Не экран чата (например, «Настройки») — переименовывать и удалять
           // нечего, капсула просто подписывает раздел, без кнопки под ней.
           <div className="topbar-pill topbar-pill-static" title={title}>
-            {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
             <span>{title}</span>
           </div>
         )}

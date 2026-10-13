@@ -480,15 +480,15 @@ console.log('K — Настройки: счётчик моделей, адрес
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
   execFileSync(bin, [
-    'src/views/PersonalizationView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
-    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + join(dir, 'personalization.mjs'), '--log-level=error',
+    'src/views/MemoryView.tsx', '--bundle', '--platform=node', '--packages=external', '--format=esm',
+    '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + join(dir, 'memory.mjs'), '--log-level=error',
   ], { stdio: 'inherit' });
   const { MemoryView } = await import(join(dir, 'memory.mjs'));
   const html = renderToStaticMarkup(React.createElement(MemoryView, { notify() {} }));
   ok('K18: поля памяти есть и названы в нужной формулировке (экран «Память»)',
     /Как вас зовут/.test(html) && /Ваша профессия или занятие/.test(html) && /Подробнее о вас/.test(html), [!/Как вас зовут/.test(html), !/Ваша профессия/.test(html), !/Подробнее о вас/.test(html)].join(','));
   ok('K19: поля ввода и текстареа настоящие — сохранять есть чему', /<input[^>]*maxlength="60"/i.test(html) && /<input[^>]*maxlength="90"/i.test(html) && /<textarea[^>]*maxlength="1500"/i.test(html), (html.match(/maxlength=?[0-9]+/gi) || []).join(','));
-  ok('K20: строка «чья это память» видна, и это не обещание общей памяти', /у каждого человека swoя/.test(html) && !/общая память/.test(html), (html.match(/Чья это память[\s\S]{0,220}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
+  ok('K20: строка «чья это память» видна, и это не обещание общей памяти', /у каждого человека своя/.test(html) && !/общая память/.test(html), (html.match(/Чья это память[\s\S]{0,220}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
   ok('K22: поля не автозаполняются чужими данными и не светят ключ в title', /autocomplete/.test(html) === false && /u-tg_4242/.test(html) === false);
 
   execFileSync(bin, [

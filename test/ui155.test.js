@@ -63,11 +63,14 @@ ok('U155c вычеркнутое красным в профиль не попа�
 ok('U155d нерабочие строки профиля помечены «Скоро», а живые — нет',
   /is-soon/.test(profile)
     && /<Badge tone="gray">Скоро<\/Badge>/.test(profile)
-    && /Память/.test(profile) && /onClick=\{soon\('Память'\)\}/.test(profile)
     /* 0.176: «Мой ID» — живая строка: она раскрывается в поле и сохраняет ID,
-       поэтому «Скоро» на ней быть не должно. */
+       поэтому «Скоро» на ней быть не должно. «Память» и «Персонализация» — тоже
+       живые строки, они ведут на реальные экраны. */
     && /Мой ID/.test(profile) && /aria-label="Мой ID"/.test(profile)
     && /claimId/.test(profile)
+    /* Проверяем, что живые строки НЕ помечены как скоро */
+    && /Память/.test(profile) && /onClick=\{\s*\(\) => onNavigate\('memory'\)\s*\}/.test(profile)
+    && /Персонализация/.test(profile) && /onClick=\{\s*\(\) => onNavigate\('personalization'\)\s*\}/.test(profile)
     /* Никаких выдуманных адресов в коде: почта нам больше не нужна вовсе. */
     && !/yamatayga@gmail\.com/.test(profile));
 

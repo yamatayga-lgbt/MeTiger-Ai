@@ -1029,18 +1029,19 @@ a {
 }
 
 
-/* Круглые кнопки слева/справа в шапке — отдельным фоном, как у ChatGPT,
-   а не обычные квадратные icon-btn, которые используются по всему приложению. */
+/* Круглые кнопки слева/справа в шапке — прозрачные с чёрным текстом */
 .icon-btn.topbar-round {
   width: 38px;
   height: 38px;
   border-radius: var(--r-full);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: none;
+  color: #000000;
 }
 
 .icon-btn.topbar-round:hover {
-  background: var(--surface-hover);
+  background: transparent;
+  color: #000000;
 }
 
 
@@ -1052,13 +1053,14 @@ a {
   width: 34px;
   height: 34px;
   border-radius: var(--r-md);
-  color: var(--text-2);
+  color: #000000;
+  background: transparent;
   transition: background-color var(--t-fast), color var(--t-fast), transform var(--t-fast);
 }
 
 .icon-btn:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+  background: transparent;
+  color: #000000;
 }
 
 .icon-btn:active {
@@ -1285,6 +1287,23 @@ kbd {
 
 .view {
   animation: fadeUp var(--t-med) both;
+}
+
+/* Плавное переключение между экранами */
+.screen-wrap {
+  height: 100%;
+  animation: screenFadeIn var(--t-med) both;
+}
+
+@keyframes screenFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ---------- Chat ---------- */
@@ -2558,6 +2577,13 @@ kbd {
   background: var(--bg);
 }
 
+/* Кольцо лимитов под полем ввода справа */
+.composer-wrap .limits-btn {
+  margin-left: auto;
+  margin-top: 8px;
+  display: flex;
+}
+
 /* ---------- Голосовой ввод: полоса над полем (0.104) ----------
 
    Было: крупная карточка на три строки («Слушаю · 00:03», волна, подпись
@@ -2740,13 +2766,15 @@ kbd {
 }
 
 .voice-btn.is-on {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: transparent;
+  color: #000000;
   position: relative;
 }
 
 .voice-btn.is-wait {
   opacity: 0.6;
+  background: transparent;
+  color: #000000;
 }
 
 .voice-btn.is-wait:disabled {
@@ -2816,8 +2844,8 @@ kbd {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 2px;
-  padding: 6px 7px 6px 10px;
+  gap: 0;
+  padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: var(--bg-elevated);
@@ -2829,10 +2857,11 @@ kbd {
   order: 2;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 2px;
+  gap: 0;
+  padding: 0 8px;
   flex: 1;
   min-width: 0;
+  height: 100%;
 }
 
 /* ---------- Выбор модели и панель ввода (как на референсах) ---------- */
@@ -2925,17 +2954,17 @@ kbd {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid transparent;
+  border: none;
   background: transparent;
-  color: var(--text-2);
+  color: #000000;
   transition: background-color var(--t-fast), color var(--t-fast), transform var(--t-fast), border-color var(--t-fast);
 }
 
 .params-btn:hover,
 .params-btn.is-open {
-  background: var(--surface-hover);
-  border-color: var(--border);
-  color: var(--text);
+  background: transparent;
+  border: none;
+  color: #000000;
 }
 
 .params-btn:active {
@@ -3420,8 +3449,8 @@ kbd {
 
 /* ---------- Меню «+»: Камера / Фото / Файлы / Плагины / Размышлять глубже ---------- */
 .icon-btn.plus-btn.is-open {
-  background: var(--surface-hover);
-  color: var(--text);
+  background: transparent;
+  color: #000000;
 }
 
 /* Пункта «Размышлять глубже» в меню «+» больше нет (0.123): глубину выбирает
@@ -3432,6 +3461,8 @@ kbd {
    раскрывается от неё. */
 .icon-btn.plus-btn {
   position: relative;
+  background: transparent;
+  color: #000000;
 }
 
 .attach-menu {
@@ -3822,10 +3853,12 @@ kbd {
   flex: 1;
   resize: none;
   max-height: 160px;
-  padding: 7px 2px;
+  padding: 8px;
   font-size: 15px;
   line-height: 1.4;
   color: var(--text);
+  border: none;
+  background: transparent;
 }
 
 .composer textarea::placeholder {
@@ -3836,24 +3869,25 @@ kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--r-md);
-  background: var(--accent-grad);
-  color: var(--accent-fg);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: transparent;
+  color: #000000;
   flex-shrink: 0;
   transition: transform var(--t-fast), filter var(--t-fast), background-color var(--t-fast),
     color var(--t-fast);
 }
 
 .send-btn:disabled {
-  background: var(--surface-2);
-  color: var(--text-3);
-  border: 1px solid var(--border);
+  background: transparent;
+  color: #666666;
+  border: none;
 }
 
 .send-btn:not(:disabled):hover {
-  filter: brightness(1.06);
+  background: transparent;
+  color: #000000;
 }
 
 .send-btn:not(:disabled):active {
@@ -3863,13 +3897,14 @@ kbd {
 /* Остановка запроса — та же форма кнопки, но сознательно не цвет «отправить»: если
    случайно нажать второй раз, это не отправит ничего заново. */
 .send-btn.stop-btn {
-  background: var(--surface-2);
-  color: var(--text);
-  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: #000000;
+  border: none;
 }
 
 .send-btn.stop-btn:hover {
-  background: var(--surface-hover);
+  background: transparent;
+  color: #000000;
 }
 
 .send-btn.stop-btn:active {
@@ -3877,13 +3912,7 @@ kbd {
 }
 
 .composer-hint {
-  margin-top: 5px;
-  text-align: center;
-  font-size: 10.5px;
-  /* На полупрозрачной полке --text-3 (самый тихий цвет) теряется: подпись
-     стоит на обоях, а не на плотном фоне. */
-  color: var(--text-2);
-  line-height: 1.3;
+  display: none;
 }
 
 /* ---------- Page headers (Agents / Tools / Settings) ---------- */

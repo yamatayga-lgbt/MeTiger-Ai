@@ -10,7 +10,7 @@ import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
 import { Guard } from '../components/Guard'
-import { ContextUsageIndicator } from '../components/ContextUsageIndicator'
+import { LimitsRing } from '../components/LimitsRing'
 import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
 /* Markdown (react-markdown + remark-gfm + формулы + песочница кода) — самый тяжёлый
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
@@ -662,9 +662,8 @@ interface ChatViewProps {
   /** Параметры генерации (temperature, top_p) */
   genParams?: GenParams
   onGenParamsChange?: (next: GenParams) => void
-  /** Контекст последнего ответа: сколько токенов занял запрос и в какое окно влез.
-      Нет данных — индикатора нет: пустая полоска «0 %» врала бы про пустой контекст. */
-  ctxUsage?: { used: number; window: number } | null
+  /** Открыть экран «Использование и лимиты» */
+  onOpenLimits?: () => void
 }
 
 export function ChatView({
@@ -680,7 +679,7 @@ export function ChatView({
   onStop,
   genParams = DEFAULT_GEN_PARAMS,
   onGenParamsChange,
-  ctxUsage = null,
+  onOpenLimits,
 }: ChatViewProps) {
   /* Стабильная ссылка на «выполнить код и вернуть вывод в чат»: Markdown
      обёрнут в memo и сверяет props по ссылке. Без useCallback каждая буква
@@ -708,9 +707,6 @@ export function ChatView({
   /* Цифры приходят из ответа движка (props.ctxUsage), а не считаются здесь: фронт
      не знает ни системных подсказок, ни окна выбранной модели — любая его оценка
      была бы выдумкой. До первого ответа показывать нечего. */
-  const contextInfo = ctxUsage && ctxUsage.window > 0
-    ? { usedTokens: ctxUsage.used, maxTokens: ctxUsage.window }
-    : { usedTokens: 0, maxTokens: 0 }
   /* Полноэкранный просмотр любой картинки из переписки (своей или от модели) —
      тап открывает её целиком вместо скачивания/мелкого превью. */
   const [lightbox, setLightbox] = useState<{ src: string; name?: string } | null>(null)
@@ -1538,21 +1534,6 @@ export function ChatView({
             </div>
 
             <div className="composer-foot-right">
-              <button
-                type="button"
-                className={`params-btn${paramsOpen ? ' is-open' : ''}`}
-                aria-label="Параметры генерации"
-                aria-expanded={paramsOpen}
-                title="Параметры: temperature, top_p"
-                onClick={() => {
-                  haptic('light')
-                  setParamsOpen((v) => !v)
-                }}
-              >
-                <SlidersHorizontal size={15} />
-                <span className="params-dot" aria-hidden="true" />
-              </button>
-
               {voiceSupported ? (
                 <button
                   type="button"
@@ -1644,33 +1625,28 @@ export function ChatView({
             </>
           ) : null}
         </form>
-        {/* Контекст — строкой над полем, а не внутри «пилюли»: в 0.170 индикатор
-            сначала поставили в саму пилюлю, и на телефоне он растолкал кнопки
-            (снимок с прода: текст в две строки, «+» прижался к проценту). Здесь
-            он никому не мешает, а человек всё равно видит его перед отправкой. */}
-        {talk ? (
-          <div className="talk-chip" role="status">
-            <span className="talk-dot" aria-hidden="true" />
-            {listening ? 'Разговор вслух · слушаю' : talkSpeaking ? 'Разговор вслух · говорю' : 'Разговор вслух'}
-          </div>
-        ) : null}
-        {contextInfo.maxTokens > 0 ? (
-          <ContextUsageIndicator
-            usedTokens={contextInfo.usedTokens}
-            maxTokens={contextInfo.maxTokens}
-          />
-        ) : null}
+        <button
+          type="button"
+          className={`params-btn${paramsOpen ? ' is-open' : ''}`}
+          aria-label="Параметры генерации"
+          aria-expanded={paramsOpen}
+          title="Параметры: temperature, top_p"
+          onClick={() => {
+            haptic('light')
+            setParamsOpen((v) => !v)
+          }}
+        >
+          <SlidersHorizontal size={15} />
+          <span className="params-dot" aria-hidden="true" />
+        </button>
+        {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
         {voiceError ? (
           <div className="voice-error" role="status" aria-live="polite">
             <span>{voiceError}</span>
           </div>
         ) : null}
         {voiceNote ? <div className="voice-note">{voiceNote}</div> : null}
-        <p className="composer-hint">
-          {/* Версию отсюда убрали в 0.170 — она переехала в шапку меню (см. Logo.tsx);
-              здесь остаётся только имя и предупреждение. */}
-          <span className="composer-hint-model">MeTiger Ai</span> · ИИ может ошибаться. Проверяйте важную информацию.
-        </p>
+        {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
       </div>
       {lightbox ? (
         <div className="lightbox" onClick={() => setLightbox(null)}>

@@ -75,7 +75,7 @@ ok('U159e в разделах меню нет «Использования и Л
   !/id: 'usage'/.test(sidebarCode)
     && /label="Использование и лимиты"/.test(profileCode)
     && /onNavigate\('usage'\)/.test(profileCode)
-    && /view === 'usage' \? <UsageView \/>/.test(app));
+    && /view === 'usage' \?/.test(app) && /<UsageView \/>/.test(app));
 ok('U159f из «Использования и лимитов» назад ведут в профиль',
   /usage: 'profile'/.test(app));
 

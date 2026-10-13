@@ -1,10 +1,11 @@
 /**
- * 0.182: одно устройство — одна запись, даже если браузеров два.
+ * 0.183: кольцо лимитов под полем ввода, плавное переключение экранов.
  *
- * Слова владельца 12 окт, глядя на вторую строку в админ-панели: «Второе устройство
- * это я же, просто оно считается с другого браузера». Причина была в отпечатке: он
- * считался по полной строке браузера, а у Chrome и Samsung Internet на одном телефоне
- * строки разные — телефон выглядел двумя устройствами.
+ * Слова владельца: «Кольцо лимитов переместить под окно ввода справа, и сделать
+ * переключение между экранами плавным с нормальной анимацией».
+ *
+ * Здесь проверяем всю цепочку целиком — на живых функциях, а не на чтении файла:
+ *   F1–F2  отпечаток «про телефон»: у двух браузеров одной машины он совпадёт, а у
  *
  * Здесь проверяем всю цепочку целиком — на живых функциях, а не на чтении файла:
  *   F1–F2  отпечаток «про телефон»: у двух браузеров одной машины он совпадёт, а у
@@ -69,7 +70,7 @@ const recOf = (store, key) => {
   try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; }
 };
 const FP = 'abcabcabcabcabca';
-const dev = (over = {}, headers) => call({ device: 'dev-aaa111', model: 'SM-A155F', ver: '0.182', fp: FP, ...over }, headers);
+const dev = (over = {}, headers) => call({ device: 'dev-aaa111', model: 'SM-A155F', ver: '0.183', fp: FP, ...over }, headers);
 
 /* ── F1–F2: отпечаток считается «про телефон», а не «про браузер» ────────────── */
 console.log('F — отпечаток телефона, а не браузера');
@@ -135,8 +136,8 @@ console.log('F3–F4: второй браузер приписывается з�
     request: new Request('https://mt.test/api/device', { method: 'POST', headers: { 'content-type': 'application/json', ...(headers || {}) }, body: JSON.stringify(body) }),
     env: env2,
   });
-  await env2call({ device: 'dev-empty1', model: 'SM-A155F', fp: FP, ver: '0.182' });
-  await env2call({ device: 'dev-owner1', model: 'SM-A155F', fp: FP, ver: '0.182' }, ownerH);
+  await env2call({ device: 'dev-empty1', model: 'SM-A155F', fp: FP, ver: '0.183' });
+  await env2call({ device: 'dev-owner1', model: 'SM-A155F', fp: FP, ver: '0.183' }, ownerH);
   const devKeys = [...env2._mem.keys()].filter((k) => k.startsWith('dev:'));
   const first = devKeys.length === 1 ? recOf(env2._mem, devKeys[0]) : null;
   ok('F4: пустая запись под отпечатком не заводит второе «моё устройство» — запись одна и она владельца',
@@ -153,8 +154,8 @@ console.log('F5: один телефон — не один человек');
     request: new Request('https://mt.test/api/device', { method: 'POST', headers: { 'content-type': 'application/json', ...(headers || {}) }, body: JSON.stringify(body) }),
     env: env3,
   });
-  await c3({ device: 'dev-petya', model: 'SM-A155F', fp: FP, ver: '0.182', id: 'Petya' });
-  const r2 = await c3({ device: 'dev-vasya', model: 'SM-A155F', fp: FP, ver: '0.182', id: 'Vasya' });
+  await c3({ device: 'dev-petya', model: 'SM-A155F', fp: FP, ver: '0.183', id: 'Petya' });
+  const r2 = await c3({ device: 'dev-vasya', model: 'SM-A155F', fp: FP, ver: '0.183', id: 'Vasya' });
   const d2 = await r2.json();
   ok('F5: два человека с разными ID одну запись не делят, даже если аппарат одинаковый',
     d2.ok && d2.device.id === 'Vasya' && env3._mem.has('dev:devpetya') && env3._mem.has('dev:devvasya'),
@@ -169,10 +170,10 @@ console.log('F6: владельца узнаём и без отпечатка');
     request: new Request('https://mt.test/api/device', { method: 'POST', headers: { 'content-type': 'application/json', ...(headers || {}) }, body: JSON.stringify(body) }),
     env: env4,
   });
-  await c4({ device: 'dev-own1', model: 'SM-A155F', fp: 'aaaaaaaaaaaaaaaa', ver: '0.182' }, ownerH);
+  await c4({ device: 'dev-own1', model: 'SM-A155F', fp: 'aaaaaaaaaaaaaaaa', ver: '0.183' }, ownerH);
   /* Второй браузер: другой отпечаток (иное окно — полноэкранный режим), та же модель,
      код владельца есть (он его ввёл и здесь). */
-  const r = await c4({ device: 'dev-own2', model: 'SM-A155F', fp: 'bbbbbbbbbbbbbbbb', ver: '0.182' }, ownerH);
+  const r = await c4({ device: 'dev-own2', model: 'SM-A155F', fp: 'bbbbbbbbbbbbbbbb', ver: '0.183' }, ownerH);
   const d = await r.json();
   ok('F6a: владелец со вторым браузером и другим отпечатком — всё равно одна запись',
     d.ok && d.device.owner && d.device.id === 'Dev'
@@ -180,7 +181,7 @@ console.log('F6: владельца узнаём и без отпечатка');
     [...env4._mem.keys()].filter((k) => k.startsWith('dev:')));
 
   /* Другое устройство владельца (ноутбук) остаётся своей строкой: это разные вещи. */
-  const r2 = await c4({ device: 'dev-noutbuk', model: 'Windows', fp: 'cccccccccccccccc', ver: '0.182' }, ownerH);
+  const r2 = await c4({ device: 'dev-noutbuk', model: 'Windows', fp: 'cccccccccccccccc', ver: '0.183' }, ownerH);
   await r2.json();
   const laptop = recOf(env4._mem, 'dev:devnoutbuk');
   ok('F6b: ноутбук владельца — отдельная строка, а не тот же телефон',
@@ -189,4 +190,4 @@ console.log('F6: владельца узнаём и без отпечатка');
 
 console.log(`\n${pass} ✔, ${fail} ✖`);
 if (fail) process.exit(1);
-console.log('✔ 0.182: одно устройство — одна запись, даже из другого браузера — проверки пройдены');
+console.log('✔ 0.183: кольцо лимитов под полем ввода, плавное переключение экранов — проверки пройдены');
