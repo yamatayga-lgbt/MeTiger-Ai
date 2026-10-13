@@ -19,7 +19,10 @@ import { APP_VERSION } from './version'
 const ID_KEY = 'mt-dev-id'
 const MODEL_KEY = 'mt-dev-model'
 const ASKED_KEY = 'mt-dev-asked'
-const FP_KEY = 'mt-dev-fp'
+/* Ключ кэша отпечатка сменил имя (0.182): отпечаток стал «про телефон», а не «про
+   браузер», и старый кэш нельзя переиспользовать — иначе он никогда не пересчитается,
+   и склейка «тот же телефон из другого браузера» не сработает. */
+const FP_KEY = 'mt-dev-fp2'
 
 /** Правила для подсказки в поле (сервер судит теми же числами). */
 export const ID_MIN = 4
@@ -110,6 +113,38 @@ function hash16Fallback(text: string): string {
   return (a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0')).slice(0, 16)
 }
 
+/**
+ * Семейство системы и её крупная версия — по строке браузера, но БЕЗ самого браузера.
+ *
+ * Зачем так. Владелец 12 окт объяснил вторую строку в своей админ-панели: «это я же,
+ * просто оно считается с другого браузера». Причина была в отпечатке: он считался по
+ * полной строке браузера, а у Chrome и Samsung Internet на одном телефоне строки
+ * разные — и телефон выглядел двумя устройствами.
+ *
+ * Из строки браузера берём только то, что от браузера не зависит и меняется редко:
+ * систему и её версию. «Android 14» одинаков и в Chrome, и в Samsung Internet, и
+ * остаётся тем же после обновления браузера — а два разных телефона одной модели с
+ * разными версиями системы (или Android и iPhone) остаются разными.
+ */
+export function osFamily(ua: string): string {
+  const s = String(ua || '')
+  const a = /Android[\s/](\d+)/.exec(s)
+  if (a) return 'android' + a[1]
+  const i = /(?:iPhone|iPad|iPod).*?OS (\d+)/.exec(s)
+  if (i) return 'ios' + i[1]
+  if (/Windows NT 10/.test(s)) return 'windows10'
+  if (/Windows NT 6\.1/.test(s)) return 'windows7'
+  if (/Mac OS X/.test(s)) return 'mac'
+  if (/CrOS/.test(s)) return 'chromeos'
+  if (/Linux/.test(s)) return 'linux'
+  return ''
+}
+
+/** Язык без хвостов: «ru-RU» → «ru». Полный список языков у каждого браузера свой. */
+export function langBase(lang: string): string {
+  return String(lang || '').toLowerCase().split(/[-_]/)[0].replace(/[^a-z]/g, '').slice(0, 3)
+}
+
 export async function deviceFp(): Promise<string> {
   try {
     const cached = String(localStorage.getItem(FP_KEY) || '')
@@ -121,17 +156,20 @@ export async function deviceFp(): Promise<string> {
     userAgent?: string; platform?: string; language?: string; languages?: string[]
     hardwareConcurrency?: number; deviceMemory?: number
   }
+  /* Отпечаток считается «про телефон», а не «про браузер» (0.182): одно и то же
+     железо из разных браузеров должно давать один отпечаток, иначе «одно устройство —
+     одна запись» ломается на втором браузере. Поэтому здесь НЕТ строки браузера (она
+     меняется от браузера к браузеру) и НЕТ списка языков (у каждого свой): остались
+     модель, семейство системы, экран, часовой пояс, ядра и память. */
   const parts = [
-    String(nav.userAgent || ''),
-    String(nav.platform || ''),
-    String(nav.language || ''),
-    Array.isArray(nav.languages) ? nav.languages.join(',') : '',
+    modelCached(),
+    osFamily(String(nav.userAgent || '')),
+    langBase(String(nav.language || '')),
     `${screen.width}x${screen.height}x${window.devicePixelRatio || 1}`,
     String(screen.colorDepth || ''),
     String(new Date().getTimezoneOffset()),
     String(nav.hardwareConcurrency || ''),
     String(nav.deviceMemory || ''),
-    modelCached(),
   ]
   const fp = await hash16(parts.join('|'))
   try {

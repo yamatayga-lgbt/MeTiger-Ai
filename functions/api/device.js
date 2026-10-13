@@ -67,6 +67,29 @@ async function tooOften(request, env, key, max = 60) {
   return !!(r && r.limited);
 }
 
+/**
+ * Запись владельца с той же моделью телефона — для случая «с другого браузера» (0.182).
+ * Ищем только среди записей с пометкой владельца: код есть лишь у него, и подсунуть
+ * сюда чужой телефон нельзя. Больше одной записи владельца быть не должно; если их
+ * всё же несколько (следы прежних версий), берём самую старую — она и настоящая.
+ */
+async function ownerTwin(store, exceptKey, model) {
+  let keys = [];
+  try { keys = (await store.list({ prefix: 'dev:' })).map((k) => k.name); } catch { return ''; }
+  let best = '';
+  let bestAt = Infinity;
+  for (const k of keys.slice(0, 500)) {
+    const rec = await store.get(k);
+    if (!rec || !rec.owner) continue;
+    const key = deviceKeyOf(rec.key || k.replace(/^dev:/, ''));
+    if (!key || key === deviceKeyOf(exceptKey)) continue;
+    if (String(rec.model || '').trim().toLowerCase() !== String(model).trim().toLowerCase()) continue;
+    const at = Number(rec.firstAt || 0) || Infinity;
+    if (at < bestAt) { bestAt = at; best = key; }
+  }
+  return best;
+}
+
 async function readDevice(store, key) {
   const rec = await store.get(deviceRecordKey(key));
   return rec && typeof rec === 'object' ? rec : null;
@@ -137,33 +160,84 @@ export async function onRequestPost(context) {
   if (!asked) return json({ ok: false, error: 'не понял, с какого вы устройства' }, 400);
   const fp = fingerprintOf(body.fp);
 
-  /* Одно устройство — одна запись (0.177).
-     Ключ устройства живёт в localStorage и умирает вместе с чисткой данных сайта:
-     тот же телефон заводил вторую запись, и владелец видел в админ-панели три
-     строки «без ID · SM-A546B» вместо одной. Поэтому визит с новым ключом, но
-     известным отпечатком приписываем к уже существующей записи, а пустую (ни ID,
-     ни обращений) — убираем, чтобы не мусорить. */
+  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'anon';
+  if (await tooOften(request, env, ip)) return json({ ok: false, error: 'слишком часто — подождите минуту' }, 429);
+
+  const isOwner = await ownerOk(request, env);
+
+  /*
+   * Одно устройство — одна запись (0.177; уточнено 0.182).
+   *
+   * Ключ устройства живёт в localStorage и умирает вместе с чисткой данных сайта:
+   * тот же телефон заводил вторую запись, и владелец видел в админ-панели три строки
+   * «без ID · SM-A546B» вместо одной. Поэтому визит с новым ключом, но известным
+   * отпечатком приписываем к уже существующей записи, а пустую (ни ID, ни обращений)
+   * убираем.
+   *
+   * Что добавилось в 0.182. Владелец объяснил вторую строку: «это я же, просто оно
+   * считается с другого браузера». Две беды:
+   *   · отпечаток считался по строке браузера — у Chrome и Samsung Internet на одном
+   *     телефоне он разный (лечится на телефоне, src/lib/devid.ts);
+   *   · даже когда отпечаток сходится, прежнее правило приписывало визит к ТОЙ записи,
+   *     что нашлась по указателю, — и запись владельца могла «переехать» в пустую.
+   *     Теперь настоящей считается лучшая запись (владелец → есть ID → есть обращения
+   *     → больше заходов), а пустая уходит совсем.
+   */
+  /* Кем человек пришёл: заявленный ID нужен ещё до склейки — если он не совпадает с
+     ID уже известной записи с тем же отпечатком, это разные люди (см. twoPeople). */
+  const want = normalizeId(body.id || '');
+
+  const rankOf = (r) => (!r ? -1
+    : (r.owner ? 8 : 0) + (r.id ? 4 : 0) + (Number(r.reports || 0) > 0 ? 2 : 0) + (Number(r.visits || 0) > 1 ? 1 : 0));
+
   let key = asked;
   if (fp) {
     const mapped = await store.get(fpIndexKey(fp));
-    if (mapped && mapped.key && mapped.key !== asked) {
-      const known = await readDevice(store, mapped.key);
-      if (known) {
-        key = mapped.key;
-        const orphan = await readDevice(store, asked);
-        if (orphan && !orphan.id && !Number(orphan.reports || 0)) {
-          try { await store.del(deviceRecordKey(asked)); } catch (e) { /* нечего чистить — не беда */ }
+    const linkedKey = mapped && mapped.key && deviceKeyOf(mapped.key) !== asked ? deviceKeyOf(mapped.key) : '';
+    if (linkedKey) {
+      const linked = await readDevice(store, linkedKey);
+      const mine = await readDevice(store, asked);
+      /* Два человека с разными ID одну запись не делят: у каждого своя, даже если
+         телефоны одинаковые — отпечаток это «тот же аппарат», а не «тот же человек». */
+      const mineId = String((mine && mine.id) || want || '').toLowerCase();
+      const twoPeople = !!(linked && linked.id && mineId && mineId !== String(linked.id).toLowerCase());
+      if (!twoPeople) {
+        const target = rankOf(mine) > rankOf(linked) ? mine : linked;
+        const loser = target === mine ? linked : mine;
+        if (target) {
+          key = target.key || (target === mine ? asked : linkedKey);
+          /* Пустую запись убираем, даже если в ней был заход: один заход без ID и без
+             обращений — это и есть «второе моё устройство» из админ-панели. */
+          if (loser && !loser.owner && !loser.id && !Number(loser.reports || 0)) {
+            try { await store.del(deviceRecordKey(loser.key || (loser === mine ? asked : linkedKey))); }
+            catch (e) { /* нечего чистить — не беда */ }
+          }
         }
       }
     }
   }
 
-  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || 'anon';
-  if (await tooOften(request, env, ip)) return json({ ok: false, error: 'слишком часто — подождите минуту' }, 429);
-
-  const isOwner = await ownerOk(request, env);
+  /* Владелец и второй браузер (0.182). Даже если отпечатки не сошлись (необычный
+     браузер, другой экран в полноэкранном режиме), у владельца есть точная примета —
+     код. Своё устройство узнаём по модели: код есть только у него, поэтому чужой
+     телефон той же модели сюда не попадёт. Другое устройство владельца (ноутбук)
+     останется отдельной строкой — это разные устройства, и путать их нечестно. */
+  const model0 = String(body.model || '').replace(/\s+/g, ' ').trim().slice(0, 40) || modelFromUa(request.headers.get('user-agent'));
+  if (isOwner && model0) {
+    const current = await readDevice(store, key);
+    if (!current || !current.owner) {
+      const same = await ownerTwin(store, key, model0);
+      if (same) {
+        key = same;
+        /* Пустую запись этого визита убираем: она завелась бы вторым «моим устройством». */
+        if (current && !current.id && !Number(current.reports || 0)) {
+          try { await store.del(deviceRecordKey(current.key || asked)); } catch (e) { /* пусто — не беда */ }
+        }
+      }
+    }
+  }
   const now = Date.now();
-  const model = String(body.model || '').replace(/\s+/g, ' ').trim().slice(0, 40) || modelFromUa(request.headers.get('user-agent'));
+  const model = model0;
   const ver = String(body.ver || '').slice(0, 16);
 
   let rec = await readDevice(store, key);
@@ -186,7 +260,6 @@ export async function onRequestPost(context) {
     rec.ownerCodeGone = true;
   }
 
-  const want = normalizeId(body.id || '');
   let renamed = false;
   if (want && want.toLowerCase() !== String(rec.id || '').toLowerCase()) {
     if (rec.owner) {
