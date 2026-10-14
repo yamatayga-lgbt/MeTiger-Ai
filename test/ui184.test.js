@@ -94,9 +94,10 @@ ok('U184j кольцо лимитов — type="button" (иначе клик о�
 
 /* ── D. Версия и «Что нового» ───────────────────────────────────────────────── */
 
-ok('U184k все источники версии — 0.184',
-  /APP_VERSION = '0\.184'/.test(version) && pkg.version === '0.184'
-    && lock.version === '0.184' && /version: '0\.184'/.test(notes))
+ok('U184k источники версии синхронизированы между собой',
+  /APP_VERSION = '([^']+)'/.test(version)
+    && RegExp.$1 === pkg.version && pkg.version === lock.version
+    && new RegExp("version: '" + pkg.version.replace('.', '\\.') + "'").test(notes))
 
 ok('U184l в «Что нового» есть запись 0.184 с заголовком про новую раскладку',
   /version: '0\.184',\s*\n\s*title: '[^']*поле[^']*'[\s\S]{0,600}items:/i.test(notes)

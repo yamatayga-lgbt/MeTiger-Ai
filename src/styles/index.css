@@ -5714,14 +5714,15 @@ button.rows-row:hover {
 .chat-select:active { transform: scale(.985); }
 :where(button) svg { transition: transform .35s var(--spring); }
 
-/* Иконки поля ввода: «+» поворачивается, ползунки покачиваются, стрелка взлетает. */
-.composer .plus-btn:hover svg, .composer .plus-btn.is-open svg { transform: rotate(45deg); }
-.composer .voice-btn:not(.is-on):hover svg { transform: scale(1.12) translateY(-1px); }
-.composer .params-btn:hover svg { transform: rotate(-12deg) scale(1.08); }
-.composer .send-btn:not(:disabled):hover svg { transform: translateY(-2px); }
-.composer .send-btn:not(:disabled):active svg { transform: translateY(-6px); opacity: .6; }
-.composer .send-btn:not(:disabled) { animation: sendReady .4s var(--spring); }
-@keyframes sendReady { from { transform: scale(.8); } to { transform: scale(1); } }
+/* Кнопки поля ввода — без анимаций (просьба владельца, 0.184):
+   ни поворота «+», ни покачивания ползунков, ни взлёта стрелки,
+   ни пружинного «вдавливания» — только мгновенный отклик. */
+.composer .icon-btn:active:not(:disabled),
+.composer .send-btn:active:not(:disabled),
+.composer .params-btn:active { transform: none; }
+.composer .icon-btn svg,
+.composer .send-btn svg,
+.composer .params-btn svg { transition: none; }
 
 /* Тема: солнце/луна крутятся при смене. */
 .side-foot-row .icon-btn:hover svg { transform: rotate(40deg); }

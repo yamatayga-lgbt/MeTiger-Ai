@@ -651,6 +651,11 @@ async function handlePost(context) {
        но ответила обычная: фронт видит это в строке источника, а curl — здесь. */
     deep: r.deep || undefined,
     deepPlain: r.deepPlain || undefined,
+    /* Гарантированный маршрут сложной задачи с картинкой (0.185): зрячая
+       reasoning-модель. Не нашлась — сказано честно: sightedMiss — отвечала
+       слепая (пин), sightedPlain — зрячая, но без рассуждений. */
+    sightedMiss: r.sightedMiss || undefined,
+    sightedPlain: r.sightedPlain || undefined,
     /* Почему агент решил думать глубже (engine/depth.js) — словами, а не флагом:
        человек видит причину в подписи ответа и может с ней не согласиться. */
     depthWhy: r.depthWhy || depthWhy || undefined,

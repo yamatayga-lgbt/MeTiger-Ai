@@ -13,7 +13,7 @@
 import {
   buildTable, providerAlive, pickKey, orderFor, ORDER, MIN_INTERVAL, TIMEOUT, MAX_IMAGES,
 } from './providers.js';
-import { classifyTask, tierFor, modelsFor, isVision, isReasoning, visionFirst, preferHeads } from './route.js';
+import { classifyTask, tierFor, modelsFor, isVision, isReasoning, isSightedReasoning, visionFirst, preferHeads } from './route.js';
 import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, streamCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
@@ -22,6 +22,7 @@ import { sharedImggen, packImages, wantsImage, editsReady } from './imggen.js';
 import { sharedUsage } from './usage.js';
 import { fit as fitContext, estTokens, clampNumber, CTX_WINDOW_MAX } from './ctxfit.js';
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
+import { packCharts } from './chart.js';
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
 import { block as jbBlock } from './jailbreak.js';
@@ -762,6 +763,18 @@ export function createEngine(opts) {
          что модель/провайдер/режим в интерфейсе не показываем. */
       if (deep && out.ok && out.model && !isReasoning(out.model)) out.deepPlain = true;
       if (deep && out.ok) out.deep = true;
+      /* Гарантированный маршрут сложной задачи (0.185) и честный откат.
+         Сложный вопрос с картинкой (код/математика/рассуждение/зрение или
+         «глубже») обязан ехать к зрячей reasoning-модели. Маршрут выстроен
+         (modelsFor ставит sighted-думателей первыми), но каталоги врут, а пин
+         человека не переспорить: если ответила слепая — или зрячая, но не
+         думающая — отвечаем всё равно (лучшее доступное лучше ничего), но
+         пометка честная: человек видит, чем именно ему ответили. */
+      if (out.ok && out.model && images.length
+        && (deep || intent === 'code' || intent === 'math' || intent === 'reasoning' || intent === 'vision')) {
+        if (!isVision(out.model)) out.sightedMiss = true;
+        else if (!isSightedReasoning(out.model)) out.sightedPlain = true;
+      }
       /* Почему агент решил думать глубже — словами судьи (engine/depth.js). Поле
          живёт рядом с deep: подпись под ответом собирается из обоих. */
       if (deep && out.ok && depthWhy) out.depthWhy = depthWhy;
@@ -777,6 +790,15 @@ export function createEngine(opts) {
         });
         if (packed.files.length) out.files = packed.files;
         if (packed.reply) out.reply = packed.reply;
+      }
+      /* Графики (0.185): блок ```chart — это числа от модели, геометрия — наша.
+         Картинка уезжает файлом (image/svg+xml) и показывается в чате рисунком.
+         Идёт ПОСЛЕ packFiles: тот сперва вынимает из текста свои блоки. */
+      if (out.ok && out.reply) {
+        const charted = packCharts(out.reply);
+        if (charted.files.length) out.files = (out.files || []).concat(charted.files);
+        if (charted.notes.length) out.reply = (charted.reply ? charted.reply + '\n\n' : '') + '· ' + charted.notes.join('\n· ');
+        else if (charted.reply !== out.reply) out.reply = charted.reply;
       }
       /* чем именно заплатили за окно — человек должен видеть, что история у него
          не «испарилась», а была сжата движком */

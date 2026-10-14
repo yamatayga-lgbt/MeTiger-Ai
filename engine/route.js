@@ -28,8 +28,22 @@ export const LONG_REASON_CHARS = 100;
 /* Зрение по примете имени. `flash` сюда намеренно не входит: под него попадали
    glm-4.7-flash и qwen3.7-flash, картинка уезжала слепой модели, та отвечала
    «не вижу изображение», и обход сжигал на это квоту. */
-export const VISION_HINT = /(^|[^a-z0-9])(gemini-|vl|omni|vision|4o|scout|pixtral|4v|nano-banana|gemma-3)/i;
+/* «\dv» — суффикс поколения перед v у зрячих моделей вида glm-4.6v: раньше
+   такая не распознавалась («6v» против «4v»), и картинка уезжала слепой голове. */
+export const VISION_HINT = /(^|[^a-z0-9])(gemini-|vl|omni|vision|4o|scout|pixtral|4v|\dv|nano-banana|gemma-3)/i;
 export const REASON_HINT = /(-reasoning|-thinking|think|r1-|o1|o3|gpt-oss|qwen3|magistral|inkling|dots-3-note|deepseek-r|nex-n2\.5-pro)/i;
+
+/* Зрячий «думатель» (0.185): модель, которая И читает картинку, И думает перед
+   ответом. Сложная задача с картинкой («вот график, найди ошибку», «реши по
+   чертежу») обязана ехать именно к такой: слепая думающая не увидит, зрячая
+   без рассуждений — увидит и наврёт. Gemini-flash в списке «думающих» по имени
+   не живёт, но картинки читает и перед ответом думает — потому он тут своей
+   строкой, а не правкой REASON_HINT (тот отвечает на другой вопрос: «не съест
+   ли модель бюджет на размышления»). */
+export function isSightedReasoning(model) {
+  const s = String(model || '');
+  return isVision(s) && (isReasoning(s) || /gemini-/i.test(s));
+}
 
 /* Каталог врёте наживую у всех — поэтому белый список «в имени всё есть, а зрения нет». */
 export const KNOWN_NO_VISION = [
@@ -198,6 +212,18 @@ export function modelsFor(cfg, tier, intent, images, env, deep) {
   list = visionFirst(list, images);
   const deepOn = deep === true;
   const keepThinkers = deepOn || intent === 'code' || intent === 'math' || intent === 'reasoning' || intent === 'vision';
+  /* Сложная задача с картинкой (0.185): среди зрячих вперёд та, что и думает.
+     Гарантия маршрута: сначала зрячий «думатель», потом просто зрячие, потом
+     остальные. Без этого слоя график на фото разбирала бы самая быстрая зрячая
+     голова — увидела бы и наврала бы. */
+  if (images && images.length && keepThinkers) {
+    const sr = list.filter((m) => isSightedReasoning(m));
+    if (sr.length) {
+      const rest = list.filter((m) => sr.indexOf(m) < 0);
+      const see = rest.filter((m) => isVision(m));
+      list = sr.concat(see).concat(rest.filter((m) => see.indexOf(m) < 0));
+    }
+  }
   if (!keepThinkers) {
     const calm = list.filter((m) => !isReasoning(m));
     if (calm.length) list = calm.concat(list.filter((m) => calm.indexOf(m) < 0));
