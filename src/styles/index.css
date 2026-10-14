@@ -5280,6 +5280,27 @@ button.rows-row:hover {
   border-radius: var(--r-full);
 }
 
+/* Тёмная тема: кнопки остаются прозрачными, но иконки — белые.
+   Чёрные иконки, заданные выше для светлой темы, на почти чёрном фоне
+   (#131317) не видны вовсе — это был баг 0.184. */
+[data-theme='dark'] .icon-btn,
+[data-theme='dark'] .params-btn,
+[data-theme='dark'] .composer .icon-btn,
+[data-theme='dark'] .composer .params-btn,
+[data-theme='dark'] .icon-btn:hover,
+[data-theme='dark'] .params-btn:hover,
+[data-theme='dark'] .params-btn.is-open,
+[data-theme='dark'] .icon-btn.plus-btn.is-open,
+[data-theme='dark'] .voice-btn.is-on,
+[data-theme='dark'] .voice-btn.is-wait {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .icon-btn.topbar-round,
+[data-theme='dark'] .icon-btn.topbar-round:hover {
+  color: #ffffff;
+}
+
 /* Отправка — единственная акцентная кнопка в зоне ввода. */
 .composer .send-btn {
   width: 38px;
