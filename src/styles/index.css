@@ -2577,12 +2577,8 @@ kbd {
   background: var(--bg);
 }
 
-/* Кольцо лимитов под полем ввода справа */
-.composer-wrap .limits-btn {
-  margin-left: auto;
-  margin-top: 8px;
-  display: flex;
-}
+/* Кольцо лимитов стоит внутри строки кнопок (слева, после параметров) —
+   выравнивание делает .composer-buttons-left, отдельные отступы не нужны. */
 
 /* ---------- Голосовой ввод: полоса над полем (0.104) ----------
 
@@ -2837,39 +2833,47 @@ kbd {
   opacity: 0.78;
 }
 
-/* Однострочная «пилюля», как у референсов: вложение слева, текст по центру,
-   голос/отправка справа — короче по высоте, чем прежняя двухрядная раскладка. */
+/* Двухрядное поле ввода (0.184): сверху — широкое поле на всю ширину,
+   ниже — одна строка: слева «+», параметры и кольцо лимитов, справа —
+   микрофон и отправка. Скруглённый прямоугольник, а не пилюля. */
 .composer {
   position: relative;
   display: flex;
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0;
   padding: 0;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: 24px;
   background: var(--bg-elevated);
   box-shadow: var(--shadow-md);
   transition: border-color var(--t-med), box-shadow var(--t-med);
 }
 
+/* Ряд 1 — само поле: на всю ширину карточки. */
 .composer-main {
-  order: 2;
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 0 8px;
-  flex: 1;
+  padding: 8px 16px 2px;
   min-width: 0;
-  height: 100%;
 }
 
-/* Кнопки управления в отдельной строке под полем ввода */
+/* Ряд 2 — кнопки: левая группа прижата к краю, правая — к противоположному. */
 .composer-buttons {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 2px 6px 6px;
+}
+
+.composer-buttons-left,
+.composer-buttons-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
 }
 
 /* ---------- Выбор модели и панель ввода (как на референсах) ---------- */
@@ -2877,29 +2881,6 @@ kbd {
   display: flex;
   align-items: center;
   padding: 0 2px;
-}
-
-/* .composer-foot сам не занимает отдельную строку — его дети (слева/справа)
-   становятся прямыми элементами однострочной пилюли `.composer` и расставляются
-   через order: вложение первым, текст в центре, голос/отправка последними. */
-.model-bar.composer-foot {
-  display: contents;
-}
-
-.composer-foot-left {
-  order: 1;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.composer-foot-right {
-  order: 3;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
 }
 
 .model-chip {

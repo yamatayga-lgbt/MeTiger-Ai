@@ -1489,74 +1489,36 @@ export function ChatView({
             />
           </div>
 
-          {/* Кнопки управления в отдельной строке под полем ввода */}
+          {/* Ряд 2: слева — «+», параметры и кольцо лимитов; справа — микрофон и отправка */}
           <div className="composer-buttons">
-            <button
-              type="button"
-              className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}`}
-              aria-label="Добавить"
-              aria-expanded={addMenuOpen}
-              onClick={() => {
-                haptic('light')
-                setAddMenuOpen((v) => !v)
-              }}
-            >
-              <Plus size={20} />
-            </button>
-            {voiceSupported ? (
+            <div className="composer-buttons-left">
               <button
                 type="button"
-                className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}${(talkSpeaking && talk) ? ' is-talk' : ''}`}
-                aria-label={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-                title={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-                disabled={polishing}
-                onClick={() => {
-                  /* Разговор вслух: пока агент говорит, микрофон — это «перебить».
-                     Одним касанием замолкает и открывается на человека. */
-                  if (talkSpeaking) {
-                    stopSpeech()
-                    setTalkSpeaking(false)
-                    if (!listening) startVoiceInput()
-                    return
-                  }
-                  if (listening) stopVoiceInput()
-                  else startVoiceInput()
-                }}
-              >
-                {talkSpeaking && talk ? <Square size={13} /> : listening ? <Square size={13} /> : <Mic size={17} />}
-              </button>
-            ) : null}
-
-            {typing ? (
-              /* Запрос уже ушёл — например, отправили по ошибке. Стоп реально
-                 обрывает сетевой запрос (AbortController в App.tsx), а не просто
-                 прячет «Печатает» на экране — см. src/lib/api.ts (поле stopped). */
-              <button
-                type="button"
-                className="send-btn stop-btn"
-                aria-label="Остановить"
-                title="Остановить генерацию"
+                className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}`}
+                aria-label="Добавить"
+                aria-expanded={addMenuOpen}
                 onClick={() => {
                   haptic('light')
-                  onStop?.()
+                  setAddMenuOpen((v) => !v)
                 }}
               >
-                <Square size={14} />
+                <Plus size={20} />
               </button>
-            ) : (
               <button
-                type="submit"
-                className="send-btn"
-                disabled={!value.trim() && shots.length === 0 && docs.length === 0}
-                aria-label="Отправить"
+                type="button"
+                className={`params-btn${paramsOpen ? ' is-open' : ''}`}
+                aria-label="Параметры генерации"
+                aria-expanded={paramsOpen}
+                title="Параметры: temperature, top_p"
+                onClick={() => {
+                  haptic('light')
+                  setParamsOpen((v) => !v)
+                }}
               >
-                <ArrowUp size={18} />
+                <SlidersHorizontal size={15} />
+                <span className="params-dot" aria-hidden="true" />
               </button>
-            )}
-          </div>
-
-          <div className="model-bar composer-foot">
-            <div className="composer-foot-left">
+              {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
               {/* Камера — снимок сразу с устройства (capture заставляет открыть именно камеру, не выбор приложения). */}
               <input
                 ref={cameraRef}
@@ -1586,8 +1548,57 @@ export function ChatView({
                 onChange={(e) => void addFiles(e.target.files)}
               />
             </div>
+            <div className="composer-buttons-right">
+              {voiceSupported ? (
+                <button
+                  type="button"
+                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}${(talkSpeaking && talk) ? ' is-talk' : ''}`}
+                  aria-label={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  title={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  disabled={polishing}
+                  onClick={() => {
+                    /* Разговор вслух: пока агент говорит, микрофон — это «перебить».
+                       Одним касанием замолкает и открывается на человека. */
+                    if (talkSpeaking) {
+                      stopSpeech()
+                      setTalkSpeaking(false)
+                      if (!listening) startVoiceInput()
+                      return
+                    }
+                    if (listening) stopVoiceInput()
+                    else startVoiceInput()
+                  }}
+                >
+                  {talkSpeaking && talk ? <Square size={13} /> : listening ? <Square size={13} /> : <Mic size={17} />}
+                </button>
+              ) : null}
 
-            <div className="composer-foot-right">
+              {typing ? (
+                /* Запрос уже ушёл — например, отправили по ошибке. Стоп реально
+                   обрывает сетевой запрос (AbortController в App.tsx), а не просто
+                   прячет «Печатает» на экране — см. src/lib/api.ts (поле stopped). */
+                <button
+                  type="button"
+                  className="send-btn stop-btn"
+                  aria-label="Остановить"
+                  title="Остановить генерацию"
+                  onClick={() => {
+                    haptic('light')
+                    onStop?.()
+                  }}
+                >
+                  <Square size={14} />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="send-btn"
+                  disabled={!value.trim() && shots.length === 0 && docs.length === 0}
+                  aria-label="Отправить"
+                >
+                  <ArrowUp size={18} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -1629,27 +1640,12 @@ export function ChatView({
             </>
           ) : null}
         </form>
-        <button
-          type="button"
-          className={`params-btn${paramsOpen ? ' is-open' : ''}`}
-          aria-label="Параметры генерации"
-          aria-expanded={paramsOpen}
-          title="Параметры: temperature, top_p"
-          onClick={() => {
-            haptic('light')
-            setParamsOpen((v) => !v)
-          }}
-        >
-          <SlidersHorizontal size={15} />
-          <span className="params-dot" aria-hidden="true" />
-        </button>
         {voiceError ? (
           <div className="voice-error" role="status" aria-live="polite">
             <span>{voiceError}</span>
           </div>
         ) : null}
         {voiceNote ? <div className="voice-note">{voiceNote}</div> : null}
-        {onOpenLimits ? <LimitsRing onOpen={onOpenLimits} /> : null}
       </div>
       {lightbox ? (
         <div className="lightbox" onClick={() => setLightbox(null)}>
