@@ -2864,6 +2864,14 @@ kbd {
   height: 100%;
 }
 
+/* Кнопки управления в отдельной строке под полем ввода */
+.composer-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+}
+
 /* ---------- Выбор модели и панель ввода (как на референсах) ---------- */
 .model-bar {
   display: flex;

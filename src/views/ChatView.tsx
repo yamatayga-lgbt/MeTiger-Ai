@@ -1489,20 +1489,74 @@ export function ChatView({
             />
           </div>
 
-          <div className="model-bar composer-foot">
-            <div className="composer-foot-left">
+          {/* Кнопки управления в отдельной строке под полем ввода */}
+          <div className="composer-buttons">
+            <button
+              type="button"
+              className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}`}
+              aria-label="Добавить"
+              aria-expanded={addMenuOpen}
+              onClick={() => {
+                haptic('light')
+                setAddMenuOpen((v) => !v)
+              }}
+            >
+              <Plus size={20} />
+            </button>
+            {voiceSupported ? (
               <button
                 type="button"
-                className={`icon-btn plus-btn${addMenuOpen ? ' is-open' : ''}`}
-                aria-label="Добавить"
-                aria-expanded={addMenuOpen}
+                className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}${(talkSpeaking && talk) ? ' is-talk' : ''}`}
+                aria-label={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                title={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                disabled={polishing}
                 onClick={() => {
-                  haptic('light')
-                  setAddMenuOpen((v) => !v)
+                  /* Разговор вслух: пока агент говорит, микрофон — это «перебить».
+                     Одним касанием замолкает и открывается на человека. */
+                  if (talkSpeaking) {
+                    stopSpeech()
+                    setTalkSpeaking(false)
+                    if (!listening) startVoiceInput()
+                    return
+                  }
+                  if (listening) stopVoiceInput()
+                  else startVoiceInput()
                 }}
               >
-                <Plus size={20} />
+                {talkSpeaking && talk ? <Square size={13} /> : listening ? <Square size={13} /> : <Mic size={17} />}
               </button>
+            ) : null}
+
+            {typing ? (
+              /* Запрос уже ушёл — например, отправили по ошибке. Стоп реально
+                 обрывает сетевой запрос (AbortController в App.tsx), а не просто
+                 прячет «Печатает» на экране — см. src/lib/api.ts (поле stopped). */
+              <button
+                type="button"
+                className="send-btn stop-btn"
+                aria-label="Остановить"
+                title="Остановить генерацию"
+                onClick={() => {
+                  haptic('light')
+                  onStop?.()
+                }}
+              >
+                <Square size={14} />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="send-btn"
+                disabled={!value.trim() && shots.length === 0 && docs.length === 0}
+                aria-label="Отправить"
+              >
+                <ArrowUp size={18} />
+              </button>
+            )}
+          </div>
+
+          <div className="model-bar composer-foot">
+            <div className="composer-foot-left">
               {/* Камера — снимок сразу с устройства (capture заставляет открыть именно камеру, не выбор приложения). */}
               <input
                 ref={cameraRef}
@@ -1534,56 +1588,6 @@ export function ChatView({
             </div>
 
             <div className="composer-foot-right">
-              {voiceSupported ? (
-                <button
-                  type="button"
-                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}${(talkSpeaking && talk) ? ' is-talk' : ''}`}
-                  aria-label={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-                  title={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-                  disabled={polishing}
-                  onClick={() => {
-                    /* Разговор вслух: пока агент говорит, микрофон — это «перебить».
-                       Одним касанием замолкает и открывается на человека. */
-                    if (talkSpeaking) {
-                      stopSpeech()
-                      setTalkSpeaking(false)
-                      if (!listening) startVoiceInput()
-                      return
-                    }
-                    if (listening) stopVoiceInput()
-                    else startVoiceInput()
-                  }}
-                >
-                  {talkSpeaking && talk ? <Square size={13} /> : listening ? <Square size={13} /> : <Mic size={17} />}
-                </button>
-              ) : null}
-
-              {typing ? (
-                /* Запрос уже ушёл — например, отправили по ошибке. Стоп реально
-                   обрывает сетевой запрос (AbortController в App.tsx), а не просто
-                   прячет «Печатает» на экране — см. src/lib/api.ts (поле stopped). */
-                <button
-                  type="button"
-                  className="send-btn stop-btn"
-                  aria-label="Остановить"
-                  title="Остановить генерацию"
-                  onClick={() => {
-                    haptic('light')
-                    onStop?.()
-                  }}
-                >
-                  <Square size={14} />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  className="send-btn"
-                  disabled={!value.trim() && shots.length === 0 && docs.length === 0}
-                  aria-label="Отправить"
-                >
-                  <ArrowUp size={18} />
-                </button>
-              )}
             </div>
           </div>
 
