@@ -89,7 +89,11 @@ export function LimitsRing({ onOpen }: { onOpen: () => void }) {
       }}
     >
       <LimitsRingGlyph pct={pct} size={18} stroke={2} />
-      <span className="limits-pct">{Math.round(pct)}%</span>
+      {/* Тот же формат, что на экране «Использование и Лимиты» (fmtPct, одна
+          цифра после запятой): раньше здесь стоял Math.round, и при запасе
+          99,8 % кольцо честно рисовало «100%» — владелец увидел два разных
+          числа об одном и том же (0.189). */}
+      <span className="limits-pct">{fmtPct(pct)}</span>
     </button>
   )
 }

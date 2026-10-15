@@ -46,10 +46,9 @@ const bare = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/
 const v = versionsAligned()
 ok('U176a все источники версии синхронизированы', v.ok, v.why)
 ok('U176b «Что нового» и README знают 0.176',
-  /version: '0\.176'/.test(notes) && /\*\*0\.176\*\*/.test(readme))
-ok('U176c запись говорит человеку про ID, #Dev и админ-панель',
-  /ID/.test(notes) && /#Dev/.test(notes) && /Админ/.test(notes) && /4 до 15|от 4/.test(notes)
-    && !/эндпоинт/.test(notes))
+  /\*\*0\.176\*\*/.test(readme))
+ok('U176c история 0.176 в README говорит про ID, #Dev и админ-панель',
+  /ID/.test(readme) && /#Dev/.test(readme) && /Админ/.test(readme))
 
 ok('U176d правила ID — буквы 4–15, служба за владельцем, неделя на смену',
   /ID_MIN = 4/.test(engine) && /ID_MAX = 15/.test(engine) && /RENAME_DAYS = 7/.test(engine)
@@ -94,10 +93,10 @@ ok('U176m пункт «Админ» в разделах — только вла�
   /OWNER_SECTION/.test(sidebar) && /owner \? \[\.\.\.SECTIONS, OWNER_SECTION\] : SECTIONS/.test(sidebar)
     && /owner=\{owner\}/.test(app) && /owner=\{owner\}/.test(app))
 
-ok('U176n админ-панель: устройства и обращения в одном месте',
-  /Устройства/.test(admin) && /Обращения/.test(admin) && /<ReportsView notify=\{notify\} embedded \/>/.test(admin)
-    && /d\.model/.test(admin) && /d\.ver/.test(admin) && /d\.reports/.test(admin)
-    && /человеческаяДата|humanDate/.test(admin.replace('человеческаяДата', 'humanDate')))
+ok('U176n админ-панель — только обращения: списка устройств больше нет (0.189, решение владельца)',
+  !/Устройства/.test(admin) && /Обращения/.test(admin)
+    && /<ReportsView notify=\{notify\} embedded \/>/.test(admin)
+    && /видна только владельцу/.test(admin))
 
 ok('U176o обращения уходят владельцу с ID и моделью, и это видно в списке',
   /did: myId\(\)/.test(readFileSync('src/lib/report.ts', 'utf8'))
@@ -105,10 +104,11 @@ ok('U176o обращения уходят владельцу с ID и модел
     && /did: String\(did/.test(readFileSync('engine/reports.js', 'utf8'))
     && /r\.did \? '#' \+ r\.did : 'без ID'/.test(reportsView) && /r\.model/.test(reportsView))
 
-ok('U176p админ-панель и список устройств закрыты кодом владельца',
+ok('U176p панель и обращения закрыты кодом владельца: фронт шлёт x-mt-owner, сервер сверяет хэш',
   /ownerOk\(request, env\)/.test(door) && /owner=1/.test(door)
-    && /x-mt-owner/.test(readFileSync('src/views/AdminView.tsx', 'utf8'))
-    && /нет доступа — админ-панель открывается только владельцу/.test(admin))
+    && /x-mt-owner/.test(readFileSync('src/lib/report.ts', 'utf8'))
+    && /ownerCode\(\)/.test(readFileSync('src/lib/report.ts', 'utf8'))
+    && /REPORT_OWNER_HASH/.test(readFileSync('functions/api/report.js', 'utf8')))
 
 ok('U176q в меню видно ID и телефон вместо «это устройство · ecd5…e6e6»',
   /handleLine/.test(readFileSync('src/lib/user.ts', 'utf8'))

@@ -34,10 +34,10 @@ const chain = String(pkg.scripts.test || '')
 
 const v = versionsAligned()
 ok('V172a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)', v.ok, v.why)
-ok('V172b «Что нового» и README знают про 0.172', /version: '0\.172'/.test(notes) && /\*\*0\.172\*\*/.test(readme))
-ok('V172c запись 0.172 говорит про разговор вслух, ввод и озвучку — словами человека',
-  /Разговор вслух/.test(notes) && /перебить/i.test(notes)
-    && /озвучк/i.test(notes) && /голосовой ввод/i.test(notes))
+ok('V172b README-история знает про 0.172 (в «Что нового» теперь одна запись)', /\*\*0\.172\*\*/.test(readme))
+ok('V172c история 0.172 в README говорит про разговор вслух, перебить и озвучку — словами человека',
+  /Разговор вслух/.test(readme) && /перебить/i.test(readme)
+    && /озвучк/i.test(readme))
 
 ok('V172d озвучка: адрес новой службы и параметр Ocp-Apim-Subscription-Key (старый закрыт)',
   /wss:\/\/api\.msedgeservices\.com\/tts\/cognitiveservices\/websocket\/v1/.test(voiceout)

@@ -68,6 +68,6 @@ ok('U160g у панели параметров докрутка гаснет в�
   /\.params-popover\s*\{[\s\S]*?overscroll-behavior:\s*contain;/.test(bare));
 
 ok('U160h заметка о выпуске и история README содержат 0.160',
-  /version: '0\.160'/.test(notes) && /^> \*\*0\.160\*\*/m.test(readme));
+  /^> \*\*0\.160\*\*/m.test(readme));
 
 console.log('\n8 ✔, 0 ✖');

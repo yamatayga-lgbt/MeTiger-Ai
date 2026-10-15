@@ -31,7 +31,7 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U164a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   versionsAligned().ok, versionsAligned().why);
 ok('U164b «Что нового» и README знают про 0.164',
-  /version: '0\.164'/.test(notes) && /\*\*0\.164\*\*/.test(readme));
+  /\*\*0\.164\*\*/.test(readme));
 
 ok('U164c время до первого слова снимается на первом непустом куске черновика, а не на старте запроса',
   app.indexOf('let firstTokenAt = 0') >= 0

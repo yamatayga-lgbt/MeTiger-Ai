@@ -29,7 +29,7 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U165a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   versionsAligned().ok, versionsAligned().why);
 ok('U165b «Что нового» и README знают про 0.165',
-  /version: '0\.165'/.test(notes) && /\*\*0\.165\*\*/.test(readme));
+  /\*\*0\.165\*\*/.test(readme));
 
 ok('U165c курсы дают источнику дату обновления из самих данных',
   /time_last_update_unix/.test(tools) && /open\.er-api\.com\/v6\/latest\/\$\{base\}/.test(tools));

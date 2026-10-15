@@ -29,9 +29,9 @@ const chain = String(pkg.scripts.test || '');
 
 const v = versionsAligned();
 ok('P171a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)', v.ok, v.why);
-ok('P171b «Что нового» и README знают про 0.171', /version: '0\.171'/.test(notes) && /\*\*0\.171\*\*/.test(readme));
-ok('P171c запись 0.171 говорит про презентацию и слайды человеку, а не про код',
-  /Презентация/.test(notes) && /pptx/.test(notes) && /слайд/i.test(notes));
+ok('P171b «Что нового» и README знают про 0.171', /\*\*0\.171\*\*/.test(readme));
+ok('P171c история 0.171 в README говорит про презентацию и слайды человеку, а не про код',
+  /презентаци/i.test(readme) && /pptx/i.test(readme) && /слайд/i.test(readme));
 
 ok('P171d формат pptx зарегистрирован с правильным типом файла',
   FMT.pptx && FMT.pptx.ext === 'pptx'

@@ -50,9 +50,9 @@ ok('U177a все источники версии синхронизирован�
 const appVer = (read('src/lib/version.ts').match(/APP_VERSION = '([^']+)'/) || [])[1] || ''
 const swVer = 'v' + appVer.replace(/\./g, '')
 ok('U177b «Что нового» и README знают 0.177',
-  /version: '0\.177'/.test(notes) && /\*\*0\.177\*\*/.test(readme))
-ok('U177c запись говорит человеку про картинки, а не про внутренности',
-  /картин/i.test(notes) && !/эндпоинт|env\.AI|binding/.test(notes) && sw.includes(swVer))
+  /\*\*0\.177\*\*/.test(readme))
+ok('U177c история 0.177 в README говорит про картинки; в текущей записи внутренностей нет',
+  /картин/i.test(readme) && !/эндпоинт|env\.AI|binding/.test(notes) && sw.includes(swVer))
 
 ok('U177d привязка AI включена в wrangler — картинки без единого токена',
   /\[ai\]/.test(wrangler) && /binding = "AI"/.test(wrangler)

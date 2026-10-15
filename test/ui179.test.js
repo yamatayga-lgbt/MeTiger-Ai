@@ -63,7 +63,7 @@ const { fmtPct, ringHue, ringColor, isExhausted, poolLine, poolNote, requestsWor
 const v = versionsAligned()
 ok('U179a все источники версии синхронизированы', v.ok, v.why)
 ok('U179b «Что нового» и README знают 0.179',
-  /version: '0\.179'/.test(notes) && /\*\*0\.179\*\*/.test(readme))
+  /\*\*0\.179\*\*/.test(readme))
 ok('U179c запись говорит человеку про запас, а не про внутренности',
   /запас|лимит/i.test(notes) && !/poolOf|env\.AI|эндпоинт/.test(notes)
     && sw.includes('v' + String(v.current).replace(/\./g, '')))

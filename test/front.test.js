@@ -1355,14 +1355,12 @@ console.log('── N · плоский интерфейс (0.144: стекло 
   ok('N29: «Что нового» знает текущую версию — свежая запись совпадает с APP_VERSION',
     appVer === firstVer && appVer.length > 0, 'версия ' + appVer + ' против записи ' + firstVer);
 
-  /* N35: правило хранения — в «Что нового» не больше 30 записей, и идут они от новой
-     к старой. Без этого список снова вырастет до 80+ записей (так и было). */
+  /* N35: правило хранения (0.189, решение владельца) — запись в «Что нового»
+     ровно одна, текущей версии. Полная история — в README, в коде её больше нет. */
   const noteVers = [...notesSrc.matchAll(/version: '([^']+)'/g)].map((m) => m[1]);
-  const verNum = (v) => Number(String(v).replace('0.', ''));
-  ok('N35: в «Что нового» не больше 30 записей, новые сверху, старые убраны',
-    noteVers.length > 0 && noteVers.length <= 30
-      && noteVers.every((v, i) => i === 0 || verNum(v) < verNum(noteVers[i - 1])),
-    'записей ' + noteVers.length);
+  ok('N35: в «Что нового» ровно одна запись — текущей версии, история живёт в README',
+    noteVers.length === 1 && noteVers[0] === appVer,
+    'записей ' + noteVers.length + ', версия ' + appVer);
 
   const newsView = readFileSync('src/views/WhatsNewView.tsx', 'utf8');
   const sidebarSrc = readFileSync('src/components/Sidebar.tsx', 'utf8');

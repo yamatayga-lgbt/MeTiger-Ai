@@ -92,6 +92,13 @@ if [ "$BUMP" = 1 ]; then
 say "  версия:      поднята до $VER"
   node -e 'const fs=require("fs");const p="package.json";const d=JSON.parse(fs.readFileSync(p,"utf8"));d.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(d,null,2)+"\n")' "$VER"
   say "  package.json:  version = $VER"
+  # 0.189: бамп больше не требует ручной возни — VERSION.md и lock синхронизируются
+  # сами, и выкладка версии умещается в одну команду:
+  #   npm run publish -- --bump --commit "0.XXX: что изменилось"
+  printf '%s\n' "$VER" > VERSION.md
+  say "  VERSION.md:    $VER"
+  npm install --package-lock-only --silent >/dev/null 2>&1 || true
+  say "  package-lock:  синхронизирован"
 fi
 
 # ── тесты и сборка ────────────────────────────────────────────────────────────

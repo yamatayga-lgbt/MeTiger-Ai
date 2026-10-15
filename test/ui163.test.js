@@ -35,7 +35,7 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U163a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   versionsAligned().ok, versionsAligned().why);
 ok('U163b «Что нового» и README знают про 0.163',
-  /version: '0\.163'/.test(notes) && /У источников видно дату/.test(notes) && /\*\*0\.163\*\*/.test(readme));
+  /0\.163/.test(readme) && /дат/i.test(readme) && /\*\*0\.163\*\*/.test(readme));
 
 ok('U163c дата читается из разметки страницы: мета в обоих порядках, <time>, микроразметка',
   search.indexOf('export function dateOf') >= 0

@@ -29,7 +29,7 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U167a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   versionsAligned().ok, versionsAligned().why);
 ok('U167b «Что нового» и README знают про 0.167',
-  /version: '0\.167'/.test(notes) && /\*\*0\.167\*\*/.test(readme));
+  /\*\*0\.167\*\*/.test(readme));
 
 ok('U167c три хода на месте: текст, картинка, файл',
   /id: 'text'/.test(smoke) && /id: 'image'/.test(smoke) && /id: 'file'/.test(smoke)

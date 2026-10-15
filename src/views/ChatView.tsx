@@ -9,6 +9,14 @@ import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
 import { Guard } from '../components/Guard'
+
+/* Последний черновик поля ввода (0.189): один на приложение, самый свежий.
+   draftOnce гарантирует, что сохранённый текст подставится один раз — при
+   открытии приложения, — а не в каждый чат при переключении. */
+const DRAFT_KEY = 'mt-draft'
+const DRAFT_MAX = 5000
+const draftOnce: { done: boolean } = { done: false }
+
 import { LimitsRing } from '../components/LimitsRing'
 import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
 /* Markdown (react-markdown + remark-gfm + формулы + песочница кода) — самый тяжёлый
@@ -666,7 +674,47 @@ export function ChatView({
      ни кнопки «озвучить» у ответа — ответы только текстом. Серверный голос
      (/api/tts, engine/voiceout.js) остался для внешних клиентов API. */
 
-  const [value, setValue] = useState('')
+  /* Последний черновик (0.189, решение владельца): набранный в поле текст
+     переживает обновление и перезагрузку приложения. Хранится ровно ОДИН
+     черновик — самый свежий из набранных, без истории по чатам. */
+  const [value, setValue] = useState(() => {
+    if (draftOnce.done) return ''
+    draftOnce.done = true
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY)
+      return typeof saved === 'string' && saved ? saved.slice(0, DRAFT_MAX) : ''
+    } catch {
+      return ''
+    }
+  })
+  /* Черновик пишется на каждый набор и стирается при отправке (поле пустеет —
+     ключ уходит). Первая отрисовка экземпляра в хранилище не пишет: при
+     переключении чата поле нового чата пустое, и затирать им черновик,
+     набранный в прошлом чате, нельзя — черновик один и он самый свежий. */
+  const draftSkip = useRef(true)
+  const valueRef = useRef(value)
+  useEffect(() => {
+    valueRef.current = value
+    if (draftSkip.current) {
+      draftSkip.current = false
+      return
+    }
+    try {
+      if (value) localStorage.setItem(DRAFT_KEY, value.slice(0, DRAFT_MAX))
+      else localStorage.removeItem(DRAFT_KEY)
+    } catch {
+      /* переполнение квоты — черновик просто не сохранится, это не поломка */
+    }
+  }, [value])
+  /* Уход с экрана чата — черновик тоже сохраняем (переключение, обновление страницы). */
+  useEffect(() => () => {
+    try {
+      const v = valueRef.current
+      if (v) localStorage.setItem(DRAFT_KEY, v.slice(0, DRAFT_MAX))
+    } catch {
+      /* noop */
+    }
+  }, [])
   const [shots, setShots] = useState<string[]>([])
   const [shotError, setShotError] = useState('')
   /* Перетаскивание показываем словами: без подсветки человек не знает, что на окно можно ронять. */

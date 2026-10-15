@@ -39,6 +39,7 @@ import {
   loadChats,
   loadView,
   saveChats,
+  sweepDeadKeys,
 } from './lib/persist'
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
@@ -256,6 +257,9 @@ export default function App() {
 
   useEffect(() => {
     setUser(siteUser())
+    /* Стереть то, что осталось на устройстве от старых версий (mt-talk, старый
+       отпечаток) — «старые данные, которые хранятся до сих пор», 0.189. */
+    sweepDeadKeys()
   }, [])
 
   /* Визит на сервер: он запоминает модель телефона, версию и время захода — это

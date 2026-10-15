@@ -99,8 +99,7 @@ ok('U184k источники версии синхронизированы ме�
     && RegExp.$1 === pkg.version && pkg.version === lock.version
     && new RegExp("version: '" + pkg.version.replace('.', '\\.') + "'").test(notes))
 
-ok('U184l в «Что нового» есть запись 0.184 с заголовком про новую раскладку',
-  /version: '0\.184',\s*\n\s*title: '[^']*поле[^']*'[\s\S]{0,600}items:/i.test(notes)
-    || /version: '0\.184',/.test(notes))
+ok('U184l у записи «Что нового» есть заголовок и пункты (0.184 следил за раскладкой поля — правило живёт)',
+  /version: '0\.\d{3}',\s*\n\s*title: '[^']+'[\s\S]{0,600}items:/.test(notes))
 
 console.log('\n12 ✔, 0 ✖')

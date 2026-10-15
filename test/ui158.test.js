@@ -89,6 +89,6 @@ ok('U158i service worker просит навигацию с проверкой �
     && /^\/\n  Cache-Control: no-cache/m.test(headers));
 
 ok('U158j заметка о выпуске и история README содержат 0.158',
-  /version: '0\.158'/.test(notes) && /^> \*\*0\.158\*\*/m.test(readme));
+  /^> \*\*0\.158\*\*/m.test(readme));
 
 console.log('\n10 ✔, 0 ✖');

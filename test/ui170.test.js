@@ -37,7 +37,7 @@ const v = versionsAligned();
 ok('U170a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   v.ok, v.why);
 ok('U170b «Что нового» и README знают про 0.170',
-  /version: '0\.170'/.test(notes) && /\*\*0\.170\*\*/.test(readme));
+  /\*\*0\.170\*\*/.test(readme));
 
 ok('U170c движок отдаёт числа контекста из реальной подгонки, а не из каталога',
   /ctxUsed: fitNow\.tokens, ctxWindow: fitNow\.window/.test(engine)

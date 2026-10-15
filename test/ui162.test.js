@@ -36,7 +36,7 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U162a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   versionsAligned().ok, versionsAligned().why);
 ok('U162b «Что нового» и README знают про 0.162',
-  /version: '0\.162'/.test(notes) && /title: 'Переписка переезжает на новый телефон одним файлом'/.test(notes) && /\*\*0\.162\*\*/.test(readme));
+  /\*\*0\.162\*\*/.test(readme));
 
 ok('U162c копия собирает только ключи приложения (префикс mt-), список не зашит',
   /export const LOCAL_PREFIX = 'mt-'/.test(backup) && /k\.indexOf\(LOCAL_PREFIX\) !== 0\) continue/.test(backup));
@@ -59,7 +59,7 @@ ok('U162j замена данных — только после второго �
   /copyArm \? 'primary' : 'secondary'/.test(dataView) && /Точно заменить\? Нажмите ещё раз/.test(dataView)
     && /Файл прочитан:/.test(dataView) && /describeBackup\(copy\)\.when/.test(dataView));
 ok('U162k человеку говорят, что ключ устройства переезжает (память на сервере найдётся сама)',
-  /ключ устройства/i.test(notes) || /Ключ устройства тоже переезжает/.test(notes));
+  /ключ устройства/i.test(readme) || /Ключ устройства тоже переезжает/.test(readme));
 ok('U162l новый экран подписан стилем (карточка предпросмотра не голая)',
   /\.restore-box/.test(css) && /className="restore-box"/.test(dataView));
 ok('U162m новые тесты в цепочке прогона (backup, ui162)',

@@ -29,7 +29,7 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U169a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   versionsAligned().ok, versionsAligned().why);
 ok('U169b «Что нового» и README знают про 0.169',
-  /version: '0\.169'/.test(notes) && /\*\*0\.169\*\*/.test(readme));
+  /\*\*0\.169\*\*/.test(readme));
 
 ok('U169c gemini смотрит на все ключи, а не на первый',
   /const keys = String\(env\.GEMINI_KEYS \|\| env\.GOOGLE_API_KEY \|\| ''\)/.test(imggen)

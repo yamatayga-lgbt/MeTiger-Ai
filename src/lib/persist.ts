@@ -21,6 +21,17 @@ const CHATS_KEY = 'mt-chats'
 const ACTIVE_KEY = 'mt-active-chat'
 const VIEW_KEY = 'mt-view'
 
+/** Ключи, которые остались на устройствах от старых версий и никому не нужны:
+    «Разговор вслух» (убран в 0.188) и старый отпечаток устройства (0.182 сменил
+    ключ на mt-dev-fp2). Вызывается один раз при старте приложения. */
+export function sweepDeadKeys(): void {
+  try {
+    for (const k of ['mt-talk', 'mt-dev-fp']) localStorage.removeItem(k)
+  } catch {
+    /* приватный режим — стирать нечего, это не поломка */
+  }
+}
+
 const MAX_MESSAGES_PER_CHAT = 300
 const MAX_CHAT_TITLE = 30
 
@@ -243,6 +254,25 @@ export function saveChats(chats: Chat[], activeChatId: string, view: ViewId): vo
     localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeChatId))
     localStorage.setItem(VIEW_KEY, JSON.stringify(view))
   } catch {
-    /* noop */
+    /* Хранилище переполнено (страховка 0.189: «при каждом обновлении чаты
+       должны сохраняться»). Байты и так в IndexedDB, поэтому чаще всего не
+       влезает сама история: повторяем с урезанным списком — свежие chats
+       остаются, самые старые уходят. Если и это не влезло — молча выходим. */
+    try {
+      const trimmed = chats
+        .filter((c) => c.messages.length > 0)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 20)
+        .map((c) => ({
+          ...c,
+          title: safeChatTitle(c.title),
+          messages: c.messages.slice(-MAX_MESSAGES_PER_CHAT).map(stripMediaForStorage),
+        }))
+      localStorage.setItem(CHATS_KEY, JSON.stringify(trimmed))
+      localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeChatId))
+      localStorage.setItem(VIEW_KEY, JSON.stringify(view))
+    } catch {
+      /* noop */
+    }
   }
 }

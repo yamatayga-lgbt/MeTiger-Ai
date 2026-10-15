@@ -32,7 +32,7 @@ const currentVersion = version.match(/APP_VERSION = '([^']+)'/)?.[1];
 ok('U168a все источники версии синхронизированы (version.ts, package.json, package-lock, VERSION.md)',
   versionsAligned().ok, versionsAligned().why);
 ok('U168b «Что нового» и README знают про 0.168',
-  /version: '0\.168'/.test(notes) && /\*\*0\.168\*\*/.test(readme));
+  /\*\*0\.168\*\*/.test(readme));
 
 ok('U168c кнопки нет: ни разметки, ни состояния, ни стиля',
   chatView.indexOf('web-btn') < 0 && chatView.indexOf('webForce') < 0
