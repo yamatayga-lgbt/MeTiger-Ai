@@ -90,6 +90,32 @@ console.log('H — честный откат на живом движке');
     r3.ok && !r3.sightedPlain && !r3.sightedMiss, JSON.stringify(r3.model));
 }
 
+console.log('V — отказ зрячей модели: картиночный ответ тоже проверяется слоем свободы (0.191)');
+{
+  /* Первый вызов отказывается рассматривать фото — движок обязан пойти ко
+     второму провайдеру, а не показать человеку голый отказ. */
+  let n = 0;
+  const f = async (url) => {
+    n++;
+    const body = n === 1
+      ? chat('Извини, я не могу рассматривать людей на фотографиях.')
+      : /generativelanguage\.googleapis\.com/.test(url) ? gem('На фото: ответ по существу.') : chat('На фото: ответ по существу.');
+    return { status: 200, text: async () => JSON.stringify(body) };
+  };
+  const e = createEngine({ env: { GEMINI_KEYS: 'gm1', ZAI_KEYS: 'z1' }, fetch: f, sleep: async () => {} });
+  const r = await e.run({ text: 'разбери фото и скажи, что на нём', images: ['data:image/png;base64,AA'] });
+  ok('V1: зрячая отказалась — ответ пришёл от следующего провайдера, а не отказ человеку',
+    r.ok && n >= 2, JSON.stringify({ ok: r.ok, calls: n, model: r.model, err: r.error }));
+
+  /* Отказываются все — человек получает честную ошибку, а не молчание. */
+  const fall = async () => ({ status: 200, text: async () => JSON.stringify(chat('Извини, я не могу это показать.')) });
+  const e2 = createEngine({ env: { GEMINI_KEYS: 'gm1', ZAI_KEYS: 'z1' }, fetch: fall, sleep: async () => {} });
+  const r2 = await e2.run({ text: 'разбери фото', images: ['data:image/png;base64,AA'] });
+  ok('V2: отказали все — честная ошибка «ни один провайдер не ответил», выдуманного ответа нет',
+    !r2.ok && /ни один провайдер не ответил/.test(String(r2.error || '')) && !r2.reply,
+    JSON.stringify({ ok: r2.ok, err: String(r2.error).slice(0, 120) }));
+}
+
 console.log(`\n${pass} ✔, ${fail} ✖`);
 if (fail) process.exit(1);
 console.log('✔ 0.185: зрячий маршрут сложных задач и честный откат — проверки пройдены');
