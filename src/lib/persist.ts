@@ -21,6 +21,23 @@ const CHATS_KEY = 'mt-chats'
 const ACTIVE_KEY = 'mt-active-chat'
 const VIEW_KEY = 'mt-view'
 
+/** Ключи, составляющие переписку на устройстве: ровно их трогает
+    «Очистить все чаты на устройстве» (0.190). Код владельца (mt-owner),
+    профиль (mt-person-name), персонализация (mt-persona), тема, параметры
+    и черновик поля ввода — не чаты, очистка их не касается. */
+export const CHAT_KEYS = ['mt-chats', 'mt-active-chat'] as const
+
+/** Стереть только переписку: чаты и активный чат. Байты картинок и файлов
+    лежат отдельно (IndexedDB, имена metiger-chat-media и
+    metiger-attach-history) — их стирает вызывающая сторона. */
+export function wipeChatsOnly(): void {
+  try {
+    for (const k of CHAT_KEYS) localStorage.removeItem(k)
+  } catch {
+    /* приватный режим — чистить нечего */
+  }
+}
+
 /** Ключи, которые остались на устройствах от старых версий и никому не нужны:
     «Разговор вслух» (убран в 0.188) и старый отпечаток устройства (0.182 сменил
     ключ на mt-dev-fp2). Вызывается один раз при старте приложения. */
