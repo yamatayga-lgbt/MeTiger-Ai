@@ -68,12 +68,16 @@ console.log('E — живой прогон двигателя');
 }
 
 console.log('F — фронт: экран, хранение и поле запроса');
-ok('F1: экран знает все семь настроек, как в ChatGPT',
+ok('F1: экран знает пять настроек: стиль, дружелюбие, энтузиазм, заголовки, эмодзи',
   view.includes('Базовый стиль и тон') && view.includes('Дружелюбие') && view.includes('Энтузиазм')
-    && view.includes('Заголовки и списки') && view.includes('Эмодзи')
-    && view.includes('Быстрые ответы') && view.includes('Визуальные ответы'));
+    && view.includes('Заголовки и списки') && view.includes('Эмодзи'));
+ok('F1b: «Быстрые ответы» и «Визуальные ответы» убраны (0.187, решения владельца)',
+  !view.includes('Быстрые ответы') && !view.includes('Визуальные ответы'));
 ok('F2: «Пользовательские инструкции» вычеркнуты владельцем — их нет',
   !view.includes('Пользовательские инструкции'));
+
+ok('F2c: переключение не хвастается плашками «сохранено» — notify в экране не зовётся',
+  !/notify\(/.test(view));
 ok('F3: меню всплывает НАД карточками: затемнение и меню выше прочих окон',
   /\.persona-backdrop \{[\s\S]{0,120}z-index: 60/.test(css) && /\.persona-pop \{[\s\S]{0,240}z-index: 61/.test(css));
 ok('F4: пункты меню — название + пояснение, у выбранного галочка',
@@ -85,6 +89,9 @@ ok('F6: отправка читает те же настройки (App.tsx), ч
   app.includes('personaForRequest(readPersona())') && view.includes("'mt-persona'"));
 ok('F7: дверь валидирует persona по белому списку до движка',
   door.includes('persona: personaStyle.normalize(body.persona)'));
+
+ok('F8: открытое меню поднимает свою группу над остальными карточками',
+  /\.settings-group:has\(\.persona-pop\) \{[\s\S]{0,80}z-index: 70/.test(css));
 
 console.log(`\n${pass} ✔, ${fail} ✖`);
 if (fail) process.exit(1);

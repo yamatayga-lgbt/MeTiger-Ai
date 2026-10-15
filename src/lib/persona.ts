@@ -12,9 +12,10 @@
 
 export type StyleTone = 'default' | 'professional' | 'friendly' | 'candid' | 'quirky' | 'efficient' | 'cynical'
 export type Level = 'less' | 'default' | 'more'
-export type Visual = 'default' | 'simple'
 
-/** Настройки персонализации. default/less|default|more — «человек не выбирал». */
+/** Настройки персонализации. default/less|default|more — «человек не выбирал».
+ *  «Быстрые ответы» и «Визуальные ответы» из экрана убраны (0.187, решения
+ *  владельца): быстрые модели и так выбираются сами, картинки — по просьбе. */
 export interface Persona {
   /** Базовый стиль и тон. */
   style: StyleTone
@@ -26,10 +27,6 @@ export interface Persona {
   headers: Level
   /** Эмодзи. */
   emoji: Level
-  /** Быстрые ответы: короткий ответ сразу, без поисков и памяти. */
-  quick: boolean
-  /** Визуальные ответы: simple — картинки и графики только по явной просьбе. */
-  visual: Visual
 }
 
 export const PERSONA_KEY = 'mt-persona'
@@ -40,13 +37,10 @@ export const DEFAULT_PERSONA: Persona = {
   enthusiasm: 'default',
   headers: 'default',
   emoji: 'default',
-  quick: false,
-  visual: 'default',
 }
 
 const STYLES: StyleTone[] = ['default', 'professional', 'friendly', 'candid', 'quirky', 'efficient', 'cynical']
 const LEVELS: Level[] = ['less', 'default', 'more']
-const VISUALS: Visual[] = ['default', 'simple']
 
 type Store = { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void }
 
@@ -64,10 +58,6 @@ export function isStyleTone(v: unknown): v is StyleTone {
 export function isLevel(v: unknown): v is Level {
   return typeof v === 'string' && LEVELS.indexOf(v as Level) >= 0
 }
-export function isVisual(v: unknown): v is Visual {
-  return typeof v === 'string' && VISUALS.indexOf(v as Visual) >= 0
-}
-
 /** Что угодно → честные настройки: каждое поле по белому списку, мусор — умолчание. */
 export function normalizePersona(v: unknown): Persona {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
@@ -77,8 +67,6 @@ export function normalizePersona(v: unknown): Persona {
     enthusiasm: isLevel(o.enthusiasm) ? o.enthusiasm : 'default',
     headers: isLevel(o.headers) ? o.headers : 'default',
     emoji: isLevel(o.emoji) ? o.emoji : 'default',
-    quick: o.quick === true,
-    visual: isVisual(o.visual) ? o.visual : 'default',
   }
 }
 
@@ -86,7 +74,7 @@ export function normalizePersona(v: unknown): Persona {
 export function isDefaultPersona(p: Persona): boolean {
   return (
     p.style === 'default' && p.friendliness === 'default' && p.enthusiasm === 'default'
-    && p.headers === 'default' && p.emoji === 'default' && p.quick === false && p.visual === 'default'
+    && p.headers === 'default' && p.emoji === 'default'
   )
 }
 
@@ -95,7 +83,7 @@ export function isPersona(v: unknown): v is Persona {
   if (!v || typeof v !== 'object') return false
   const o = v as Record<string, unknown>
   return isStyleTone(o.style) && isLevel(o.friendliness) && isLevel(o.enthusiasm)
-    && isLevel(o.headers) && isLevel(o.emoji) && isVisual(o.visual)
+    && isLevel(o.headers) && isLevel(o.emoji)
 }
 
 /** Что стоит сейчас. Грязь в хранилище читается как умолчания, а не как ошибка. */
@@ -141,8 +129,3 @@ export const STYLE_CHOICES: { value: StyleTone; title: string; sub: string }[] =
 ]
 
 export const LEVEL_TITLES: Record<Level, string> = { more: 'Более', default: 'По умолчанию', less: 'Менее' }
-
-export const VISUAL_CHOICES: { value: Visual; title: string; sub: string }[] = [
-  { value: 'default', title: 'По умолчанию', sub: 'Картинки и графики — когда они к месту' },
-  { value: 'simple', title: 'Простые', sub: 'Только текст, без картинок без просьбы' },
-]

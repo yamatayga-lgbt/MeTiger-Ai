@@ -3050,55 +3050,7 @@ kbd {
   color: var(--text);
 }
 
-/* Пояснение под карточкой (Быстрые ответы, Визуальные ответы). */
-.persona-note {
-  margin: 0;
-  padding: 10px 16px 14px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-3);
-}
-
-.persona-note-plain {
-  padding: 10px 4px 0;
-}
-
-/* Переключатель — как в ChatGPT: пилюля, круг съезжает вправо. */
-.persona-switch {
-  position: relative;
-  flex-shrink: 0;
-  width: 51px;
-  height: 31px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--surface-2);
-  cursor: pointer;
-  transition: background-color var(--t-med);
-}
-
-.persona-switch.is-on {
-  background: var(--text);
-}
-
-.persona-switch-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform var(--t-med);
-}
-
-.persona-switch.is-on .persona-switch-knob {
-  transform: translateX(20px);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .persona-switch,
-  .persona-switch-knob,
   .persona-caret,
   .persona-caret-big {
     transition: none;
@@ -4247,6 +4199,16 @@ kbd {
 .settings-group {
   margin-bottom: 26px;
   animation: fadeUp var(--t-med) both;
+}
+
+/* Анимация группы создаёт свой слой (stacking context), и группы рисуются
+   строго по порядку: всплывающее меню из верхней группы оказывалось ПОД
+   нижними карточками. Группа, внутри которой открыто меню, поднимается
+   над остальными — меню снова верхний слой (:has поддержан во всех
+   актуальных браузерах; без него меню просто лежало бы под карточками). */
+.settings-group:has(.persona-pop) {
+  position: relative;
+  z-index: 70;
 }
 
 .settings-label {

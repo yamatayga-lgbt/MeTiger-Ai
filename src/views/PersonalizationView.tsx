@@ -1,14 +1,15 @@
 /**
- * Персонализация (0.186) — стиль и тон агента, как в приложении ChatGPT.
+ * Персонализация (0.187) — стиль и тон агента, как в приложении ChatGPT.
  *
  * С 0.182 память живёт отдельным экраном, здесь — настройки формы ответа:
- * базовый стиль и тон, дружелюбие, энтузиазм, заголовки и списки, эмодзи,
- * быстрые ответы (переключатель), визуальные ответы. Плюс род агента,
- * который тут с 0.155. Раздела с кастомными инструкциями в экране нет:
- * владелец вычеркнул его на эскизе (15 окт 2026).
+ * базовый стиль и тон, дружелюбие, энтузиазм, заголовки и списки, эмодзи.
+ * Плюс род агента, который тут с 0.155.
  *
- * Значения едут в /api/chat полем persona (src/lib/persona.ts) и превращаются
- * в блок системной подсказки на сервере (engine/personastyle.js).
+ * Чего в экране больше нет (0.187, по решениям владельца): переключателя
+ * быстрых ответов (быстрые модели и так выбираются сами), настройки
+ * визуальных ответов (зачёркнута на эскизе) и плашек «сохранено» —
+ * переключение и есть сохранение.
+ * Раздела с кастомными инструкциями нет с 0.186 — вычеркнут на эскизе.
  */
 import { useState } from 'react'
 import { Check, Sparkles, UserRound } from 'lucide-react'
@@ -16,9 +17,9 @@ import { Segmented } from '../components/ui'
 import { PersonaSelect } from '../components/PersonaSelect'
 import { GENDER_CHOICES, isGender, type Gender } from '../lib/gender'
 import {
-  DEFAULT_PERSONA, LEVEL_TITLES, STYLE_CHOICES, VISUAL_CHOICES,
+  DEFAULT_PERSONA, LEVEL_TITLES, STYLE_CHOICES,
   isPersona,
-  type Level, type Persona, type StyleTone, type Visual,
+  type Level, type Persona, type StyleTone,
 } from '../lib/persona'
 import { usePersistentState } from '../hooks/usePersistentState'
 
@@ -48,7 +49,7 @@ function levelOptions(key: string): { value: Level; title: string; sub: string }
   }))
 }
 
-export function PersonalizationView({ notify }: PersonalizationViewProps) {
+export function PersonalizationView(_props: PersonalizationViewProps) {
   /* Род агента читает отправка сообщения в App.tsx, поэтому ключ отдельный. */
   const [gender, setGender] = usePersistentState<Gender>('mt-gender', 'auto', isGender)
   /* Персонализация — тем же путём: usePersistentState пишет JSON в mt-persona,
@@ -59,7 +60,6 @@ export function PersonalizationView({ notify }: PersonalizationViewProps) {
 
   function patch(next: Partial<Persona>) {
     setPersona((prev) => ({ ...prev, ...next }))
-    notify('Настройка сохранена')
   }
 
   const styleLabel = STYLE_CHOICES.find((s) => s.value === persona.style)?.title || 'По умолчанию'
@@ -112,7 +112,7 @@ export function PersonalizationView({ notify }: PersonalizationViewProps) {
                       <span className="persona-pop-title">{o.title}</span>
                       <span className="persona-pop-sub">{o.sub}</span>
                     </span>
-                    {o.value === persona.style ? <CheckIcon /> : null}
+                    {o.value === persona.style ? <Check size={18} className="persona-pop-check" /> : null}
                   </button>
                 ))}
               </div>
@@ -163,49 +163,6 @@ export function PersonalizationView({ notify }: PersonalizationViewProps) {
         </div>
       </div>
 
-      {/* Быстрые ответы — переключатель с пояснением, как в ChatGPT. */}
-      <div className="settings-group">
-        <div className="settings-card">
-          <div className="settings-row">
-            <div className="grow">
-              <div className="n">Быстрые ответы</div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={persona.quick}
-              className={'persona-switch' + (persona.quick ? ' is-on' : '')}
-              aria-label="Быстрые ответы"
-              onClick={() => patch({ quick: !persona.quick })}
-            >
-              <span className="persona-switch-knob" />
-            </button>
-          </div>
-          <p className="persona-note">
-            Иногда агент может отвечать из общих знаний, чтобы быстрее дать подробный ответ.
-            Такие ответы не персонализированы и не используют вашу память.
-          </p>
-        </div>
-      </div>
-
-      {/* Визуальные ответы — карточка со значением под заголовком и пояснением. */}
-      <div className="settings-group">
-        <PersonaSelect
-          name="visual"
-          label="Визуальные ответы"
-          value={persona.visual}
-          options={VISUAL_CHOICES}
-          fallback="По умолчанию"
-          openName={openName}
-          onOpenChange={setOpenName}
-          onChange={(v) => patch({ visual: v as Visual })}
-        />
-        <p className="persona-note persona-note-plain">
-          Разрешить агенту при необходимости создавать наглядные ответы: картинки и графики.
-          «Простые» — отвечать текстом, если картинку не просили.
-        </p>
-      </div>
-
       {/* Род агента — прежняя настройка (с 0.155). */}
       <div className="settings-group">
         <div className="settings-label">Ассистент</div>
@@ -222,7 +179,6 @@ export function PersonalizationView({ notify }: PersonalizationViewProps) {
               value={gender}
               onChange={(v) => {
                 setGender(v as Gender)
-                notify('Род агента сохранён')
               }}
               options={GENDER_CHOICES.map((c) => ({
                 value: c.value,
@@ -254,8 +210,4 @@ function ChevronBig({ open }: { open: boolean }) {
       <path d="m6 9 6 6 6-6" />
     </svg>
   )
-}
-
-function CheckIcon() {
-  return <Check size={18} className="persona-pop-check" />
 }

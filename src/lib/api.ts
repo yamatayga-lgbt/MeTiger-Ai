@@ -711,8 +711,6 @@ export interface PersonaPayload {
   enthusiasm?: string
   headers?: string
   emoji?: string
-  quick?: boolean
-  visual?: string
 }
 
 export const TOOL_RU: Record<string, string> = {
