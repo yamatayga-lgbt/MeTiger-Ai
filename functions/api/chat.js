@@ -16,6 +16,7 @@ import { createEngine, PERSONA_SYSTEM, ensemble, vcouncil, MODEL_COOL, KEY_TURN,
    мыслей уезжал человеку обычным текстом ответа. */
 import { THINK_OPEN, THINK_CLOSE, THINK_OPEN_PARTIAL, stripThinkTags } from '../../engine/shape.js';
 import * as genderLayer from '../../engine/gender.js';
+import * as personaStyle from '../../engine/personastyle.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import { createBrave } from '../../engine/brave.js';
 import * as emotionLayer from '../../engine/emotion.js';
@@ -572,6 +573,9 @@ async function handlePost(context) {
        «не прислано» превращалось в явное `auto` и затырало настройку сервера у
        каждого, кто про поле не знает (Telegram, curl, старые клиенты). */
     gender: genderLayer.pick(body.gender),
+    /* Персонализация (0.186): стиль и тон из приложения. normalize валидирует
+       каждое поле по белому списку — чужая чушь в теле запроса не доедет до промпта. */
+    persona: personaStyle.normalize(body.persona),
     /* Блок профиля уходит в system после персоны и до резки окна (см. engine/chat.js):
        его же читают и головы совета — у них входа отдельно от ctx.system нет. */
     profile: profileBlock || undefined,

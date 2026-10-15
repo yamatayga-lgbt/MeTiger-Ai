@@ -31,6 +31,7 @@ import { APP_VERSION } from './lib/version'
 import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
+import { readPersona, personaForRequest } from './lib/persona'
 import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep, type ImageStep, type ChatResult } from './lib/api'
 import {
   hydrateChatMedia,
@@ -505,6 +506,7 @@ export default function App() {
               ...(attachments && attachments.length ? { attachments } : {}),
               ...(model ? { model } : {}),
               gender: genderForRequest(readGender()),
+              persona: personaForRequest(readPersona()),
               onDraft: (t) => {
                 if (t && !firstTokenAt) firstTokenAt = Date.now()
                 setDraft(t)

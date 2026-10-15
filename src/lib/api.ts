@@ -494,6 +494,8 @@ export async function sendChat(
     attachments?: Attachment[]
     model?: string
     gender?: string
+    /** Персонализация (0.186): стиль и тон из экрана «Персонализация». Умолчания не едут. */
+    persona?: PersonaPayload
     /** Подтверждённая пользователем карточка дела; движок добавит её к текущему запросу как данные. */
     caseContext?: string
     /**
@@ -593,6 +595,7 @@ export async function sendChat(
         attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
         model: opts.model || undefined,
         gender: opts.gender || undefined,
+        persona: opts.persona || undefined,
         /* явная просьба показать, как модель думала; без неё сервер в этом канале молчит */
         showReasoning: opts.onReasoning ? true : undefined,
         /* явная просьба глубокого поиска в сети; без неё работают только собственные триггеры */
@@ -701,6 +704,17 @@ export function adviceLine(r: ChatResult): { text: string; tone: AdviceTone } | 
 }
 
 /** Короткая строка «кто ответил» — для отладочной подписи под сообщением. */
+/** Персонализация (0.186): поле persona тела запроса — те же имена, что на сервере. */
+export interface PersonaPayload {
+  style?: string
+  friendliness?: string
+  enthusiasm?: string
+  headers?: string
+  emoji?: string
+  quick?: boolean
+  visual?: string
+}
+
 export const TOOL_RU: Record<string, string> = {
   'web-search': 'веб-поиск',
   news: 'новости',

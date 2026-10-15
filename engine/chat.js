@@ -23,6 +23,7 @@ import { sharedUsage } from './usage.js';
 import { fit as fitContext, estTokens, clampNumber, CTX_WINDOW_MAX } from './ctxfit.js';
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { packCharts } from './chart.js';
+import * as personaStyle from './personastyle.js';
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
 import { block as jbBlock } from './jailbreak.js';
@@ -489,6 +490,10 @@ export function createEngine(opts) {
        что к собеседнику обращаются ровно, без превосходства. `auto` — только эта
        строка, род модель берёт из персоны и разговора. */
     if (isDefaultSys) system = system + gender.blockFor(input, env);
+
+    /* Персонализация (0.186): стиль и тон из экрана «Персонализация» — настройка
+       человека, не слово движка. Всё по умолчанию — пусто, промпт прежний. */
+    if (isDefaultSys && input.persona) system = system + personaStyle.block(input.persona);
 
     /* Профиль человека (engine/profile.js) — его собственные слова из Настроек: имя,
        профессия, рассказ о себе и собранные из них правила формы ответа. Идём ПОСЛЕ
