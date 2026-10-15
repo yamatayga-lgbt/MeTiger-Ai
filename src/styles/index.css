@@ -339,8 +339,6 @@ a {
   height: 100%;
   overflow: hidden;
 }
-
-
 /* ---------- Sidebar (drawer на мобильном, статичный на десктопе) ---------- */
 .sidebar {
   display: flex;
@@ -1027,8 +1025,6 @@ a {
   text-align: center;
   font-weight: 650;
 }
-
-
 /* Круглые кнопки слева/справа в шапке — прозрачные с чёрным текстом */
 .icon-btn.topbar-round {
   width: 38px;
@@ -1043,8 +1039,6 @@ a {
   background: transparent;
   color: #000000;
 }
-
-
 /* ---------- Buttons / controls ---------- */
 .icon-btn {
   display: inline-flex;
@@ -2817,10 +2811,6 @@ kbd {
   color: var(--danger);
   animation: fadeUp var(--t-fast) both;
 }
-
-
-
-
 /* Пока идёт речь (или едет точный текст), в поле лежит ЧЕРНОВИК: он ещё
    изменится. Отмечаем это прозрачностью текста и лёгким свечением рамки, чтобы
    человек не удивился, когда слова заменятся. */
@@ -2875,8 +2865,6 @@ kbd {
   gap: 2px;
   min-width: 0;
 }
-
-
 /* ============================================================
    Персонализация (0.186) — строки со значениями и всплывающие
    меню НАД соседними карточками, как в ChatGPT.
@@ -4439,8 +4427,6 @@ kbd {
   transform: scale(0.97);
   filter: brightness(0.94);
 }
-
-
 /* ---------- Списки строк (профиль, настройки, информация) — как в ChatGPT ----------
 
    Одна строка = иконка, подпись, при необходимости значение справа и шеврон.
@@ -4886,30 +4872,6 @@ button.rows-row:hover {
 .msg-copy-btn:hover {
   color: var(--text-2);
   background: var(--surface-hover);
-}
-
-/* Кнопка «озвучить ответ». Та же мера, что у копирования: в строке под пузырём
-   два одинаковых значка рядом, и различает их только назначение, а не размер.
-   Пока голос звучит — кнопка горит акцентом и показывает остановку. */
-.msg-speak-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--r-sm, 6px);
-  color: var(--text-3);
-  transition: color var(--t-fast), background-color var(--t-fast);
-}
-
-.msg-speak-btn:hover {
-  color: var(--text-2);
-  background: var(--surface-hover);
-}
-
-.msg-speak-btn.is-on {
-  color: var(--accent, #7c9cff);
-  background: color-mix(in srgb, var(--accent, #7c9cff) 14%, transparent);
 }
 
 .msg-time {
@@ -5736,8 +5698,6 @@ button.rows-row:hover {
 .model-failover-ic {
   color: var(--ok);
 }
-
-
 /* ---------- Окошко «Что нового» после обновления (0.102) ----------
 
    Появляется само, когда версия на устройстве сменилась. Затемнение мягче, чем
@@ -6687,77 +6647,11 @@ button,
   margin-left: 4px;
 }
 
-/* Индикатор использования контекста */
-/* «Разговор вслух» (0.172): тонкая строка над полем в том же месте, где полоска
-   контекста. Режим меняет поведение микрофона, и человек должен видеть, что он
-   включён, — иначе «микрофон сам открылся» выглядело бы поломкой. */
-.talk-chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: flex-end;
-  white-space: nowrap;
-  font-size: 10.5px;
-  line-height: 1.2;
-  color: var(--accent);
-  margin: 0 8px 6px;
-}
-
-.talk-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: talk-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes talk-pulse {
-  0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
-
-/* Переключатель в меню «+»: справа, как у пунктов со значением. */
-.talk-switch {
-  margin-left: auto;
-  width: 34px;
-  height: 20px;
-  border-radius: 999px;
-  background: var(--border);
-  position: relative;
-  flex-shrink: 0;
-  transition: background var(--t-med);
-}
-
-.talk-switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--t-med);
-}
-
-.talk-switch.is-on {
-  background: var(--accent);
-}
-
-.talk-switch.is-on::after {
-  transform: translateX(14px);
-}
-
 .attach-menu-item.is-on {
   color: var(--accent);
 }
-
-/* Кнопка микрофона в разговоре: пока агент говорит, она значит «перебить». */
-.voice-btn.is-talk {
-  color: var(--accent);
-}
-
 /* Полоска заполнения контекста живёт СТРОКОЙ НАД полем ввода, а не внутри «пилюли»:
    внутри неё текст ломался на две строки и поджимал кнопки (снимок с прода 0.170).
    Поэтому — без переносов, мелко и вправо, где глазу ничего не стоит. */

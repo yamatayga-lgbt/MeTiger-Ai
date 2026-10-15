@@ -1,5 +1,6 @@
 /**
- * 0.172: разговор вслух и починка голоса.
+ * 0.172: починка голоса. 0.188: разговор вслух и озвучку убрали, диктовка стала
+ * умнее — и проверки переведены на новое состояние.
  *
  * Две половины голоса сломались 12 окт 2026 по одной общей причине — молчание.
  * Озвучка: служба Microsoft закрыла старый адрес (403), и это видно не в логах, а
@@ -7,10 +8,10 @@
  * есть третье состояние — «принял и молчит», и серверные слои включались только
  * после явной ошибки, поэтому человек видел «Слушаю» и пустое поле.
  *
- * Проверки здесь держат именно это: новый адрес службы и имя параметра ключа,
- * сторож молчания (и то, что правило 0.150 «живой движок — финал» не сломано),
- * режим разговора целиком (переключатель, чип, автоотправка, перебить) — и всё
- * это без сети: живое поведение проверено пробами, тут закреплены обещания кода.
+ * Живым остался адрес службы (движок нужен /api/tts — внешним клиентам API) и
+ * сторож молчания. Разговор вслух (переключатель, автоотправка, перебить) удалён
+ * по решению владельца — теперь вместо него проверки того, что от режима не
+ * осталось даже следов, а диктовка сама гаснет в тишине и ставит знаки голосом.
  */
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -56,47 +57,44 @@ ok('V172f сторож срабатывает ровно один раз и то
     && /rec\?\.abort\(\)/.test(voice)
     && /onServerLayers/.test(voice))
 
-ok('V172g разговор вслух: режим помнится устройством и виден человеку строкой над полем',
-  /localStorage\.getItem\('mt-talk'\)/.test(chat)
-    && /localStorage\.setItem\('mt-talk'/.test(chat)
-    /* 0.183: talk-chip удалён из интерфейса, режим помнится, но не отображается строкой. */
-    )
+ok('V172g разговор вслух удалён целиком: ни состояния, ни памяти устройства, ни ручек',
+  !/mt-talk/.test(chat) && !/talkRef/.test(chat) && !/setTalk\b/.test(chat)
+    && !/talkArmedRef/.test(chat) && !/talkSendRef/.test(chat) && !/talkSentRef/.test(chat))
 
-ok('V172h разговор вслух: ход закрывается сам, а отправка ждёт точный текст, а не пустое поле',
-  /TALK_SILENCE_MS/.test(chat)
-    && /stopVoiceInput\(\)/.test(chat)
-    && /talkSendRef\.current = true/.test(chat)
-    && /if \(talkSendRef\.current && talkRef\.current\)/.test(chat)
-    && /submit\(composed\)/.test(chat)
-    && /talkRef\.current && !sessionRef\.current\) startVoiceInput\(\)/.test(chat))
+ok('V172h автостоп тишины теперь у ВСЕЙ диктовки, а не только разговора: 7 секунд покоя — микрофон сам закрылся',
+  /VOICE_AUTO_MS = 7000/.test(chat)
+    && /VOICE_LOUD = 0\.18/.test(chat)
+    && !/TALK_SILENCE_MS/.test(chat)
+    && /setInterval/.test(chat)
+    && /stopVoiceInput\(\)/.test(chat))
 
-ok('V172i пока агент говорит, микрофон — «перебить»: одно касание замолкает и слушает',
-  /if \(talkSpeaking\) \{/.test(chat)
-    && /stopSpeech\(\)/.test(chat)
-    && /Перебить и говорить/.test(chat)
-    && /setTalkSpeaking\(false\)/.test(chat))
+ok('V172i микрофон снова просто микрофон: ни «перебить», ни разговорных состояний',
+  !/Перебить и говорить/.test(chat)
+    && !/talkSpeaking/.test(chat)
+    && !/stopSpeech/.test(chat)
+    && /if \(listening\) stopVoiceInput\(\)/.test(chat))
 
-ok('V172j переключатель живёт в меню «+» и назван человеку «Разговор вслух»',
-  /Разговор вслух/.test(menu)
-    && /role="menuitemcheckbox"/.test(menu)
-    && /aria-checked=\{talk\}/.test(menu)
-    && /onToggleTalk/.test(menu))
+ok('V172j в меню «+» переключателя больше нет: пункт «Разговор вслух» удалён, остались действия',
+  menu.indexOf('Разговор вслух') < 0
+    && (menu.match(/role="menuitemcheckbox"/g) || []).length === 0
+    && !/onToggleTalk/.test(menu)
+    && /Камера/.test(menu) && /Файлы/.test(menu))
 
-ok('V172k стили режима — переменными темы, а не красным и не чужими константами',
-  /\.talk-chip \{/.test(css) && /\.talk-switch \{/.test(css)
-    && /color: var\(--accent\)/.test(css.slice(css.indexOf('.talk-chip {'), css.indexOf('.talk-chip {') + 600))
-    && !/#[0-9a-fA-F]{3,6}/.test(css.slice(css.indexOf('.talk-chip {'), css.indexOf('.talk-chip {') + 1200)))
+ok('V172k стили режима удалены вместе с режимом — в CSS нет ни переключателя, ни is-talk',
+  !/talk-switch/.test(css) && !/voice-btn\.is-talk/.test(css) && !/talk-chip/.test(css))
 
 ok('V172l новый тест подключён к цепочке прогона', /node test\/ui172\.test\.js/.test(chain))
 
-ok('V172n отправленный ход не возвращается в поле поздним уточнением (иначе уехал бы вторым)',
-  /talkSentRef/.test(chat)
-    && /if \(talkSentRef\.current\) \{/.test(chat)
-    && /talkSentRef\.current = true/.test(chat))
+ok('V172n пунктуация голосом: «точка» и друзья — знаки в поле, а не слова (браузерный черновик)',
+  /const PUNCT/.test(voice)
+    && /export function punctuate/.test(voice)
+    && /punctuate\(\(r\[0\]\?\.transcript \|\| ''\)\.trim\(\)\)/.test(voice)
+    && /точка\|период/.test(voice)
+    && /новая строка/.test(voice))
 
-ok('V172m включение режима не читает прошлую переписку — вслух звучит только новое',
-  /talkArmedRef/.test(chat)
-    && /last\.ts < talkArmedRef\.current\)\)\s*return/.test(chat)
-    && /talkArmedRef\.current = next \? Date\.now\(\) : 0/.test(chat))
+ok('V172m автостоп молчит только в настоящую тишину: живая речь громче порога запись не гасит',
+  /l > VOICE_LOUD/.test(chat)
+    && /VOICE_AUTO_MS/.test(chat)
+    && !/talkArmedRef/.test(chat))
 
-console.log('\n' + '✔ 0.172: разговор вслух и починка голоса — проверки пройдены')
+console.log('\n' + '✔ 0.172 (правка 0.188): служба голоса и сторож на месте, разговора вслух нет, диктовка с автостопом и пунктуацией — проверки пройдены')

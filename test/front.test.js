@@ -1701,15 +1701,18 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       /math-glue"><span class="math-frac"/.test(glueHtml) && /math-fx/.test(glueHtml),
       JSON.stringify(glueHtml.slice(0, 140)));
 
-    /* ── 0.115: голос в обратную сторону ── */
+    /* ── 0.115: голос в обратную сторону. 0.188: озвучку убрали совсем
+       (решение владельца) — проверяем отсутствие, а не присутствие. ── */
     const chatVoice = readFileSync('src/views/ChatView.tsx', 'utf8')
-    ok('N64: у ответа агента есть кнопка «озвучить», у вопроса — нет',
-      /canSpeak[^>]*\/>/.test(chatVoice) && /canSpeak = false/.test(chatVoice)
-        && /aria-label=\{speaking \? 'Остановить озвучку' : 'Озвучить ответ'\}/.test(chatVoice),
-      JSON.stringify(chatVoice.slice(0, 0)));
+    ok('N64: кнопки «озвучить» у ответа больше нет — ни пропса, ни класса, ни файла озвучки',
+      !/canSpeak/.test(chatVoice) && !/msg-speak-btn/.test(chatVoice)
+        && !/Озвучить ответ/.test(chatVoice) && !existsSync('src/lib/speech.ts'),
+      JSON.stringify((chatVoice.match(/canSpeak|msg-speak-btn|Озвучить ответ/g) || []).slice(0, 3)));
 
-    ok('N65: озвучка — одна на приложение: второй ответ останавливает первый',
-      /stopSpeech\(\)/.test(readFileSync('src/lib/speech.ts', 'utf8')) && /export function stopSpeech/.test(readFileSync('src/lib/speech.ts', 'utf8')));
+    ok('N65: из ChatView ушла и обвязка речи: speak/stopSpeech не вызываются нигде',
+      !/\bspeak\b/.test(chatVoice) && !/stopSpeech/.test(chatVoice)
+        /* а серверный движок жив — им пользуются внешние клиенты API (/api/tts) */
+        && /export async function synthesize/.test(readFileSync('engine/voiceout.js', 'utf8')));
 
     /* 0.121: переключатель авточтения ответов из меню «+» убран — по просьбе
        хозяина. 0.122: следом убран и выбор голоса Жен/Муж — там же, по той же
@@ -1728,15 +1731,13 @@ console.log('── N · плоский интерфейс (0.144: стекло 
        не то же самое: это режим всего разговора (сказал — услышал), а не свойство
        одного сообщения. Старые имена (Отвечать голосом, speak, Volume2) остаются
        под запретом: они обещали чтение там, где слышно не всегда. */
-    ok('N66: авточтения ответов в меню «+» больше нет — ни кнопки, ни её класса, ни её ручки',
-      menu.indexOf('Отвечать голосом') < 0 && !/attach-speak/.test(menu)
-        && !/onSpeak/.test(menu) && !/\bspeak\b/.test(menu) && !/Volume2/.test(menu)
-        /* переключатель в меню ровно один и он про разговор (0.172), глубина — нет */
-        && (menu.match(/role="menuitemcheckbox"/g) || []).length
-          === (/aria-checked=\{talk\}/.test(menu) ? 1 : 0)
-        && /Разговор вслух/.test(menu)
+    ok('N66: в меню «+» нет ни разговора вслух, ни переключателей — пункты только действия',
+      menu.indexOf('Разговор вслух') < 0 && menu.indexOf('Отвечать голосом') < 0
+        && !/attach-speak/.test(menu) && !/onSpeak/.test(menu) && !/\bspeak\b/.test(menu)
+        && !/onToggleTalk/.test(menu) && !/talk-switch/.test(menu)
+        && (menu.match(/role="menuitemcheckbox"/g) || []).length === 0
         && /Камера/.test(menu) && /Файлы/.test(menu),
-      'в меню найдено: ' + JSON.stringify((menu.match(/attach-speak|onSpeak|Отвечать голосом|menuitemcheckbox/g) || []).slice(0, 3)));
+      'в меню найдено: ' + JSON.stringify((menu.match(/Разговор вслух|onToggleTalk|talk-switch|menuitemcheckbox/g) || []).slice(0, 3)));
 
     ok('N67: состояния авточтения и глубины не осталось висеть в App (мёртвый код — тоже дефект)',
       !/mt-speak/.test(appSrcVoice) && !/speakOn/.test(appSrcVoice) && !/setSpeakOn/.test(appSrcVoice)
@@ -1744,10 +1745,10 @@ console.log('── N · плоский интерфейс (0.144: стекло 
         /* а то, что человек действительно настраивает, на месте — резали не всё подряд */
         && /usePersistentState<GenParams>\(/.test(appSrcVoice));
 
-    ok('N68: ответ не читается вслух сам — ни ожидания конца потока, ни памяти о прочитанном',
+    ok('N68: ответ не читается вслух вовсе — ни сам, ни по кнопке, ни в разговорном режиме',
       !/озвученRef/.test(chatVoice) && !/speakOn/.test(chatVoiceBare) && !/onSpeak/.test(chatVoiceBare)
-        /* озвучка жива, но запускается только рукой человека: кнопка у ответа */
-        && /canSpeak/.test(chatVoice) && /await speak\(text, \{ gender: 'female', onState/.test(chatVoice));
+        && !/speakAndListen/.test(chatVoice) && !/await speak\(text/.test(chatVoice)
+        && !/talkArmedRef/.test(chatVoiceBare) && !/spokeRef/.test(chatVoiceBare));
 
     /* 0.122: выбора голоса нет нигде — ни в меню, ни в состоянии, ни в пропсах.
        Род назван словами прямо в кнопке («female»), чтобы из кода было видно,
@@ -1762,20 +1763,17 @@ console.log('── N · плоский интерфейс (0.144: стекло 
         && /attach-menu-item is-soon/.test(menu),
       'в меню найдено: ' + JSON.stringify((menu.match(/Жен|Муж|attach-voice-btn|onVoice/g) || []).slice(0, 4)));
 
-    ok('N70: состояние и обвязка выбора голоса убраны из App, ChatView и стилей (мёртвый код — тоже дефект)',
+    ok('N70: мёртвый код озвучки убран из App, ChatView и стилей — ничего не осталось',
       !/mt-voice/.test(appSrcVoice) && !/setVoice/.test(appSrcVoice) && !/onVoice/.test(appSrcVoice)
         /* Голосовой ВВОД в ChatView живьём жив (voice-btn, voiceError, startVoice),
-           поэтому смотрим не на слово «voice», а на выбор ГОЛОСА ДЛЯ ОЗВУЧКИ:
-           пропсы voice/onVoice и их передача в меню и в строку ответа. */
+           поэтому смотрим не на слово «voice», а на выбор ГОЛОСА ДЛЯ ОЗВУЧКИ. */
         && !/onVoice/.test(chatVoiceBare) && !/^\s*voice\?:/m.test(chatVoiceBare)
         && !/^\s*voice = /.test(chatVoiceBare) && !/voice=\{/.test(chatVoiceBare)
-        /* стили кнопок голоса не переживают сами кнопки — считаем по CSS без
-           комментариев: пояснение «почему убраны» те же имена содержит по делу */
-        && !/\.attach-menu-voice[^\w-]/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))
-        && !/\.attach-voice-btn/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))
-        /* озвучка при этом жива: движок, вход и кнопка у ответа на месте */
-        && /gender: opts\.gender \|\| 'female'/.test(readFileSync('src/lib/speech.ts', 'utf8'))
-        && /msg-speak-btn/.test(chatVoice),
+        && !/msg-speak-btn/.test(chatVoice)
+        /* стили озвучки и разговора не переживают сами кнопки — CSS без комментариев */
+        && !/msg-speak-btn/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))
+        && !/talk-switch/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))
+        && !/voice-btn\.is-talk/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')),
       'остатки: ' + JSON.stringify((appSrcVoice + chatVoiceBare).match(/mt-voice|onVoice|setVoice/g) || []));
 
     /* ── 0.124: самопроверка ответа — агент сверяет написанное с вопросом ──

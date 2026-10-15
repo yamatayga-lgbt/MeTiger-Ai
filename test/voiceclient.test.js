@@ -150,9 +150,28 @@ try {
   assert.equal(track.stopped, true, 'microphone is stopped');
   console.log('  ✔ failed transcription keeps PCM; retry succeeds and returns text');
   globalThis.fetch = oldFetch;
+
+  /* 0.188: пунктуация голосом в браузерном черновике — команды диктуются словами.
+     Ноль запросов: это замена текста в поле, не служба. */
+  const punct = [
+    ['привет мир точка как дела запятая всё хорошо', 'привет мир. как дела, всё хорошо'],
+    ['первый пункт новая строка второй пункт', 'первый пункт\nвторой пункт'],
+    ['в этой точке остановимся точка', 'в этой точке остановимся.'],
+    ['цена 1 запятая 5 миллиона', 'цена 1,5 миллиона'],
+    ['подожди тире и поехали', 'подожди — и поехали'],
+    ['wait for it period then go comma ok question mark', 'wait for it. then go, ok?'],
+    ['итак точка встречаемся завтра вопросительный знак нет восклицательный знак', 'итак. встречаемся завтра? нет!'],
+  ];
+  for (const [given, want] of punct) {
+    assert.equal(voice.punctuate(given), want, 'punctuate: ' + given);
+  }
+  console.log('  ✔ голосовая пунктуация: точка, запятая, тире, новая строка, вопрос и восклицание');
+  assert.equal(voice.punctuate('просто слова без команд'), 'просто слова без команд', 'no commands - text unchanged');
+  console.log('  ✔ без команд текст не тронут');
+
   const watchdog = await watchdogCase();
   for (const line of watchdog) console.log('  ' + line);
-  console.log('\n' + (1 + watchdog.length) + ' ✔, 0 ✖');
+  console.log('\n' + (3 + punct.length + watchdog.length) + ' ✔, 0 ✖');
 } finally {
   if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow);
   else delete globalThis.window;

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, Volume2, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
-import { speak, stopSpeech } from '../lib/speech'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
 import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
@@ -106,18 +105,14 @@ async function copyText(text: string): Promise<boolean> {
 
 /** Строка под пузырём: копировать + «N минут назад» (у ответа — ещё и сколько
     он шёл). Иконка меняется на галочку на полторы секунды после удачного
-    копирования — обратная связь без тоста, который на телефоне лишний. */
-function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
+    копирования — обратная связь без тоста, который на телефоне лишний.
+    Кнопки «озвучить» больше нет (0.188, решение владельца): озвучку убрали совсем. */
+function MsgFooter({ text, time, align = 'left' }: {
   text: string
   time: string
   align?: 'left' | 'right'
-  /** Озвучка есть только у ответов агента: свой вопрос человек и так только что сказал. */
-  canSpeak?: boolean
 }) {
   const [copied, setCopied] = useState(false)
-  /* Озвучка: «играет» держим на самой кнопке, а общий звук — один на приложение
-     (второй ответ, озвученный поверх первого, — это два голоса разом). */
-  const [speaking, setSpeaking] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
   const onCopy = async () => {
@@ -133,26 +128,6 @@ function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
       <button type="button" className="msg-copy-btn" onClick={onCopy} aria-label="Скопировать текст">
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
-      {canSpeak ? (
-        <button
-          type="button"
-          className={`msg-speak-btn${speaking ? ' is-on' : ''}`}
-          aria-label={speaking ? 'Остановить озвучку' : 'Озвучить ответ'}
-          title={speaking ? 'Остановить озвучку' : 'Озвучить ответ'}
-          onClick={async () => {
-            haptic('light')
-            if (speaking) { stopSpeech(); setSpeaking(false); return }
-            setSpeaking(true)
-            /* Голос один (женский: Светлана для русского, Aria для английского).
-               Выбор Жен/Муж убран из интерфейса в 0.122, но здесь род назван
-               словами, а не оставлен по умолчанию: из кнопки должно быть видно,
-               каким голосом читает ответ. */
-            await speak(text, { gender: 'female', onState: (состояние) => setSpeaking(состояние === 'play') })
-          }}
-        >
-          {speaking ? <Square size={13} /> : <Volume2 size={14} />}
-        </button>
-      ) : null}
       {time ? <span className="msg-time">{time}</span> : null}
     </div>
   )
@@ -162,13 +137,13 @@ function MsgFooter({ text, time, align = 'left', canSpeak = false }: {
    разницы между «шепчет» и «молчит». */
 const BARS = 14
 
-/* Пороги разговора вслух. TALK_LOUD — уровень, с которого считаем, что человек
-   говорит (шкала та же, что у столбиков: 0…1). TALK_SILENCE_MS — сколько тишины
-   после речи считать концом хода: 1,8 с хватает, чтобы не обрывать фразу на паузе,
-   и не заставляет ждать после «спасибо, всё». */
-const TALK_LOUD = 0.18
-const TALK_SILENCE_MS = 1800
-
+/* Автостоп диктовки (0.188): как только человек сказал хоть что-то, столько
+   секунд тишины закрывают запись сами — кнопку «готово» давить не нужно.
+   VOICE_LOUD — уровень, с которого считаем, что человек говорит (шкала та же,
+   что у столбиков: 0…1); VOICE_AUTO_MS — сколько ждём тишины. Пауза подумать
+   короче — не рвёт диктовку. */
+const VOICE_LOUD = 0.18
+const VOICE_AUTO_MS = 7000
 function BrainGlyph({ className = 'reason-brain-icon' }: { className?: string }) {
   return (
     <svg
@@ -687,10 +662,9 @@ export function ChatView({
      ровно тот лаг, ради которого memo и поставлен. */
   const runOutput = useCallback((t: string) => onSend(t), [onSend])
 
-  /* Авточтения новых ответов здесь больше нет (0.121): озвучка запускается
-     только кнопкой «озвучить» у самого ответа (см. MsgFooter, canSpeak).
-     Поэтому ни ожидания конца потока, ни памяти о последнем прочитанном тексте
-     не нужно — ответ не звучит сам, пока человек не попросил. */
+  /* Озвучки здесь больше нет вовсе (0.188, решение владельца): ни авточтения,
+     ни кнопки «озвучить» у ответа — ответы только текстом. Серверный голос
+     (/api/tts, engine/voiceout.js) остался для внешних клиентов API. */
 
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<string[]>([])
@@ -761,37 +735,12 @@ export function ChatView({
      но запись идёт и точный текст придёт после остановки). Красным такое красить
      нельзя — человек решит, что всё сломалось, и бросит диктовать. */
   const [voiceNote, setVoiceNote] = useState('')
-  /* «Разговор вслух» (0.172): сказал — услышал — снова сказал, не касаясь экрана.
-     Режим помнится устройством: человек включает его не на одну реплику. */
-  /* Говорит ли агент прямо сейчас (разговор вслух). У кнопки «озвучить» в подписи
-     пузыря своё состояние — здесь режим, который рулит микрофоном. */
-  const [talkSpeaking, setTalkSpeaking] = useState(false)
-  const [talk, setTalk] = useState(() => {
-    try { return localStorage.getItem('mt-talk') === '1' } catch { return false }
-  })
-  const talkRef = useRef(talk)
-  /* Ждём точный текст, чтобы отправить его, а не пустое поле: расшифровку делает
-     сервер (браузерный движок молчит). */
-  const talkSendRef = useRef(false)
   /* В этой записи уже была речь и когда её слышали в последний раз — по этому
-     разговор вслух понимает «человек договорил», не дожидаясь кнопки. */
+     автостоп (0.188) понимает «человек договорил» и закрывает запись сам. */
   const heardRef = useRef(false)
   const lastLoudRef = useRef(0)
-  /* Какой ответ уже прочитан вслух: id + длина текста (ответ могли дописать). */
-  const spokeRef = useRef('')
-  /* С какого времени режим включён: ответы, пришедшие раньше, вслух не читаются —
-     иначе включение режима начинало бы читать прошлую переписку с последнего ответа. */
-  const talkArmedRef = useRef(0)
   /* Расшифровка едет сервером (браузерный движок молчит) — см. voice.ts. */
   const serverLayersRef = useRef(false)
-  /* Ход разговора уже отправлен: позднее уточнение того же куска не должно вернуть
-     отправленный текст в поле — иначе он уехал бы вторым сообщением. */
-  const talkSentRef = useRef(false)
-
-  useEffect(() => {
-    talkRef.current = talk
-    try { localStorage.setItem('mt-talk', talk ? '1' : '0') } catch { /* приватный режим */ }
-  }, [talk])
 
   const sessionRef = useRef<VoiceSession | null>(null)
   const baseRef = useRef('') // подтверждённый текст (ввод + финальные куски)
@@ -831,37 +780,18 @@ export function ChatView({
   // при уходе со экрана микрофон выключается
   useEffect(() => () => sessionRef.current?.cancel(), [])
 
-  /* Режим помнится устройством, но прошлая переписка при открытии вслух не звучит:
-     заводим «включено с этого момента» на входе в чат. */
+  /* Автостоп диктовки (0.188): человек сказал — и замолчал на VOICE_AUTO_MS —
+     запись закрывается сама, кнопка «готово» не нужна. Порог тишины намеренный:
+     короткая пауза «подумать» внутри фразы не рвёт диктовку. Работает во всех
+     режимах ввода, а не только в разговоре вслух (тот убран в 0.188). */
   useEffect(() => {
-    if (talkRef.current) talkArmedRef.current = Date.now()
-  }, [])
-
-  /* Разговор вслух: новый ответ читается сам. Ключ — id ответа и длина текста:
-     ответ мог дописаться потоком, и тогда его надо прочитать заново. */
-  useEffect(() => {
-    if (typing || !talk) return
-    const last = messages[messages.length - 1]
-    if (!last || last.role !== 'assistant' || !String(last.text || '').trim()) return
-    const key = last.id + ':' + last.text.length
-    if (spokeRef.current === key) return
-    spokeRef.current = key
-    /* Режим включён только что, а это — ответ из прошлого (или другой переписки):
-       молчим. Читаем только то, что пришло после включения. */
-    if (talkArmedRef.current && (!last.ts || last.ts < talkArmedRef.current)) return
-    void speakAndListen(last.text)
-  }, [typing, messages, talk])
-
-  /* Разговор вслух: человек договорил — ход закрывается сам. Порог тишины
-     намеренный: короткая пауза внутри фразы не должна обрывать человека. */
-  useEffect(() => {
-    if (!listening || !talk) return
+    if (!listening) return
     const id = window.setInterval(() => {
       if (!heardRef.current) return
-      if (Date.now() - lastLoudRef.current >= TALK_SILENCE_MS) stopVoiceInput()
+      if (Date.now() - lastLoudRef.current >= VOICE_AUTO_MS) stopVoiceInput()
     }, 200)
     return () => window.clearInterval(id)
-  }, [listening, talk])
+  }, [listening])
 
   /* После остановки оставляем сессию в памяти до успеха: если сервер не ответил,
      запись можно будет отправить на расшифровку повторно, не говоря заново. */
@@ -875,18 +805,6 @@ export function ChatView({
     setLevels(new Array(BARS).fill(0))
     if (session) session.stop()
     haptic('light')
-    /* Разговор вслух: ход отправляется сам. Текст браузерного движка уже в поле —
-       можно отправлять сразу; если расшифровку делает сервер, ждём её (onPolished),
-       иначе ушло бы пустое и разговор оборвался бы на первом же ходу. */
-    if (talkRef.current) {
-      if (composed.trim()) {
-        talkSendRef.current = false
-        talkSentRef.current = true
-        submit(composed)
-      } else {
-        talkSendRef.current = true
-      }
-    }
     return composed
   }
 
@@ -932,7 +850,6 @@ export function ChatView({
     heardRef.current = false
     lastLoudRef.current = 0
     serverLayersRef.current = false
-    talkSentRef.current = false
     setSeconds(0)
     setLevels(new Array(BARS).fill(0))
     setListening(true)
@@ -952,7 +869,7 @@ export function ChatView({
         /* Столбики уровня: живая история сигнала, а не выдуманная волна. */
         onLevel: (l) => {
           setLevels((prev) => [...prev.slice(1), l])
-          if (talkRef.current && l > TALK_LOUD) {
+          if (l > VOICE_LOUD) {
             heardRef.current = true
             lastLoudRef.current = Date.now()
           }
@@ -995,15 +912,6 @@ export function ChatView({
            в поле до микрофона, остаётся на месте. */
         onPolished: (text) => {
           const composed = joinText(preVoiceRef.current, text)
-          /* Разговор вслух: этот ход уже ушёл (текст отправился сразу, как только
-             человек договорил). Уточнение приехало позже и лишь подтверждает его —
-             в поле его возвращать нельзя. */
-          if (talkSentRef.current) {
-            talkSentRef.current = false
-            sessionRef.current = null
-            setPolishing(false)
-            return
-          }
           baseRef.current = composed
           interimRef.current = ''
           sessionRef.current = null
@@ -1011,11 +919,6 @@ export function ChatView({
           setPolishing(false)
           setVoiceError('')
           haptic('light')
-          /* Разговор вслух: вот он, точный текст, которого ждала отправка. */
-          if (talkSendRef.current && talkRef.current) {
-            talkSendRef.current = false
-            submit(composed)
-          }
         },
         onPolish: (state, reason) => {
           if (state === 'start') {
@@ -1035,37 +938,6 @@ export function ChatView({
       return
     }
     sessionRef.current = session
-  }
-
-  /**
-   * Прочитать ответ вслух и, если разговор продолжается, снова открыть микрофон.
-   *
-   * Ждём именно конца речи: speak() возвращает управление, когда звук только
-   * начался. Страховка по времени нужна на случай, когда событие конца не придёт
-   * вовсе (звук не запустился): без неё разговор встал бы навсегда.
-   */
-  const speakAndListen = async (text: string) => {
-    const clean = String(text || '').trim()
-    if (!clean) return
-    setTalkSpeaking(true)
-    await new Promise<void>((resolve) => {
-      let settled = false
-      const done = () => {
-        if (settled) return
-        settled = true
-        resolve()
-      }
-      void speak(clean, {
-        gender: 'female',
-        onState: (состояние) => {
-          setTalkSpeaking(состояние === 'play')
-          if (состояние === 'end' || состояние === 'error' || состояние === 'нет голоса') done()
-        },
-      })
-      window.setTimeout(done, Math.min(120000, 6000 + clean.length * 80))
-    })
-    /* Человек мог выключить режим или начать диктовать сам, пока ответ читался. */
-    if (talkRef.current && !sessionRef.current) startVoiceInput()
   }
 
   const submit = (forced?: string) => {
@@ -1320,7 +1192,7 @@ export function ChatView({
                     </div>
                   ) : null}
                   {m.text ? (
-                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} canSpeak />
+                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} />
                   ) : null}
                 </div>
               </div>
@@ -1552,24 +1424,16 @@ export function ChatView({
               {voiceSupported ? (
                 <button
                   type="button"
-                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}${(talkSpeaking && talk) ? ' is-talk' : ''}`}
-                  aria-label={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
-                  title={talkSpeaking ? 'Перебить и говорить' : listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  className={`icon-btn voice-btn${listening ? ' is-on' : ''}${polishing ? ' is-wait' : ''}`}
+                  aria-label={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
+                  title={listening ? 'Выключить микрофон' : 'Голосовой ввод'}
                   disabled={polishing}
                   onClick={() => {
-                    /* Разговор вслух: пока агент говорит, микрофон — это «перебить».
-                       Одним касанием замолкает и открывается на человека. */
-                    if (talkSpeaking) {
-                      stopSpeech()
-                      setTalkSpeaking(false)
-                      if (!listening) startVoiceInput()
-                      return
-                    }
                     if (listening) stopVoiceInput()
                     else startVoiceInput()
                   }}
                 >
-                  {talkSpeaking && talk ? <Square size={13} /> : listening ? <Square size={13} /> : <Mic size={17} />}
+                  {listening ? <Square size={13} /> : <Mic size={17} />}
                 </button>
               ) : null}
 
@@ -1610,20 +1474,6 @@ export function ChatView({
                 onPhoto={() => photoRef.current?.click()}
                 onUploadFiles={() => uploadRef.current?.click()}
                 onPickHistory={addFromHistory}
-                talk={talk}
-                onToggleTalk={() => {
-                  const next = !talkRef.current
-                  talkRef.current = next
-                  setTalk(next)
-                  talkArmedRef.current = next ? Date.now() : 0
-                  haptic('light')
-                  /* Включаем — и сразу слушаем: человек включил режим, чтобы говорить. */
-                  if (next && !listening && !talkSpeaking) startVoiceInput()
-                  if (!next) {
-                    stopSpeech()
-                    setTalkSpeaking(false)
-                  }
-                }}
                 onClose={() => setAddMenuOpen(false)}
               />
             </>
