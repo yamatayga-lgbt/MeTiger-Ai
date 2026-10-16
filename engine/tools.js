@@ -163,10 +163,59 @@ export function isoWeek(d) {
 /* ============================== вычисления ============================== */
 
 /** Рекурсивный спуск: + - * / ^ % ( ), запятая как десятичная точка. Без eval. */
+/* Функции калькулятора (0.196 «настоящее исполнение кода»): математик-навык
+   давно обещал модели fact/gcd/lcm/C/perm/fib/sqrt/log — теперь они по-настоящему
+   считаются. Аргументы — через «;»: запятая занята десятичной (3,5), поэтому
+   запятая становится точкой только СНАРУЖИ вызова функции, а внутри скобок
+   идентификатора она разделяет аргументы. Без eval: в Workers он запрещён. */
+const factOf = (n) => { n = Math.round(n); if (!(n >= 0) || n > 170) return NaN; let r = 1; for (let k = 2; k <= n; k++) r *= k; return r; };
+const gcdOf = (a, b) => { a = Math.abs(Math.round(a)); b = Math.abs(Math.round(b)); while (b) { const t = a % b; a = b; b = t; } return a; };
+const FUNCS = {
+  sqrt: (a) => Math.sqrt(a),
+  cbrt: (a) => Math.cbrt(a),
+  abs: (a) => Math.abs(a),
+  round: (a) => Math.round(a),
+  floor: (a) => Math.floor(a),
+  ceil: (a) => Math.ceil(a),
+  ln: (a) => Math.log(a),
+  exp: (a) => Math.exp(a),
+  log2: (a) => Math.log2(a),
+  log: (a, b) => (b === undefined ? Math.log10(a) : Math.log(a) / Math.log(b)),
+  sin: (a) => Math.sin(a),
+  cos: (a) => Math.cos(a),
+  tan: (a) => Math.tan(a),
+  min: (...v) => Math.min(...v),
+  max: (...v) => Math.max(...v),
+  mod: (a, b) => a % b,
+  fact: factOf,
+  gcd: (...v) => v.reduce((g, x) => gcdOf(g, x), 0),
+  lcm: (...v) => v.map((x) => Math.abs(Math.round(x))).reduce((p, x) => (p / gcdOf(p, x)) * x, 1),
+  c: (n, k) => { n = Math.round(n); k = Math.round(k); if (!(n >= 0) || !(k >= 0) || k > n) return NaN; let r = 1; for (let j = 1; j <= k; j++) r = (r * (n - k + j)) / j; return Math.round(r); },
+  perm: (n, k) => { n = Math.round(n); k = k === undefined ? n : Math.round(k); if (!(n >= 0) || !(k >= 0) || k > n) return NaN; let r = 1; for (let j = n - k + 1; j <= n; j++) r *= j; return r; },
+  fib: (n) => { n = Math.round(n); if (!(n >= 0) || n > 1474) return NaN; let a = 0, b = 1; for (let j = 0; j < n; j++) { const t = a + b; a = b; b = t; } return a; },
+};
+
+/* Запятая: внутри вызова функции — разделитель аргументов, снаружи — десятичная. */
+function normalizeExpr(raw) {
+  const s = String(raw || '').replace(/\s+/g, '');
+  let out = '';
+  const calls = [];
+  for (let k = 0; k < s.length; k++) {
+    const ch = s[k];
+    if (ch === '(') { calls.push(/[a-zA-Z]$/.test(out)); out += ch; }
+    else if (ch === ')') { calls.pop(); out += ch; }
+    else if (ch === ',') {
+      if (calls[calls.length - 1]) out += ';';
+      else if (/\d$/.test(out) && /\d/.test(s[k + 1] || '')) out += '.';
+    } else out += ch;
+  }
+  return out;
+}
+
 export function evalExpr(src) {
-  const s = String(src || '').replace(/,/g, '.').replace(/\s+/g, '');
-  if (!s || s.length > 120 || !/\d/.test(s) || !/[+\-*/^%()]/.test(s)) return null;
-  if (!/^[\d.+\-*/^%()]+$/.test(s)) return null;
+  const s = normalizeExpr(src);
+  if (!s || s.length > 160 || !/\d/.test(s)) return null;
+  if (!/^[a-z0-9.+\-*/^%();]+$/i.test(s)) return null;
   let i = 0;
   const peek = () => s[i];
   const eat = (ch) => (s[i] === ch ? (i++, true) : false);
@@ -204,6 +253,18 @@ export function evalExpr(src) {
       const v = parseExpr();
       if (!eat(')')) return NaN;
       return v;
+    }
+    /* функция: sqrt(16), gcd(48;18), C(5;2), fib(10) — без скобок имя не число */
+    const idm = /^[a-z][a-z0-9]*/i.exec(s.slice(i));
+    if (idm) {
+      const fn = FUNCS[idm[0].toLowerCase()];
+      i += idm[0].length;
+      if (!fn || !eat('(')) return NaN;
+      const args = [parseExpr()];
+      while (eat(';')) args.push(parseExpr());
+      if (!eat(')')) return NaN;
+      const v = fn(...args);
+      return typeof v === 'number' ? v : NaN;
     }
     const m = /^\d*\.?\d+/.exec(s.slice(i));
     if (!m) return NaN;
@@ -296,9 +357,13 @@ export const TOOLS = [
   {
     id: 'calc',
     title: 'Калькулятор',
-    when: (t) => /посчитай|сколько будет|вычисли|калькулятор/i.test(t) || /\d\s*[-+*/^%(]\s*[\d(]/.test(t),
+    when: (t) => /посчитай|сколько будет|вычисли|калькулятор/i.test(t)
+      || /\d\s*[-+*/^%(]\s*[\d(]/.test(t)
+      || /(?:sqrt|cbrt|abs|round|floor|ceil|log|ln|log2|exp|sin|cos|tan|min|max|mod|fact|gcd|lcm|c|perm|fib)\s*\(/i.test(t),
     async run({ text }) {
-      const m = /(?:\d[\d\s.,]*\s*[-+*/^%()]\s*[-+*/^%()\s\d.,+]{1,60})/.exec(String(text || ''));
+      /* Выражение — либо с цифры (2+2, 12*sqrt(16)), либо с имени функции
+         (sqrt(16)+2). Мусорные слова отсеет строгий парсер evalExpr. */
+      const m = /(?:\d[\d\s.,;a-zA-Z]*\s*[-+*/^%(]\s*[-+*/^%()\s\d.,;a-zA-Z]{1,80}|[a-zA-Z]{1,6}\s*\([^)\n]{1,80}\)(?:\s*[-+*/^%]\s*[-+*/^%()\s\d.,;a-zA-Z]{1,80})?)/.exec(String(text || ''));
       const expr = m ? m[0].replace(/\s*=\s*$/, '') : null;
       if (!expr) return null;
       const val = evalExpr(expr);
@@ -705,7 +770,7 @@ export const TOOLS = [
     kind: 'directive',
     when: (t) => /построй\w*[^.\n]{0,16}(график|диаграмм)|нарисуй[^.\n]{0,12}(график|диаграмм)|график[^.\n]{0,24}(по\s+(данным|числ|таблиц)|картинк)|диаграмм\w*[^.\n]{0,16}(по|сравн|дол)|\b(chart|plot|диаграмма)\b/i.test(t),
     async run() {
-      return 'Человек просит график. Считай/собери данные и оформи ОДИН блок — картинку из него построит движок, тебе рисовать не нужно:\n```chart|название графика\ntype: bar\nlabels: Январь, Февраль, Март\nvalues: 14000, 12300, 15800\n```\nПравила: type — bar (столбцы), line (линия) или pie (доля целого); labels — подписи через запятую, values — числа через запятую (десятичная точка: 1.5); цифры считай точно — они пойдут на оси как есть. Сначала 1-2 предложения о выводе, затем блок; подписи к осям — в labels. Не пиши «я построил график» раньше блока: картинка появится сама, когда блок разберут.';
+      return 'Человек просит график. Считай/собери данные и оформи ОДИН блок — картинку из него построит движок, тебе рисовать не нужно:\n```chart|название графика\ntype: bar\nlabels: Январь, Февраль, Март\nvalues: 14000, 12300, 15800\n```\nПравила: type — bar (столбцы), line (линия) или pie (доля целого); labels — подписи через запятую, values — числа через запятую (десятичная точка: 1.5); цифры считай точно — они пойдут на оси как есть. Если к разговору приложены файлы с данными (таблицы, CSV, документы) — бери числа ТОЛЬКО из них, ничего не придумывай; данных не хватает — честно скажи, каких именно. Сначала 1-2 предложения о выводе, затем блок; подписи к осям — в labels. Не пиши «я построил график» раньше блока: картинка появится сама, когда блок разберут.';
     },
   },
   {

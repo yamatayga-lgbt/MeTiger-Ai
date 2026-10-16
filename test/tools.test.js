@@ -37,6 +37,15 @@ ok('T1: evalExpr считает приоритет: 2+2*3 = 8', evalExpr('2+2*3'
 ok('T2: скобки и степень: (1+2)^2 = 9', evalExpr('(1+2)^2') === 9);
 ok('T3: запятая как точка: 3,5*2 = 7', evalExpr('3,5*2') === 7);
 ok('T4: мусор и деление на ноль → null', evalExpr('привет') === null && evalExpr('5/0') === null);
+/* 0.196: калькулятор исполняет функции — математик-навык давно их обещает */
+ok('T4a: функции: sqrt, fact, fib, log', evalExpr('sqrt(16)') === 4 && evalExpr('fact(5)') === 120 && evalExpr('fib(10)') === 55 && evalExpr('log(1000)') === 3);
+ok('T4b: аргументы через «;»: gcd, lcm, C, perm, mod, min', evalExpr('gcd(48;18)') === 6 && evalExpr('lcm(4;6)') === 12 && evalExpr('C(5;2)') === 10 && evalExpr('perm(5;2)') === 20 && evalExpr('mod(10;3)') === 1 && evalExpr('min(3;7;2)') === 2);
+ok('T4c: функции в выражении и запятая-аргумент: sqrt(16)+2^3=12, gcd(12,18)=6', evalExpr('sqrt(16)+2^3') === 12 && evalExpr('gcd(12,18)') === 6);
+ok('T4d: запятая-десятичная вне вызова жива: 1,5+2=3,5', Math.abs(evalExpr('1,5+2') - 3.5) < 1e-9);
+{
+  const calcFn = await gatherTools('вычисли sqrt(144) пожалуйста', {}, fakeFetch({}));
+  ok('T4e: «вычисли sqrt(144)» → калькулятор, 12', calcFn.used.join() === 'calc' && calcFn.block.includes('12'), calcFn.block);
+}
 
 const calcRes = await gatherTools('посчитай 17*(3+2)', {}, fakeFetch({}));
 ok('T5: «посчитай 17*(3+2)» → калькулятор, 85', calcRes.used.join() === 'calc' && calcRes.block.includes('85'), calcRes.block);

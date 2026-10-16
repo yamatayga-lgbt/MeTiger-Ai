@@ -85,6 +85,22 @@ ok('N1: niceCeil — круглый потолок оси',
 ok('N2: fmtNum — «1,5 млн» и «12,3 тыс.», а не 1500000',
   fmtNum(1500000) === '1,5 млн' && fmtNum(12300) === '12,3 тыс.' && fmtNum(7) === '7');
 
+/* 0.196: графики по данным из файлов — указание графика требует реальных чисел
+   из приложенных файлов, а навык data-charts больше не противоречит 0.185. */
+console.log('F — график по данным из файла (0.196)');
+{
+  const { gatherTools } = await import('../engine/tools.js');
+  const r = await gatherTools('построй график по данным из приложённого файла', {}, async () => ({ status: 200, text: async () => '' }));
+  const chartTool = r.directive || '';
+  ok('F1: указание графика велит брать числа из файлов и не выдумывать',
+    /файлы с данными/.test(chartTool) && /ТОЛЬКО из них/i.test(chartTool.replace(/ТОЛЬКО/i, 'ТОЛЬКО')),
+    JSON.stringify(chartTool.slice(0, 80)));
+  const data = (await import('node:fs')).readFileSync('engine/skills/data.js', 'utf8');
+  ok('F2: навык data-charts за блок ```chart, а не за код на matplotlib',
+    /график — картинкой, без кода/.test(data) && /движок приложения нарисует/.test(data)
+      && !/matplotlib/.test(data));
+}
+
 console.log(`\n${pass} ✔, ${fail} ✖`);
 if (fail) process.exit(1);
 console.log('✔ 0.185: графики картинкой — проверки пройдены');
