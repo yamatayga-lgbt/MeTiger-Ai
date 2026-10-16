@@ -21,13 +21,13 @@ ok('C2: кириллица плотнее латиницы (окно по ней
 ok('C3: clampNumber держит рамки и не боится мусора', clampNumber(9, 0, 2, 0.7) === 2 && clampNumber(-5, 0, 2, 0.7) === 0 && clampNumber('нет', 0, 2, 0.7) === 0.7);
 
 {
-  const many = normalizeFields({ text: 'давай', history: Array.from({ length: 30 }, (_, i) => ({ role: 'user', text: 'р' + i })) }, {});
-  ok('C4a: ленту в 30 реплик не выбрасываем молча — сказано, сколько взято',
-    many.history.length === 12 && /взял последние 12 \(из 30\)/.test(many.notes.join(' ')) && !/пустых/.test(many.notes.join(' ')), JSON.stringify(many.notes));
+  const many = normalizeFields({ text: 'давай', history: Array.from({ length: 250 }, (_, i) => ({ role: 'user', text: 'р' + i })) }, {});
+  ok('C4a: ленту в 250 реплик не выбрасываем молча — сказано, сколько взято',
+    many.history.length === 200 && /взял последние 200 \(из 250\)/.test(many.notes.join(' ')) && !/пустых/.test(many.notes.join(' ')), JSON.stringify(many.notes));
   const r = normalizeFields({ text: 'привет', chatId: 'чат\u00001' }, {});
   ok('C4: нормальный вход проходит без единой правки', r.text === 'привет' && r.notes.length === 0 && r.history.length === 0, JSON.stringify(r));
   ok('C5: управляющие символы из chatId вычищаются', r.chatId.indexOf('\u0000') < 0 && /^чат1$/.test(r.chatId), JSON.stringify(r.chatId));
-  const long = normalizeFields({ text: 'a'.repeat(40000), system: 'x'.repeat(100000), history: [{ role: 'user', text: 'b'.repeat(9000) }, { role: 'bogus' }, null, { role: 'assistant', text: 'ok' }], temperature: 12, model: '  deepseek\u000b4-flash ', provider: 'groq/../x' }, {});
+  const long = normalizeFields({ text: 'a'.repeat(120000), system: 'x'.repeat(100000), history: [{ role: 'user', text: 'b'.repeat(9000) }, { role: 'bogus' }, null, { role: 'assistant', text: 'ok' }], temperature: 12, model: '  deepseek\u000b4-flash ', provider: 'groq/../x' }, {});
   ok('C6: длиннющий текст режется и это сказано', long.text.length <= long.caps.text && /запрос обрезан/.test(long.notes.join()), long.text.length);
   ok('C7: «system» от клиента имеет потолок — мегабайт промпта не пройдёт', long.system.length === long.caps.system && /системный промпт обрезан/.test(long.notes.join()), long.system.length);
   ok('C8: пустые и мусорные реплики истории не едут провайдеру', long.history.length === 2 && long.history[1].role === 'assistant', JSON.stringify(long.history.map((m) => m.role)));
@@ -61,12 +61,12 @@ ok('C3: clampNumber держит рамки и не боится мусора', 
 {
   const sys = 'ПЕРСОНА. ' + 'подсказки '.repeat(50);
   const hist = Array.from({ length: 10 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: 'реплика ' + i + ' ' + 'содержание '.repeat(120) }));
-  const r = fit({ system: sys, history: hist, text: 'короткий вопрос', images: [], env: { CTX_WINDOW: 2000, CTX_MAX_OUT: 300 } });
+  const r = fit({ system: sys, history: hist, text: 'короткий вопрос', images: [], env: { CTX_WINDOW: 4000, CTX_MAX_OUT: 300 } });
   ok('C15: не влезает → история режется с САМОГО СТАРОГО конца', r.history.length < hist.length && /реплика 9/.test(r.history[r.history.length - 1].content), String(r.history.length));
   ok('C16: последняя реплика человека остаётся целой', /содержание/.test(r.history[r.history.length - 1].content) && r.history[r.history.length - 1].content.length === hist[9].content.length, JSON.stringify(r.history.map((m) => m.content.length)));
   ok('C17: отрезанное не исчезает молча — в промпт идёт выжимка', /Раньше в разговоре было/.test(r.system) && /реплика 0/.test(r.system), r.system.slice(-160));
-  ok('C18: и человек получает заметку, сколько реплик ушло', r.notes.length >= 1 && /историю урезал на \d+/.test(r.notes.join(' ')), JSON.stringify(r.notes));
-  ok('C19: после подгонки запрос влезает в окно (или сказан overflow)', r.tokens + 300 <= 2000 || !!r.overflow, JSON.stringify({ tokens: r.tokens, window: r.window, overflow: r.overflow }));
+  ok('C18: и человек получает заметку, сколько реплик ушло', r.notes.length >= 1 && /в окне \d+ реплик целиком, предыдущие \d+ сжал в выжимку/.test(r.notes.join(' ')), JSON.stringify(r.notes));
+  ok('C19: после подгонки запрос влезает в окно (или сказан overflow)', r.tokens + 300 <= r.window || !!r.overflow, JSON.stringify({ tokens: r.tokens, window: r.window, overflow: r.overflow }));
   const small = fit({ system: 'короткая персона', history: [{ role: 'user', content: 'привет' }], text: 'как дела', images: [], env: { CTX_WINDOW: 8192 } });
   ok('C20: нормальный запрос не трогается вообще', small.notes.length === 0 && small.history.length === 1 && small.system === 'короткая персона' && small.text === 'как дела', JSON.stringify(small.notes));
   const off = fit({ system: sys, history: hist, text: 'короткий вопрос', env: { CTX_WINDOW: 2000, CTX_FIT: 'off' } });
@@ -195,46 +195,46 @@ console.log('C31 — окно по модели, а не одно на всех'
     JSON.stringify({ cx: capped.cxFit, tailIn: sentText(0).indexOf(tail) >= 0 }).slice(0, 200));
 }
 
-console.log('U — безлимитный контекст (0.193)');
+console.log('U — безлимитный контекст: всегда включён (0.194)');
 {
-  /* Капы растут: лента 150 реплик не режется до 12, реплика в 20 000 знаков
-     остаётся (до 16 000), текст до 96 000. */
+  /* Капы высокие без всяких флагов: лента до 200, реплика до 16 000, текст до 96 000. */
   const u = normalizeFields({
     text: 'a'.repeat(120000),
     history: Array.from({ length: 150 }, (_, i) => ({ role: 'user', text: 'х'.repeat(20000) })),
-    ctxUnlimited: true,
   }, {});
-  ok('U1: безлимит — лента целиком (150), реплики до 16 000, текст до 96 000',
-    u.ctxUnlimited === true && u.history.length === 150 && u.history[0].content.length === 16000 && u.text.length === 96000,
+  ok('U1: без флагов — лента 150 целиком (кэп 200), реплики до 16 000, текст до 96 000',
+    u.history.length === 150 && u.history[0].content.length === 16000 && u.text.length === 96000 && u.caps.msg === 16000,
     JSON.stringify({ n: u.history.length, msg: u.history[0].content.length, text: u.text.length }));
 
-  const d = normalizeFields({ text: 'привет', ctxUnlimited: true }, {});
-  ok('U2: флаг честно доезжает и при пустой истории', d.ctxUnlimited === true);
-  const off = normalizeFields({ text: 'привет' }, {});
-  ok('U3: без флага всё по-старому — 12 реплик и никаких изменений капов',
-    off.ctxUnlimited === false && off.history.length === 0 && off.caps.text === 24000);
+  /* env-ручки по-прежнему сильнее: оператор развёртывания может ужать. */
+  const e2 = normalizeFields({ text: 'привет', history: [{ role: 'user', text: 'х'.repeat(900) }] }, { CTX_MAX_MSG: '500' });
+  ok('U2: env-ручки капов живы — CTX_MAX_MSG=500 побеждает',
+    e2.caps.msg === 500 && e2.history[0].content.length === 500,
+    JSON.stringify({ cap: e2.caps.msg, msg: e2.history[0].content.length }));
 
-  /* fit: богатая выжимка — начало разговора целиком, элементы по ~220. */
+  /* fit: богатая выжимка по умолчанию — начало разговора целиком, элементы по ~220. */
   const hist = Array.from({ length: 30 }, (_, i) => ({
     role: i % 2 ? 'assistant' : 'user',
     content: (i === 0 ? 'Задача: посчитай бюджет ремонта кухни 12 метров. ' : 'сообщение номер ' + i + ' ').repeat(i === 0 ? 4 : 40),
   }));
-  const f = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '6000' }, ctxUnlimited: true, maxOut: 900 });
-  ok('U4: выжимка богата: начало разговора — целиком, старые реплики по ~220 знаков',
+  const f = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '6000' }, maxOut: 900 });
+  ok('U3: выжимка богата: начало разговора — целиком, старые реплики по ~220 знаков',
     f.cut.digest.indexOf('С чего начался разговор (целиком): Задача: посчитай бюджет') === 0
       && /сообщение номер 2[^\n]{150,}/.test(f.cut.digest),
     JSON.stringify(f.cut.digest.slice(0, 120)));
-  ok('U5: примечание честно: сколько реплик целиком и сколько сжато',
-    /безлимит: \d+ реплик целиком, предыдущие \d+ сжал в выжимку/.test(f.notes.join(' ')), JSON.stringify(f.notes));
+  ok('U4: примечание честное: «в окне N реплик целиком, предыдущие M сжал в выжимку»',
+    /в окне \d+ реплик целиком, предыдущие \d+ сжал в выжимку/.test(f.notes.join(' ')), JSON.stringify(f.notes));
 
-  /* Обычный режим не изменился: тонкая выжимка одной строкой. */
-  const f2 = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '6000' }, maxOut: 900 });
-  ok('U6: без флага — прежняя выжимка 6×90, без «С чего начался разговор»',
-    f2.cut.digest.length > 0 && f2.cut.digest.indexOf('С чего начался разговор') < 0 && !/человек: /m.test(f2.cut.digest),
-    JSON.stringify(f2.cut.digest.slice(0, 80)));
+  /* Узкое окно: выжимка сама стоит места — не влезает, история ужмётся ещё,
+     но блок в system попадает и начало разговора в нём цело. */
+  const f2 = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '4000' }, maxOut: 900 });
+  ok('U5: узкое окно — блок выжимки в system, начало разговора в нём сохранилось',
+    f2.system.indexOf('Раньше в разговоре было') >= 0
+      && f2.system.indexOf('С чего начался разговор (целиком): Задача: посчитай бюджет') >= 0,
+    JSON.stringify({ dropped: f2.cut.dropped }));
 }
 
-/* U7: у движка свой кэп истории (historyKeep) — безлимит поднимает и его. */
+/* U6: у движка свой кэп истории — теперь 200 по умолчанию, явный historyKeep сильнее. */
 {
   const seen = [];
   const f = async (_url, init) => {
@@ -243,10 +243,10 @@ console.log('U — безлимитный контекст (0.193)');
   };
   const e = createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: f, sleep: async () => {} });
   const h30 = Array.from({ length: 30 }, (_, i) => ({ role: 'user', content: 'метка ' + i + ' ' + 'слово '.repeat(20) }));
-  await e.run({ text: 'привет', history: h30, ctxUnlimited: true, useTools: false, skills: false });
   await e.run({ text: 'привет', history: h30, useTools: false, skills: false });
-  ok('U7: с флагом движок шлёт все ~31 сообщение, без флага — прежние ~9',
-    seen[0] >= 28 && seen[1] <= 10, JSON.stringify(seen));
+  await e.run({ text: 'привет', history: h30, historyKeep: 5, useTools: false, skills: false });
+  ok('U6: движок шлёт все ~31 сообщение, явный historyKeep:5 — только 6',
+    seen[0] >= 28 && seen[1] <= 7, JSON.stringify(seen));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

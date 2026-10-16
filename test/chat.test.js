@@ -196,8 +196,10 @@ console.log('G — вход /api/chat (Pages Function): то, что видит 
   const over = await onRequestPost({ request: req({ text: 'итого?', history: hist }), env: Object.assign({}, ENV0, { CTX_WINDOW: '1500', CTX_MAX_OUT: '300' }) });
   const oj = await over.json();
   const overBody = g.calls[g.calls.length - 1].body;
+  /* 0.194: безлимит всегда — дверь тащит до 200, но узкое окно (1500) всё равно
+     сжимает гирлянду в выжимку, и человек это видит в примечаниях. */
   ok('G14: гирлянду истории не тащим — окно модели режет её, и это видно в ответе',
-    over.status === 200 && overBody.messages.length < hist.length + 1 && /окно модели/.test(String(oj.ctxFit || '')) && /взял последние 12/.test((oj.inputNotes || []).join(' ')), JSON.stringify({ sent: overBody.messages.length, fit: String(oj.ctxFit || '').slice(0, 60), notes: oj.inputNotes }).slice(0, 300));
+    over.status === 200 && overBody.messages.length < hist.length + 1 && /сжал в выжимку \(окно \d+ токенов\)/.test(String(oj.ctxFit || '')), JSON.stringify({ sent: overBody.messages.length, fit: String(oj.ctxFit || '').slice(0, 80), notes: oj.inputNotes }).slice(0, 300));
   ok('G15: последним в запросе идёт вопрос человека, а не обрывок истории',
     /итого\?/.test(String(overBody.messages[overBody.messages.length - 1].content)), String(overBody.messages[overBody.messages.length - 1].content).slice(0, 60));
   const dg = await onRequestGet({ env: ENV0 });

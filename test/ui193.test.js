@@ -1,16 +1,18 @@
 /**
- * 0.193: режим «Безлимитный контекст».
+ * 0.194: безлимитный контекст — всегда, без переключателя.
  *
- * Просьба владельца (приоритет 1 плана обгона): разговор не должен забывать
- * начало только потому, что окно модели кончилось. Переключатель в «Параметрах»;
- * во включённом состоянии фронт шлёт до 200 реплик вместо 8, дверь поднимает
- * потолки, а движок сжимает невлезающее в богатую выжимку (начало разговора —
- * целиком) вместо короткой строки-напоминания.
+ * Владелец: «зачем нам этот переключатель? Безлимитный контекст и так будет
+ * всегда работать, но только в отдельных чатах». Так и сделано: ни флагов, ни
+ * настройки — каждый чат несёт свою историю (до 200 реплик), дверь и движок
+ * подняли потолки, а то, что не влезает в окно модели, сжимается в богатую
+ * выжимку: начало разговора — целиком, старое — по ~220 знаков. Чаты изолированы:
+ * удалил чат — ушла и серверная память этого разговора (forgetThread), и медиа.
  *
- * Проверки держат всю дорогу флага: переключатель → запрос → дверь → движок.
+ * Проверки держат и отсутствие старого переключателя, и работу новой схемы.
  */
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 
 const ok = (name, condition, extra) => {
   assert.ok(condition, name + (extra ? ' — ' + JSON.stringify(extra) : ''))
@@ -29,53 +31,56 @@ const css = read('src/styles/index.css')
 const pkg = JSON.parse(read('package.json'))
 const chain = String(pkg.scripts.test || '')
 
-/* ── Фронт: переключатель и дорога флага ─────────────────────────────────── */
-ok('C1 переключатель «Безлимитный контекст» живёт в «Параметрах»: role="switch", без анимаций',
-  /Безлимитный контекст/.test(popover) && /role="switch"/.test(popover)
-    && /params-switch-dot/.test(popover)
-    && !/transition/.test(css.slice(css.indexOf('.params-switch {'), css.indexOf('.params-switch {') + 700)))
+/* все файлы фронтенда — чтобы подтвердить: флага нигде не осталось */
+const walk = (dir, acc = []) => {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) walk(p, acc)
+    else if (/\.(ts|tsx|css)$/.test(name) || /\.(js)$/.test(name)) acc.push(p)
+  }
+  return acc
+}
+const srcAll = walk('src').map(read).join('\n')
 
-ok('C2 параметр в GenParams: сохраняется, старое состояние не ломается, по умолчанию выключен',
-  /ctxUnlimited\?: boolean/.test(models)
-    && /ctxUnlimited: p\.ctxUnlimited === true/.test(models)
-    && /p\.ctxUnlimited !== true/.test(models))
+/* ── переключателя больше нет ────────────────────────────────────────────── */
+ok('C1 переключателя «Безлимитный контекст» в Параметрах нет — режим всегда включён',
+  !/Безлимитный контекст/.test(popover) && !/params-switch/.test(css),
+  'упоминаний: ' + (popover.match(/Безлимитный/g) || []).length)
 
-ok('C3 флаг доезжает до двери: тело запроса и лента 200 вместо 8',
-  /ctxUnlimited: opts\.ctxUnlimited \? true : undefined/.test(api)
-    && /history\.slice\(-\(opts\.ctxUnlimited \? 200 : 8\)\)/.test(api)
-    && /const histMax = genParams\.ctxUnlimited \? 200 : 8/.test(app))
+ok('C2 флага ctxUnlimited во фронтенде не осталось ни в одном файле',
+  !/ctxUnlimited/.test(srcAll))
 
-/* ── Сервер: дверь и движок ──────────────────────────────────────────────── */
-ok('C4 дверь пропускает флаг в движок, движок несёт его в каждую подгонку окна',
-  /ctxUnlimited: norm\.ctxUnlimited === true/.test(door)
-    && (engine.match(/ctxUnlimited: input\.ctxUnlimited === true/g) || []).length >= 3,
-  (engine.match(/ctxUnlimited/g) || []).length)
+/* ── фронт шлёт много всегда ─────────────────────────────────────────────── */
+ok('C3 фронт всегда шлёт до 200 реплик: api.slice(-200), App.histMax = 200',
+  /history: history\.slice\(-200\)/.test(api) && /const histMax = 200/.test(app))
 
-ok('C5 капы безлимита: реплика 16 000, текст 96 000, лента 200; без флага — прежние',
-  /unlimited \? 16000 : MAX_MSG/.test(ctxfit)
-    && /unlimited \? 96000 : MAX_TEXT/.test(ctxfit)
-    && /unlimited \? 200 : MAX_HISTORY/.test(ctxfit)
-    && /ctxUnlimited: unlimited,/.test(ctxfit))
+/* ── сервер: флага нет, капы высокие всегда ──────────────────────────────── */
+ok('C4 в двери и движке флага нет — режим не переключается',
+  !/ctxUnlimited/.test(door) && !/ctxUnlimited/.test(engine))
 
-ok('C6 выжимка богатая: до 40 реплик по 220 знаков, начало разговора — до 1500 целиком',
+ok('C5 капы всегда высокие: реплика 16 000, текст 96 000, лента 200',
+  /msg: num\(env && env\.CTX_MAX_MSG, 16000\)/.test(ctxfit)
+    && /text: num\(env && env\.CTX_MAX_TEXT, 96000\)/.test(ctxfit)
+    && /const maxHist = 200;/.test(ctxfit))
+
+/* ── выжимка: богатая, всегда ────────────────────────────────────────────── */
+ok('C6 выжимка всегда богатая: richDigest вместо тонкой, начало разговора — целиком',
   /function richDigest/.test(ctxfit)
+    && !/function digest\(/.test(ctxfit)
     && /parts\.length >= 40/.test(ctxfit)
-    && /\.slice\(0, 220\)/.test(ctxfit)
-    && /\.slice\(0, 1500\)/.test(ctxfit)
-    && /С чего начался разговор \(целиком\)/.test(ctxfit))
+    && /С чего начался разговор \(целиком\)/.test(ctxfit)
+    && /старые реплики целиком не влезают в окно/.test(ctxfit))
 
-ok('C7 выжимка вписывается в окно: не влезает — снимаем ещё реплик и обогащаем (порядок не переворачивается)',
-  /порядок выжимки остаётся «от начала разговора к концу»/.test(ctxfit)
-    && /droppedList\.push\(out\.history\.shift\(\)\);/.test(ctxfit)
-    && /guard < 250/.test(ctxfit))
+ok('C7 выжимка вписывается в окно: не влезает — снимаем ещё реплик и обогащаем',
+  /droppedList\.push\(out\.history\.shift\(\)\);/.test(ctxfit) && /guard < 250/.test(ctxfit))
 
-ok('C8 примечание человеку честное: сколько реплик целиком и сколько сжато',
-  /безлимит: ' \+ out\.history\.length \+ ' реплик целиком, предыдущие ' \+ droppedList\.length \+ ' сжал в выжимку/.test(ctxfit.replace(/\n/g, ' ').replace(/ {2}/g, ' ')))
+ok('C8 примечание человеку: сколько реплик целиком и сколько сжато',
+  /'в окне ' \+ out\.history\.length \+ ' реплик целиком, предыдущие ' \+ droppedList\.length \+ ' сжал в выжимку/
+    .test(ctxfit.replace(/\n/g, ' ').replace(/ {2}/g, ' ')))
 
-ok('C9 обычный режим не тронут: тонкая выжимка и прежние примечания на месте',
-  /function digest\(list\)/.test(ctxfit)
-    && /историю урезал на ' \+ droppedList\.length \+ ' реплик с начала/.test(ctxfit.replace(/\n/g, ' ')))
+ok('C9 движок по умолчанию держит 200 реплик; явный historyKeep сильнее',
+  /slice\(-Number\(input\.historyKeep \|\| 200\)\)/.test(engine))
 
 ok('C10 тест подключён к цепочке прогона', /node test\/ui193\.test\.js/.test(chain))
 
-console.log('\n' + '✔ 0.193: безлимитный контекст — разговор помнит начало — проверки пройдены')
+console.log('\n' + '✔ 0.194: безлимитный контекст всегда включён — переключатель не нужен')

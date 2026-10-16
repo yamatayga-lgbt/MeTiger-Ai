@@ -3903,48 +3903,6 @@ kbd {
 
 /* Переключатель в карточке параметров (0.193, безлимитный контекст).
    Без transition: анимации кнопок запрещены (0.184) — состояние меняется мгновенно. */
-.params-switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  background: none;
-  border: 0;
-  padding: 4px 0;
-  color: var(--text-1);
-  font: inherit;
-  cursor: pointer;
-}
-
-.params-switch-dot {
-  width: 34px;
-  height: 20px;
-  border-radius: 999px;
-  background: var(--border);
-  position: relative;
-  flex-shrink: 0;
-}
-
-.params-switch-dot::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--bg-elevated, #fff);
-}
-
-.params-switch-dot.is-on {
-  background: var(--accent, #7c9cff);
-}
-
-.params-switch-dot.is-on::after {
-  transform: translateX(14px);
-}
-
 .params-group {
   padding: 8px 0;
   border-bottom: 1px solid var(--border);

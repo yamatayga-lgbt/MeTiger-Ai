@@ -192,21 +192,6 @@ export function ParamsPopover({ params, onChange, onClose }: ParamsPopoverProps)
         <div className="params-hint">Выше нуля — реже повторяет одни и те же слова и фразы</div>
       </div>
 
-      {/* 6. безлимитный контекст (0.193): переключение и есть сохранение,
-          без анимаций — правило 0.184. */}
-      <div className="params-group">
-        <button
-          type="button"
-          className="params-switch"
-          role="switch"
-          aria-checked={params.ctxUnlimited === true}
-          onClick={() => onChange({ ...params, ctxUnlimited: !(params.ctxUnlimited === true) })}
-        >
-          <span className="params-key">Безлимитный контекст</span>
-          <span className={'params-switch-dot' + (params.ctxUnlimited === true ? ' is-on' : '')} aria-hidden="true" />
-        </button>
-        <div className="params-hint">Старые реплики сжимаются в выжимку, а не удаляются — разговор помнит начало</div>
-      </div>
     </div>
   )
 }
