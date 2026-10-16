@@ -116,6 +116,35 @@ console.log('V — отказ зрячей модели: картиночный 
     JSON.stringify({ ok: r2.ok, err: String(r2.error).slice(0, 120) }));
 }
 
+console.log('B — понимание картинки: слепых не зовём, опытных — первыми (0.192)');
+{
+  /* Смешанный пул [зрячая (отказывает), слепая]: после отказа зрячей слепая
+     НЕ зовётся вовсе — иначе она «ответила» бы по тексту, не видя фото. */
+  const calls = [];
+  const f = async (url, init) => {
+    let model = /generativelanguage\.googleapis\.com/.test(url) ? 'gemini-2.5-flash' : '';
+    try { model = (JSON.parse(String((init && init.body) || '{}')).model) || model; } catch (_e) {}
+    calls.push(String(model));
+    /* gemini (первый в очереди) — отказывается; zai-glm — отвечает.
+       Слепая gpt-oss-120b из пула zai не зовётся вовсе (фильтр 0.192). */
+    if (/generativelanguage\.googleapis\.com/.test(url)) {
+      return { status: 200, text: async () => JSON.stringify(gem('Извини, я не могу рассматривать фотографии.')) };
+    }
+    return { status: 200, text: async () => JSON.stringify(chat('На фото: ответ по существу.')) };
+  };
+  /* zai: зрячая glm-4.6v-flash + слепая gpt-oss-120b; gemini: зрячая отвечает. */
+  const e = createEngine({ env: { ZAI_KEYS: 'z1', GEMINI_KEYS: 'gm1' }, fetch: f, sleep: async () => {} });
+  const r = await e.run({ text: 'разбери фото', images: ['data:image/png;base64,AA'] });
+  ok('B1: gemini отказал — слепая из пула zai не звалась, ответила зрячая glm',
+    r.ok && r.model === 'glm-4.6v-flash' && !calls.some((m) => m.indexOf('oss') >= 0),
+    JSON.stringify({ ok: r.ok, model: r.model, calls, err: r.error }));
+  ok('B2: слепая модель вообще не получала картинку — только зрячие в вызовах',
+    calls.every((m) => /glm|gemini/.test(m)), JSON.stringify(calls));
+
+  /* (Провайдер с чисто слепым пулом скипается целиком — это правило держит
+     test/chat.test.js C-группа: «нет модели, которая читает картинки».) */
+}
+
 console.log(`\n${pass} ✔, ${fail} ✖`);
 if (fail) process.exit(1);
 console.log('✔ 0.185: зрячий маршрут сложных задач и честный откат — проверки пройдены');

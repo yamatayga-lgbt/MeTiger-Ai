@@ -525,12 +525,9 @@ export function createImggen(o) {
     };
   }
 
-  /**
-   * Прогон по цепочке: первый ответивший источник выигрывает.
-   * ignoreFail — для мягкого повтора (0.191): паркинг источников, накопленный
-   * первым проходом, второму не указ — иначе повтору не дали бы даже начать.
-   */
-  async function runChain(kind, args, ignoreFail) {
+  /** Прогон по цепочке: первый ответивший источник выигрывает. */
+  async function run(kind, args) {
+    if (off) return { ok: false, why: 'генерация картинок выключена (IMGGEN=off)' };
     const tried = [];
     /* Честный прогресс (0.177): человек видит, что картинка рисуется и на каком
        канале мы стоим, а не смотрит на «печатает…» минуту. События уезжают тем же
@@ -540,7 +537,7 @@ export function createImggen(o) {
     let index = 0;
     for (const s of all) {
       index++;
-      if (!ignoreFail && skip(s.id)) { tried.push(`${s.id}: ${fail.get(s.id).why} (ждём ${Math.ceil((fail.get(s.id).until - now()) / 1000)} с)`); continue; }
+      if (skip(s.id)) { tried.push(`${s.id}: ${fail.get(s.id).why} (ждём ${Math.ceil((fail.get(s.id).until - now()) / 1000)} с)`); continue; }
       if (kind === 'edit' && !s.edits) { tried.push(`${s.id}: правка не поддерживается`); continue; }
       if (step) step({ state: 'trying', channel: s.id, index, total: all.length, edits: !!s.edits });
       try {
@@ -571,27 +568,6 @@ export function createImggen(o) {
       }
     }
     return { ok: false, why: tried.join(' · ') || 'источников нет' };
-  }
-
-  /**
-   * Внешний прогон (0.191): после полного провала цепочки — ОДИН мягкий повтор.
-   * Отказать могло не железо, а слово в промпте, задевшее чужой фильтр: «постер
-   * хоррора с кровью» режут все четыре источника, хотя «с драматичными тенями»
-   * проходит. Подчищаем такие слова (softenImagePrompt) и проходим цепочку заново,
-   * игнорируя свежий паркинг. Один повтор, только для генерации; правку фото не
-   * трогаем — там промпт про содержимое приложенной картинки, менять его нельзя.
-   */
-  async function run(kind, args) {
-    if (off) return { ok: false, why: 'генерация картинок выключена (IMGGEN=off)' };
-    const first = await runChain(kind, args, false);
-    if (first.ok) return first;
-    if (kind !== 'generate') return first;
-    const soft = softenImagePrompt(args.prompt);
-    if (!soft.changed) return first;
-    if (typeof args.step === 'function') args.step({ state: 'softretry', why: String(first.why || '').slice(0, 120) });
-    const second = await runChain(kind, Object.assign({}, args, { prompt: soft.prompt }), true);
-    if (second.ok) return Object.assign(second, { softened: true });
-    return { ok: false, why: 'даже с мягкой формулировкой не вышло · ' + second.why };
   }
 
   return {
@@ -630,36 +606,6 @@ const PROBE_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z
  * Отдельного вызова модели нет: блок разбирается из уже готового ответа.
  */
 export const IMG_BLOCK_RE = /```[ \t]*img(?:[ \t]*\|[ \t]*([^\n`]{0,60}))?[ \t]*\r?\n([\s\S]*?)```/gi;
-
-/**
- * Мягкая формулировка промпта (0.191): таблица слов-магнитов для чужих фильтров.
- * Подчистка точечная: меняются только слова, ради которых режут всю картинку
- * («кровь», «обнажённая», «gore»), — сюжет и композиция остаются просьбой
- * человека. Оружие и символику НЕ трогаем: подмена сюжета целиком честнее
- * выглядит как отказ, а не как «нарисовали не то».
- */
-const SOFTEN = [
-  [/кров(?:ь|и|ям|ью|ав[а-я]*|ищ[а-я]*)/gi, 'драматичные тени'],
-  [/\bblood(?:y|ied|soaked)?\b|\bgory\b|\bgore\b/gi, 'dramatic shadows'],
-  [/обнаж[а-я]*/gi, 'в элегантной одежде'],
-  [/гол(?:ая|ую|ой|ые|ый)\b/gi, 'в элегантной одежде'],
-  [/\bnud(?:e|ity|es)\b|\bnaked\b|\bnsfw\b|\bsexy\b/gi, 'elegantly dressed'],
-  [/труп[а-я]*|мертв[а-я]*/gi, 'тёмный силуэт'],
-  [/\bcorpse(?:s)?\b|\bdead\s+body\b/gi, 'dark silhouette'],
-  [/расчлен[а-я]*/gi, 'драматичный силуэт'],
-  [/ран(?:а|ы|е|у|ой|ах|ами|ений|ение)\b/gi, 'лёгкий след былой истории'],
-  [/\bwound(?:ed|s)?\b|\bbleeding\b/gi, 'a trace of an old story'],
-];
-
-/** Вернёт { prompt, changed }: changed — было что подчищать, повтор имеет смысл. */
-export function softenImagePrompt(prompt) {
-  let out = String(prompt || '');
-  let changed = false;
-  for (const [re, to] of SOFTEN) {
-    if (re.test(out)) { out = out.replace(re, to); changed = true; }
-  }
-  return { prompt: out.trim(), changed };
-}
 
 /** Просил ли человек картинку (по тексту запроса) — для автоматической доводки. */
 export function wantsImage(text) {

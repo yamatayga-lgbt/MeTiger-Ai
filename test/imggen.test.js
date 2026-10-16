@@ -6,7 +6,6 @@
 import assert from 'node:assert';
 import {
   createImggen, packImages, wantsImage, wantsEdit, describeRequest, lineOf, IMG_BLOCK_RE, IMG_DIRECTIVE,
-  softenImagePrompt,
 } from '../engine/imggen.js';
 import { gatherTools, TOOL_TITLES } from '../engine/tools.js';
 
@@ -581,53 +580,6 @@ const aiEnv = (run, extra) => ({ ...(extra || {}), AI: { run } });
   const layer = createImggen({ env: { IMGGEN_POLLINATIONS: 'off' }, fetch: stub({}), log: () => {} });
   ok('K15: когда рисовать нечем — причина называет привязку AI первой',
     layer.status().on === false && /привязка AI/.test(layer.status().why), layer.status().why);
-}
-
-console.log('M — мягкий повтор промпта (0.191): цепочка отказала — пробуем без слов-магнитов');
-{
-  /* softenImagePrompt: таблица точечная */
-  const a = softenImagePrompt('постер хоррора с кровью и обнажённой фигурой');
-  ok('M1: «кровь» и «обнажённая» подчищаются — changed, слов-магнитов не осталось',
-    a.changed && !/кров|обнаж/.test(a.prompt), JSON.stringify(a));
-  const b = softenImagePrompt('закат над морем, мягкий свет');
-  ok('M2: мирный промпт не трогается — повтора не будет', !b.changed && b.prompt === 'закат над морем, мягкий свет');
-  const c = softenImagePrompt('детектив с пистолетом в руке');
-  ok('M3: оружие не подменяем — сюжет целиком не трогаем, лучше честный отказ', !c.changed);
-
-  /* живой слой: все источники отказали на «крови» — повтор с мягким промптом спасает */
-  const calls = [];
-  const layer = createImggen({
-    env: ENV,
-    fetch: stub({
-      gemini: (u, init) => (/кров/.test(String((init && init.body) || '')) ? err('filtered', 'blocked') : geminiOk()),
-      odirouter: (u, init) => (/кров/.test(String((init && init.body) || '')) ? err('filtered', 'blocked') : odirOk()),
-    }, calls),
-  });
-  const r = await layer.generate({ prompt: 'постер хоррора с кровью' });
-  ok('M4: первый проход отказал по всем, мягкий повтор нарисовал — softened помечен',
-    r.ok && r.softened === true && r.source === 'gemini', JSON.stringify({ ok: r.ok, src: r.source, soft: r.softened }));
-  ok('M5: повтор игнорирует свежий паркинг — gemini звался дважды',
-    calls.filter((u) => /googleapis/.test(u)).length === 2, calls.join(' | '));
-
-  /* мягкий повтор не спасает — честный вердикт упоминает обе попытки */
-  const calls2 = [];
-  const layer2 = createImggen({
-    env: ENV,
-    fetch: stub({ gemini: err('filtered', 'blocked'), odirouter: err('filtered', 'blocked') }, calls2),
-  });
-  const r2 = await layer2.generate({ prompt: 'сцена с кровью' });
-  ok('M6: даже с мягкой формулировкой отказ — вердикт честно про обе попытки',
-    !r2.ok && /мягкой формулировкой/.test(r2.why) && /gemini/.test(r2.why), r2.why.slice(0, 140));
-
-  /* мирный промпт: полного провала без второго прохода — каждый источник один раз */
-  const calls3 = [];
-  const layer3 = createImggen({
-    env: ENV,
-    fetch: stub({ gemini: err('quota', 'нет квоты', 429), odirouter: err('quota', 'нет квоты', 429) }, calls3),
-  });
-  const r3 = await layer3.generate({ prompt: 'закат над морем' });
-  ok('M7: промпт без слов-магнитов — один проход, без мягкого повтора',
-    !r3.ok && !/мягкой/.test(r3.why) && calls3.length === 4, calls3.join(' | '));
 }
 
 console.log(`\n${pass} пройдено, ${fail} провалено`);

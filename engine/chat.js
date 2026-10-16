@@ -551,7 +551,9 @@ export function createEngine(opts) {
     }
     /* На острой теме порядок провайдеров решает не конфиг, а их же поведение:
        доказанно смелые — первыми. Доказательств нет — порядок как всегда. */
-    if (brave && sensitive && !pin0(input)) {
+    /* Для картинок (понимание) рейтинг провайдеров — всегда: кто на картинках
+       отвечал и был смелым, тот и первым смотрит новое фото (0.192). */
+    if (brave && !pin0(input) && (sensitive || images.length)) {
       order = brave.orderProviders(order, poolOf(P));
     }
     if (input.providerOrder && input.providerOrder.length) {
@@ -996,7 +998,13 @@ export function createEngine(opts) {
         continue;
       }
       const n = Math.max(1, Number(input.modelsPerProvider) || 2);
-      for (const model of models.slice(0, n)) {
+      /* 0.192: в смешанном пуле после зрячих очередь шла к слепым — та получала
+         картинку (ошибка API, съеденная попытка) или, хуже, «отвечала» по тексту
+         вопроса, не видя изображения (выдумка вместо честного отказа). Есть
+         зрячие — зовём только их; зрячих нет — провайдер скипается выше. */
+      const canSee = images.length && models.some((m) => isVision(m));
+      const seers = canSee ? models.filter((m) => isVision(m)) : models;
+      for (const model of seers.slice(0, n)) {
         const left = deadline - Date.now();
         if (left < 2500) { tried.push({ provider: id, model, why: 'вышел бюджет времени' }); return await withMeta(finish(null, tried, started, intent, tier, 'время вышло')); }
         let keyIdx = chooseKey(id, model);
