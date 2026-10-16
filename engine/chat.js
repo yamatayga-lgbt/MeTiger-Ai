@@ -377,9 +377,9 @@ export function createEngine(opts) {
     }
     if (deep && (intent === 'fast' || intent === 'creative')) intent = 'reasoning';
     const tier = input.tier || tierFor(intent);
-    /* Безлимитный контекст (0.193, с 0.194 — всегда): до 200 реплик. Окно
-       модели уместит остальное fit-ом — не влезает, сожмётся в выжимку. */
-    let history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || 200));
+    /* Бесконечная память (0.195): ленту не режем вовсе — окно модели уместит
+       нужное, не влезающее fit сожмёт в выжимку. Явный historyKeep сильнее. */
+    let history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || Infinity));
     /* Инструменты агента: внешние данные (поиск, новости, курсы, погода…) ложатся
        в сообщение человека отдельным блоком — модель отвечает по ним, а не по
        памяти. Ошибка или тишина инструмента — блока просто нет. */

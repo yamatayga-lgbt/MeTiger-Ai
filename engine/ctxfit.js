@@ -83,8 +83,12 @@ export function normalizeFields(body, env) {
     system: num(env && env.CTX_MAX_SYSTEM, MAX_SYSTEM),
     msg: num(env && env.CTX_MAX_MSG, 16000),
     text: num(env && env.CTX_MAX_TEXT, 96000),
+    /* 0.195 «Бесконечная память»: лента не ограничена вовсе — с любой длиной
+       справляются окно модели и выжимка; env-ручкой CTX_MAX_HISTORY всё ещё
+       можно ужать. */
+    history: num(env && env.CTX_MAX_HISTORY, Infinity),
   };
-  const maxHist = 200;
+  const maxHist = cap.history;
 
   let text = String(o.text == null ? '' : o.text).trim();
   if (text.length > cap.text) { text = text.slice(0, cap.text); notes.push('запрос обрезан до ' + cap.text + ' знаков'); }
@@ -93,8 +97,8 @@ export function normalizeFields(body, env) {
   if (system.length > cap.system) { system = system.slice(0, cap.system); notes.push('свой системный промпт обрезан до ' + cap.system + ' знаков'); }
 
   const historyRaw = Array.isArray(o.history) ? o.history : [];
-  /* длинную ленту не выбрасываем молча: берём последние `MAX_HISTORY`, и это
-     отдельная причина, не «пустые реплики» — иначе человек читает неверный диагноз */
+  /* длинную ленту не выбрасываем молча: если оператор ужал её env-ручкой, берём
+     последние и говорим об этом отдельной причиной — не «пустые реплики». */
   const taken = historyRaw.slice(-maxHist);
   const tooOld = Math.max(0, historyRaw.length - taken.length);
   const history = [];
@@ -171,18 +175,20 @@ function richDigest(list) {
   const flat = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
   const firstUser = list.find((m) => m && m.role === 'user');
   const parts = [];
-  for (const m of list) {
-    if (!m || m === firstUser) continue;
-    const head = flat(m.content).slice(0, 220);
-    if (head) parts.push((m.role === 'assistant' ? 'я: ' : 'человек: ') + head + (head.length >= 220 ? '…' : ''));
-    if (parts.length >= 40) break;
+  /* 0.195 «Бесконечная память»: сжатые строки берём с БЛИЖАЙШЕГО к настоящему
+     конца отрезанного — начало и так лежит в выжимке целиком, а свежее из
+     старого ценнее полузабытого. Порядок строк остаётся хронологическим. */
+  const body = list.filter((m) => m && m !== firstUser);
+  for (const m of body.slice(-60)) {
+    const head = flat(m.content).slice(0, 240);
+    if (head) parts.push((m.role === 'assistant' ? 'я: ' : 'человек: ') + head + (head.length >= 240 ? '…' : ''));
   }
   const start = firstUser ? 'С чего начался разговор (целиком): ' + flat(firstUser.content).slice(0, 1500) + '\n' : '';
   return start + parts.join('\n');
 }
 
 /**
- * Подогнать под окно. ctx: { system, history, text, images, env, maxOut, ctxUnlimited }.
+ * Подогнать под окно. ctx: { system, history, text, images, env, maxOut }.
  * → { system, history, text, notes, cut, tokens, window, overflow }
  * Резать начинаем с самого старого; последнюю реплику человека не трогаем никогда.
  */

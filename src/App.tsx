@@ -450,10 +450,9 @@ export default function App() {
     (text: string, images?: string[], attachments?: Attachment[]) => {
       const chatId = activeChatId
       const current = chats.find((c) => c.id === chatId)
-      /* Безлимитный контекст (0.193, с 0.194 — всегда): берём до 200 реплик —
-         дверь уместит их в окно сама, сжав старое в выжимку, а не выбросив. */
-      const histMax = 200
-      const history = (current?.messages ?? []).slice(-histMax).map((m) => ({ role: m.role, text: m.text }))
+      /* Бесконечная память (0.195): уходим в запрос всей историей чата —
+         окно модели уместит нужное, не влезающее дверь сожмёт в выжимку. */
+      const history = (current?.messages ?? []).map((m) => ({ role: m.role, text: m.text }))
       setChats((prev) =>
         prev.map((c) =>
           c.id === chatId

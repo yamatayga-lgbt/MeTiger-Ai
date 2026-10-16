@@ -590,7 +590,8 @@ export async function sendChat(
       body: JSON.stringify({
         text,
         /* Безлимитный контекст (0.193, с 0.194 — всегда): до 200 реплик вместо 8 */
-        history: history.slice(-200),
+        /* бесконечная память (0.195): уходит вся лента чата */
+        history,
         caseContext: opts.caseContext || undefined,
         images: opts.images,
         attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,

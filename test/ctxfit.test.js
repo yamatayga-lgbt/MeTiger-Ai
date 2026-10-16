@@ -21,8 +21,8 @@ ok('C2: кириллица плотнее латиницы (окно по ней
 ok('C3: clampNumber держит рамки и не боится мусора', clampNumber(9, 0, 2, 0.7) === 2 && clampNumber(-5, 0, 2, 0.7) === 0 && clampNumber('нет', 0, 2, 0.7) === 0.7);
 
 {
-  const many = normalizeFields({ text: 'давай', history: Array.from({ length: 250 }, (_, i) => ({ role: 'user', text: 'р' + i })) }, {});
-  ok('C4a: ленту в 250 реплик не выбрасываем молча — сказано, сколько взято',
+  const many = normalizeFields({ text: 'давай', history: Array.from({ length: 250 }, (_, i) => ({ role: 'user', text: 'р' + i })) }, { CTX_MAX_HISTORY: '200' });
+  ok('C4a: ужатую env-ручкой ленту не выбрасываем молча — сказано, сколько взято',
     many.history.length === 200 && /взял последние 200 \(из 250\)/.test(many.notes.join(' ')) && !/пустых/.test(many.notes.join(' ')), JSON.stringify(many.notes));
   const r = normalizeFields({ text: 'привет', chatId: 'чат\u00001' }, {});
   ok('C4: нормальный вход проходит без единой правки', r.text === 'привет' && r.notes.length === 0 && r.history.length === 0, JSON.stringify(r));
@@ -195,46 +195,46 @@ console.log('C31 — окно по модели, а не одно на всех'
     JSON.stringify({ cx: capped.cxFit, tailIn: sentText(0).indexOf(tail) >= 0 }).slice(0, 200));
 }
 
-console.log('U — безлимитный контекст: всегда включён (0.194)');
+console.log('U — бесконечная память (0.195)');
 {
-  /* Капы высокие без всяких флагов: лента до 200, реплика до 16 000, текст до 96 000. */
-  const u = normalizeFields({
-    text: 'a'.repeat(120000),
-    history: Array.from({ length: 150 }, (_, i) => ({ role: 'user', text: 'х'.repeat(20000) })),
-  }, {});
-  ok('U1: без флагов — лента 150 целиком (кэп 200), реплики до 16 000, текст до 96 000',
-    u.history.length === 150 && u.history[0].content.length === 16000 && u.text.length === 96000 && u.caps.msg === 16000,
-    JSON.stringify({ n: u.history.length, msg: u.history[0].content.length, text: u.text.length }));
+  /* Единичные капы высоки; env-ручки по-прежнему сильнее. */
+  const u = normalizeFields({ text: 'a'.repeat(120000), history: [{ role: 'user', text: 'х'.repeat(20000) }] }, {});
+  ok('U1: единичные капы — реплика 16 000, текст 96 000',
+    u.history[0].content.length === 16000 && u.text.length === 96000 && u.caps.msg === 16000,
+    JSON.stringify({ msg: u.history[0].content.length, text: u.text.length }));
 
-  /* env-ручки по-прежнему сильнее: оператор развёртывания может ужать. */
-  const e2 = normalizeFields({ text: 'привет', history: [{ role: 'user', text: 'х'.repeat(900) }] }, { CTX_MAX_MSG: '500' });
-  ok('U2: env-ручки капов живы — CTX_MAX_MSG=500 побеждает',
-    e2.caps.msg === 500 && e2.history[0].content.length === 500,
-    JSON.stringify({ cap: e2.caps.msg, msg: e2.history[0].content.length }));
+  const big = normalizeFields({ text: 'давай', history: Array.from({ length: 1000 }, (_, i) => ({ role: 'user', text: 'р' + i })) }, {});
+  ok('U2: лента из 1000 реплик уходит целиком — без ограничений и примечаний',
+    big.history.length === 1000 && !/взял последние/.test(big.notes.join(' ')),
+    JSON.stringify({ n: big.history.length, notes: big.notes }));
 
-  /* fit: богатая выжимка по умолчанию — начало разговора целиком, элементы по ~220. */
+  const longHist = Array.from({ length: 30 }, (_, i) => ({ role: 'user', text: i === 29 ? 'х'.repeat(900) : 'р' + i }));
+  const envy = normalizeFields({ text: 'давай', history: longHist }, { CTX_MAX_HISTORY: '12', CTX_MAX_MSG: '500' });
+  ok('U3: env-ручки живы — CTX_MAX_HISTORY=12 и CTX_MAX_MSG=500 побеждают бесконечность',
+    envy.history.length === 12 && envy.history[11].content.length === 500 && /взял последние 12 \(из 30\)/.test(envy.notes.join(' ')),
+    JSON.stringify({ n: envy.history.length, last: envy.history[11].content.length, notes: envy.notes }));
+
+  /* fit: богатая выжимка — начало разговора целиком, сжатое — с ближнего конца. */
   const hist = Array.from({ length: 30 }, (_, i) => ({
     role: i % 2 ? 'assistant' : 'user',
     content: (i === 0 ? 'Задача: посчитай бюджет ремонта кухни 12 метров. ' : 'сообщение номер ' + i + ' ').repeat(i === 0 ? 4 : 40),
   }));
   const f = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '6000' }, maxOut: 900 });
-  ok('U3: выжимка богата: начало разговора — целиком, старые реплики по ~220 знаков',
+  ok('U4: выжимка богата: начало — целиком, старое — по ~240 с «человек:/я:»',
     f.cut.digest.indexOf('С чего начался разговор (целиком): Задача: посчитай бюджет') === 0
       && /сообщение номер 2[^\n]{150,}/.test(f.cut.digest),
     JSON.stringify(f.cut.digest.slice(0, 120)));
-  ok('U4: примечание честное: «в окне N реплик целиком, предыдущие M сжал в выжимку»',
+  ok('U5: примечание честное: «в окне N реплик целиком, предыдущие M сжал в выжимку»',
     /в окне \d+ реплик целиком, предыдущие \d+ сжал в выжимку/.test(f.notes.join(' ')), JSON.stringify(f.notes));
 
-  /* Узкое окно: выжимка сама стоит места — не влезает, история ужмётся ещё,
-     но блок в system попадает и начало разговора в нём цело. */
   const f2 = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '4000' }, maxOut: 900 });
-  ok('U5: узкое окно — блок выжимки в system, начало разговора в нём сохранилось',
+  ok('U6: узкое окно — блок выжимки в system, начало разговора в нём сохранилось',
     f2.system.indexOf('Раньше в разговоре было') >= 0
       && f2.system.indexOf('С чего начался разговор (целиком): Задача: посчитай бюджет') >= 0,
     JSON.stringify({ dropped: f2.cut.dropped }));
 }
 
-/* U6: у движка свой кэп истории — теперь 200 по умолчанию, явный historyKeep сильнее. */
+/* U7: движок тащит всю ленту (historyKeep без предела), явный historyKeep сильнее. */
 {
   const seen = [];
   const f = async (_url, init) => {
@@ -242,11 +242,11 @@ console.log('U — безлимитный контекст: всегда вкл�
     return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'ок' } }] }) };
   };
   const e = createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: f, sleep: async () => {} });
-  const h30 = Array.from({ length: 30 }, (_, i) => ({ role: 'user', content: 'метка ' + i + ' ' + 'слово '.repeat(20) }));
-  await e.run({ text: 'привет', history: h30, useTools: false, skills: false });
-  await e.run({ text: 'привет', history: h30, historyKeep: 5, useTools: false, skills: false });
-  ok('U6: движок шлёт все ~31 сообщение, явный historyKeep:5 — только 6',
-    seen[0] >= 28 && seen[1] <= 7, JSON.stringify(seen));
+  const h100 = Array.from({ length: 100 }, (_, i) => ({ role: 'user', content: 'метка ' + i + ' ' + 'слово '.repeat(10) }));
+  await e.run({ text: 'привет', history: h100, useTools: false, skills: false });
+  await e.run({ text: 'привет', history: h100, historyKeep: 5, useTools: false, skills: false });
+  ok('U7: движок шлёт все ~101 сообщение, явный historyKeep:5 — только 6',
+    seen[0] >= 100 && seen[1] <= 7, JSON.stringify(seen));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
