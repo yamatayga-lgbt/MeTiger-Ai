@@ -553,6 +553,8 @@ async function handlePost(context) {
     model: norm.model || undefined,
     noCouncils: !!norm.model,
     temperature: norm.temperature,
+    /* Безлимитный контекст (0.193): потолки выше, старое — в выжимку, не в мусор. */
+    ctxUnlimited: norm.ctxUnlimited === true,
     maxTokens: norm.maxTokens,
     topP: norm.topP,
     presencePenalty: norm.presencePenalty,

@@ -524,6 +524,8 @@ export async function sendChat(
      * web-search и читает первую найденную страницу, даже без слова «погугли».
      */
     webSearch?: boolean
+    /** Безлимитный контекст (0.193): больше реплик уходит на сервер, старое сжимается там */
+    ctxUnlimited?: boolean
     /** Параметры генерации (temperature, max_tokens, top_p, penalty) и усилие рассуждения */
     temperature?: number
     maxTokens?: number
@@ -589,7 +591,7 @@ export async function sendChat(
       signal: ac.signal,
       body: JSON.stringify({
         text,
-        history: history.slice(-8),
+        history: history.slice(-(opts.ctxUnlimited ? 200 : 8)),
         caseContext: opts.caseContext || undefined,
         images: opts.images,
         attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
@@ -600,6 +602,7 @@ export async function sendChat(
         showReasoning: opts.onReasoning ? true : undefined,
         /* явная просьба глубокого поиска в сети; без неё работают только собственные триггеры */
         webSearch: opts.webSearch ? true : undefined,
+        ctxUnlimited: opts.ctxUnlimited ? true : undefined,
         temperature: typeof opts.temperature === 'number' ? opts.temperature : undefined,
         topP: typeof opts.topP === 'number' ? opts.topP : undefined,
         presencePenalty: typeof opts.presencePenalty === 'number' ? opts.presencePenalty : undefined,

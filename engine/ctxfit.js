@@ -76,7 +76,16 @@ export function clampNumber(v, min, max, dflt) {
 export function normalizeFields(body, env) {
   const o = body || {};
   const notes = [];
-  const cap = { system: num(env && env.CTX_MAX_SYSTEM, MAX_SYSTEM), msg: num(env && env.CTX_MAX_MSG, MAX_MSG), text: num(env && env.CTX_MAX_TEXT, MAX_TEXT) };
+  /* Безлимитный контекст (0.193): клиент просил не выбрасывать историю —
+     потолки на реплику, текст и длину ленты поднимаются в несколько раз,
+     а старое сжимается в выжимку на этапе fit(), а не отрезается. */
+  const unlimited = o.ctxUnlimited === true;
+  const cap = {
+    system: num(env && env.CTX_MAX_SYSTEM, MAX_SYSTEM),
+    msg: num(env && env.CTX_MAX_MSG, unlimited ? 16000 : MAX_MSG),
+    text: num(env && env.CTX_MAX_TEXT, unlimited ? 96000 : MAX_TEXT),
+  };
+  const maxHist = unlimited ? 200 : MAX_HISTORY;
 
   let text = String(o.text == null ? '' : o.text).trim();
   if (text.length > cap.text) { text = text.slice(0, cap.text); notes.push('запрос обрезан до ' + cap.text + ' знаков'); }
@@ -87,7 +96,7 @@ export function normalizeFields(body, env) {
   const historyRaw = Array.isArray(o.history) ? o.history : [];
   /* длинную ленту не выбрасываем молча: берём последние `MAX_HISTORY`, и это
      отдельная причина, не «пустые реплики» — иначе человек читает неверный диагноз */
-  const taken = historyRaw.slice(-MAX_HISTORY);
+  const taken = historyRaw.slice(-maxHist);
   const tooOld = Math.max(0, historyRaw.length - taken.length);
   const history = [];
   let dropped = 0;
@@ -103,7 +112,7 @@ export function normalizeFields(body, env) {
     history.push({ role: m.role === 'assistant' || m.role === 'system' ? m.role : 'user', content });
   }
   if (dropped > 0) notes.push(dropped + ' пустых реплик в истории не отправляем');
-  if (tooOld > 0) notes.push('история длиннее ' + MAX_HISTORY + ' реплик — взял последние ' + taken.length + ' (из ' + historyRaw.length + ')');
+  if (tooOld > 0) notes.push('история длиннее ' + maxHist + ' реплик — взял последние ' + taken.length + ' (из ' + historyRaw.length + ')');
 
   let temperature;
   if (o.temperature != null && Number.isFinite(Number(o.temperature))) {
@@ -151,7 +160,7 @@ export function normalizeFields(body, env) {
   const provider = typeof o.provider === 'string' && /^[a-z0-9_-]{1,40}$/i.test(o.provider.trim()) ? o.provider.trim() : undefined;
   const chatId = String(o.chatId || 'web').replace(/[\u0000-\u001f]/g, '').slice(0, 80);
 
-  return { text, system, history, temperature, maxTokens, topP, presencePenalty, frequencyPenalty, reasoningEffort, model, provider, chatId, notes, caps: cap };
+  return { text, system, history, ctxUnlimited: unlimited, temperature, maxTokens, topP, presencePenalty, frequencyPenalty, reasoningEffort, model, provider, chatId, notes, caps: cap };
 }
 
 /** Выжимка из отрезанной истории — одна строка, чтобы модель знала, что было раньше. */
@@ -166,7 +175,26 @@ function digest(list) {
 }
 
 /**
- * Подогнать под окно. ctx: { system, history, text, images, env, maxOut }.
+ * Богатая выжимка (безлимитный контекст, 0.193): до 40 реплик по ~220 знаков
+ * каждая — против 6×90 у обычного режима, а реплике, с которой разговор
+ * начался, — до 1500 знаков целиком: в начале лежит сама задача человека.
+ */
+function richDigest(list) {
+  const flat = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  const firstUser = list.find((m) => m && m.role === 'user');
+  const parts = [];
+  for (const m of list) {
+    if (!m || m === firstUser) continue;
+    const head = flat(m.content).slice(0, 220);
+    if (head) parts.push((m.role === 'assistant' ? 'я: ' : 'человек: ') + head + (head.length >= 220 ? '…' : ''));
+    if (parts.length >= 40) break;
+  }
+  const start = firstUser ? 'С чего начался разговор (целиком): ' + flat(firstUser.content).slice(0, 1500) + '\n' : '';
+  return start + parts.join('\n');
+}
+
+/**
+ * Подогнать под окно. ctx: { system, history, text, images, env, maxOut, ctxUnlimited }.
  * → { system, history, text, notes, cut, tokens, window, overflow }
  * Резать начинаем с самого старого; последнюю реплику человека не трогаем никогда.
  */
@@ -203,20 +231,43 @@ export function fit(ctx) {
         этом не в истории (он в `text`), так что он не пострадает. */
   const droppedList = [];
   while (total() + reserve > window && out.history.length) droppedList.push(out.history.shift());
+  const unlimited = !!o.ctxUnlimited;
+
+  /* 2) выжимка: отрезанное не исчезает молча, оно возвращается в промпт. В
+        безлимитном режиме — богатая (40×220 + начало целиком), в обычном — одна
+        строка. Её стоимость учитываем ДО подрезки подсказок и вставляем ПОСЛЕ
+        неё — иначе подрезка съела бы как раз то, что должно напомнить о начале
+        разговора. */
+  const wrapDig = (d) => d
+    ? (unlimited
+      ? '\n\nРаньше в разговоре было (безлимитный контекст: целых реплик в окно не влезает, начало разговора — целиком, дальше сжато):\n' + d
+        + '\nНе выдумывай того, чего в сжатом виде нет.'
+      : '\n\nРаньше в разговоре было (сжатое начало, целых реплик уже не везём): ' + d
+        + '\nНачало истории отрезано, потому что запрос не влезал в окно модели (' + window
+        + ' токенов). Не выдумывай то, чего в сжатом виде нет.')
+    : '';
+  const digOf = (list) => (unlimited ? richDigest(list) : digest(list));
+  let dig = droppedList.length ? digOf(droppedList) : '';
+  let digBlock = wrapDig(dig);
+  /* Безлимит: выжимка богата и сама стоит места. Не влезает с ней — снимаем ещё
+     реплики из живой части и обогащаем выжимку, пока блок не уместится. */
+  if (unlimited) {
+    let guard = 0;
+    while (digBlock && total() + reserve + estTokens(digBlock) > window && out.history.length && guard < 250) {
+      /* push, а не unshift: продолжаем снимать с того же (старого) конца —
+         порядок выжимки остаётся «от начала разговора к концу». */
+      droppedList.push(out.history.shift());
+      dig = digOf(droppedList);
+      digBlock = wrapDig(dig);
+      guard++;
+    }
+  }
   if (droppedList.length) {
     out.cut.dropped = droppedList.length;
-    notes.push('историю урезал на ' + droppedList.length + ' реплик с начала — окно модели ' + window + ' токенов');
+    notes.push(unlimited
+      ? 'безлимит: ' + out.history.length + ' реплик целиком, предыдущие ' + droppedList.length + ' сжал в выжимку (окно ' + window + ' токенов)'
+      : 'историю урезал на ' + droppedList.length + ' реплик с начала — окно модели ' + window + ' токенов');
   }
-
-  /* 2) выжимка: отрезанное не исчезает молча, оно одной строкой возвращается в
-        промпт. Её стоимость учитываем ДО подрезки подсказок и вставляем ПОСЛЕ неё —
-        иначе подрезка съела бы как раз то, что должно напомнить о начале разговора. */
-  const dig = droppedList.length ? digest(droppedList) : '';
-  const digBlock = dig
-    ? '\n\nРаньше в разговоре было (сжатое начало, целых реплик уже не везём): ' + dig
-      + '\nНачало истории отрезано, потому что запрос не влезал в окно модели (' + window
-      + ' токенов). Не выдумывай то, чего в сжатом виде нет.'
-    : '';
   out.cut.digest = dig;
 
   /* 3) сам промпт: режем ТОЛЬКО хвост (подсказки навыков, данные инструментов).

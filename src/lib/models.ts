@@ -29,6 +29,8 @@ export interface GenParams {
   presencePenalty: number
   /** -2..2, 0 = выключено. Положительное — реже повторяет одни и те же слова/фразы. */
   frequencyPenalty: number
+  /** Безлимитный контекст (0.193): старые реплики сжимаются в выжимку, а не удаляются. */
+  ctxUnlimited?: boolean
 }
 
 export const DEFAULT_GEN_PARAMS: GenParams = {
@@ -47,7 +49,8 @@ export function isGenParams(v: unknown): v is GenParams {
     /* поля появились в 0.070 — старое сохранённое состояние (до обновления) их не
        содержит, поэтому отсутствие трактуем как 0 (выключено), а не как брак данных */
     (o.presencePenalty === undefined || typeof o.presencePenalty === 'number') &&
-    (o.frequencyPenalty === undefined || typeof o.frequencyPenalty === 'number')
+    (o.frequencyPenalty === undefined || typeof o.frequencyPenalty === 'number') &&
+    (o.ctxUnlimited === undefined || typeof o.ctxUnlimited === 'boolean')
   )
 }
 
@@ -57,6 +60,7 @@ export function withGenParamDefaults(p: GenParams): GenParams {
     ...p,
     presencePenalty: typeof p.presencePenalty === 'number' ? p.presencePenalty : 0,
     frequencyPenalty: typeof p.frequencyPenalty === 'number' ? p.frequencyPenalty : 0,
+    ctxUnlimited: p.ctxUnlimited === true,
   }
 }
 
@@ -65,7 +69,8 @@ export function isDefaultGenParams(p: GenParams): boolean {
     Math.abs(p.temperature - DEFAULT_GEN_PARAMS.temperature) < 0.01 &&
     Math.abs(p.topP - DEFAULT_GEN_PARAMS.topP) < 0.01 &&
     Math.abs((p.presencePenalty || 0) - DEFAULT_GEN_PARAMS.presencePenalty) < 0.01 &&
-    Math.abs((p.frequencyPenalty || 0) - DEFAULT_GEN_PARAMS.frequencyPenalty) < 0.01
+    Math.abs((p.frequencyPenalty || 0) - DEFAULT_GEN_PARAMS.frequencyPenalty) < 0.01 &&
+    p.ctxUnlimited !== true
   )
 }
 

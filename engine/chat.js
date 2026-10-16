@@ -377,7 +377,10 @@ export function createEngine(opts) {
     }
     if (deep && (intent === 'fast' || intent === 'creative')) intent = 'reasoning';
     const tier = input.tier || tierFor(intent);
-    let history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || 8));
+    /* Безлимитный контекст (0.193): без флага держим прежние 8 реплик, с флагом —
+       до 200: дверь уже подняла свои потолки, окно уместит остальное fit-ом. */
+    let history = (Array.isArray(input.history) ? input.history : [])
+      .slice(-Number(input.historyKeep || (input.ctxUnlimited === true ? 200 : 8)));
     /* Инструменты агента: внешние данные (поиск, новости, курсы, погода…) ложатся
        в сообщение человека отдельным блоком — модель отвечает по ним, а не по
        памяти. Ошибка или тишина инструмента — блока просто нет. */
@@ -722,7 +725,7 @@ export function createEngine(opts) {
 
     /* Значения ДО резки: из них взят refit для модели с окном меньше «лучшего».
        Без них второй проход резал бы уже порезанное, и выжимка начала бы пропадать. */
-    const pristine = { system, history, text: userContent };
+    const pristine = { system, history, text: userContent, ctxUnlimited: input.ctxUnlimited === true };
     /* Сколько токенов просит этот запрос без резки — по этому числу движок решает,
        звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */
     const needTokens = estTokens(pristine.system) + estTokens(pristine.text)
@@ -1021,6 +1024,7 @@ export function createEngine(opts) {
           ? fitContext({
             system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
             history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
+            ctxUnlimited: input.ctxUnlimited === true,
             text: toolsRes.block
               ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block
               : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
@@ -1150,6 +1154,7 @@ export function createEngine(opts) {
         const refit = fitContext({
           system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
           history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
+          ctxUnlimited: input.ctxUnlimited === true,
           text: toolsRes.block
             ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block
             : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),

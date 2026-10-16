@@ -450,7 +450,10 @@ export default function App() {
     (text: string, images?: string[], attachments?: Attachment[]) => {
       const chatId = activeChatId
       const current = chats.find((c) => c.id === chatId)
-      const history = (current?.messages ?? []).slice(-8).map((m) => ({ role: m.role, text: m.text }))
+      /* Безлимитный контекст (0.193): берём до 200 реплик вместо 8 — дверь
+         уместит их в окно сама, сжав старое в выжимку, а не выбросив. */
+      const histMax = genParams.ctxUnlimited ? 200 : 8
+      const history = (current?.messages ?? []).slice(-histMax).map((m) => ({ role: m.role, text: m.text }))
       setChats((prev) =>
         prev.map((c) =>
           c.id === chatId
@@ -537,6 +540,7 @@ export default function App() {
               topP: genParams.topP,
               presencePenalty: genParams.presencePenalty,
               frequencyPenalty: genParams.frequencyPenalty,
+              ctxUnlimited: genParams.ctxUnlimited === true,
             })
             if (worthRetry(r) && attempt < maxRetries - 1) {
               // Черновик мог остаться от оборванной попытки — снимаем, чтобы не мигал.

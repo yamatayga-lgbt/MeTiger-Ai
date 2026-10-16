@@ -195,5 +195,59 @@ console.log('C31 — окно по модели, а не одно на всех'
     JSON.stringify({ cx: capped.cxFit, tailIn: sentText(0).indexOf(tail) >= 0 }).slice(0, 200));
 }
 
+console.log('U — безлимитный контекст (0.193)');
+{
+  /* Капы растут: лента 150 реплик не режется до 12, реплика в 20 000 знаков
+     остаётся (до 16 000), текст до 96 000. */
+  const u = normalizeFields({
+    text: 'a'.repeat(120000),
+    history: Array.from({ length: 150 }, (_, i) => ({ role: 'user', text: 'х'.repeat(20000) })),
+    ctxUnlimited: true,
+  }, {});
+  ok('U1: безлимит — лента целиком (150), реплики до 16 000, текст до 96 000',
+    u.ctxUnlimited === true && u.history.length === 150 && u.history[0].content.length === 16000 && u.text.length === 96000,
+    JSON.stringify({ n: u.history.length, msg: u.history[0].content.length, text: u.text.length }));
+
+  const d = normalizeFields({ text: 'привет', ctxUnlimited: true }, {});
+  ok('U2: флаг честно доезжает и при пустой истории', d.ctxUnlimited === true);
+  const off = normalizeFields({ text: 'привет' }, {});
+  ok('U3: без флага всё по-старому — 12 реплик и никаких изменений капов',
+    off.ctxUnlimited === false && off.history.length === 0 && off.caps.text === 24000);
+
+  /* fit: богатая выжимка — начало разговора целиком, элементы по ~220. */
+  const hist = Array.from({ length: 30 }, (_, i) => ({
+    role: i % 2 ? 'assistant' : 'user',
+    content: (i === 0 ? 'Задача: посчитай бюджет ремонта кухни 12 метров. ' : 'сообщение номер ' + i + ' ').repeat(i === 0 ? 4 : 40),
+  }));
+  const f = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '6000' }, ctxUnlimited: true, maxOut: 900 });
+  ok('U4: выжимка богата: начало разговора — целиком, старые реплики по ~220 знаков',
+    f.cut.digest.indexOf('С чего начался разговор (целиком): Задача: посчитай бюджет') === 0
+      && /сообщение номер 2[^\n]{150,}/.test(f.cut.digest),
+    JSON.stringify(f.cut.digest.slice(0, 120)));
+  ok('U5: примечание честно: сколько реплик целиком и сколько сжато',
+    /безлимит: \d+ реплик целиком, предыдущие \d+ сжал в выжимку/.test(f.notes.join(' ')), JSON.stringify(f.notes));
+
+  /* Обычный режим не изменился: тонкая выжимка одной строкой. */
+  const f2 = fit({ system: 'ты помощник', history: hist, text: 'итог какой?', env: { CTX_WINDOW: '6000' }, maxOut: 900 });
+  ok('U6: без флага — прежняя выжимка 6×90, без «С чего начался разговор»',
+    f2.cut.digest.length > 0 && f2.cut.digest.indexOf('С чего начался разговор') < 0 && !/человек: /m.test(f2.cut.digest),
+    JSON.stringify(f2.cut.digest.slice(0, 80)));
+}
+
+/* U7: у движка свой кэп истории (historyKeep) — безлимит поднимает и его. */
+{
+  const seen = [];
+  const f = async (_url, init) => {
+    try { seen.push(JSON.parse(String(init && init.body)).messages.length); } catch { seen.push(-1); }
+    return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'ок' } }] }) };
+  };
+  const e = createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: f, sleep: async () => {} });
+  const h30 = Array.from({ length: 30 }, (_, i) => ({ role: 'user', content: 'метка ' + i + ' ' + 'слово '.repeat(20) }));
+  await e.run({ text: 'привет', history: h30, ctxUnlimited: true, useTools: false, skills: false });
+  await e.run({ text: 'привет', history: h30, useTools: false, skills: false });
+  ok('U7: с флагом движок шлёт все ~31 сообщение, без флага — прежние ~9',
+    seen[0] >= 28 && seen[1] <= 10, JSON.stringify(seen));
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exitCode = 1;
