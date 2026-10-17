@@ -198,5 +198,22 @@ console.log('H — видимость состояния в диагностик
   } finally { globalThis.fetch = saved; }
 }
 
+console.log('I — пол одним полем: не пустой профиль и не потерянное сохранение (0.204)');
+{
+  const onlyGender = normalize({ gender: 'female' });
+  ok('I1: профиль из одного пола — заполнен, а не пуст',
+    onlyGender.filled === true && onlyGender.gender === 'female');
+  ok('I2: блок профиля с одним полом существует и несёт «Пол: Женский»',
+    /Пол: Женский/.test(blockOf({ gender: 'female' })));
+
+  const kv = fakeKv();
+  const prof = createProfile({ env: { PROFILE_WRITE_MS: 0 }, store: kv });
+  const first = await prof.put('user204x', { name: 'Аня', gender: 'female' });
+  const second = await prof.put('user204x', { name: 'Аня', gender: 'male' });
+  const back = await prof.get('user204x');
+  ok('I3: смена ТОЛЬКО пола сохраняется, а не считается «ничего не изменилось»',
+    first.ok && second.ok && back.profile.gender === 'male', JSON.stringify(back.profile));
+}
+
 console.log(fail ? `\nПРОВАЛЕНО: ${fail}` : `\nпройдено: ${pass}, провалено: 0`);
 process.exit(fail ? 1 : 0);

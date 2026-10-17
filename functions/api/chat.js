@@ -555,10 +555,17 @@ async function handlePost(context) {
      просто без персонализации. */
   let profileBlock = '';
   let profileWhy = '';
+  let profileGender = '';
   if (userId) {
     try {
       const got = await createProfile({ env, store, log: (k, m, x) => console.log(k, m, String(x || '').slice(0, 120)) }).get(userId);
-      if (got && got.ok) { profileBlock = String(got.block || ''); profileWhy = got.why || ''; }
+      if (got && got.ok) {
+        profileBlock = String(got.block || ''); profileWhy = got.why || '';
+        /* 0.204: пол собеседника — отдельным полем в движок. До этого он жил
+           только строкой «· Пол: …» внутри текстового блока профиля, а слой
+           рода ждал объект — обращение во втором лице по полу не работало. */
+        profileGender = (got.profile && got.profile.gender) || '';
+      }
       else profileWhy = (got && got.why) || 'профиль не читается';
     } catch (e) {
       profileWhy = String((e && e.message) || e).slice(0, 120);
@@ -615,6 +622,9 @@ async function handlePost(context) {
        «не прислано» превращалось в явное `auto` и затырало настройку сервера у
        каждого, кто про поле не знает (Telegram, curl, старые клиенты). */
     gender: genderLayer.pick(body.gender),
+    /* Пол собеседника из его профиля — как обращаться во втором лице и чем
+       при `auto` становится род агента (engine/gender.js, effective()). */
+    userGender: genderLayer.pick(body.userGender) || profileGender || undefined,
     /* Персонализация (0.186): стиль и тон из приложения. normalize валидирует
        каждое поле по белому списку — чужая чушь в теле запроса не доедет до промпта. */
     persona: personaStyle.normalize(body.persona),
@@ -724,7 +734,7 @@ async function handlePost(context) {
     checkFixed: r.check ? !!r.check.fixed : undefined,
     /* Как ответили — родом и (по желанию) наблюдением о состоянии собеседника.
        Фронт показывает род в подписи, emotion — только если включён EMOTION_LABEL. */
-    gender: r.gender, emotion: r.emotion || undefined,
+    gender: r.gender, userGender: r.userGender || undefined, emotion: r.emotion || undefined,
     /* Какие инструменты реально накормили ответ — видно в подписи под пузырём. */
     tools: r.tools || [],
     /* Оговорки инструментов для человека: «свежий поиск недоступен, ответ по
@@ -754,6 +764,8 @@ async function handlePost(context) {
     freedomCleaned: !!r.freedomCleaned,
     /* 0.203: модель смягчила слова человека, зеркало лексики вернуло их обратно */
     lexiconRestored: !!r.lexiconRestored,
+    /* 0.204: после обратной замены в ответе всё ещё остались эвфемизмы */
+    lexiconSanitized: !!r.lexiconSanitized,
     tried: r.tried.slice(0, 6),
     /* Советы голов (Этап 2) — строками, чтобы их было видно из фронтенда и из curl:
        «сошлись 2/3 (groq,cloudflare)» и «confirmed 3/3» означают, что факт проверен

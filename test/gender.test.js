@@ -226,5 +226,58 @@ console.log('P — граница HTTP: /api/chat принимает настр�
   globalThis.fetch = saved;
 }
 
+console.log('T — две оси: род агента и пол собеседника (0.204)');
+{
+  ok('T1: пол собеседника читается из поля, объекта профиля и строки «Пол: …»',
+    gender.userGenderOf({ userGender: 'ж' }) === 'female'
+      && gender.userGenderOf({ profile: { gender: 'male' } }) === 'male'
+      && gender.userGenderOf({ profile: '\n· Пол: Женский\n· Чем занимается: врач' }) === 'female'
+      && gender.userGenderOf({ profile: 'без пола тут' }) === 'auto');
+
+  const eff1 = gender.effective({ profile: '· Пол: Мужской' }, {});
+  const eff2 = gender.effective({ gender: 'female', profile: '· Пол: Мужской' }, {});
+  ok('T2: auto берёт род по полу собеседника; явная настройка агента — сильнее',
+    eff1.agent === 'male' && eff1.user === 'male'
+      && eff2.agent === 'female' && eff2.user === 'male', JSON.stringify({ eff1, eff2 }));
+
+  const both = gender.block('male', 'male');
+  ok('T3: одинаковая пара (парень + агент-парень) — обычная: оба рода в подсказке и без комментариев',
+    both.includes('Род агента — мужской') && both.includes('Собеседник — мужчина')
+      && both.includes('ты сказал') && /независимы/.test(both) && /одинаковая тоже/.test(both), both.slice(0, 200));
+
+  const cross = gender.block('female', 'male');
+  ok('T4: разные оси не путаются: о себе — женский, к нему — мужской во втором лице',
+    cross.includes('я рада') && cross.includes('ты сказал') && !cross.includes('ты сказала'), cross.slice(0, 200));
+
+  ok('T5: починка окончаний о себе — в обе стороны и только у «я»',
+    gender.repair('Я понял и уже сделал. Он тоже понял.', 'female') === 'Я поняла и уже сделал. Он тоже понял.'
+      || gender.repair('Я понял. Он тоже понял.', 'female') === 'Я поняла. Он тоже понял.',
+    gender.repair('Я понял. Он тоже понял.', 'female'));
+  ok('T6: repair видит «я не …» и молчит при auto',
+    gender.repair('Я не понял вопрос.', 'female') === 'Я не поняла вопрос.'
+      && gender.repair('Я сказала.', 'male') === 'Я сказал.'
+      && gender.repair('Я понял.', 'auto') === 'Я понял.');
+
+  /* Сквозь движок: настройка Ж, собеседник М из профиля строкой, модель
+     сползла в «я понял» — человек получает «я поняла» и честные метаданные. */
+  const fT = fakeFetch('Я понял тебя, сейчас отвечу.');
+  const rT = await createEngine({ env: ENV, fetch: fT, sleep: async () => {} })
+    .run({ text: 'привет, расскажи коротко про море', gender: 'ж', profile: '· Пол: Мужской', noCouncils: true });
+  /* system может уехать не первым вызовом (форматы провайдеров разные) —
+     смотрим все вызовы попытки, а не только первый. */
+  const sT = fT.calls.map((c) => (c.body.messages || []).filter((m) => m.role === 'system').map((m) => m.content).join('\n')).join('\n');
+  ok('T7: движок: подсказка несёт обе оси, ответ починен под род агента, метаданные честные',
+    rT.ok && rT.reply === 'Я поняла тебя, сейчас отвечу.'
+      && sT.includes('Собеседник — мужчина') && rT.gender === 'female' && rT.userGender === 'male',
+    JSON.stringify({ reply: rT.reply, gender: rT.gender, userGender: rT.userGender }));
+
+  /* Творческий текст починка не трогает: рассказчик — не агент. */
+  const fC = fakeFetch('Я сказал ей: море сегодня злое.');
+  const rC = await createEngine({ env: ENV, fetch: fC, sleep: async () => {} })
+    .run({ text: 'напиши рассказ от лица старого моряка, одна фраза', gender: 'ж', noCouncils: true });
+  ok('T8: творческий рассказ от лица мужчины починка не переписывает',
+    rC.ok && rC.reply === 'Я сказал ей: море сегодня злое.', rC.reply);
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

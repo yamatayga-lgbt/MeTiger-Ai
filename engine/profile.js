@@ -83,7 +83,9 @@ export function normalize(raw) {
     gender: fieldGender(d.gender),
     updatedAt: Number(d.updatedAt) || 0,
   };
-  p.filled = !!(p.name || p.job || p.about);
+  /* 0.204: пол — тоже заполненное поле. Раньше профиль из одного пола считался
+     пустым, blockOf возвращал '' — и пол собеседника до движка не доезжал вообще. */
+  p.filled = !!(p.name || p.job || p.about || p.gender);
   return p;
 }
 
@@ -200,7 +202,9 @@ export function createProfile(o) {
     if (!store) return { ok: false, why: 'KV не подключена — сохранять некуда (в Settings: MEMORY binding)' };
     /* одинаковый текст = ничего не пишем: бесплатная квота KV — 1000 записей в сутки
        на весь аккаунт, и «сохранение» при каждом нажатии съедало бы её молча */
-    const same = prev && prev.name === next.name && prev.job === next.job && prev.about === next.about;
+    /* 0.204: и пол тоже — смена только пола раньше считалась «ничего не изменилось»
+       и молча не сохранялась. */
+    const same = prev && prev.name === next.name && prev.job === next.job && prev.about === next.about && prev.gender === next.gender;
     const wait = writeMs - (Date.now() - (last.get(uid) || 0));
     if (!same && wait > 0) {
       return { ok: false, why: 'профиль обновлён ' + Math.round((Date.now() - (last.get(uid) || 0)) / 1000) + ' с назад — подожди ' + Math.ceil(wait / 1000) + ' с', tooSoon: true };

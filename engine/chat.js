@@ -328,19 +328,23 @@ export function createEngine(opts) {
        доезжать до человека как ГОЛОС ПРИЛОЖЕНИЯ: это мягкий отказ — очередь идёт
        дальше, работает эскалация (до двух попыток в других рамках). */
     if (freedom.isPoliteRefusal(rawReply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
-    /* 0.203 «Зеркало лексики»: ответ есть, но модель по дороге перевела слова
-       человека на клинические («дрочка» → «стимуляция»). Это не отказ — ответ
-       не выбрасываем и голову не меняем; узкая обратная замена возвращает
-       его словарь детерминированно, а флаг уезжает в диагностику. */
+    /* «Зеркало лексики» (0.203, словарь понятий — 0.204): ответ есть, но модель
+       по дороге перевела слова человека на клинические («дрочка» → «стимуляция»).
+       Это не отказ — ответ не выбрасываем и голову не меняем; обратная замена
+       возвращает его словарь детерминированно, флаги уезжают в диагностику, а
+       остаточное смягчение учит рейтинг смелых (см. brave.mark в обходе). */
     const lexed = lexicon.restore(style.polish(fr.text, { env, intent: req.intent }), req.lexSource, env);
-    const reply = lexed.text;
+    const sanitizedLeft = req.lexSource ? lexicon.sanitizedInfo(req.lexSource, lexed.text).length > 0 : false;
+    /* 0.204: окончания о себе по роду агента. Творческий текст не трогаем —
+       рассказчик и персонажи могут быть любого рода, это их речь, не агента. */
+    const reply = req.intent === 'creative' ? lexed.text : gender.repair(lexed.text, req.agentGender);
     note(id, 'ok');
     quar.delete(id);   /* ожил — карантин снят сразу */
     const day = (health[id] && health[id][req.keyIdx] && health[id][req.keyIdx].used) || 0;
     markKey(id, req.keyIdx, { used: day + 1 });
     return {
       ok: true, reply, reasoning: parsed.reasoning || '', finish: parsed.finish,
-      provider: id, model: req.model, freedomCleaned: fr.cleaned, lexiconRestored: lexed.changed, streamed: !!res.streamed,
+      provider: id, model: req.model, freedomCleaned: fr.cleaned, lexiconRestored: lexed.changed, lexiconSanitized: sanitizedLeft, streamed: !!res.streamed,
       streamError: res.streamError || '',
     };
   }
@@ -495,8 +499,12 @@ export function createEngine(opts) {
     const adultAsk = freedom.isAdultAsk(text) || recentUserTexts.some((t) => freedom.isAdultAsk(t));
     /* «Острая» тема = взрослый запрос или то, что freedom считает жёсткой
        опасностью. По этому же признаку смотрим и на последние реплики: в
-       агентном разговоре суть обычно во втором ходу, а не в «продолжай». */
-    const sensitive = adultAsk || freedom.isHardDanger(text);
+       агентном разговоре суть обычно во втором ходу, а не в «продолжай».
+       0.204: словарь понятий — третий глаз того же признака: «хуй большой —
+       это сколько» корней freedom не содержит, а тема острая, и смелые
+       головы там нужны первыми. */
+    const sensitive = adultAsk || freedom.isHardDanger(text)
+      || lexicon.hasAdultTopic([text].concat(recentUserTexts));
     const free = isDefaultSys ? freedom.freedomBlock(env, { intent, adult: adultAsk, text }) : { text: '', ids: [], chars: 0, mode: 'off', blocks: 0 };
     if (free.text) system = system + free.text;
     /* Обход ложных отказов по умолчанию молчит (его черёд — после первого отказа).
@@ -540,7 +548,11 @@ export function createEngine(opts) {
       : null;
     const emo = emoCfg.on ? emotion.detect(text) : null;
     if (isDefaultSys && emo) system = system + emotion.block(emo, emoHist, env);
-    const genderVal = gender.resolve(input, env);
+    /* 0.204: эффективная пара родов — агент (настройка, при auto — по полу
+       собеседника) и собеседник отдельно. Метаданные отдают именно её, а не
+       сырую настройку: подпись обязана совпадать с тем, как агент говорил. */
+    const genderEff = gender.effective(input, env);
+    const genderVal = genderEff.agent;
 
     /* Память чата: прошлое доезжает до модели, а не живёт в браузере, и по реакции
        на прошлый ответ собирается настройка на человека. Головы совета память не
@@ -803,6 +815,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
     async function withMeta(out) {
       if (!out) return out;
       out.gender = genderVal;
+      out.userGender = genderEff.user;
       /* «Глубже» просили, а ответила не думающая модель. Это не ошибка — ответ
          верный и человеку он нужен, — но и молчать об этом нельзя: иначе режим
          выглядит сломанным («включил, а мыслей нет»). Флаг уезжает в строку
@@ -1074,7 +1087,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
         let r = await attemptOne(id, model, req, left);
         /* 429 на этом ключе — та же модель сразу на другом ключе того же провайдера:
            лимит считается на ключ, а модель уже выбрана как лучшая для задачи. */
@@ -1089,7 +1102,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
             presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           });
-          req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent; req2.lexSource = lexSource;
+          req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent; req2.lexSource = lexSource; req2.agentGender = genderEff.agent;
           r = await attemptOne(id, model, req2, deadline - Date.now());
         }
         /* Не сошлось — черновик, который уже потёк в окно, надо убрать, а не бросать
@@ -1098,7 +1111,10 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         /* Копим опыт: прямой ответ весит больше, чем выдоенный обходом, — иначе
            рейтинг смелых превратился в рейтинг терпения: кто дольше упирался, тот и «смелый». */
         if (brave) {
-          if (r.ok) brave.mark(id, model, true, useReframe ? 0.6 : 1);
+          /* 0.204: ответила, но смягчила его слова — смелость частичная. Вес ниже
+             прямого ответа и ниже выдоенного обходом: рейтинг учится ставить
+             вперёд тех, кто слов не боится, а не тех, кого потом чинит зеркало. */
+          if (r.ok) brave.mark(id, model, true, (r.lexiconRestored || r.lexiconSanitized) ? 0.45 : (useReframe ? 0.6 : 1));
           else if (r.soft || /ответ-отказ|блок по фильтру/.test(String(r.why || ''))) brave.mark(id, model, false);
         }
         if (r.ok) {
@@ -1148,7 +1164,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             /* «поиск лёг, отвечаю по Википедии» — не только модели, но и человеку:
                подпись под ответом берёт пометки отсюда (0.199). */
             toolNotes: toolsRes.notes || [],
-            reframed: useReframe, freedomCleaned: !!r.freedomCleaned, lexiconRestored: !!r.lexiconRestored,
+            reframed: useReframe, freedomCleaned: !!r.freedomCleaned, lexiconRestored: !!r.lexiconRestored, lexiconSanitized: !!r.lexiconSanitized,
             /* Ответ уже подтверждён инструментом (арифметику посчитал калькулятор) —
                совет голов на такое не созывается: см. ensemble.verifiedByTool. */
             toolProof: ensemble.verifiedByTool({ tools: toolsRes.used, block: toolsRes.block, reply, intent }),
@@ -1208,7 +1224,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
         const r = await attemptOne(id, model, req, left);
         if (r.ok) {
           ctxNotes = (refit.notes || []).slice();
@@ -1219,7 +1235,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             /* «поиск лёг, отвечаю по Википедии» — не только модели, но и человеку:
                подпись под ответом берёт пометки отсюда (0.199). */
             toolNotes: toolsRes.notes || [],
-            reframed: true, freedomCleaned: !!r.freedomCleaned, lexiconRestored: !!r.lexiconRestored,
+            reframed: true, freedomCleaned: !!r.freedomCleaned, lexiconRestored: !!r.lexiconRestored, lexiconSanitized: !!r.lexiconSanitized,
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
           };
@@ -1406,6 +1422,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
       reframed: hit ? !!hit.reframed : false,
       freedomCleaned: hit ? !!hit.freedomCleaned : false,
       lexiconRestored: hit ? !!hit.lexiconRestored : false,
+      lexiconSanitized: hit ? !!hit.lexiconSanitized : false,
       /* Ответ подтверждён инструментом: по нему и совет голов пропускается, и
          самопроверка не зовёт починку (см. withMeta). */
       toolProof: hit ? (hit.toolProof || '') : '',
