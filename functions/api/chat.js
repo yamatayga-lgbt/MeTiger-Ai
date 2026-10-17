@@ -678,6 +678,9 @@ async function handlePost(context) {
     gender: r.gender, emotion: r.emotion || undefined,
     /* Какие инструменты реально накормили ответ — видно в подписи под пузырём. */
     tools: r.tools || [],
+    /* Оговорки инструментов для человека: «свежий поиск недоступен, ответ по
+       Википедии». Не прячем в логи: человек должен видеть, на чём стоит ответ. */
+    toolNotes: (r.toolNotes && r.toolNotes.length) ? r.toolNotes : undefined,
     /* Проверенные ссылки из поиска, вики, новостей или прочитанной страницы — кликабельно под ответом. */
     sources: r.sources && r.sources.length ? r.sources : undefined,
     /* Сколько контекста заняла эта реплика и в какое окно она влезла (0.170) —

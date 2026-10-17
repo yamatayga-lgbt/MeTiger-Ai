@@ -21,10 +21,15 @@ function fakeFetch(routes) {
     for (const [needle, payload] of Object.entries(routes)) {
       if (u.includes(needle)) {
         if (payload instanceof Error) throw payload;
+        /* payload-функция получает URL: так мок отвечает ПО ЗАПРОСУ, а не «на любой
+           геокодер». Прежний статичный ответ делал T9 зелёным при сломанном
+           извлечении города — ровно тот случай, что чинили в 0.199. */
+        const body = typeof payload === 'function' ? payload(u) : payload;
+        if (body instanceof Error) throw body;
         return {
           ok: true, status: 200,
-          json: async () => (typeof payload === 'string' ? JSON.parse(payload) : payload),
-          text: async () => (typeof payload === 'string' ? payload : JSON.stringify(payload)),
+          json: async () => (typeof body === 'string' ? JSON.parse(body) : body),
+          text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
         };
       }
     }
@@ -64,14 +69,45 @@ const cur = await gatherTools('курс доллара к рублю', {}, fakeF
 }));
 ok('T8: «курс доллара» → база RUB и USD в ответе', cur.used.join() === 'currency' && cur.block.includes('RUB') && cur.block.includes('USD'), cur.block);
 
-const weather = await gatherTools('погода в варшаве', {}, fakeFetch({
-  'geocoding-api.open-meteo.com': { results: [{ name: 'Варшава', latitude: 52.2, longitude: 21.0 }] },
-  'api.open-meteo.com': {
-    current: { temperature_2m: 12.4, apparent_temperature: 10.1, wind_speed_10m: 3.6, precipitation: 0, weather_code: 1, time: '2026-10-11T09:00' },
-    daily: { temperature_2m_max: [15], temperature_2m_min: [7] },
+/* Геокодер отвечает ТОЛЬКО на правильное имя: если извлечение города сломается,
+   мок вернёт пусто и тест упадёт, а не подыграет, как раньше. */
+const GEO = {
+  'геокодинг Варшавы': (u) => {
+    const name = decodeURIComponent((/name=([^&]*)/.exec(u) || [])[1] || '');
+    return /^варшав/i.test(name) ? { results: [{ name: 'Варшава', country: 'Польша', latitude: 52.2, longitude: 21.0 }] } : { results: [] };
   },
+};
+const WEATHER_FORECAST = {
+  current: { temperature_2m: 12.4, apparent_temperature: 10.1, wind_speed_10m: 3.6, precipitation: 0, weather_code: 1, time: '2026-10-11T09:00' },
+  daily: { temperature_2m_max: [15], temperature_2m_min: [7] },
+};
+const weather = await gatherTools('погода в варшаве', {}, fakeFetch({
+  'geocoding-api.open-meteo.com': GEO['геокодинг Варшавы'],
+  'api.open-meteo.com': WEATHER_FORECAST,
 }));
 ok('T9: погода нашла город и показала температуру', weather.used.join() === 'weather' && weather.block.includes('Варшава') && weather.block.includes('12°C'), weather.block);
+
+/* Падеж: «Гомеле» у open-meteo — это Гомелевка в России. Правильный ответ —
+   сначала снять окончание и найти Гомель; сырое слово — только вторым шансом. */
+const gomel = await gatherTools('Какая погода в Гомеле сейчас?', {}, fakeFetch({
+  'geocoding-api.open-meteo.com': (u) => {
+    const name = decodeURIComponent((/name=([^&]*)/.exec(u) || [])[1] || '');
+    if (name === 'Гомел') return { results: [{ name: 'Гомель', country: 'Беларусь', latitude: 52.43, longitude: 30.97 }] };
+    if (name === 'Гомеле') return { results: [{ name: 'Гомелевка', country: 'Россия', latitude: 51.0, longitude: 40.0 }] };
+    return { results: [] };
+  },
+  'api.open-meteo.com': WEATHER_FORECAST,
+}));
+ok('T9a: «в Гомеле» → Гомель, а не Гомелевка', gomel.block.includes('Гомель') && !gomel.block.includes('Гомелевка'), gomel.block);
+
+/* Поисковик лёг: инструмент обязан сказать это вслух, а не выдать Википедию
+   за свежий поиск. notes — та же строка для интерфейса. */
+const degraded = await gatherTools('какие главные новости технологий сегодня?', {}, fakeFetch({
+  'api.wikimedia.org': { pages: [{ title: 'Технологии', description: 'Обзор', key: 'Технологии' }] },
+}));
+ok('T9b: поисковик лёг → предупреждение в блоке и в notes',
+  degraded.used.includes('web-search') && degraded.block.includes('⚠️') &&
+  (degraded.notes || []).some((n) => /поиск/i.test(n)), JSON.stringify(degraded.notes));
 
 console.log('T — вики, страница, поиск, новости');
 const wiki = await gatherTools('что такое гравитация в википедии', {}, fakeFetch({

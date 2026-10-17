@@ -37,7 +37,12 @@ async function fetchT(fi, url, init, ms) {
 /* ─────────────── 1) Gemini + Google Search ─────────────── */
 
 export async function geminiSearch({ q, env, fetch: fi, ms }) {
-  const keys = envKeys(env, 'GEMINI');
+  /* Ключ ПОИСКА отдельно от ключа чата (0.199). На проде 17.10 разговорная
+     модель отвечала из той же квоты Gemini, что и google_search: поиск выедал
+     её первым и падал в 429 — а вместе с ним «свежесть» всего приложения.
+     Свои GEMINI_SEARCH_KEYS/KEY разводят квоты; без них — прежний общий ключ. */
+  const own = envKeys(env, 'GEMINI_SEARCH');
+  const keys = own.length ? own : envKeys(env, 'GEMINI');
   if (!keys.length) return { ok: false, why: 'нет ключа Gemini' };
   const models = String((env && env.SEARCH_GEMINI_MODELS) || 'gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-2.5-flash').split(',').map((s) => s.trim()).filter(Boolean);
   const today = new Date().toISOString().slice(0, 10);
@@ -66,7 +71,14 @@ export async function geminiSearch({ q, env, fetch: fi, ms }) {
         }, ms || 9000);
         const txt = await r.text();
         if (r.status === 429 || r.status === 403 || r.status === 401) { last += 'gemini ' + model + ' http ' + r.status + ' ' + txt.slice(0, 120).replace(/\s+/g, ' ') + '; '; continue; }
-        if (r.status >= 400) { last += 'gemini ' + model + ' http ' + r.status + ' ' + txt.slice(0, 120).replace(/\s+/g, ' ') + '; '; break; }  /* 404 — модель снята, пробуем следующую */
+        if (r.status >= 400) {
+          last += 'gemini ' + model + ' http ' + r.status + ' ' + txt.slice(0, 120).replace(/\s+/g, ' ') + '; ';
+          /* 404/410 — модели больше нет в каталоге: пробуем СЛЕДУЮЩУЮ. Комментарий
+             обещал это с самого начала, а `break` сдавался после первой же: одна
+             снятая модель из списка гасила весь путь Gemini + Google Search. */
+          if (r.status === 404 || r.status === 410) continue;
+          break;
+        }
         const d = JSON.parse(txt);
         const c = (d.candidates || [])[0] || {};
         const text = ((c.content && c.content.parts) || []).map((p) => p.text || '').join('').trim();
@@ -103,7 +115,9 @@ async function resolveAll(fi, list) {
 /* ─────────────── 2) Groq gpt-oss-120b + browser_search (запасной) ─────────────── */
 
 export async function groqSearch({ q, env, fetch: fi, ms }) {
-  const keys = envKeys(env, 'GROQ');
+  /* Тот же принцип: browser_search дорог по дневным токенам, ему — свой ключ. */
+  const ownG = envKeys(env, 'GROQ_SEARCH');
+  const keys = ownG.length ? ownG : envKeys(env, 'GROQ');
   if (!keys.length) return { ok: false, why: 'нет ключа Groq' };
   let last = '';
   for (let k = 0; k < keys.length; k++) {

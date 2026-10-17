@@ -73,6 +73,8 @@ export interface ChatResult {
   vision?: string
   /** Какие инструменты агента накормили ответ (web-search, news, calc…). */
   tools?: string[]
+  /** Оговорки инструментов: «свежий поиск недоступен — ответ по Википедии». */
+  toolNotes?: string[]
   /** Проверенные ссылки из поиска, вики, новостей или прочитанной страницы. */
   sources?: SourceLink[]
   /** Шаги поиска в интернете и чтения сайтов (Searched for / Fetched). */

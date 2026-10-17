@@ -611,6 +611,7 @@ export default function App() {
               warn: r.partial ? '⚠️ Ответ неполный: ' + (r.error || 'хвост не пришёл') : undefined,
               skills: r.skills && r.skills.length ? r.skills : undefined,
               tools: r.tools && r.tools.length ? r.tools : undefined,
+              toolNotes: r.toolNotes && r.toolNotes.length ? r.toolNotes : undefined,
               ms: r.ms,
               /* что прочитали из вложений и чем оплатили окно — две строки под ответом */
               attach: r.ok ? attachLine(r) || undefined : undefined,

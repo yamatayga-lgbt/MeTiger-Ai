@@ -1123,6 +1123,9 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
             tools: toolsRes.used, sources: toolsRes.sources || [], webSteps: toolsRes.webSteps || [],
+            /* «поиск лёг, отвечаю по Википедии» — не только модели, но и человеку:
+               подпись под ответом берёт пометки отсюда (0.199). */
+            toolNotes: toolsRes.notes || [],
             reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
             /* Ответ уже подтверждён инструментом (арифметику посчитал калькулятор) —
                совет голов на такое не созывается: см. ensemble.verifiedByTool. */
@@ -1191,6 +1194,9 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
           const hit = {
             reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
             tools: toolsRes.used, sources: toolsRes.sources || [], webSteps: toolsRes.webSteps || [],
+            /* «поиск лёг, отвечаю по Википедии» — не только модели, но и человеку:
+               подпись под ответом берёт пометки отсюда (0.199). */
+            toolNotes: toolsRes.notes || [],
             reframed: true, freedomCleaned: !!r.freedomCleaned,
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
@@ -1373,6 +1379,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
       ok: !!hit, reply: hit ? scrubToolMarkers(hit.reply) : '', reasoning: hit ? hit.reasoning : '',
       provider: hit ? hit.provider : '', model: hit ? hit.model : '',
       tools: hit ? (hit.tools || []) : [],
+      toolNotes: hit ? (hit.toolNotes || []) : [],
       sources: hit && Array.isArray(hit.sources) ? hit.sources : [],
       reframed: hit ? !!hit.reframed : false,
       freedomCleaned: hit ? !!hit.freedomCleaned : false,

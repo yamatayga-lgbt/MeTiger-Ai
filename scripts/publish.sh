@@ -97,6 +97,12 @@ say "  версия:      поднята до $VER"
   #   npm run publish -- --bump --commit "0.XXX: что изменилось"
   printf '%s\n' "$VER" > VERSION.md
   say "  VERSION.md:    $VER"
+  # Service worker обязан узнать новую версию ДО тестов: проверка U177c сверяет
+  # CACHE_VERSION с APP_VERSION и падала на каждом --bump (поймано 17.10.2026:
+  # релиз 0.199 не собрался, хотя сборка сама штампует sw.js — но уже ПОСЛЕ
+  # тестов). Теперь штамп ставится сразу после поднятия версии.
+  node scripts/stamp-sw.mjs
+  say "  sw.js:         CACHE_VERSION обновлён"
   npm install --package-lock-only --silent >/dev/null 2>&1 || true
   say "  package-lock:  синхронизирован"
 fi

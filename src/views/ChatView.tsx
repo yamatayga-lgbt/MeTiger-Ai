@@ -1168,6 +1168,14 @@ export function ChatView({
                   {Array.isArray(m.tools) && m.tools.length ? (
                     <ToolUsedBadge tools={m.tools} ms={m.ms} />
                   ) : null}
+                  {/* Оговорка инструмента — видимой строкой, а не в логах: если
+                      свежий поиск лёг и ответ собран по Википедии, человек должен
+                      знать это до того, как поверит фактам. */}
+                  {Array.isArray(m.toolNotes) && m.toolNotes.length ? (
+                    <div className="msg-tool-note" role="note">
+                      <span aria-hidden="true">⚠️</span> {m.toolNotes.join(' · ')}
+                    </div>
+                  ) : null}
                   {Array.isArray(m.webSteps) && m.webSteps.length ? (
                     <WebSearchBlock steps={m.webSteps} />
                   ) : null}

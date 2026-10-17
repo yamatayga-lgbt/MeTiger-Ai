@@ -430,12 +430,18 @@ export const TOOLS = [
     title: 'Погода',
     when: (t) => /погод|weather/i.test(t) || /температур[аы]\s+(за окном|сейчас|сегодня)/i.test(t),
     async run({ text, env, fetch: fi }) {
-      const m = /погод\w*\s+(?:в|во|для)\s+([а-яёa-z][а-яёa-z-]{1,40})/i.exec(String(text || ''));
+      /* `\w` в JavaScript — это [A-Za-z0-9_], кириллицы в нём нет. С `погод\w*`
+         шаблон требовал пробел сразу после «погод», упирался в «а» и не совпадал
+         НИКОГДА: каждый вопрос о погоде молча уходил в запасной «Минск». Поэтому
+         хвост слова — явным классом [а-яё]. */
+      const m = /погод[а-яё]*\s+(?:в|во|для)\s+([а-яёa-z][а-яёa-z-]{1,40})/i.exec(String(text || ''));
       const cityRaw = (m && m[1]) || (env && env.WEATHER_CITY) || 'Минск';
-      /* «погода в варшаве» — город в падеже; пробуем и как есть, и без типичных окончаний. */
-      const candidates = [cityRaw];
+      /* Падеж снимаем ПЕРВЫМ, а не вторым: open-meteo на «Гомеле» находит
+         Гомелевку в России, и до «Гомела» очередь просто не доходила. Снятое
+         окончание («Гомел», «Варшав», «Нью-Йорк») геокодер понимает верно,
+         а исходное слово остаётся вторым шансом — вдруг это и есть настоящее имя. */
       const base = cityRaw.replace(/(е|у|ы|и|ю|я|ой|ей|ем|ом|ах|ях)$/i, '');
-      if (base.length >= 3 && base !== cityRaw) candidates.push(base);
+      const candidates = base.length >= 3 && base !== cityRaw ? [base, cityRaw] : [cityRaw];
       let place = null;
       for (const name of candidates) {
         const g = await fetchT(fi, `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=ru`);
@@ -541,12 +547,24 @@ export const TOOLS = [
       /* 0.133: сначала настоящий поисковик (Gemini + Google Search, запасной — Groq
          browser_search) с чтением страниц — engine/search.js. Прежний путь
          (Википедия + DuckDuckGo) ниже остаётся на случай, если оба молчат. */
+      /* Пометка «поиск лёг»: с 17.10 на проде Google отвечал 429 на все модели,
+         Groq — тоже 429, и запасной путь молча отдавал Википедию. Человек видел
+         «источники» и верил, что это свежий поиск. Теперь о деградации узнаёт и
+         модель (строкой ниже), и интерфейс (тем же текстом через gatherTools). */
+      let fallbackNote = '';
       try {
         const full = clean(String(text || '')).slice(0, 220);
         const sr = await smartSearch({ q: full || q, env, fetch: fi, deep });
-        if (!(sr && sr.ok)) console.log('[smart-search] fail:', sr && sr.why);
         if (sr && sr.ok && sr.sources.length) return searchBlock(full || q, sr) + '\n\nПравило ответа: ' + SEARCH_DIRECTIVE;
-      } catch { /* поисковик упал — идём старым путём */ }
+        if (sr && sr.ok) {
+          fallbackNote = '⚠️ Свежий веб-поиск вернул пустой ответ — ниже Википедия и DuckDuckGo, данные могут быть устаревшими.';
+        } else {
+          console.log('[smart-search] fail:', sr && sr.why);
+          fallbackNote = '⚠️ Свежий веб-поиск сейчас недоступен (лимит или сбой поисковика) — ответ по Википедии и DuckDuckGo, данные могут быть устаревшими.';
+        }
+      } catch {
+        fallbackNote = '⚠️ Свежий веб-поиск сейчас недоступен (сбой поисковика) — ответ по Википедии и DuckDuckGo, данные могут быть устаревшими.';
+      }
       const out = [];
       const webUrls = [];
       const wikiCap = deep ? 3 : 5;
@@ -607,6 +625,10 @@ export const TOOLS = [
           }
         } catch { /* ignore */ }
       }
+      /* Ничего не нашли — инструмент молчит, как и раньше (0.199). Пометку о
+         сбое показываем только когда есть чем ответить: иначе «поиск недоступен»
+         приклеивался бы к вопросам, которые закрыл другой инструмент (курс,
+         погода), и пугал бы зря. */
       if (!out.length) return null;
       let extra = '';
       /* Глубокий поиск работает автоматически: если нашлась внешняя веб-страница,
@@ -628,7 +650,12 @@ export const TOOLS = [
           if (frag.length >= 40) extra = `\nВыжимка из источника (${topUrl}): ${frag}`;
         } catch { /* страница закрыта или медлит — остаётся основная выдача */ }
       }
-      return `Результаты поиска по запросу «${q}»:\n${out.map((s, i) => `${i + 1}) ${s}`).join('\n')}${extra}`;
+      /* Пометку о деградации ставим ПЕРВОЙ строкой: модель читает блок сверху
+         вниз и обязана предупредить человека до самого ответа. */
+      const head = fallbackNote
+        ? fallbackNote + '\n\nПравило ответа: сначала одной короткой фразой предупреди человека, что свежий поиск недоступен и данные могут быть устаревшими, и только потом отвечай.\n\n'
+        : '';
+      return `${head}Результаты поиска по запросу «${q}»:\n${out.map((s, i) => `${i + 1}) ${s}`).join('\n')}${extra}`;
     },
   },
 
@@ -825,6 +852,9 @@ export async function gatherTools(text, env, fetchImpl, o) {
   const directives = [];
   const srcParts = [];
   const webSteps = [];
+  /* Пометки для человека, которые модель не имеет права проглотить: сейчас это
+     «свежий поиск недоступен». Уходят и в ответ API, и в подпись под пузырём. */
+  const notes = [];
   const emitStep = (step) => {
     webSteps.push(step);
     if (onStep) { try { onStep(step); } catch { /* ignore */ } }
@@ -850,6 +880,8 @@ export async function gatherTools(text, env, fetchImpl, o) {
     try {
       const data = await run;
       if (!data) continue;
+      const noteMatch = /^⚠️\s+([^\n]+)/m.exec(data);
+      if (noteMatch) notes.push(noteMatch[1].trim());
       used.push(t.id);
       if (SOURCE_TOOLS.has(t.id) || API_SOURCE_TOOLS.has(t.id)) {
         srcParts.push(data);
@@ -884,7 +916,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
     } catch { /* ошибка инструмента — не ошибка чата */ }
   }
   const sources = srcParts.length ? extractSources(srcParts.join('\n')) : [];
-  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources, webSteps };
+  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources, webSteps, notes };
 }
 
 

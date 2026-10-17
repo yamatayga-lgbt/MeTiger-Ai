@@ -1806,6 +1806,21 @@ kbd {
   margin: 2px 0 8px;
 }
 
+/* Оговорка инструмента (0.199): «свежий поиск недоступен — ответ по Википедии».
+   Строка под «использовал …», тише самого ответа, но заметнее подписи: это не
+   украшение, а предупреждение о качестве данных. */
+.msg-tool-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: -4px 0 8px;
+  padding-left: 8px;
+  border-left: 2px solid color-mix(in srgb, #f59e0b 55%, transparent);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+}
+
 .msg-tool-used summary {
   display: inline-flex;
   align-items: center;
