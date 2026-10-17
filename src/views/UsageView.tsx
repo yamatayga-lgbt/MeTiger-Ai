@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { LimitsRingGlyph } from '../components/LimitsRing'
 import { Toast } from '../components/Toast'
 import { Badge, Button, cx } from '../components/ui'
-import { fmtPct, poolLine, ringHue } from '../lib/limits'
+import { fmtPct, poolLine, ringHue, type LimitsPool } from '../lib/limits'
 import { clearSpeed, fmtSec, speedSummary, telemetrySummary, type SpeedSummary } from '../lib/models'
 import { fmtAgo, fmtDuration } from '../lib/time'
 import { useUsageLive, type UsageRow } from '../lib/usage'
@@ -126,6 +126,19 @@ export function UsageView() {
      что чисел нет случайно: он так и говорит и показывает то, что правда живёт на
      этом устройстве (замеры ниже — они локальные и работают всегда). */
   const pub = data?.scope === 'public'
+  /* Карточка запаса считает по суточному потолку, когда он включён (0.202):
+     сумма квот провайдеров — не то, что решает, ответит ли агент. `live` берём
+     из пула провайдеров — это число источников за цифрой, оно не про потолок. */
+  const capOn = !!(data?.cap && data.cap.on)
+  const capPct = capOn && data?.cap?.pct != null ? data.cap.pct : null
+  /* Абсолютных чисел потолка в публичном ответе нет (это и есть закрытие двери),
+     поэтому недостающие поля — NaN, а не нули: «осталось 0 из 0» было бы враньём,
+     а poolLine на нечисле честно говорит только процент. */
+  const capNum = (v: unknown) => (v != null && Number.isFinite(Number(v)) ? Number(v) : NaN)
+  const pool: LimitsPool | null = capPct != null
+    ? { live: (data?.pool?.live as number), capacity: capNum(data?.cap?.max), used: capNum(data?.cap?.used),
+        remaining: capNum(data?.cap?.remaining), pct: capPct }
+    : data?.pool || null
   const rows = data?.providers || []
   const minuteSum = rows.reduce((a, r) => a + (r.minute || 0), 0)
   const totals = data?.totals || { attempt: 0, ok: 0, refused: 0, dead: 0 }
@@ -164,17 +177,17 @@ export function UsageView() {
 
       {/* Общий запас агента (0.179) — та же цифра, что на кольце в шапке: человек
           нажал «посмотреть лимиты» и первым делом видит, откуда взялся процент. */}
-      {data && data.pool && data.pool.pct != null ? (
+      {pool && pool.pct != null ? (
         <div className="usage-pool">
-          <span className="usage-pool-ring" style={{ '--ring-h': String(Math.round(ringHue(data.pool.pct!) * 10) / 10) } as CSSProperties}>
-            <LimitsRingGlyph pct={data.pool.pct} size={36} stroke={3.4} />
+          <span className="usage-pool-ring" style={{ '--ring-h': String(Math.round(ringHue(pool.pct) * 10) / 10) } as CSSProperties}>
+            <LimitsRingGlyph pct={pool.pct} size={36} stroke={3.4} />
           </span>
           <div className="grow">
-            <div className="usage-pool-n">Общий запас агента: {fmtPct(data.pool.pct)}</div>
+            <div className="usage-pool-n">Общий запас агента: {fmtPct(pool.pct)}</div>
             <div className="usage-pool-d">
-              {poolLine(data.pool)}
-              {typeof data.pool.live === 'number' ? ` · источников за цифрой: ${data.pool.live}` : ''}
-              {data.cap && data.cap.on === false ? ' · суточный потолок выключен' : ''}
+              {poolLine(pool)}
+              {typeof pool.live === 'number' ? ` · источников за цифрой: ${pool.live}` : ''}
+              {data?.cap && data.cap.on === false ? ' · суточный потолок выключен' : ''}
             </div>
           </div>
         </div>
@@ -248,6 +261,7 @@ export function UsageView() {
                 {speed.firstSample ? '19 из 20 ответов начинались быстрее' : 'появится со вторым-третьим ответом'}
               </div>
             </div>
+            {!pub ? (
             <div className="usage-card">
               <div className="usage-cap">Что живо</div>
               <div className="usage-num">{data ? `${workRows.length}/${rows.length}` : '…'}</div>
@@ -257,6 +271,7 @@ export function UsageView() {
                   : 'спрашиваю счётчик'}
               </div>
             </div>
+            ) : null}
           </div>
           {speed.emptySample > 0 ? (
             <div className="settings-row">
@@ -315,7 +330,7 @@ export function UsageView() {
                 <div className="d">
                   Это «жив/лимит»: процент общего запаса и время сброса. Имена
                   провайдеров, ключи и расход видит только владелец — по коду
-                  устройства. Замеры ниже — ваши собственные, они никуда не уходят.
+                  устройства. Замеры выше — ваши собственные, они никуда не уходят.
                 </div>
               </div>
             </div>

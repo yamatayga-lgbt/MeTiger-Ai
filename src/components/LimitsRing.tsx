@@ -70,7 +70,13 @@ export function LimitsRingGlyph({ pct, size = 22, stroke = 2.6 }: { pct: number;
 export function LimitsRing({ onOpen }: { onOpen: () => void }) {
   const { data } = useUsageLive(true, RING_EVERY_MS)
   const pool: LimitsPool | null = (data && data.pool) || null
-  const pct = pool && pool.pct != null ? pool.pct : null
+  /* 0.202: кольцо показывает остаток по суточному потолку, когда он включён, — это
+     и есть та цифра, которая решает, ответит ли агент. Сумма квот провайдеров
+     (~9 900) больше потолка (9 000), и кольцо по ней стояло бы выше настоящего
+     запаса. Без потолка и на старом сервере остаётся прежний pool.pct. */
+  const pct = data && data.cap && data.cap.on && data.cap.pct != null
+    ? data.cap.pct
+    : pool && pool.pct != null ? pool.pct : null
   if (pct == null) return null
 
   const empty = isExhausted(pct)
