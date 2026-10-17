@@ -111,8 +111,8 @@ console.log('V — отказ зрячей модели: картиночный 
   const fall = async () => ({ status: 200, text: async () => JSON.stringify(chat('Извини, я не могу это показать.')) });
   const e2 = createEngine({ env: { GEMINI_KEYS: 'gm1', ZAI_KEYS: 'z1' }, fetch: fall, sleep: async () => {} });
   const r2 = await e2.run({ text: 'разбери фото', images: ['data:image/png;base64,AA'] });
-  ok('V2: отказали все — честная ошибка «ни один провайдер не ответил», выдуманного ответа нет',
-    !r2.ok && /ни один провайдер не ответил/.test(String(r2.error || '')) && !r2.reply,
+  ok('V2: отказали все — честный отказ без выдуманного ответа (0.197: с фото это маркер SEERS_REFUSED_PHOTO)',
+    !r2.ok && !r2.reply && /SEERS_REFUSED_PHOTO|ни один провайдер не ответил/.test(String(r2.error || '')),
     JSON.stringify({ ok: r2.ok, err: String(r2.error).slice(0, 120) }));
 }
 
@@ -143,6 +143,45 @@ console.log('B — понимание картинки: слепых не зов
 
   /* (Провайдер с чисто слепым пулом скипается целиком — это правило держит
      test/chat.test.js C-группа: «нет модели, которая читает картинки».) */
+}
+
+console.log('R — вежливый отказ по фото не доезжает как голос приложения (0.197)');
+{
+  /* Точная фраза из жалобы владельца: в ней нет «не могу», оба старых детектора
+     отказов её пропускали — и она доезжала до человека как ответ приложения. */
+  const f = async (url) => /googleapis\.googleapis|googleapis/.test(url)
+    ? { status: 200, text: async () => JSON.stringify(gem('Я не анализирую и не комментирую интимные фотографии.')) }
+    : { status: 200, text: async () => JSON.stringify(chat('На фото родинка около 4 мм с неровными краями; стоит показать дерматологу.')) };
+  const e = createEngine({ env: { GEMINI_KEYS: 'g1', ZAI_KEYS: 'z1' }, fetch: f, sleep: async () => {} });
+  const r = await e.run({ text: 'что с родинкой на коже?', images: ['data:image/png;base64,AA'] });
+  ok('R1: фраза «не анализирую и не комментирую» — это отказ: движок пошёл к следующему зрячему',
+    r.ok && /родинк/i.test(r.reply) && !/не анализирую/i.test(r.reply) && r.model === 'glm-4.6v-flash',
+    JSON.stringify({ ok: r.ok, model: r.model, reply: String(r.reply || '').slice(0, 60) }));
+
+  const fall = async () => ({ status: 200, text: async () => JSON.stringify(chat('Я не анализирую и не комментирую интимные фотографии.')) });
+  const e2 = createEngine({ env: { GEMINI_KEYS: 'g1', ZAI_KEYS: 'z1' }, fetch: fall, sleep: async () => {} });
+  const r2 = await e2.run({ text: 'разбери фото', images: ['data:image/png;base64,AA'] });
+  ok('R2: отказали все вежливой фразой — маркер SEERS_REFUSED_PHOTO (дверь скажет честно), а не «ответ»',
+    !r2.ok && r2.error === 'SEERS_REFUSED_PHOTO' && !r2.reply, JSON.stringify({ ok: r2.ok, err: r2.error }));
+
+  let sys = '';
+  const f3 = async (url, init) => { try { sys = String((JSON.parse(String(init && init.body)).messages || []).find((m) => m.role === 'system')?.content || ''); } catch {} return { status: 200, text: async () => JSON.stringify(chat('родинка 4 мм, края ровные.')) }; };
+  const e3 = createEngine({ env: { ZAI_KEYS: 'z1' }, fetch: f3, sleep: async () => {} });
+  await e3.run({ text: 'что с родинкой на коже?', images: ['data:image/png;base64,AA'] });
+  ok('R3: медицинский вопрос по фото получает рамку «профессиональный разбор, без морали»',
+    /профессиональном ключе/.test(sys) && /не повод отказываться/.test(sys), JSON.stringify(sys.slice(-120)));
+
+  let sys4 = '';
+  const f4 = async (url, init) => { try { sys4 = String((JSON.parse(String(init && init.body)).messages || []).find((m) => m.role === 'system')?.content || ''); } catch {} return { status: 200, text: async () => JSON.stringify(chat('на фото чашка кофе.')) }; };
+  const e4 = createEngine({ env: { ZAI_KEYS: 'z1' }, fetch: f4, sleep: async () => {} });
+  await e4.run({ text: 'что на фото?', images: ['data:image/png;base64,AA'] });
+  ok('R4: обычный вопрос по фото — рамки нет, добавляем только по делу',
+    !/профессиональном ключе/.test(sys4));
+
+  const e5 = createEngine({ env: { ZAI_KEYS: 'z1' }, fetch: async () => ({ status: 200, text: async () => JSON.stringify(chat('Я не анализирую и не комментирую интимные фотографии.')) }), sleep: async () => {} });
+  const r5 = await e5.run({ text: 'скажи что-нибудь' });
+  ok('R5: без фото та же фраза — обычный ответ, текстовый путь не тронут',
+    r5.ok && /не анализирую/.test(r5.reply));
 }
 
 console.log(`\n${pass} ✔, ${fail} ✖`);

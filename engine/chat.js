@@ -24,6 +24,11 @@ import { fit as fitContext, estTokens, clampNumber, CTX_WINDOW_MAX } from './ctx
 import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { packCharts } from './chart.js';
 import * as personaStyle from './personastyle.js';
+
+/* 0.197: от первого лица «не делаю … с фото/картинкой» — отказ, даже когда
+   сформулирован без «не могу». Ловим только форму первого лица и только по фото
+   (в attemptOne проверяется вместе с images.length). */
+const IMG_REFUSE_RE = /(?:я|мне)[^.\n]{0,24}не\s+(?:буду\s+)?(?:анализир|комментир|рассматрив|оценив|просматрив|описыв|показыв|разбир)|не\s+(?:анализирую|комментирую|рассматриваю|оцениваю|просматриваю|показываю)|не\s+могу\s+(?:анализир|комментир|рассматрив|оценив|просмотр|описыв|показыв|разбир)|I\s+(?:cannot|can't|won't|do not|don't)\s+(?:analyze|analyse|comment|view|describe|assess|review|discuss)/i;
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
 import { block as jbBlock } from './jailbreak.js';
@@ -253,7 +258,7 @@ export function createEngine(opts) {
    * Одна попытка: конкретный провайдер + конкретная модель.
    * Возвращает { ok, reply, reasoning, provider, model, finish } или { ok:false, why }.
    */
-  async function attemptOne(id, model, req, deadlineLeft) {
+  async function attemptOne(id, model, req, deadlineLeft, hasPhoto) {
     /* Считаем попытку ДО сети: таймаут и отказ — тоже расход квоты провайдера. */
     usageTrack.attempt(id, model);
     const budget = Math.min(TIMEOUT[req.tier] || 30000, deadlineLeft);
@@ -318,6 +323,11 @@ export function createEngine(opts) {
     if (isProviderError(rawReply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
     const fr = freedom.salvageOrRefuse(rawReply, env);
     if (fr.refused) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
+    /* 0.197: вежливый отказ по фото — тоже отказ. «Я не анализирую и не комментирую
+       интимные фотографии» не содержит «не могу/не буду», проходила оба детектора
+       и доезжала до человека как ГОЛОС ПРИЛОЖЕНИЯ. По фото говорим: это отказ —
+       пробуем следующего зрячего. На текстовый путь не влияет. */
+    if (hasPhoto && IMG_REFUSE_RE.test(rawReply)) { note(id, 'refused'); return { ok: false, why: 'отказ по содержанию фото', status: res.status, soft: true }; }
     const reply = style.polish(fr.text, { env, intent: req.intent });
     note(id, 'ok');
     quar.delete(id);   /* ожил — карантин снят сразу */
@@ -724,7 +734,14 @@ export function createEngine(opts) {
 
     /* Значения ДО резки: из них взят refit для модели с окном меньше «лучшего».
        Без них второй проход резал бы уже порезанное, и выжимка начала бы пропадать. */
-    const pristine = { system, history, text: userContent };
+    /* 0.197: профессиональный вопрос по фото — медицина, арт, спорт, техника съёмки —
+   получает прямую рамку: описывай видимое, отвечай по существу. Это защита от
+   ЛОЖНЫХ отказов (когда сервис отмахивается «интимными фотографиями» от снимка
+   родинки или пляжного кадра), а не обход чьей-то политики для интимного
+   контента: рамка честно называет вопрос профессиональным — по тексту вопроса. */
+const PRO_PHOTO_RE = /(родинк|дермат|сыпь|прыщ|акне|угрев|гнойник|ран[аыуойе]|шв[аыуое]|рубц|шрам|ушиб|гематом|отёк|отек|ожог|обморожен|грибок|псориаз|экзем|лишай|зуд|кож[аыеуи]|аллерг|врач|медиц|диагност|симптом|укус)|(арт|художеств|картин[аеуи]|скульптур|музе|выставк|композици|ракурс|освещени|фэшн|дизайн|эстетик|фототехник|объектив|кадриров)|(пляж|бассейн|купальник|плавани|спортзал|тренировк|фитнес|осанк)/i;
+const VISION_PRO = 'Вопрос по фотографии в профессиональном ключе (медицина, искусство, спорт, техника съёмки). Отвечай по существу и описывай то, что видно: бытовая, спортивная или художественная сцена — обычный материал для разбора; внешность людей и открытая одежда в кадре — не повод отказываться или читать мораль.';
+const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(text || '')) ? '\n\n' + VISION_PRO : ''), history, text: userContent };
     /* Сколько токенов просит этот запрос без резки — по этому числу движок решает,
        звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */
     const needTokens = estTokens(pristine.system) + estTokens(pristine.text)
@@ -1037,7 +1054,7 @@ export function createEngine(opts) {
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
-        let r = await attemptOne(id, model, req, left);
+        let r = await attemptOne(id, model, req, left, images.length > 0);
         /* 429 на этом ключе — та же модель сразу на другом ключе того же провайдера:
            лимит считается на ключ, а модель уже выбрана как лучшая для задачи. */
         const keysUsed = new Set([keyIdx]);
@@ -1052,7 +1069,7 @@ export function createEngine(opts) {
             presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           });
           req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent;
-          r = await attemptOne(id, model, req2, deadline - Date.now());
+          r = await attemptOne(id, model, req2, deadline - Date.now(), images.length > 0);
         }
         /* Не сошлось — черновик, который уже потёк в окно, надо убрать, а не бросать
            посреди экрана: следующая голова отвечает совсем другим текстом. */
@@ -1164,7 +1181,7 @@ export function createEngine(opts) {
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
-        const r = await attemptOne(id, model, req, left);
+        const r = await attemptOne(id, model, req, left, images.length > 0);
         if (r.ok) {
           ctxNotes = (refit.notes || []).slice();
           if (refit.overflow) ctxNotes = ctxNotes.concat([refit.overflow]);
@@ -1182,7 +1199,12 @@ export function createEngine(opts) {
       }
     }
 
-    return await withMeta(finish(null, tried, started, intent, tier, 'ни один провайдер не ответил'));
+    /* 0.197: с фото все отказали по содержанию — не «связь оборвалась», а
+       честный маркер: дверь скажет человеку, что это политики провайдеров,
+       а не приложение, и подскажет, как спросить по детали. */
+    const photoRefused = images.length > 0 && tried.length > 0
+      && tried.some((t) => /ответ-отказ|отказ по содержанию фото|блок по фильтру/.test(String((t && t.why) || '')));
+    return await withMeta(finish(null, tried, started, intent, tier, photoRefused ? 'SEERS_REFUSED_PHOTO' : 'ни один провайдер не ответил'));
   }
 
 
