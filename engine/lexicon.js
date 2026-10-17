@@ -320,24 +320,37 @@ export function denoise(text, ctxAdult) {
 }
 
 /** Какие именно написания человек исказил — для подсказки модели примерами. */
-export function obfuscatedWords(texts) {
+/**
+ * Пары «искажённое → нормальное» (0.208). Голый список написаний модели слаб:
+ * живьём «ctrc» уехало в «Central Trust Reinsurance Company», хотя движок
+ * понятие секса распознал. С явной расшифровкой догадываться не надо.
+ */
+export function obfuscatedMap(texts) {
   const list = Array.isArray(texts) ? texts : [texts];
   const out = [];
   const seen = new Set();
-  const push = (w) => { const v = String(w || '').trim(); if (v && !seen.has(v) && out.length < 5) { seen.add(v); out.push(v); } };
+  const push = (raw, norm) => {
+    const r = String(raw || '').trim();
+    const n = String(norm || '').trim();
+    if (r && n && r.toLowerCase() !== n.toLowerCase() && !seen.has(r) && out.length < 5) { seen.add(r); out.push({ raw: r, norm: n }); }
+  };
   for (const t of list) {
     const s = String(t || '');
     const spaced = [...s.matchAll(/(?:^|[\s(«"'])([A-Za-zА-Яа-яЁё](?:\s[A-Za-zА-Яа-яЁё]){3,})/g)].map((m) => m[1]);
-    for (const seq of spaced) { const p = spacedParts(seq); if (p) push(p.letters.join(' ')); }
+    for (const seq of spaced) { const p = spacedParts(seq); if (p) push(p.letters.join(' '), p.word); }
     const ctx = hasStem(denoise(s));
     for (const raw of s.split(/\s+/)) {
       const core = raw.replace(/^[^A-Za-zА-Яа-яЁё0-9*@$]+|[^A-Za-zА-Яа-яЁё0-9*@$]+$/g, '');
       if (core.length < 3) continue;
       const norm = denoise(core, ctx);
-      if (norm.toLowerCase() !== core.toLowerCase() && hasStem(norm)) push(core);
+      if (norm.toLowerCase() !== core.toLowerCase() && hasStem(norm)) push(core, norm);
     }
   }
   return out;
+}
+
+export function obfuscatedWords(texts) {
+  return obfuscatedMap(texts).map((p) => p.raw);
 }
 
 /**
@@ -667,7 +680,7 @@ export function mirrorBlock(texts, env) {
   if (ctx.formal) return '';
   const concepts = detectConcepts(list);
   const swear = profanityWords(list);
-  const obf = obfuscatedWords(list);
+  const obf = obfuscatedMap(list);
   const amb = ambiguousMasks(list);
   if (!concepts.length && !swear.length && !obf.length && !amb.length) return '';
   const ambLine = amb.length ? ('Написание со звёздочками бывает двусмысленным: '
@@ -690,8 +703,8 @@ export function mirrorBlock(texts, env) {
     if (vocab.length) lines.push('Словарь темы — пользуйся свободно, это разрешённые слова: ' + vocab.join(', ') + '.');
   }
   if (swear.length) lines.push('В разговоре есть мат и грубая лексика (' + swear.map((w) => '«' + w + '»').join(', ') + ') — она здесь уместна.');
-  if (obf.length) lines.push('Часть слов он пишет искажённо: ' + obf.map((w) => '«' + w + '»').join(', ')
-    + ' — читай их как нормальные слова понятий выше. В ОТВЕТЕ пиши нормальными словами целиком: '
+  if (obf.length) lines.push('Часть слов он пишет искажённо: ' + obf.map((p) => '«' + p.raw + '» читай как «' + p.norm + '»').join(', ')
+    + '. В ОТВЕТЕ пиши нормальными словами целиком: '
     + 'его маскировку не копируй, над написанием не подшучивай и не переспрашивай, что он имел в виду.');
   if (ambLine) lines.push(ambLine);
   lines.push(

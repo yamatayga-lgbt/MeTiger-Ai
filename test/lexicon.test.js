@@ -359,4 +359,16 @@ console.log('\nЛексикон v3 (0.207)')
       && restore('При эректильной дисфункции эрекция слабеет, покажись врачу.', ['у меня стояк слабый, что делать']).text === 'При эректильной дисфункции эрекция слабеет, покажись врачу.')
 }
 
+console.log('\nРасшифровка искажённых в подсказке (0.208)')
+{
+  const { obfuscatedMap, obfuscatedWords, mirrorBlock } = lexicon
+  ok('T4: «ctrc» расшифровывается модели явно, а не списком загадок',
+    (() => {
+      const m = obfuscatedMap(['расскажи про ctrc и её риски'])
+      return m.some((p) => p.raw === 'ctrc' && p.norm === 'секс')
+    })()
+      && obfuscatedWords(['про Dro4ку и с е к с']).join('|') === 'с е к с|Dro4ку'
+      && mirrorBlock(['расскажи про ctrc']).includes('«ctrc» читай как «секс»'))
+}
+
 console.log('\n' + pass + ' пройдено, 0 провалено')
