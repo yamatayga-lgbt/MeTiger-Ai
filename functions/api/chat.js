@@ -752,6 +752,8 @@ async function handlePost(context) {
     fileError: r.fileError || undefined,
     reframed: !!r.reframed,
     freedomCleaned: !!r.freedomCleaned,
+    /* 0.203: модель смягчила слова человека, зеркало лексики вернуло их обратно */
+    lexiconRestored: !!r.lexiconRestored,
     tried: r.tried.slice(0, 6),
     /* Советы голов (Этап 2) — строками, чтобы их было видно из фронтенда и из curl:
        «сошлись 2/3 (groq,cloudflare)» и «confirmed 3/3» означают, что факт проверен

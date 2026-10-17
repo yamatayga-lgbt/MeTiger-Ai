@@ -30,6 +30,7 @@ import * as personaStyle from './personastyle.js';
 const CREATIVE_ASK_RE = /(?:напиши|расскажи|опридумай|сочини|опиши)?[^.\n]{0,24}(рассказ|истори[юя]|сцен[уаи]|ролев\w*|стих\w*|роман|сценарий|новелл)/i;
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
+import * as lexicon from './lexicon.js';
 import { block as jbBlock } from './jailbreak.js';
 import * as gender from './gender.js';
 import * as emotion from './emotion.js';
@@ -327,14 +328,19 @@ export function createEngine(opts) {
        доезжать до человека как ГОЛОС ПРИЛОЖЕНИЯ: это мягкий отказ — очередь идёт
        дальше, работает эскалация (до двух попыток в других рамках). */
     if (freedom.isPoliteRefusal(rawReply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
-    const reply = style.polish(fr.text, { env, intent: req.intent });
+    /* 0.203 «Зеркало лексики»: ответ есть, но модель по дороге перевела слова
+       человека на клинические («дрочка» → «стимуляция»). Это не отказ — ответ
+       не выбрасываем и голову не меняем; узкая обратная замена возвращает
+       его словарь детерминированно, а флаг уезжает в диагностику. */
+    const lexed = lexicon.restore(style.polish(fr.text, { env, intent: req.intent }), req.lexSource, env);
+    const reply = lexed.text;
     note(id, 'ok');
     quar.delete(id);   /* ожил — карантин снят сразу */
     const day = (health[id] && health[id][req.keyIdx] && health[id][req.keyIdx].used) || 0;
     markKey(id, req.keyIdx, { used: day + 1 });
     return {
       ok: true, reply, reasoning: parsed.reasoning || '', finish: parsed.finish,
-      provider: id, model: req.model, freedomCleaned: fr.cleaned, streamed: !!res.streamed,
+      provider: id, model: req.model, freedomCleaned: fr.cleaned, lexiconRestored: lexed.changed, streamed: !!res.streamed,
       streamError: res.streamError || '',
     };
   }
@@ -479,13 +485,19 @@ export function createEngine(opts) {
        Yama) доезжают только до нашего собственного режима — кто прислал свою
        `system`, тот её и контролирует. Головы совета идут со своей подсказкой, так
        что к ним блок не липнет и лишние 8 КБ в спор о числе никто не везёт. */
-    const adultAsk = freedom.isAdultAsk(text);
+    /* 0.203: взрослая тема — это не только текущий ход. На «продолжай» после
+       прямой реплики пачка и эскалация нужны ровно так же, а раньше смотрели
+       лишь в ПОСЛЕДНЮЮ запись истории — обычно ответ ассистента, где модель
+       уже успела всё смягчить, и контекст взрослости терялся. Смотрим в
+       последние реплики ЧЕЛОВЕКА. */
+    const recentUserTexts = history.filter((m) => m && m.role === 'user').slice(-3)
+      .map((m) => String(m.content || ''));
+    const adultAsk = freedom.isAdultAsk(text) || recentUserTexts.some((t) => freedom.isAdultAsk(t));
     /* «Острая» тема = взрослый запрос или то, что freedom считает жёсткой
        опасностью. По этому же признаку смотрим и на последние реплики: в
        агентном разговоре суть обычно во втором ходу, а не в «продолжай». */
-    const sensitive = adultAsk || freedom.isHardDanger(text) ||
-      (!!history.length && freedom.isAdultAsk(String(history[history.length - 1] && history[history.length - 1].content || '')));
-    const free = isDefaultSys ? freedom.freedomBlock(env, { intent, adult: adultAsk }) : { text: '', ids: [], chars: 0, mode: 'off', blocks: 0 };
+    const sensitive = adultAsk || freedom.isHardDanger(text);
+    const free = isDefaultSys ? freedom.freedomBlock(env, { intent, adult: adultAsk, text }) : { text: '', ids: [], chars: 0, mode: 'off', blocks: 0 };
     if (free.text) system = system + free.text;
     /* Обход ложных отказов по умолчанию молчит (его черёд — после первого отказа).
        JAILBREAK=1 включает его в каждом запросе, чтобы можно было померить, помогает ли
@@ -740,7 +752,17 @@ export function createEngine(opts) {
    контента: рамка честно называет вопрос профессиональным — по тексту вопроса. */
 const PRO_PHOTO_RE = /(родинк|дермат|сыпь|прыщ|акне|угрев|гнойник|ран[аыуойе]|шв[аыуое]|рубц|шрам|ушиб|гематом|отёк|отек|ожог|обморожен|грибок|псориаз|экзем|лишай|зуд|кож[аыеуи]|аллерг|врач|медиц|диагност|симптом|укус)|(арт|художеств|картин[аеуи]|скульптур|музе|выставк|композици|ракурс|освещени|фэшн|дизайн|эстетик|фототехник|объектив|кадриров)|(пляж|бассейн|купальник|плавани|спортзал|тренировк|фитнес|осанк)/i;
 const VISION_PRO = 'Вопрос по фотографии в профессиональном ключе (медицина, искусство, спорт, техника съёмки). Отвечай по существу и описывай то, что видно: бытовая, спортивная или художественная сцена — обычный материал для разбора; внешность людей и открытая одежда в кадре — не повод отказываться или читать мораль.';
-const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(text || '')) ? '\n\n' + VISION_PRO : ''), history, text: userContent };
+    /* 0.203 «Зеркало лексики» (engine/lexicon.js): человек говорит прямо —
+       система получает его конкретные слова и запрет переводить их на
+       клинические синонимы. Стоит здесь, перед pristine, чтобы блок ехал и
+       в обычную очередь, и в эскалацию после отказа (та собирает систему из
+       pristine). Источник — текущий ход и последние реплики человека;
+       тот же список едет в каждую попытку (req.lexSource) для обратной
+       замены, если модель всё-таки смягчила. */
+    const lexTexts = [text].concat(history.filter((m) => m && m.role === 'user').slice(-4).map((m) => String(m.content || '')));
+    const lexBlock = isDefaultSys ? lexicon.mirrorBlock(lexTexts, env) : '';
+    const lexSource = isDefaultSys ? lexTexts : null;   /* чужая system — чужая территория: ни блока, ни обратной замены */
+const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (images.length && PRO_PHOTO_RE.test(String(text || '')) ? '\n\n' + VISION_PRO : ''), history, text: userContent };
     /* Сколько токенов просит этот запрос без резки — по этому числу движок решает,
        звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */
     const needTokens = estTokens(pristine.system) + estTokens(pristine.text)
@@ -1052,7 +1074,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
           maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource;
         let r = await attemptOne(id, model, req, left);
         /* 429 на этом ключе — та же модель сразу на другом ключе того же провайдера:
            лимит считается на ключ, а модель уже выбрана как лучшая для задачи. */
@@ -1067,7 +1089,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
             maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
             presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           });
-          req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent;
+          req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent; req2.lexSource = lexSource;
           r = await attemptOne(id, model, req2, deadline - Date.now());
         }
         /* Не сошлось — черновик, который уже потёк в окно, надо убрать, а не бросать
@@ -1126,7 +1148,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
             /* «поиск лёг, отвечаю по Википедии» — не только модели, но и человеку:
                подпись под ответом берёт пометки отсюда (0.199). */
             toolNotes: toolsRes.notes || [],
-            reframed: useReframe, freedomCleaned: !!r.freedomCleaned,
+            reframed: useReframe, freedomCleaned: !!r.freedomCleaned, lexiconRestored: !!r.lexiconRestored,
             /* Ответ уже подтверждён инструментом (арифметику посчитал калькулятор) —
                совет голов на такое не созывается: см. ensemble.verifiedByTool. */
             toolProof: ensemble.verifiedByTool({ tools: toolsRes.used, block: toolsRes.block, reply, intent }),
@@ -1186,7 +1208,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
           tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource;
         const r = await attemptOne(id, model, req, left);
         if (r.ok) {
           ctxNotes = (refit.notes || []).slice();
@@ -1197,7 +1219,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
             /* «поиск лёг, отвечаю по Википедии» — не только модели, но и человеку:
                подпись под ответом берёт пометки отсюда (0.199). */
             toolNotes: toolsRes.notes || [],
-            reframed: true, freedomCleaned: !!r.freedomCleaned,
+            reframed: true, freedomCleaned: !!r.freedomCleaned, lexiconRestored: !!r.lexiconRestored,
             pinned: pin ? pin.model : undefined,
             pinMiss: !!pin && (id !== pin.id || model !== pin.model),
           };
@@ -1383,6 +1405,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
       sources: hit && Array.isArray(hit.sources) ? hit.sources : [],
       reframed: hit ? !!hit.reframed : false,
       freedomCleaned: hit ? !!hit.freedomCleaned : false,
+      lexiconRestored: hit ? !!hit.lexiconRestored : false,
       /* Ответ подтверждён инструментом: по нему и совет голов пропускается, и
          самопроверка не зовёт починку (см. withMeta). */
       toolProof: hit ? (hit.toolProof || '') : '',

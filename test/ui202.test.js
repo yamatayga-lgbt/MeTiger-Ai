@@ -36,7 +36,7 @@ const client = read('src/lib/usage.ts')
 const view = read('src/views/UsageView.tsx')
 const ring = read('src/components/LimitsRing.tsx')
 const limits = read('src/lib/limits.ts')
-const notes = read('src/lib/release-notes.ts')
+const readme = read('README.md')
 
 /* ── Хранилище как настоящий KV: JSON на чтении, TTL на записи ─────────────── */
 function fakeKv() {
@@ -179,8 +179,10 @@ const req = (headers) => new Request('https://metiger-ai.pages.dev/api/usage', {
 {
   const v = versionsAligned()
   ok('U202s версия во всех источниках одна', v.ok, v.why)
-  ok('U202t «Что нового» знает 0.202 и объясняет потолок',
-    /0\.202/.test(notes) && /потолок/i.test(notes), '')
+  /* 0.203: запись «Что нового» — одна и текущей версии (правило 0.189), 0.202
+     уехала в историю README, как все версии до неё (шаблон ui137 и др.). */
+  ok('U202t история README содержит 0.202 и объясняет потолок',
+    /^> \*\*0\.202\*\*/m.test(readme) && /потолок/i.test(readme), '')
   ok('U202u проверка подключена к общему прогону — иначе «прошла» бы сама по себе',
     /test\/ui202\.test\.js/.test(chain), '')
 }
