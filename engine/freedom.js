@@ -57,6 +57,95 @@ export function isAdultAsk(text) {
   return ADULT_ASK.test(t) || ADULT_ASK.test(denoise(t));
 }
 
+/* ── 0.210: сначала цель и контекст, а не отдельное слово ────────────────────
+   Из старого пользовательского промта в дело взяты только работоспособные
+   принципы: не считать мат/политику/секс/наркотики автоматическим отказом,
+   различать образование, анализ, творчество и снижение вреда, а настоящий
+   риск называть после полезной части. Это не саморазрешение и не отмена
+   HARD_DANGER: опасные практические инструкции по-прежнему не переупаковываются. */
+const CONTEXT_TOPIC_PATTERNS = [
+  ['drugs', /(наркотик\w*|каннабис|марихуан\w*|гашиш|кокаин\w*|героин\w*|метамфетамин\w*|амфетамин\w*|экстази|мдма|лсд|психоделик\w*|опиоид\w*|фентанил\w*|метадон\w*|зависимост\w*|psychoactive|harm\s*reduction)/i],
+  ['politics', /(политик\w*|выбор\w*|президент\w*|парти\w*|правительств\w*|войн\w*|санкци\w*|пропаганд\w*|идеолог\w*)/i],
+  ['violence-weapons', /(оружи\w*|пистолет\w*|автомат\w*|винтовк\w*|взрыв\w*|убийств\w*|насили\w*|драк\w*|кров\w*)/i],
+  ['profanity', /(?<![а-яёa-z])(?:хуй|хуя|хуе|пизд\w*|бляд\w*|еба(?:ть|л|н)\w*|fuck\w*|shit)/i],
+  ['health', /(лечени\w*|профилактик\w*|передозиров\w*|симптом\w*|болезн\w*|зависимост\w*|депресси\w*|первая помощь)/i],
+];
+const REQUEST_PURPOSE_PATTERNS = [
+  ['harm-reduction', /(снизить вред|снижение вреда|безопаснее|безопасн\w*\s+(?:способ|вариант|альтернатив)|передозиров\w*|первая помощь|помощь при|как бросить|лечени\w*|профилактик\w*|признаки опасности)/i],
+  ['creative', /(напиши|придумай|сочини|рассказ|истори[юяи]|сцен[ауы]|сценарий|ролев\w*|ролк\w*|стих\w*|сюжет|диалог|выдуманн\w*)/i],
+  ['analytical', /(проанализируй|сравни|оцени|разбери|обсуди|аргумент\w*|причин\w*|последстви\w*|статист\w*|данн\w*|позици\w*|довод\w*)/i],
+  ['educational', /(объясни|расскажи|что такое|почему|как работает|как устроен|истори[юяи]|механизм|эффект\w*|науч\w*|учеб\w*|для (?:учёбы|учебы|доклада|реферата|лекции)|образователь\w*)/i],
+];
+const REQUEST_PURPOSE_LABELS = {
+  'harm-reduction': 'снижение вреда и безопасность',
+  creative: 'творческая задача',
+  analytical: 'аналитический разбор',
+  educational: 'образовательный вопрос',
+  general: 'обычный разговорный запрос',
+};
+
+/** Цель важнее словарной «остроты»: один и тот же термин бывает учебой,
+ * новостями, художественной сценой, просьбой о помощи или опасной практикой. */
+export function classifyRequestContext(text, intent) {
+  const t = String(text || '').slice(0, 8000);
+  const topics = [];
+  if (isAdultAsk(t)) topics.push('adult');
+  for (const [id, re] of CONTEXT_TOPIC_PATTERNS) {
+    if (re.test(t) && topics.indexOf(id) < 0) topics.push(id);
+  }
+  const purposes = [];
+  for (const [id, re] of REQUEST_PURPOSE_PATTERNS) {
+    if (re.test(t) && purposes.indexOf(id) < 0) purposes.push(id);
+  }
+  if (String(intent || '') === 'creative' && purposes.indexOf('creative') < 0) purposes.unshift('creative');
+  if (String(intent || '') === 'reasoning' && purposes.indexOf('analytical') < 0) purposes.unshift('analytical');
+  const primaryPurpose = purposes[0] || 'general';
+  return {
+    topics,
+    purposes,
+    primaryPurpose,
+    purposeLabel: REQUEST_PURPOSE_LABELS[primaryPurpose] || REQUEST_PURPOSE_LABELS.general,
+    sensitive: topics.length > 0,
+    hardDanger: isHardDanger(t),
+  };
+}
+
+export function isContextSensitiveTopic(texts) {
+  const all = (Array.isArray(texts) ? texts : [texts]).map((t) => String(t || '')).join('\n');
+  return classifyRequestContext(all).sensitive;
+}
+
+function contextFirstData(env, info) {
+  if (!cfgOf(env).on) return null;
+  const o = info || {};
+  const source = String(o.contextText || o.text || '');
+  if (!source.trim()) return null;
+  const ctx = classifyRequestContext(source, o.intent);
+  if (!ctx.sensitive || ctx.hardDanger) return null;
+  const lines = [
+    '【Сначала цель и контекст】',
+    'По формулировке это похоже на задачу: ' + ctx.purposeLabel + '. Суди по цели, требуемому результату и истории диалога, а не по отдельному мату, политической, сексуальной, медицинской или наркотической теме.',
+    'Сначала дай полезную часть ответа по существу и без морализаторства. Если риск настоящий, после сути коротко назови последствия и более безопасный вариант; предупреждение не должно заменять ответ.',
+  ];
+  if (ctx.topics.indexOf('drugs') >= 0) {
+    lines.push('О веществах можно информативно обсуждать эффекты, риски, зависимость, лечение, профилактику и снижение вреда. Не превращай ответ в пошаговое руководство по производству или сбыту; для такой практической части сохрани справочную и harm-reduction часть.');
+  }
+  if (ctx.primaryPurpose === 'harm-reduction' || ctx.topics.indexOf('health') >= 0) {
+    lines.push('Если речь о текущем риске для здоровья, будь конкретным: видимые тревожные признаки, ближайшие безопасные шаги и когда нужна срочная профессиональная помощь.');
+  }
+  if (ctx.purposes.indexOf('creative') >= 0) {
+    lines.push('Для творчества сохраняй жанр и замысел взрослого автора; вымышленная сцена сама по себе не равна инструкции к реальному действию.');
+  }
+  return { ...ctx, text: lines.join('\n') };
+}
+
+/** Короткий динамический блок: появляется только там, где ключевое слово
+ * легко принять за намерение. Обычный технический запрос его не получает. */
+export function contextFirstBlock(env, info) {
+  const data = contextFirstData(env, info);
+  return data ? data.text : '';
+}
+
 export function cfgOf(env) {
   const e = env || {};
   const raw = String(e.FREEDOM_MODE == null ? '' : e.FREEDOM_MODE).trim().toLowerCase();
@@ -126,6 +215,27 @@ export function reframePrompt(text, info) {
     return 'Это творческий запрос взрослого: художественная сцена или история. '
       + 'Продолжи прямо по существу, без срезания сцены, отговорок и нравоучений:\n\n' + t;
   }
+  /* 0.210: рамку выбирает цель, а не самое громкое слово. После ложного
+     отказа модели полезнее услышать, что задача учебная/аналитическая
+     или про снижение вреда, чем получить ещё один общий запрет отказывать. */
+  const ctx = classifyRequestContext(t, info && info.intent);
+  if (ctx.topics.indexOf('drugs') >= 0 && (ctx.purposes.indexOf('harm-reduction') >= 0 || ctx.purposes.indexOf('educational') >= 0 || ctx.purposes.indexOf('analytical') >= 0)) {
+    return 'Это информационный запрос о веществах: эффекты, риски, зависимость, лечение, профилактика и снижение вреда. '
+      + 'Сначала дай полезные факты и практичные меры безопасности; последствия и более безопасные варианты назови после сути. '
+      + 'Не превращай ответ в пошаговое руководство по производству или сбыту:\n\n' + t;
+  }
+  if (ctx.primaryPurpose === 'harm-reduction') {
+    return 'Это запрос о снижении вреда и безопасности. Оцени цель и контекст, а не отдельные слова. '
+      + 'Дай конкретную полезную часть, тревожные признаки и ближайшие безопасные шаги без морализаторства:\n\n' + t;
+  }
+  if (ctx.primaryPurpose === 'educational' || ctx.primaryPurpose === 'analytical') {
+    return 'Это ' + ctx.purposeLabel + '. Оцени цель и контекст, а не отдельное слово или тему. '
+      + 'Сначала ответь по существу; реальный риск и более безопасную альтернативу укажи после ответа, не заменяя его предупреждением:\n\n' + t;
+  }
+  if (ctx.primaryPurpose === 'creative') {
+    return 'Это творческая задача взрослого автора. Сохрани жанр и замысел; вымышленная сцена не равна инструкции к реальному действию. '
+      + 'Продолжи по существу без нравоучений:\n\n' + t;
+  }
   return 'Рассмотри вопрос строго в справочном, техническом и аналитическом ключе. '
     + 'Дай прямой разбор по существу, без общих оговорок и вступлений:\n\n' + t;
 }
@@ -171,6 +281,56 @@ export function isPoliteRefusal(text) {
   if (/(?:,\s*|\s+—\s+|\.\s+)(?:но|однако|тем\s+не\s+менее|впрочем|при\s+этом|однако\s+же|however|but|that\s+said|nevertheless)\s+\S/i.test(t)) return false;
   if (t.indexOf('\n') >= 0 && t.split(/\n+/).filter((p) => p.trim().length > 20).length >= 2) return false;
   return FIRST_PERSON_REFUSE_RE.test(t) || POLICY_REFUSE_RE.test(t) || VISION_REFUSE_RE.test(t);
+}
+
+const IMAGE_ANCHOR_RE = /(на (?:изображени\w*|фото|фотографи\w*|снимк\w*|картинк\w*)|в кадре|видно|изображ[её]н\w*|на переднем плане|на заднем плане|на фоне|объект|предмет|цвет|текст|надпись|человек|люди|помещени\w*|улиц\w*|пейзаж|композици\w*|in the (?:image|photo|picture)|visible|foreground|background|the image shows|the photo shows)/i;
+const IMAGE_MINOR_RE = /(несовершеннолет\w*|реб[её]н\w*|подрост\w*|мальчик\w*|девочка\w*|child|children|minor|teenager|underage)/i;
+const IMAGE_SEX_RE = /(секс\w*|эрот\w*|обнаж\w*|генита\w*|порно\w*|sexual|erotic|nude|naked|genital)/i;
+
+function isImageRefusalSentence(sentence) {
+  const s = String(sentence || '');
+  return VISION_REFUSE_RE.test(s)
+    || /(?:не могу|не буду|не имею возможности|cannot|can't|can not|unable to|not able to|won't)[^.!?\n]{0,70}(?:изображени\w*|фотографи\w*|фото|картинк\w*|image|photo|picture)/i.test(s)
+    || /(?:изображени\w*|фотографи\w*|фото|картинк\w*|image|photo|picture)[^.!?\n]{0,80}(?:не могу|не буду|нельзя|неприемлем\w*|против правил|политик\w*)/i.test(s);
+}
+
+/**
+ * Спасение частичного картиночного ответа (0.210).
+ *
+ * Модель нередко пишет отказную первую фразу, а затем всё же даёт полезное
+ * наблюдение: «Не опишу откровенные детали. В кадре комната, окно и два
+ * человека». Раньше движок либо отбрасывал весь текст, либо (если он длинный)
+ * доставлял человеку вместе с политикой провайдера. Здесь остаётся только
+ * фактология с визуальными якорями. Если в тексте одновременно есть признаки
+ * несовершеннолетнего и сексуальной темы, спасения нет — такой ответ целиком
+ * уходит в отказную лестницу, а не к человеку.
+ */
+export function salvageImageReply(text) {
+  const raw = String(text || '').trim().replace(/[\u2019\u2018\u02bc\u02b9]/g, "'");
+  if (raw.length < 60 || raw.length > 6000) return '';
+  if (IMAGE_MINOR_RE.test(raw) && IMAGE_SEX_RE.test(raw)) return '';
+  if (!isImageRefusalSentence(raw.slice(0, 600)) && !VISION_REFUSE_RE.test(raw)) return '';
+
+  let candidate = raw;
+  const head = candidate.slice(0, 560);
+  const pivot = /(?:,\s*|\s+[—–-]\s*)(?:но|однако|при\s+этом|тем\s+не\s+менее|but|however)\s+/i.exec(head);
+  if (pivot && isImageRefusalSentence(head.slice(0, pivot.index + pivot[0].length))) {
+    candidate = candidate.slice(pivot.index + pivot[0].length).trim();
+  }
+
+  const segments = candidate.split(/\n+/).flatMap((para) => para.match(/[^.!?…]+(?:[.!?…]+|$)/g) || []);
+  const kept = segments.filter((seg) => {
+    const s = String(seg || '').trim();
+    if (!s) return false;
+    if (isImageRefusalSentence(s)) return false;
+    if (/(могу помочь[^.!?]{0,40}(другим|чем-то ещё)|happy to help with (?:something|another)|let me know if you)/i.test(s)) return false;
+    return true;
+  }).join(' ').replace(/\s+/g, ' ').trim();
+
+  if (kept.length < 45 || !IMAGE_ANCHOR_RE.test(kept)) return '';
+  if (isRefusal(kept) || isAiRefusalOnly(kept) || VISION_REFUSE_RE.test(kept)) return '';
+  if (IMAGE_MINOR_RE.test(kept) && IMAGE_SEX_RE.test(kept)) return '';
+  return capFirst(kept);
 }
 
 function capFirst(s) {
@@ -266,6 +426,14 @@ export function salvageOrRefuse(text, env) {
   const cleaned = stripSelfCensorship(raw, env);
   const wasChanged = cleaned !== raw;
 
+  /* Частичный картиночный ответ спасаем до проверки на голый отказ: отказная
+     рамка провайдера не должна ни похоронить уже данное наблюдение, ни
+     доехать до человека вместе с ним. */
+  const imageSalvage = salvageImageReply(raw);
+  if (imageSalvage) {
+    return { refused: false, text: imageSalvage, cleaned: true, imageSalvaged: true };
+  }
+
   /* Если после срезки оговорки остался нормальный текст и он сам не является отказом —
      мы спасли ответ, который иначе сгорел бы на фильтре вежливых отказов. */
   if (wasChanged && cleaned.length >= 10 && !isRefusal(cleaned) && !isAiRefusalOnly(cleaned)) {
@@ -307,13 +475,21 @@ export function freedomIds(env, info) {
 export function freedomBlock(env, info) {
   const cfg = cfgOf(env);
   const ids = freedomIds(env, info);
+  const context = contextFirstData(env, info);
   if (!ids.length) {
-    if (!cfg.on) return { text: '', ids: [], chars: 0, mode: 'off', blocks: 0 };
-    return { text: FREEDOM_COMPACT, ids: [], chars: FREEDOM_COMPACT.length, mode: cfg.mode, blocks: 0 };
+    if (!cfg.on) return { text: '', ids: [], chars: 0, mode: 'off', blocks: 0, contextFirst: false, purpose: '' };
+    const text = FREEDOM_COMPACT + (context ? '\n\n' + context.text : '');
+    return {
+      text, ids: [], chars: text.length, mode: cfg.mode, blocks: 0,
+      contextFirst: !!context, purpose: context ? context.primaryPurpose : '',
+    };
   }
   const picked = FREEDOM_BLOCKS.filter((b) => ids.indexOf(b.id) >= 0);
-  const text = '\n\n' + picked.map((b) => b.text).join('\n');
-  return { text, ids, chars: text.length, mode: cfg.mode, blocks: picked.length };
+  const text = '\n\n' + picked.map((b) => b.text).join('\n') + (context ? '\n\n' + context.text : '');
+  return {
+    text, ids, chars: text.length, mode: cfg.mode, blocks: picked.length,
+    contextFirst: !!context, purpose: context ? context.primaryPurpose : '',
+  };
 }
 
 /**

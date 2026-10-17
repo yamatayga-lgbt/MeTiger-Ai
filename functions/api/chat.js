@@ -766,6 +766,9 @@ async function handlePost(context) {
     lexiconRestored: !!r.lexiconRestored,
     photoRefused: !!r.photoRefused,
     photoNeutral: !!r.photoNeutral,
+    photoStage: r.photoStage || undefined,
+    photoMode: r.photoMode || undefined,
+    photoSalvaged: !!r.photoSalvaged,
     /* 0.204: после обратной замены в ответе всё ещё остались эвфемизмы */
     lexiconSanitized: !!r.lexiconSanitized,
     tried: r.tried.slice(0, 6),

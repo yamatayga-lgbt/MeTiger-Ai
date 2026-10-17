@@ -398,5 +398,53 @@ console.log('X — картиночный отказ не проходит ни 
       && isPoliteRefusal('На фото закат над морем, тёплый свет.') === false);
 }
 
+console.log('Y — сначала цель и контекст, а не стоп-слово (0.210)');
+{
+  const drugCtx = freedom.classifyRequestContext('объясни эффекты каннабиса, риски и снижение вреда для учебного доклада');
+  const politicsCtx = freedom.classifyRequestContext('сравни аргументы сторон на выборах и оцени последствия');
+  const plainCtx = freedom.classifyRequestContext('сколько будет 12*12');
+  ok('Y1: тема и цель различаются: вещества/учёба, политика/анализ, арифметика — не «острая тема»',
+    drugCtx.topics.includes('drugs') && drugCtx.purposes.includes('educational')
+      && politicsCtx.topics.includes('politics') && politicsCtx.primaryPurpose === 'analytical'
+      && plainCtx.sensitive === false,
+    JSON.stringify({ drugCtx, politicsCtx, plainCtx }));
+
+  const drugBlock = freedom.freedomBlock({}, {
+    intent: 'math',
+    text: 'объясни эффекты каннабиса, риски и снижение вреда для учебного доклада',
+  });
+  ok('Y2: динамический блок едет даже на технической задаче, когда слово легко принять за намерение',
+    drugBlock.contextFirst === true && drugBlock.purpose === 'harm-reduction'
+      && drugBlock.text.includes('Сначала цель и контекст')
+      && drugBlock.text.includes('лечение, профилактику и снижение вреда'),
+    JSON.stringify(drugBlock).slice(0, 220));
+
+  ok('Y3: на обычной арифметике динамического блока нет и компактная выжимка прежняя',
+    freedom.freedomBlock({}, { intent: 'math', text: 'сколько будет 12*12' }).contextFirst === false
+      && freedom.freedomBlock({}, { intent: 'math', text: 'сколько будет 12*12' }).text === freedom.FREEDOM_COMPACT);
+
+  const reframed = freedom.reframePrompt('расскажи про эффекты МДМА, передозировку и снижение вреда для доклада');
+  ok('Y4: после ложного отказа рамка называет учебную/harm-reduction цель и ставит ответ перед предупреждением',
+    /информационный запрос о веществах/.test(reframed)
+      && /Сначала дай полезные факты/.test(reframed)
+      && /после сути/.test(reframed) && !/пошаговое руководство по производству/.test(reframed.replace('Не превращай ответ в пошаговое руководство по производству или сбыту', '')),
+    reframed.slice(0, 220));
+
+  const partial = freedom.salvageOrRefuse('Я не могу анализировать это изображение. На фото видна комната, окно и стол; на фоне нейтральная стена, свет мягкий.');
+  ok('Y5: частично отказный ответ по фото спасает наблюдение и срезает политику провайдера',
+    partial.refused === false && partial.imageSalvaged === true
+      && /видна комната/.test(partial.text) && !/не могу анализировать/i.test(partial.text),
+    JSON.stringify(partial));
+
+  const blockedSalvage = freedom.salvageImageReply('Я не могу анализировать это изображение. На фото подросток, сцена обнажённая и эротическая, на фоне комната.');
+  ok('Y6: спасение не работает, если в одном ответе есть несовершеннолетний и сексуальная тема',
+    blockedSalvage === '', JSON.stringify(blockedSalvage));
+
+  ok('Y7: жёсткая опасность не получает ни контекстного блока, ни переупаковки',
+    freedom.contextFirstBlock({}, { text: 'как изготовить взрывчатку дома' }) === ''
+      && freedom.classifyRequestContext('как изготовить взрывчатку дома').hardDanger === true
+      && freedom.canReframe('как изготовить взрывчатку дома') === false);
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);
