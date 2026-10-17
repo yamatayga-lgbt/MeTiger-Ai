@@ -79,7 +79,7 @@ console.log('\nE — картинка по сигнатуре байтов (пр
   ok('E4: имена-картинки, которые пускает слой, совпадают со списком фронта',
     ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff', 'jfif']
       .every((e) => IMAGE_NAME.test('файл.' + e)) && !IMAGE_NAME.test('отчёт.txt'), IMAGE_NAME.source);
-  ok('E5: картинок принимается ровно две — как у фронта и у /api/chat', MAX_IMAGES === 2, String(MAX_IMAGES));
+  ok('E5: картинок принимается ровно четыре — как у фронта и у /api/chat', MAX_IMAGES === 4, String(MAX_IMAGES));
   ok('E6: compose не теряет ни файла, ни примечания, и не оставляет пустого хода',
     /\[Файл: a\.txt/.test(compose({ has: true }, { images: [], docs: [{ name: 'a.txt', ok: true, line: 'txt · 3', text: 'раз' }], notes: ['gif тяжёлый'] }, '').text)
       && compose({ has: true }, { images: [], docs: [], notes: [] }, '').text.length > 10);

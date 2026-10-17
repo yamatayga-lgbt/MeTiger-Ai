@@ -47,7 +47,7 @@ export const MAX_DOC_BYTES = DOC_MAX;              /* 8 МБ — тот же п�
    головы целиком или его надо читать по частям (engine/longdoc.js). Потолок байт
    (8 МБ у читалки) остался прежним — он про размер файла, а не про текст. */
 export const DOC_CHARS = 200000;                   /* сколько текста файла показывать модели */
-export const MAX_IMAGES = 2;   /* тот же потолок, что у фронта (src/lib/images.ts) и у /api/chat */                       /* ровно столько же, сколько принимает чат */
+export const MAX_IMAGES = 4;   /* тот же потолок, что у фронта (src/lib/images.ts) и у /api/chat */
 
 const capBytes = (n, max) => (n > max ? Math.round(max / 1024 / 1024 * 10) / 10 + ' МБ' : Math.max(1, Math.round(n / 1024)) + ' КБ');
 

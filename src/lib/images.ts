@@ -8,7 +8,7 @@
  * сторона ограничена, JPEG с разумным качеством, и вес проверяется ДО отправки.
  */
 
-export const MAX_IMAGES = 2
+export const MAX_IMAGES = 4
 /** Больше этой стороны модель различий не видит, а вес растёт квадратом. */
 export const MAX_SIDE = 1024
 export const JPEG_QUALITY = 0.82
@@ -31,7 +31,7 @@ export function looksLikeImage(f: { name?: string; type?: string }): boolean {
   return mime.indexOf('image/') === 0 || IMAGE_EXT.test(String(f && f.name || ''))
 }
 
-/** Только картинки и не больше двух: всё остальное агент всё равно не увидит. */
+/** Только картинки и не больше общего потолка: лишнее агент всё равно не увидит. */
 export function pickImages(files: Array<File | null | undefined> | null | undefined): File[] {
   const list = (files || []).filter((f): f is File => !!f && typeof f.type === 'string' && looksLikeImage(f))
   return list.slice(0, MAX_IMAGES)

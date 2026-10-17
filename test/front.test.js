@@ -136,10 +136,10 @@ console.log('H — вложения: что уходит в движок и чт
 {
   const img = await import(join(dir, 'images.mjs'));
   const f = (type, size = 1024) => ({ type, size, name: 'x' });
-  ok('H1: не-картинки отсекаются, больше двух не берём',
-    img.pickImages([f('image/png'), f('application/pdf'), f('image/jpeg'), f('image/png')]).length === 2,
-    String(img.pickImages([f('image/png'), f('application/pdf'), f('image/jpeg'), f('image/png')]).length));
-  ok('H2: MAX_IMAGES = 2 — ровно столько же, сколько принимает /api/chat', img.MAX_IMAGES === 2);
+  ok('H1: не-картинки отсекаются, больше четырёх не берём',
+    img.pickImages([f('image/png'), f('application/pdf'), f('image/jpeg'), f('image/png'), f('image/webp'), f('image/gif')]).length === 4,
+    String(img.pickImages([f('image/png'), f('application/pdf'), f('image/jpeg'), f('image/png'), f('image/webp'), f('image/gif')]).length));
+  ok('H2: MAX_IMAGES = 4 — ровно столько же, сколько принимает /api/chat', img.MAX_IMAGES === 4);
   ok('H3: порог веса на фронте и на входе совпадают (иначе отказывает не та сторона)',
     img.MAX_DATAURL_CHARS === Math.round((4 * 1024 * 1024) / 0.74), String(img.MAX_DATAURL_CHARS));
   const bad = await img.fileToDataUrl(f('text/plain'));
@@ -1597,16 +1597,16 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       && !/let depthWhy = deep \? 'человек попросил глубже'/.test(engineDeep)
       /* клиент принимает решение и поднимает потолки времени */
       && /if \(ev\.kind === 'depth'\)/.test(apiDeep) && /const onDepthEvent = \(ev: SseEvent\)/.test(apiDeep)
-      && /ceilingMs = 150_000/.test(apiDeep)
+      && /ceilingMs = owner \? 180_000 : 150_000/.test(apiDeep)
       /* подпись ответа называет причину, а не просто «глубже» */
       && /r\.depthWhy \? ': ' \+ r\.depthWhy : ''/.test(apiDeep)
       && /depthWhy\?: string/.test(apiDeep));
 
   ok('N51: «глубже» не обрывается на 75-й секунде — потолок поднимается по решению агента',
     /arm\(firstWaitMs\)/.test(apiDeep)
-      && /let firstWaitMs = opts\.deep \? 120_000 : 75_000/.test(apiDeep)
+      && /let firstWaitMs = owner \? \(opts\.deep \? 135_000 : 100_000\) : \(opts\.deep \? 120_000 : 75_000\)/.test(apiDeep)
       && /arm\(Math\.min\(SILENCE_MS, ceilingMs - \(Date\.now\(\) - startedAt\)\)\)/.test(apiDeep)
-      && /deadlineMs: Number\(env\.CHAT_DEADLINE_MS \|\| \(wantDeep \? 75000 : 50000\)\)/.test(entryDeep)
+      && /deadlineMs: Number\(ownerPriority/.test(entryDeep)
       /* явная просьба извне по-прежнему важнее судьи: поле deep в теле не отменено */
       && /const askedDeep = !!\(body && body\.deep === true\)/.test(entryDeep)
       && /if \(!askedDeep\)/.test(entryDeep));
@@ -1824,7 +1824,7 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       && /if \(got\.events\.length && onAlive\) onAlive\(\)/.test(apiDeep)
       && /SILENCE_MS = 45_000/.test(apiDeep)
       /* потолок перестал быть константой: его поднимает событие depth от судьи */
-      && /let ceilingMs = opts\.deep \? 150_000 : 120_000/.test(apiDeep)
+      && /let ceilingMs = owner \? \(opts\.deep \? 180_000 : 150_000\) : \(opts\.deep \? 150_000 : 120_000\)/.test(apiDeep)
       && /arm\(Math\.min\(SILENCE_MS, ceilingMs - \(Date\.now\(\) - startedAt\)\)\)/.test(apiDeep)
       && /'связь оборвалась на середине ответа — повторите запрос'/.test(apiDeep));
 

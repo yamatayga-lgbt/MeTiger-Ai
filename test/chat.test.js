@@ -154,7 +154,7 @@ console.log('G — вход /api/chat (Pages Function): то, что видит 
   ok('G4: история доезжает до модели (без неё «агент» амнезирует между сообщениями)',
     JSON.stringify(lastBody.messages).indexOf('было') >= 0 && JSON.stringify(lastBody.messages).indexOf('стало') >= 0,
     JSON.stringify(lastBody.messages).slice(0, 200));
-  for (let i = 0; i < 14; i++) await onRequestPost({ request: req({ text: 'спам' + i }), env: ENV });
+  for (let i = 0; i < 35; i++) await onRequestPost({ request: req({ text: 'спам' + i }), env: ENV });
   const d = await onRequestPost({ request: req({ text: 'ещё' }), env: ENV });
   ok('G5: частый клиент получает 429 — квоты бесплатных провайдеров защищены', d.status === 429, 'status=' + d.status);
   const e2 = await onRequestPost({ request: req({ text: 'привет', rate: 0 }), env: { RATE_LIMIT: '0' } });
@@ -170,9 +170,9 @@ console.log('G — вход /api/chat (Pages Function): то, что видит 
     sj.ok === true && Array.isArray(sj.alive) && sj.alive.indexOf('groq') >= 0, JSON.stringify(sj).slice(0, 160));
   /* Охрана входа по весу: движок и бесплатные провайдеры спотыкаются о тело
      запроса раньше, чем начинается толк, — отказываем словами и сразу. */
-  const many = await onRequestPost({ request: req({ text: 'что на фото?', images: ['data:image/png;base64,' + 'A'.repeat(64), 'data:image/png;base64,' + 'B'.repeat(64), 'data:image/png;base64,' + 'C'.repeat(64)] }), env: ENV });
-  ok('G8: три картинки — отказ словами, а не усечение втихую',
-    many.status === 413 && /двух/.test((await many.json()).error || ''), String(many.status));
+  const many = await onRequestPost({ request: req({ text: 'что на фото?', images: ['A', 'B', 'C', 'D', 'E'].map((x) => 'data:image/png;base64,' + x.repeat(64)) }), env: ENV });
+  ok('G8: пять картинок при потолке четыре — отказ словами, а не усечение втихую',
+    many.status === 413 && /больше 4/.test((await many.json()).error || ''), String(many.status));
   const heavy = await onRequestPost({ request: req({ text: 'что на фото?', images: ['data:image/png;base64,' + 'A'.repeat(6 * 1024 * 1024)] }), env: ENV });
   ok('G9: тяжёлую картинку не тащим до провайдера',
     heavy.status === 413 && /МБ/.test((await heavy.json()).error || ''), String(heavy.status));

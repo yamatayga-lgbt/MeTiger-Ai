@@ -38,6 +38,7 @@ const MEMO_MS = 60 * 1000;
 
 /** Разумный потолок на число моделей в байте KV: значение должно оставаться маленьким. */
 import { envKeys } from './providers.js';
+import { mapLimit, netCfg } from './netpool.js';
 import { VERIFIED as CHECKED } from './models-verified.js'
 const MAX_ENTRIES = 900;
 /* Сколько строк берём у одного провайдера: odirouter выдаёт 232 id разом, и
@@ -329,14 +330,18 @@ export async function fetchCatalog(opts = {}) {
        модели всему миру). Остальные — только если у нас есть их ключ: без ключа
        запрос вернул бы 401 и занял место в ошибках. */
     : ['openrouter', 'xkiro'].concat(listSources(env));
-  const models = [];
-  const errors = [];
-  const read = {};
   const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const concurrency = clamp(num(opts.concurrency, netCfg(env).catalog), 1, 8);
 
-  for (const src of sources) {
+  /* 0.211: источники независимы. Раньше холодный каталог ждал их по одному:
+     десяток адресов × две попытки могли занять весь бюджет ещё до вопроса
+     человека. Теперь летят ограниченным пулом, а mapLimit возвращает
+     результаты в исходном порядке источников — сборка каталога и приоритет
+     одинаковых id от гонки не меняются. */
+  const lanes = await mapLimit(sources, concurrency, async (src) => {
+    const laneErrors = [];
     const cfg = PARSERS[src] || nativeCfg(src, env);
-    if (!cfg) { errors.push(src + ': нет парсера'); continue; }
+    if (!cfg) return { src, got: null, errors: [src + ': нет парсера'] };
     let got = null;
     /* stop — «отказ определённый, повтор не поможет»: 401/403/404/405 лечатся не
        повтором, а другим ключом или другим адресом. Раньше z.ai успевал положить
@@ -366,7 +371,7 @@ export async function fetchCatalog(opts = {}) {
         if (!data.length) throw new Error('пустой список');
         got = data.map(cfg.map).filter(Boolean).slice(0, perSource(env));
       } catch (e) {
-        errors.push(src + ': ' + String((e && e.message) || e).replace(/^Error:\s*/, ''));
+        laneErrors.push(src + ': ' + String((e && e.message) || e).replace(/^Error:\s*/, ''));
         /* Определённый отказ (401/403/404/405) повтором не лечится: это не «сеть
            мигнула», а «так нельзя». Раньше z.ai давал две одинаковые строки в
            каждом ответе каталога, и по ним нельзя было понять, что случилось. */
@@ -378,9 +383,17 @@ export async function fetchCatalog(opts = {}) {
         if (timer) clearTimeout(timer);
       }
     }
-    if (got) {
-      read[src] = true;
-      for (const m of got) models.push(m);
+    return { src, got, errors: laneErrors };
+  });
+
+  const models = [];
+  const errors = [];
+  const read = {};
+  for (const lane of lanes) {
+    errors.push(...lane.errors);
+    if (lane.got) {
+      read[lane.src] = true;
+      for (const m of lane.got) models.push(m);
     }
   }
   /* Одинаковые строки в списке ошибок ничего не добавляют: «zai: HTTP 503» дважды —

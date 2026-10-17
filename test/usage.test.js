@@ -372,7 +372,7 @@ console.log('W — дверь GET /api/usage');
   ok('W3: провайдер без ключа виден, но помечен как выпавший',
     data.providers.some((p) => p.id === 'openrouter' && p.live === false && p.keys === 0));
   ok('W4: ставка на человека видна и честно говорит, когда общего хранилища нет',
-    data.rate.max === 12 && data.rate.on === false && /MEMORY/.test(data.rate.why) && data.kv === false,
+    data.rate.max === 30 && data.rate.on === false && /MEMORY/.test(data.rate.why) && data.kv === false,
     JSON.stringify(data.rate));
   ok('W5: ответ не кэшируется — иначе «живой» счётчик показывал бы вчерашнее',
     res.headers.get('cache-control') === 'no-store' && res.headers.get('access-control-allow-origin') === '*');

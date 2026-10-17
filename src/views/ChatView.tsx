@@ -14,7 +14,7 @@ import { Guard } from '../components/Guard'
    draftOnce гарантирует, что сохранённый текст подставится один раз — при
    открытии приложения, — а не в каждый чат при переключении. */
 const DRAFT_KEY = 'mt-draft'
-const DRAFT_MAX = 5000
+const DRAFT_MAX = 96000
 const draftOnce: { done: boolean } = { done: false }
 
 import { LimitsRing } from '../components/LimitsRing'
@@ -1055,7 +1055,7 @@ export function ChatView({
   const addFiles = async (list: FileList | File[] | null) => {
     const all = list ? Array.from(list) : []
     if (!all.length) return
-    /* Сколько картинок ещё влезает: MAX_IMAGES = 2, и всё, что сверх, раньше молча
+    /* Сколько картинок ещё влезает по MAX_IMAGES; всё, что сверх, раньше молча
        отрезалось — ни превью, ни ошибки, ни сообщения. Человек понимал это как «фото
        не отправляются». */
     const room = Math.max(0, MAX_IMAGES - shots.length)
@@ -1393,7 +1393,7 @@ export function ChatView({
             {shotError ? <span className="attach-error">{shotError}</span> : null}
             {docError ? <span className="attach-error">{docError}</span> : null}
             <span className="attach-hint">
-              картинок: {shots.length}/2{docs.length ? ` · файлов: ${docs.length}/${ATTACH_MAX}` : ''}
+              картинок: {shots.length}/{MAX_IMAGES}{docs.length ? ` · файлов: ${docs.length}/${ATTACH_MAX}` : ''}
             </span>
           </div>
         ) : null}

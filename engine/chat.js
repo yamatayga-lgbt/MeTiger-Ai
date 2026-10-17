@@ -44,6 +44,7 @@ import * as vcouncil from './vcouncil.js';
 import { detectLang, langMind } from './langmind.js';
 import * as depth from './depth.js';
 import * as check from './check.js';
+import { mapLimit, netCfg } from './netpool.js';
 
 /**
  * С какого размера материала движок ищет модель пошире (см. wideFirst).
@@ -55,6 +56,13 @@ import * as check from './check.js';
  * пуле стояла модель, которая приняла бы его целиком.
  */
 const WIDE_AT_TOKENS = 6000;
+
+/** Обрыв именно по потолку вывода, а не нормальная точка. OpenAI-совместимые
+ * шлюзы говорят `length`, Gemini — `MAX_TOKENS`; до 0.211 продолжение знало
+ * только первое слово и Gemini-ответы оставались куском. */
+export function isTruncatedFinish(finish) {
+  return /^(length|max[_-]?tokens|max[_-]?output[_-]?tokens)$/i.test(String(finish || '').trim());
+}
 
 const LANGUAGE_RULES =
   '\n\nОбщие правила языка и письма: отвечай на языке собеседника, если он не попросил иначе. '
@@ -182,6 +190,11 @@ export function createEngine(opts) {
   const health = Object.create(null);   /* id → [ключевое состояние] */
   const lastCallAt = Object.create(null);
   const usage = Object.create(null);    /* id → { calls, ok, refused, dead, t } */
+  /* 0.211: точное число исходящих попыток этого экземпляра движка. Дверь
+     раньше списывала суточный запас по длине `tried`, куда не попадают
+     успешная голова, советы, чтение документа и починка — счёт был ниже
+     настоящего именно на сложных запросах. */
+  let attemptSeq = 0;
   /* Расход провайдеров для панели «Использование и Лимиты»: считаем каждую
      исходящую попытку и её исход. Карта `usage` выше — про этот запрос, а слой
      `usage` живёт на изолят и уезжает в KV (engine/usage.js). */
@@ -261,6 +274,7 @@ export function createEngine(opts) {
    */
   async function attemptOne(id, model, req, deadlineLeft) {
     /* Считаем попытку ДО сети: таймаут и отказ — тоже расход квоты провайдера. */
+    attemptSeq++;
     usageTrack.attempt(id, model);
     const budget = Math.min(TIMEOUT[req.tier] || 30000, deadlineLeft);
     /* Поток имеет смысл только там, где мы умеем его читать (req.sse) и есть кому его
@@ -364,6 +378,7 @@ export function createEngine(opts) {
    */
   async function run(input) {
     const started = Date.now();
+    const attemptsAtStart = attemptSeq;
     const deadline = started + Math.max(5000, Number(input.deadlineMs) || 45000);
     const text = String(input.text || '');
     const images = Array.isArray(input.images) ? input.images.slice(0, MAX_IMAGES) : [];
@@ -397,6 +412,29 @@ export function createEngine(opts) {
     }
     if (deep && (intent === 'fast' || intent === 'creative')) intent = 'reasoning';
     const tier = input.tier || tierFor(intent);
+    /* 0.211: бюджет ответа и ширина пула — параметры задачи, а не одна
+       цифра на всё. Быстрой болтовне хватает 1600 токенов и двух моделей у
+       провайдера; smart/глубокой/картиночной задаче даём 4000 и три модели.
+       Явные input/env сильнее, каталог модели всё равно зажмёт потолок в
+       buildRequest — щедрость здесь не превращается в 400 от провайдера. */
+    const maxTokensWanted = Math.round(clampNumber(
+      input.maxTokens || env.MAX_TOKENS,
+      64,
+      65536,
+      tier === 'smart' ? 4000 : 1600,
+    ));
+    const modelsPerProviderWanted = Math.max(1, Math.floor(clampNumber(
+      input.modelsPerProvider || env.MODELS_PER_PROVIDER,
+      1,
+      6,
+      tier === 'smart' || deep || images.length ? 3 : 2,
+    )));
+    const maxContinuationsWanted = Math.max(0, Math.floor(clampNumber(
+      input.maxContinuations != null ? input.maxContinuations : env.CHAT_CONTINUATIONS,
+      0,
+      5,
+      3,
+    )));
     /* Бесконечная память (0.195): ленту не режем вовсе — окно модели уместит
        нужное, не влезающее fit сожмёт в выжимку. Явный historyKeep сильнее. */
     let history = (Array.isArray(input.history) ? input.history : []).slice(-Number(input.historyKeep || Infinity));
@@ -663,6 +701,10 @@ export function createEngine(opts) {
           if (w > best) best = w;
         }
       }
+      /* Ручная каталожная модель может отсутствовать в статическом пуле.
+         Без неё «лучшее окно» оставалось 8192, и широкая выбранная голова
+         получала и контекст, и бюджет ответа маленькой модели. */
+      if (pin) best = Math.max(best, windowFor(pin.id, pin.model));
       return best;
     })();
 
@@ -676,7 +718,7 @@ export function createEngine(opts) {
        defer), потому что решение принимает движок, а не сборщик текста. */
     const docReads = [];
     if (Array.isArray(input.docs) && input.docs.length) {
-      const reserveOut = Math.max(64, Number(input.maxTokens) || 1200) + (images.length ? images.length * 1000 : 0);
+      const reserveOut = maxTokensWanted + (images.length ? images.length * 1000 : 0);
       const histTok = history.reduce((a, m) => a + estTokens(m && m.content) + 4, 0);
       const askTerms = longdoc.terms(text);
       /* Бюджет времени на чтение частей: меньше половины общего, чтобы у ответа
@@ -698,14 +740,17 @@ export function createEngine(opts) {
            берём с запасом вниз (×1.15 от окна в токенах — это ≈44 % окна в знаках). */
         const partChars = Math.max(longdoc.MIN_PART_CHARS, Math.floor(bestWindow * 1.15));
         const pl = longdoc.plan(body, askTerms, { partChars, terms: askTerms });
-        const reads = [];
-        for (const part of pl.parts) {
+        /* 0.211: части независимы — читаем их пулом из трёх «ниток», а не
+           суммой ожиданий. Порядок выписок после пула возвращаем в порядок
+           файла: модель должна видеть документ, а не гонку ответов. */
+        const readParts = await mapLimit(pl.parts, netCfg(env).docs, async (part) => {
           let got = '';
           const leftMs = mapEnd - Date.now();
           const slice = Math.max(0, Math.min(12000, leftMs));
           /* Голова совета (docsMap: false) файл видеть обязана — иначе совет голосует
-             по ответу, не видя документа, и правки приходят «мимо». Но восемь вызовов
-             на каждую голову — это квота впустую: ей хватает найденных по вопросу мест. */
+             по ответу, не видя документа, и правки приходят «мимо». Но вызовы
+             по частям на каждую голову совета — квота впустую: ей хватает
+             найденных по вопросу мест. */
           if (slice >= 4000 && input.docsMap !== false) {
             try {
               const r = await run({
@@ -720,8 +765,9 @@ export function createEngine(opts) {
           /* Модель не ответила — ищем нужное сами: это не «прочитал файл», но это
              найденное по вопросу место, и оно честно помечено в списке под ответом. */
           if (!got) got = longdoc.localPick(part.text, askTerms, 1200);
-          if (got) reads.push({ i: part.i, total: pl.total, text: got });
-        }
+          return got ? { i: part.i, total: pl.total, text: got } : null;
+        });
+        const reads = readParts.filter(Boolean).sort((a, b) => a.i - b.i);
         if (!reads.length) {
           userContent += '\n\n' + head + '\n' + body.slice(0, Math.max(2000, Math.floor(bestWindow * 1.5)));
           docReads.push({ name: d.name || 'файл', line: d.line || '', how: 'частично', parts: 0, total: pl.total, keep: '' });
@@ -823,7 +869,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
        звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */
     const needTokens = estTokens(pristine.system) + estTokens(pristine.text)
       + pristine.history.reduce((a, m) => a + estTokens(m && m.content), 0);
-    let fitted = fitContext({ ...pristine, images, env, maxOut: input.maxTokens || 1200, window: bestWindow });
+    let fitted = fitContext({ ...pristine, images, env, maxOut: maxTokensWanted, window: bestWindow });
     system = fitted.system;
     history = fitted.history;
     userContent = fitted.text;
@@ -837,7 +883,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
     function fitFor(providerId, model) {
       const w = windowFor(providerId, model);
       if (!fitted.window || w >= fitted.window) return fitted;
-      return fitContext({ ...pristine, images, env, maxOut: input.maxTokens || 1200, window: w });
+      return fitContext({ ...pristine, images, env, maxOut: maxTokensWanted, window: w });
     }
     /**
      * Длинный материал — вперёд те, у кого есть чем его принять.
@@ -1016,6 +1062,9 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
       /* Вердикт уезжает в ответ целиком: finish() собирает объект заново и сам по
          себе это поле не переносит, а без него вход отдавал payload без зацепок. */
       if (checkVerdict) out.check = checkVerdict;
+      /* После починки: в счёт входят основная очередь, советы, чтение
+         документа, продолжения и сам досыл починки. */
+      out.attempts = Math.max(0, attemptSeq - attemptsAtStart);
       return out;
     }
 
@@ -1094,7 +1143,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         tried.push({ provider: id, why: 'в пуле нет модели, которая читает картинки' });
         continue;
       }
-      const n = Math.max(1, Number(input.modelsPerProvider) || 2);
+      const n = modelsPerProviderWanted;
       /* 0.192: в смешанном пуле после зрячих очередь шла к слепым — та получала
          картинку (ошибка API, съеденная попытка) или, хуже, «отвечала» по тексту
          вопроса, не видя изображения (выдумка вместо честного отказа). Есть
@@ -1117,7 +1166,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         const fitNow = useReframe
           ? fitContext({
             system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
-            history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
+            history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
             text: toolsRes.block
               ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block
               : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
@@ -1128,7 +1177,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         if (useReframe) reframedCalls++;
         const req = buildRequest({
           cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
-          maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
+          maxTokens: fitNow.maxOut || maxTokensWanted, temperature: input.temperature, topP: input.topP,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
@@ -1143,7 +1192,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           keyIdx = nk; keysUsed.add(nk);
           const req2 = buildRequest({
             cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
-            maxTokens: input.maxTokens, temperature: input.temperature, topP: input.topP,
+            maxTokens: fitNow.maxOut || maxTokensWanted, temperature: input.temperature, topP: input.topP,
             presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           });
           req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent; req2.lexSource = lexSource; req2.agentGender = genderEff.agent;
@@ -1167,9 +1216,18 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
              другую модель и только путали бы («урезал на 5» — а кто урезал?). */
           ctxNotes = (fitNow.notes || []).slice();
           if (fitNow.overflow) ctxNotes = ctxNotes.concat([fitNow.overflow]);
-          /* Обрыв на лимите токенов: одна допылка у того же провайдера, не молча обрывать. */
+          /* Обрыв на лимите токенов: дописываем у того же провайдера.
+             0.211: не один сегмент, а до трёх (владельцу дверь может дать
+             пять), пока модель снова не скажет, что упёрлась в потолок.
+             Каждый сегмент живёт только в остатке общего дедлайна — раньше
+             внутренний run получал полный срок заново. */
           let reply = r.reply;
-          if (r.finish === 'length' && input.continueOnTruncate !== false) {
+          let finishReason = r.finish || '';
+          let continuations = 0;
+          while (isTruncatedFinish(finishReason)
+            && input.continueOnTruncate !== false
+            && continuations < maxContinuationsWanted
+            && (deadline - Date.now()) >= 5000) {
             /* Продолжение — новая генерация той же модели: она снова может начать
                с блока размышлений. Разбор потока обязан это знать, иначе тег и
                английские мысли уезжают человеку обычным текстом ответа (живой
@@ -1179,7 +1237,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
                тега (functions/api/chat.js). */
             if (onDelta) { try { onDelta({ kind: 'reset', provider: id, model }); } catch (e) { /* наблюдатель упал — поток не его вина */ } }
             const more = await run({
-              ...input, docs: null, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-900),
+              ...input, docs: null, text: 'Продолжи ровно с того места, где оборвался. Без повторов и вступлений.\n\nТы уже написал: ' + reply.slice(-1200),
               history: [], system: 'Ты продолжаешь оборванный ответ.', providerOrder: [id], continueOnTruncate: false,
               useTools: false, allowReframe: false,
               /* Продолжение — НЕ новый ход разговора. Без этой строки внутренний run()
@@ -1187,14 +1245,18 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
                  («Продолжи ровно с того места…» уезжало в профиль как реплика человека,
                  turns росло на 2), и на пустяковый дозапрос вставал отдельный совет. */
               noCouncils: true, noCheck: true, chatId: undefined,
-              maxTokens: Math.max(Number(input.maxTokens) || 1200, 1800),
+              deadlineMs: Math.max(5000, deadline - Date.now()),
+              maxContinuations: 0,
+              maxTokens: Math.max(maxTokensWanted, tier === 'smart' ? 4000 : 2400),
             });
-            if (more && more.reply && more.reply.length > 20) {
-              reply = style.polish(reply + '\n' + more.reply, { env, intent });
-            }
+            if (!more || !more.reply || more.reply.length <= 20) break;
+            reply = style.polish(reply + '\n' + more.reply, { env, intent });
+            finishReason = more.finish || '';
+            continuations++;
           }
           const hit = {
             reply, reasoning: r.reasoning, provider: id, model, intent, tier,
+            finish: finishReason, continuations,
             /* Сколько контекста занял этот запрос и в какое окно он влезал — по этим
                двум числам индикатор у поля ввода показывает заполнение честно, без
                догадок фронта. Числа берутся из подгонки, которая реально уехала
@@ -1241,12 +1303,12 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
       }
     }
 
-    /* Отказодавильня (0.198): мягко отказавшим — до ДВУХ эскалаций по порядку.
-       Творческий запрос (рассказ, сцена) переформулируется в творческой рамке,
-       остальные — в справочной. Время и лимит попыток соблюдаются. */
+    /* Отказодавильня (0.198; 0.211 — до трёх): мягко отказавшим — эскалации
+       по порядку. Творческий запрос (рассказ, сцена) переформулируется в
+       творческой рамке, остальные — в справочной. Время соблюдается. */
     if (reframed && softSeen.length && (deadline - Date.now()) >= 2500) {
       const creativeAsk = CREATIVE_ASK_RE.test(String(text || ''));
-      for (const cand of softSeen.slice(0, 2)) {
+      for (const cand of softSeen.slice(0, 3)) {
         if ((deadline - Date.now()) < 2500) break;
         const { id, model, cfg } = cand;
         const keyIdx = pickKey(P, id, health);
@@ -1256,7 +1318,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         /* Та же подгонка, что и в очереди: окно этой головы, история из pristine. */
         const refit = fitContext({
           system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
-          history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
+          history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
           text: toolsRes.block
             ? freedom.reframePrompt(text, { creative: creativeAsk }) + '\n\n' + toolsRes.block
             : freedom.reframePrompt(text, { creative: creativeAsk }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
@@ -1265,7 +1327,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         const req = buildRequest({
           cfg, keyIdx, model, provider: id, messages: curMessages,
           system: refit.system,
-          tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
+          tier, images, maxImages: MAX_IMAGES, maxTokens: refit.maxOut || maxTokensWanted, temperature: input.temperature,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
@@ -1275,6 +1337,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           if (refit.overflow) ctxNotes = ctxNotes.concat([refit.overflow]);
           const hit = {
             reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
+            finish: r.finish || '', continuations: 0,
             tools: toolsRes.used, sources: toolsRes.sources || [], webSteps: toolsRes.webSteps || [],
             /* «поиск лёг, отвечаю по Википедии» — не только модели, но и человеку:
                подпись под ответом берёт пометки отсюда (0.199). */
@@ -1347,14 +1410,14 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         lastCallAt[id] = Date.now();
         const refit = fitContext({
           system: pristine.system + '\n\n' + pass.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
-          history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
+          history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
           text: pass.prompt,
         });
         const curMessages = refit.history.concat([{ role: 'user', content: refit.text }]);
         const req = buildRequest({
           cfg, keyIdx, model, provider: id, messages: curMessages,
           system: refit.system,
-          tier, images, maxImages: MAX_IMAGES, maxTokens: input.maxTokens, temperature: input.temperature,
+          tier, images, maxImages: MAX_IMAGES, maxTokens: refit.maxOut || maxTokensWanted, temperature: input.temperature,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
@@ -1365,6 +1428,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           if (refit.overflow) ctxNotes = ctxNotes.concat([refit.overflow]);
           const hit = {
             reply: r.reply, reasoning: r.reasoning, provider: id, model, intent, tier,
+            finish: r.finish || '', continuations: 0,
             tools: [], sources: [], toolNotes: [],
             reframed: true, photoNeutral: true, photoStage: pass.stage, photoMode: pass.mode,
             photoSalvaged: !!r.photoSalvaged,
@@ -1444,7 +1508,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
     const vc = vcouncil.cfgOf(env);
     /* бесплатный пул живёт на квотах: 5 запросов в минуту на некоторых роутерах,
        поэтому число лишних вызовов на один ответ ограничено явно */
-    const budget = Math.max(0, Number(env.COUNCIL_BUDGET == null ? 4 : env.COUNCIL_BUDGET));
+    const budget = Math.max(0, Number(env.COUNCIL_BUDGET == null ? 6 : env.COUNCIL_BUDGET));
     let spent = 0;
     /* Общий бюджет ВРЕМЕНИ на весь совет, а не на каждую голову. Раньше у каждой
        волны был свой COUNCIL_MS: медлила одна голова — человек ждал и первую, и
@@ -1561,6 +1625,8 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
     return {
       ok: !!hit, reply: hit ? scrubToolMarkers(hit.reply) : '', reasoning: hit ? hit.reasoning : '',
       provider: hit ? hit.provider : '', model: hit ? hit.model : '',
+      finish: hit ? (hit.finish || '') : '', continuations: hit ? (hit.continuations || 0) : 0,
+      attempts: 0,
       tools: hit ? (hit.tools || []) : [],
       toolNotes: hit ? (hit.toolNotes || []) : [],
       sources: hit && Array.isArray(hit.sources) ? hit.sources : [],

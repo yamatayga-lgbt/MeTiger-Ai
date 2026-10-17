@@ -198,9 +198,9 @@ console.log('C31 — окно по модели, а не одно на всех'
 console.log('U — бесконечная память (0.195)');
 {
   /* Единичные капы высоки; env-ручки по-прежнему сильнее. */
-  const u = normalizeFields({ text: 'a'.repeat(120000), history: [{ role: 'user', text: 'х'.repeat(20000) }] }, {});
-  ok('U1: единичные капы — реплика 16 000, текст 96 000',
-    u.history[0].content.length === 16000 && u.text.length === 96000 && u.caps.msg === 16000,
+  const u = normalizeFields({ text: 'a'.repeat(120000), history: [{ role: 'user', text: 'х'.repeat(40000) }] }, {});
+  ok('U1: единичные капы 0.211 — реплика 32 000, текст 96 000',
+    u.history[0].content.length === 32000 && u.text.length === 96000 && u.caps.msg === 32000,
     JSON.stringify({ msg: u.history[0].content.length, text: u.text.length }));
 
   const big = normalizeFields({ text: 'давай', history: Array.from({ length: 1000 }, (_, i) => ({ role: 'user', text: 'р' + i })) }, {});

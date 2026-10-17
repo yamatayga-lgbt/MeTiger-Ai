@@ -174,7 +174,7 @@ console.log('\nD — большой документ: читаем по част
   const e = eng(null, { fetch: f });
   const r = await e.run({ text: 'срок оплаты?', docs: [{ name: 'том.pdf', line: 'pdf · 200 000 симв.', text: huge }] });
   const mapCalls = f.calls.filter((c) => /--- начало фрагмента ---/.test(c.sent));
-  ok('D15: частей больше потолка — читаем не больше восьми (квота бесплатных ключей)',
+  ok('D15: частей больше потолка — читаем не больше MAX_PARTS=16',
     r.ok === true && mapCalls.length <= longdoc.MAX_PARTS && /из \d+/.test(r.docs[0].line),
     JSON.stringify({ map: mapCalls.length, line: String(r.docs[0].line).slice(0, 80) }));
 }

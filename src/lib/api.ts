@@ -12,6 +12,7 @@
  */
 
 import { currentUserId, memoryAddress } from './identity'
+import { ownerCode } from './report'
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -63,6 +64,13 @@ export interface ChatResult {
   error?: string
   /** Что перебрал движок: провайдеры и причины. */
   tried?: { provider: string; model?: string; why?: string }[]
+  /** Точное число исходящих попыток, включая советы и чтение документов. */
+  attempts?: number
+  /** Как генерация закончилась у провайдера и сколько раз её дописывали. */
+  finish?: string
+  continuations?: number
+  /** Публичный обычный путь или владельческий приоритетный коридор. */
+  priority?: 'owner' | 'public'
   /** Какую модель выбрал человек, если до неё не дошло. */
   pinned?: string
   /** Выбранная модель не ответила — говорили другой. */
@@ -560,8 +568,9 @@ export async function sendChat(
      «связь оборвалась». Просьба извне (opts.deep, curl/скрипт) поднимает их сразу. */
   const SILENCE_MS = 45_000
   const startedAt = Date.now()
-  let ceilingMs = opts.deep ? 150_000 : 120_000
-  let firstWaitMs = opts.deep ? 120_000 : 75_000
+  const owner = ownerCode()
+  let ceilingMs = owner ? (opts.deep ? 180_000 : 150_000) : (opts.deep ? 150_000 : 120_000)
+  let firstWaitMs = owner ? (opts.deep ? 135_000 : 100_000) : (opts.deep ? 120_000 : 75_000)
   let timer = 0
   let alive = false
   const arm = (ms: number) => {
@@ -573,8 +582,8 @@ export async function sendChat(
      говорим приложению, что ответ будет собираться дольше обычного. */
   const onDepthEvent = (ev: SseEvent) => {
     if (!ev || ev.deep !== true) return
-    ceilingMs = 150_000
-    firstWaitMs = 120_000
+    ceilingMs = owner ? 180_000 : 150_000
+    firstWaitMs = owner ? 135_000 : 120_000
     arm(Math.min(firstWaitMs, ceilingMs - (Date.now() - startedAt)))
   }
   const onAlive = () => {
@@ -585,9 +594,11 @@ export async function sendChat(
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: opts.onDraft
-        ? { 'content-type': 'application/json', accept: 'text/event-stream' }
-        : { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(opts.onDraft ? { accept: 'text/event-stream' } : {}),
+        ...(owner ? { 'x-mt-owner': owner } : {}),
+      },
       signal: ac.signal,
       body: JSON.stringify({
         text,

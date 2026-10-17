@@ -19,6 +19,8 @@ import * as genderLayer from '../../engine/gender.js';
 import * as personaStyle from '../../engine/personastyle.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import { createDayCap, msToUtcMidnight } from '../../engine/daycap.js';
+import { isOwnerCode } from '../../engine/reports.js';
+import { netStats } from '../../engine/netpool.js';
 import { createBrave } from '../../engine/brave.js';
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
@@ -29,6 +31,19 @@ import { stats as skillStats } from '../../engine/skills.js';
 
 export function realClientIp(request, env) {
   return request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anon';
+}
+
+/** 0.211: владельческий коридор. Тот же код, что открывает ведомство и
+ * полную раскладку использования, в чате снимает ПУБЛИЧНЫЕ счётчики двери:
+ * частоту по IP и общий суточный резерв. Квоты самих провайдеров, окна
+ * моделей и физические потолки тела запроса он не отменяет — их отменить
+ * нельзя, можно только честно назвать. Без заголовка хэш даже не считаем. */
+export async function ownerPriorityOf(request, env) {
+  let code = '';
+  try { code = request.headers.get('x-mt-owner') || ''; } catch (e) { code = ''; }
+  if (!String(code).trim()) return false;
+  try { return await isOwnerCode(code, env && env.REPORT_OWNER_HASH); }
+  catch (e) { return false; }
 }
 
 
@@ -86,7 +101,7 @@ import { createProfile, memoryKey, sanitizeUserId } from '../../engine/profile.j
    требование к форме то же самое) — отдельного имени ради одной мысли не стоит
    заводить новый регексп. */
 const sanitizeOrigin = sanitizeUserId;
-import { compose as composeAttach, readDocBytes, readVoiceBytes, DOC_CHARS, IMAGE_NAME, sniffImageMime } from '../../engine/attach.js';
+import { compose as composeAttach, readDocBytes, readVoiceBytes, DOC_CHARS, IMAGE_NAME, MAX_IMAGES, sniffImageMime } from '../../engine/attach.js';
 import { createStt } from '../../engine/voicein.js';
 
 /* Карантин мёртвых провайдеров держим НАД движком: движок создаётся под каждый
@@ -208,7 +223,7 @@ export function memoryStore(env) {
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'POST, GET, OPTIONS',
-  'access-control-allow-headers': 'content-type',
+  'access-control-allow-headers': 'content-type, x-mt-owner',
   'access-control-max-age': '86400',
 };
 
@@ -229,7 +244,7 @@ export function humanLeft(ms) {
 /* Лимит частоты и карантин провайдеров.
    Карты живут в модуле — воркер создаётся на каждый запрос, и без общей карты
    счётчик обнулился бы в каждой request'е. Поверх них `engine/limits.js` надстраивает
-   общий слой в KV: тогда «12 запросов в минуту» держится на все изоляторы, а
+   общий слой в KV: тогда «30 запросов в минуту» держится на все изоляторы, а
    наказание провайдера переживает холодный старт. Без связки MEMORY карты остаются
    единственными — ровно то поведение, что было до слоя.
    Про задержку распространения: KV консервативно-согласован (запись доходит до
@@ -291,7 +306,14 @@ async function handlePost(context) {
   }
 
   const words = String((body && body.text) || '').trim();
-  if (words.length > 24000) return json({ ok: false, error: 'слишком длинный запрос' }, 413);
+  /* 0.211: дверь и ctxfit больше не спорят. Раньше вход отбивал текст на
+     24 000 знаках, хотя нормализация и подгонка под окно уже умели 96 000
+     и честно сжимали историю под конкретную голову. */
+  const maxWords = Math.max(1000, Number(env.CTX_MAX_TEXT) || 96000);
+  if (words.length > maxWords) {
+    return json({ ok: false, error: 'слишком длинный запрос: ' + words.length + ' знаков при потолке ' + maxWords }, 413);
+  }
+  const ownerPriority = await ownerPriorityOf(request, env);
 
   /* Пустой запрос отсекаем ДО потолка: он не должен съедать резерв дня. Вложение
      считается содержимым даже без слов — голос и фото читаются ниже. */
@@ -301,8 +323,8 @@ async function handlePost(context) {
   /* Суточный запас агента (0.202) — общий на всех, а не на адрес. Стоит ДО
      вложений нарочно: иначе исчерпанный день продолжал бы жечь распознавание
      голоса и картинок по каждому запросу, хотя ответ всё равно 503. Частотный лимит
-     выше считает «не части», этот — «не всё»: 12 запросов в минуту с одного IP это
-     ~17 000 в сутки, а весь бесплатный пул — около 9 900 попыток. Без потолка
+     выше считает «не части», этот — «не всё»: 30 запросов в минуту с одного IP — это
+     ~43 000 в сутки, а весь бесплатный пул — около 9 900 попыток. Без потолка
      десять адресов в ритме лимита выключали агента до полуночи UTC всем.
      Отказ — 503 с honest-причиной и временем сброса, а не общее «попробуйте позже». */
   const cap = createDayCap({
@@ -312,7 +334,9 @@ async function handlePost(context) {
     env, store: limitsStore(env),
     log: (lvl, msg) => { try { console.log('[daycap]', lvl, String(msg || '').slice(0, 160)); } catch (e) { /* молча */ } },
   });
-  const capNow = await cap.check();
+  const capNow = ownerPriority
+    ? Object.assign(cap.state(), { allowed: true, owner: true })
+    : await cap.check();
   if (!capNow.allowed) {
     const ms = capNow.resetInMs || msToUtcMidnight(Date.now());
     return json({
@@ -333,7 +357,7 @@ async function handlePost(context) {
   const images = Array.isArray(body.images)
     ? body.images.filter((x) => typeof x === 'string' && x.indexOf('data:') === 0)
     : [];
-  if (images.length > 2) return json({ ok: false, error: 'больше двух картинок я не спрашиваю' }, 413);
+  if (images.length > MAX_IMAGES) return json({ ok: false, error: 'больше ' + MAX_IMAGES + ' картинок за один вопрос я не спрашиваю' }, 413);
   for (const im of images) {
     if (im.length * 0.74 > MAX_IMG_BYTES) return json({ ok: false, error: 'картинка тяжелее ' + Math.round(MAX_IMG_BYTES / 1024 / 1024) + ' МБ — сожми её' }, 413);
   }
@@ -356,12 +380,12 @@ async function handlePost(context) {
   const text = composed ? composed.text : words;
   if (!text) return json({ ok: false, error: 'пустой запрос' }, 400);
   const allImages = images.concat((att && att.images) || []);
-  if (allImages.length > 2) allImages.length = 2;
+  if (allImages.length > MAX_IMAGES) allImages.length = MAX_IMAGES;
 
   const ip = realClientIp(request, env);
   const limits = limitsStore(env);
   const rate = createRateLimiter({ store: limits, cfg: limitsCfg(env), base: RATE_LOCAL });
-  if (env.RATE_LIMIT !== '0') {
+  if (env.RATE_LIMIT !== '0' && !ownerPriority) {
     const r = await rate.check(ip);
     if (r.limited) {
       return json({
@@ -395,20 +419,32 @@ async function handlePost(context) {
      забыть только свой кусок, см. forgetThread выше. */
   const threadId = sanitizeOrigin(body.threadId);
   const store = memoryStore(env);
-  /* Каталог моделей — до движка: без этого на холодном изоляте выбор модели из
-     каталога снимается молча, и человек получает ответ не той модели. */
-  await modelreg.warm(env, store, context.waitUntil);
   const memory = store ? createMemory({ store, env }) : null;
   if (memory && body.forget === true) {
     await memory.forget(chatId);
     return json({ ok: true, forgotten: true, chatId, memory: await memory.stats(chatId) });
   }
   const quarantine = createQuarantine({ store: limits, cfg: limitsCfg(env), base: QUARANTINE });
-  await quarantine.pull();
   /* Рейтинг смелых — тот же KV, другой ключ. Читаем до движка (порядок моделей
      нужен на этом же запросе), пишем после ответа и не чаще раза в минуту. */
   const brave = createBrave({ env, store });
-  await brave.pull();
+  const profilePromise = userId
+    ? Promise.resolve().then(() => createProfile({
+        env, store,
+        log: (k, m, x) => console.log(k, m, String(x || '').slice(0, 120)),
+      }).get(userId)).catch((e) => ({ ok: false, why: String((e && e.message) || e).slice(0, 120) }))
+    : Promise.resolve(null);
+  /* 0.211: каталог, карантин, рейтинг смелых и профиль друг от друга не
+     зависят. Раньше дверь ждала их по одному и платила суммой задержек KV
+     ещё до первого вызова модели; теперь это один параллельный предзапуск.
+     Каталог по-прежнему готов до движка — без него на холодном изоляте
+     выбор модели снимался молча. */
+  await Promise.allSettled([
+    modelreg.warm(env, store, context.waitUntil),
+    quarantine.pull(),
+    brave.pull(),
+    profilePromise,
+  ]);
   /* «Думать вслух» просит только фронт с включённым переключателем. Остальным
      рассуждения в потоке не нужны: это килобайты текста, которые никто не увидит,
      а лимиты и тариф провайдера считаются по нему так же, как по ответу. */
@@ -558,7 +594,7 @@ async function handlePost(context) {
   let profileGender = '';
   if (userId) {
     try {
-      const got = await createProfile({ env, store, log: (k, m, x) => console.log(k, m, String(x || '').slice(0, 120)) }).get(userId);
+      const got = await profilePromise;
       if (got && got.ok) {
         profileBlock = String(got.block || ''); profileWhy = got.why || '';
         /* 0.204: пол собеседника — отдельным полем в движок. До этого он жил
@@ -634,10 +670,17 @@ async function handlePost(context) {
     /* Явный запрос глубокого поиска («поиск» в панели ввода): принудительно зовёт
        web-search и читает первую найденную страницу, даже если в вопросе нет слова «погугли». */
     webSearch: body && body.webSearch === true ? true : undefined,
+    /* Владельческий коридор шире публичного: четыре модели у провайдера и
+       до пяти продолжений. Публичные значения движок выберет сам по полосе. */
+    modelsPerProvider: ownerPriority ? 4 : undefined,
+    maxContinuations: ownerPriority ? 5 : undefined,
     /* Глубокий прогон думает дольше — и теперь это решение агента, а не человека:
        потолок времени поднимается по вердикту судьи. Обычный вопрос, который ждёт
-       ответа секунду, права висеть полторы минуты не получает. */
-    deadlineMs: Number(env.CHAT_DEADLINE_MS || (wantDeep ? 75000 : 50000)),
+       ответа секунду, права висеть полторы минуты не получает. Владельцу —
+       75/105 секунд: его запросы не конкурируют с публичным счётчиком. */
+    deadlineMs: Number(ownerPriority
+      ? (env.OWNER_CHAT_DEADLINE_MS || (wantDeep ? 105000 : 75000))
+      : (env.CHAT_DEADLINE_MS || (wantDeep ? 75000 : 50000))),
   });
   /* Тег размышлений не показывается человеку ни в каком виде: ни закрытый посреди
      ответа, ни незакрытый хвостом. В потоке разбор чистит его по ходу (feedDelta),
@@ -660,9 +703,12 @@ async function handlePost(context) {
   /* Наказания, набранные в этом ответе, уходят в общее хранилище уже после того,
      как человек получил свой текст: одна запись не должна добавлять ему секунд. */
   /* Попытки к провайдерам считаются ПОСЛЕ ответа: до движка неизвестно, сколько
-     их будет, а заставлять человека ждать запись в KV нельзя. Берём длину
-     очереди, которую движок уже прошёл, — единица, если он не дошёл до провайдеров. */
-  const capBill = Math.max(1, (r0 && r0.tried && r0.tried.length) || 1);
+     их будет, а заставлять человека ждать запись в KV нельзя. 0.211 берёт
+     точный `attempts` движка (с советами, документом и починкой), а не длину
+     видимой очереди отказов; владелец публичный суточный запас не списывает. */
+  const capBill = ownerPriority
+    ? 0
+    : Math.max(1, Math.min(80, Number(r0 && r0.attempts) || ((r0 && r0.tried && r0.tried.length) || 0) + 1));
   const after = () => Promise.all([
     quarantine.flush().catch(() => null),
     brave.flush().catch(() => null),
@@ -671,7 +717,7 @@ async function handlePost(context) {
     engine.usageFlush().catch(() => null),
     /* Суточный запас списывается тем же фоном и пачками (engine/daycap.js):
        за сутки получается ~90 записей вместо тысяч, а ответ не ждёт хранилище. */
-    cap.take(capBill).catch(() => null),
+    ownerPriority ? Promise.resolve(null) : cap.take(capBill).catch(() => null),
   ]).then(() => null);
   if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 
@@ -713,6 +759,8 @@ async function handlePost(context) {
     attachNotes: att && att.notes.length ? att.notes : undefined,
     ok: true, reply: r.reply, reasoning: r.reasoning || '',
     provider: r.provider, model: r.model, intent: r.intent, tier: r.tier, ms: r.ms,
+    attempts: r.attempts || 0, finish: r.finish || '', continuations: r.continuations || 0,
+    priority: ownerPriority ? 'owner' : 'public',
     /* выбранная модель не смогла ответить — фронт подписывает это словами,
        чтобы «я выбрал X, а ответил Y» не выглядело поломкой выбора */
     pinned: r.pinned, pinMiss: !!r.pinMiss,
@@ -809,6 +857,9 @@ export async function onRequestGet(context) {
     imggen: imgLineOf(engine.img()),
     /* подгонка под окно модели: видно, какое окно считаем и включена ли резка */
     ctx: ctxStats(context.env).line,
+    /* сетевые «нитки» независимых работ и бюджеты ответа разных полос */
+    network: netStats(context.env),
+    answers: 'fast до 1600 токенов · smart до 4000 · продолжения по обрыву до 3 (владельцу 5)',
     /* профиль и адрес памяти: чем/personой храним и что умеем подставлять в промпт */
     profile: (() => {
       const st = createProfile({ env: context.env, store: memoryStore(context.env) }).stats();

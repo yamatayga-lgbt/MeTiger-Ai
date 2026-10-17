@@ -70,7 +70,7 @@ ok('U161g длинные документы живут в своём модул�
   /export function splitParts/.test(longdoc) && /export function plan/.test(longdoc)
     && /export function readPrompt/.test(longdoc) && /export function localPick/.test(longdoc)
     && /export function blockOf/.test(longdoc) && /export function lineOf/.test(longdoc)
-    && /export const MAX_PARTS = 8;/.test(longdoc) && /export const MIN_PART_CHARS = 2000;/.test(longdoc));
+    && /export const MAX_PARTS = 16;/.test(longdoc) && /export const MIN_PART_CHARS = 2000;/.test(longdoc));
 ok('U161h слова вопроса с цифрами («п. 7.3») считаются словами, а не выбрасываются',
   /&& !\/\\d\/\.test\(w\)/.test(bare(longdoc)) && /function terms/.test(longdoc));
 

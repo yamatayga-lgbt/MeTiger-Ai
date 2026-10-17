@@ -59,9 +59,9 @@ ok('C3 фронт уходит всей историей чата — без с�
 ok('C4 в двери и движке флага нет — режим не переключается',
   !/ctxUnlimited/.test(door) && !/ctxUnlimited/.test(engine))
 
-ok('C5 капы: реплика 16 000, текст 96 000, лента без предела (env-ручки сильнее)',
-  /msg: num\(env && env\.CTX_MAX_MSG, 16000\)/.test(ctxfit)
-    && /text: num\(env && env\.CTX_MAX_TEXT, 96000\)/.test(ctxfit)
+ok('C5 капы: реплика 32 000, текст 96 000, лента без предела (env-ручки сильнее)',
+  /const MAX_MSG = 32000/.test(ctxfit)
+    && /const MAX_TEXT = 96000/.test(ctxfit)
     && /history: num\(env && env\.CTX_MAX_HISTORY, Infinity\)/.test(ctxfit))
 
 /* ── выжимка: богатая, всегда ────────────────────────────────────────────── */

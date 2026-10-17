@@ -57,14 +57,14 @@ function storeOf(kv) {
 console.log('L — настройки');
 {
   const d = L.cfgOf({});
-  ok('L1: дефолты совпадают с тем, что было до слоя (12 в минуту)',
-    d.rateMax === 12 && d.rateWindowMs === 60000 && d.writeEveryMs === 60000 && d.probeAt === 3 && d.on === true,
+  ok('L1: публичный дефолт 0.211 — 30 запросов в минуту',
+    d.rateMax === 30 && d.rateWindowMs === 60000 && d.writeEveryMs === 60000 && d.probeAt === 3 && d.on === true,
     JSON.stringify(d));
   const e = L.cfgOf({ RATE_MAX: '4', RATE_WINDOW_MS: '30000', SHARED_LIMITS: '0', QUAR_TTL_MAX: '120' });
   ok('L2: env переопределяет, SHARED_LIMITS=0 выключает слой',
     e.rateMax === 4 && e.rateWindowMs === 30000 && e.on === false && e.quarTtlMaxSec === 120, JSON.stringify(e));
   ok('L3: мусор в env не ломает конфиг, а откатывает к дефолту',
-    L.cfgOf({ RATE_MAX: 'много' }).rateMax === 12 && L.cfgOf({ RATE_WINDOW_MS: '10' }).rateWindowMs === 60000);
+    L.cfgOf({ RATE_MAX: 'много' }).rateMax === 30 && L.cfgOf({ RATE_WINDOW_MS: '10' }).rateWindowMs === 60000);
   ok('L4: TTL никогда не короче 60 секунд (KV на коротком отказывает) и не больше потолка',
     L.ttlSec(1000) === 60 && L.ttlSec(0) === 60 && L.ttlSec(3600000, 600) === 600 && L.ttlSec(999 * 1e9) === L.KV_MAX_TTL_SEC,
     [L.ttlSec(1000), L.ttlSec(3600000, 600)].join('/'));
@@ -82,9 +82,9 @@ console.log('R — общий счётчик частоты');
 
   const solo = L.createRateLimiter({ cfg, now });
   let allowed = 0, blocked = 0;
-  for (let i = 0; i < 14; i++) { const r = await solo.check('1.1.1.1'); r.limited ? blocked++ : allowed++; }
-  ok('R1: без хранилища — ровно старое поведение: 12 проходят, дальше отказ',
-    allowed === 12 && blocked === 2, allowed + '/' + blocked);
+  for (let i = 0; i < cfg.rateMax + 2; i++) { const r = await solo.check('1.1.1.1'); r.limited ? blocked++ : allowed++; }
+  ok('R1: без хранилища проходят ровно rateMax, дальше отказ',
+    allowed === cfg.rateMax && blocked === 2, allowed + '/' + blocked);
   ok('R2: и ни одной попытки в сеть, когда байндинга нет', solo.stats().on === false && kv.puts === 0);
 
   const a = L.createRateLimiter({ store, cfg, now });
@@ -94,7 +94,7 @@ console.log('R — общий счётчик частоты');
   ok('R3b: и чтение у него одно — на начало окна, а не на каждый запрос',
     a.stats().reads === 1, JSON.stringify(a.stats()));
 
-  for (let i = 0; i < 19; i++) await a.check('8.8.8.8');
+  for (let i = 0; i < cfg.rateMax + 7; i++) await a.check('8.8.8.8');
   ok('R4: маркер блокировки пишется один раз на окно, а не на запрос',
     kv.puts === 1, 'записей: ' + kv.puts + ' ' + JSON.stringify(a.stats()));
   ok('R5: в хранилище лежит блокировка с TTL окна',
@@ -117,13 +117,13 @@ console.log('R — общий счётчик частоты');
   const broken = { get: async () => { throw new Error('KV unavailable'); }, put: async () => { throw new Error('KV unavailable'); }, delete: async () => {} };
   const d = L.createRateLimiter({ store: broken, cfg, now });
   let res = null, threw = null;
-  try { for (let i = 0; i < 13; i++) res = await d.check('5.5.5.5'); } catch (e) { threw = e; }
+  try { for (let i = 0; i < cfg.rateMax + 1; i++) res = await d.check('5.5.5.5'); } catch (e) { threw = e; }
   ok('R9: хранилище падает — лимит продолжает работать локально и ответ не падает',
     !threw && res && res.limited === true, String(threw) + ' ' + JSON.stringify(res));
 
   const off = L.createRateLimiter({ store, cfg: L.cfgOf({ SHARED_LIMITS: '0' }), now });
   const before = { r: kv.reads, w: kv.puts };
-  for (let i = 0; i < 14; i++) await off.check('7.7.7.7');
+  for (let i = 0; i < cfg.rateMax + 2; i++) await off.check('7.7.7.7');
   ok('R10: SHARED_LIMITS=0 — ни одной операции хранилища, считаем сами',
     kv.reads === before.r && kv.puts === before.w, JSON.stringify({ r: kv.reads - before.r, w: kv.puts - before.w }));
 }

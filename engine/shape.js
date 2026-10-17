@@ -113,19 +113,27 @@ export function buildRequest(o) {
   const model = String(o.model || '');
   const key = cfg.keys[o.keyIdx] || '';
   const url = (u) => u.replace('{acc}', cfg.account || '');
-  let maxTokens = o.maxTokens || (o.tier === 'smart' ? 2000 : 900);
+  let maxTokens = o.maxTokens || (o.tier === 'smart' ? 4000 : 1600);
   /* Потолок модели важнее нашей щедрости: бесплатные модели отдают 400 на
      max_tokens выше своего, а часть шлюзов — и на равном. Каталог знает настоящий
      потолок, поэтому режем здесь. Нет каталога — живём по-старому. */
   const ceil = catalogCeilings(catalogCached(), model, o.provider);
-  if (ceil) maxTokens = Math.max(64, Math.min(maxTokens, ceil.maxOut));
+  if (ceil) {
+    /* Вход и выход делят одно окно: просить у 4K-модели 4K вывода можно
+       только с пустым вопросом. Половина окна — практичный потолок тела
+       запроса; настоящий maxOut каталога остаётся вторым ограничителем. */
+    const windowShare = Number(ceil.ctx) > 0
+      ? Math.max(256, Math.floor(Number(ceil.ctx) * 0.5))
+      : maxTokens;
+    maxTokens = Math.max(64, Math.min(maxTokens, ceil.maxOut, windowShare));
+  }
   const temp = typeof o.temperature === 'number' ? o.temperature : 0.8;
   const topP = typeof o.topP === 'number' && Number.isFinite(o.topP) ? o.topP : undefined;
   /* -2..2, undefined = провайдеру ничего не шлём (его собственный дефолт, обычно 0). */
   const presencePenalty = typeof o.presencePenalty === 'number' && Number.isFinite(o.presencePenalty) ? o.presencePenalty : undefined;
   const frequencyPenalty = typeof o.frequencyPenalty === 'number' && Number.isFinite(o.frequencyPenalty) ? o.frequencyPenalty : undefined;
   const pics = (Array.isArray(o.images) ? o.images : [])
-    .map(parseDataUrl).filter(Boolean).slice(0, o.maxImages || 2);
+    .map(parseDataUrl).filter(Boolean).slice(0, o.maxImages || 4);
 
   /* Контекст у бесплатных моделей маленький (половина — 8–32К). Один лишний ход
      истории превращает запрос в 400 «context length exceeded», и очередь уходит

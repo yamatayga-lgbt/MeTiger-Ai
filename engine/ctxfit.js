@@ -26,9 +26,9 @@
 const CHARS_PER_TOKEN_LATIN = 4;
 const CHARS_PER_TOKEN_CYR = 2.6;
 const MAX_SYSTEM = 32000;
-const MAX_MSG = 4000;
+const MAX_MSG = 32000;
 const MAX_HISTORY = 12;
-const MAX_TEXT = 24000;
+const MAX_TEXT = 96000;
 /**
  * Потолок окна, когда каталог говорит, что модель тянет больше.
  *
@@ -81,8 +81,8 @@ export function normalizeFields(body, env) {
      не влезает в окно модели, сжимается в выжимку на этапе fit(), а не теряется. */
   const cap = {
     system: num(env && env.CTX_MAX_SYSTEM, MAX_SYSTEM),
-    msg: num(env && env.CTX_MAX_MSG, 16000),
-    text: num(env && env.CTX_MAX_TEXT, 96000),
+    msg: num(env && env.CTX_MAX_MSG, MAX_MSG),
+    text: num(env && env.CTX_MAX_TEXT, MAX_TEXT),
     /* 0.195 «Бесконечная память»: лента не ограничена вовсе — с любой длиной
        справляются окно модели и выжимка; env-ручкой CTX_MAX_HISTORY всё ещё
        можно ужать. */
@@ -127,7 +127,7 @@ export function normalizeFields(body, env) {
   let maxTokens;
   const rawMax = o.maxTokens != null ? o.maxTokens : o.max_tokens;
   if (rawMax != null && Number.isFinite(Number(rawMax)) && Number(rawMax) > 0) {
-    maxTokens = Math.round(clampNumber(rawMax, 64, 32768, 2048));
+    maxTokens = Math.round(clampNumber(rawMax, 64, 65536, 2048));
   }
 
   let topP;
@@ -200,7 +200,18 @@ export function fit(ctx) {
      groq-голове и восьми тысяч много). Настройка оператора (CTX_WINDOW) остаётся
      главной: она и есть «не расти выше этого» — тесты и отладка живут на ней. */
   const window = clampNumber(o.window, 1200, 1000000, clampNumber(env.CTX_WINDOW, 1200, 1000000, 8192));
-  const maxOut = clampNumber(env.CTX_MAX_OUT, 64, 32000, num(o.maxOut, 900));
+  const envMaxOut = Number(env.CTX_MAX_OUT);
+  const hasEnvMaxOut = Number.isFinite(envMaxOut) && envMaxOut > 0;
+  const requestedOut = hasEnvMaxOut
+    ? clampNumber(envMaxOut, 64, 65536, 1600)
+    : clampNumber(o.maxOut, 64, 65536, 1600);
+  /* Бюджет вызывающего не может занять больше четверти маленького окна:
+     иначе «4000 на ответ» у 8K-головы режут не историю, а хвост системных
+     указаний, ради которых вызов и делался, а у окна 2000 дают overflow.
+     Явный CTX_MAX_OUT оператора сильнее — это его ручка, а не наша догадка. */
+  const maxOut = hasEnvMaxOut
+    ? requestedOut
+    : Math.min(requestedOut, Math.max(256, Math.floor(window * 0.25)));
   const on = String(env.CTX_FIT || '') !== 'off';
   const notes = [];
   const out = {
@@ -208,7 +219,7 @@ export function fit(ctx) {
     history: Array.isArray(o.history) ? o.history.slice() : [],
     text: String(o.text || ''),
     notes, cut: { dropped: 0, digest: '', systemTrimmed: false, textTrimmed: 0 },
-    tokens: 0, window, overflow: 0,
+    tokens: 0, window, maxOut, overflow: 0,
   };
   /* картинки стоят дорого и сжать их нечем — снимаем с бюджета по ~1000 токенов */
   const reserve = maxOut + (Array.isArray(o.images) ? o.images.length : 0) * 1000;
@@ -299,7 +310,7 @@ export function fit(ctx) {
 export function lineOf(env) {
   if (String((env || {}).CTX_FIT || '') === 'off') return 'выключен (CTX_FIT=off)';
   return 'окно ' + num((env || {}).CTX_WINDOW, 8192) + ' токенов (или потолок модели из каталога, он же не выше '
-    + num((env || {}).CTX_WINDOW_MAX, CTX_WINDOW_MAX) + ') · резерв на ответ ' + num((env || {}).CTX_MAX_OUT, 900);
+    + num((env || {}).CTX_WINDOW_MAX, CTX_WINDOW_MAX) + ') · резерв на ответ ' + num((env || {}).CTX_MAX_OUT, 1600);
 }
 
 export function stats(env) {
@@ -307,7 +318,7 @@ export function stats(env) {
     on: String((env || {}).CTX_FIT || '') !== 'off',
     window: num((env || {}).CTX_WINDOW, 8192),
     windowMax: num((env || {}).CTX_WINDOW_MAX, CTX_WINDOW_MAX),
-    maxOut: num((env || {}).CTX_MAX_OUT, 900),
+    maxOut: num((env || {}).CTX_MAX_OUT, 1600),
     caps: { system: MAX_SYSTEM, msg: MAX_MSG, text: MAX_TEXT, history: MAX_HISTORY },
     line: lineOf(env),
   };
