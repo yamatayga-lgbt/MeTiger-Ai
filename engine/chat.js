@@ -782,6 +782,17 @@ const photoFallbackReply = (q) => 'Честно о фото: я переспро
     const lexTexts = [text].concat(history.filter((m) => m && m.role === 'user').slice(-4).map((m) => String(m.content || '')));
     const lexBlock = isDefaultSys ? lexicon.mirrorBlock(lexTexts, env) : '';
     const lexSource = isDefaultSys ? lexTexts : null;   /* чужая system — чужая территория: ни блока, ни обратной замены */
+    /* 0.208, второй заход: расшифровка в системном блоке слабые головы живьём
+       проигнорировали («ctrc» → страховая компания / «не знаю, уточните»).
+       Та же расшифровка строкой СРАЗУ после реплики человека не игнорируется.
+       Его текст едет как написан — приписка идёт после него и в скобках. */
+    if (isDefaultSys && typeof userContent === 'string') {
+      const pairs = lexicon.obfuscatedMap([text]);
+      if (pairs.length) {
+        userContent += '\n\n[расшифровка моего искажённого написания: '
+          + pairs.map((p) => '«' + p.raw + '» = «' + p.norm + '»').join(', ') + ']';
+      }
+    }
 const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (images.length ? '\n\n' + VISION_ANSWER : '') + (images.length && PRO_PHOTO_RE.test(String(text || '')) ? '\n\n' + VISION_PRO : ''), history, text: userContent };
     /* Сколько токенов просит этот запрос без резки — по этому числу движок решает,
        звать ли на длинный материал модель с большим окном (см. wideFirst ниже). */

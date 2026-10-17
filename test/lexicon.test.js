@@ -369,6 +369,14 @@ console.log('\nРасшифровка искажённых в подсказке
     })()
       && obfuscatedWords(['про Dro4ку и с е к с']).join('|') === 'с е к с|Dro4ку'
       && mirrorBlock(['расскажи про ctrc']).includes('«ctrc» читай как «секс»'))
+  const bodies = []
+  const fDec = async (url, init) => { try { bodies.push(JSON.parse(init.body)) } catch {} return { status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: 'понял' }, finish_reason: 'stop' }] }) } }
+  const eDec = createEngine({ env: { GROQ_KEYS: 'g1' }, fetch: fDec, sleep: async () => {} })
+  await eDec.run({ text: 'расскажи коротко про ctrc и её риски', noCouncils: true })
+  const userMsgs = bodies.flatMap((b) => (b.messages || []).filter((m) => m.role === 'user').map((m) => String(m.content)))
+  ok('T5: расшифровка едет и сразу после реплики человека (системной слабым головам мало)',
+    userMsgs.some((c) => c.includes('про ctrc и её риски') && c.includes('[расшифровка моего искажённого написания: «ctrc» = «секс»]')),
+    JSON.stringify(userMsgs.slice(-1)))
 }
 
 console.log('\n' + pass + ' пройдено, 0 провалено')
