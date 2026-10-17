@@ -84,6 +84,12 @@ export function requestsWord(n: number): string {
 /** «9 788 запросов из 9 900» — одна строка для панели и для подписи кнопки. */
 export function poolLine(pool: LimitsPool | null | undefined): string {
   if (!pool || pool.pct == null) return 'общего запаса нет: ни один источник не отозвался'
+  /* 0.202: без кода владельца /api/usage отдаёт только процент — имён
+     провайдеров и абсолютных чисел наружу больше нет. Считать «сколько из
+     скольких» не из чего, поэтому честно говорим долю, а не выдумываем нули. */
+  if (!Number.isFinite(Number(pool.remaining)) || !Number.isFinite(Number(pool.capacity))) {
+    return `осталось ${fmtPct(pool.pct)} общего дневного запаса`
+  }
   const left = Math.max(0, Math.round(pool.remaining)).toLocaleString('ru-RU')
   const all = Math.max(0, Math.round(pool.capacity)).toLocaleString('ru-RU')
   return `осталось ${left} ${requestsWord(pool.remaining)} из ${all}`
@@ -95,7 +101,7 @@ export function poolLine(pool: LimitsPool | null | undefined): string {
  */
 export function poolNote(pool: LimitsPool | null | undefined): string {
   if (!pool || pool.pct == null) return 'источники не отвечают'
-  if (isExhausted(pool.pct)) return 'запас на сегодня кончился — квоты источника обнулятся после полуночи по UTC'
+  if (isExhausted(pool.pct)) return 'запас на сегодня кончился — новый откроется после полуночи по UTC'
   if (pool.pct < 20) return 'запас на исходе — отвечать будет труднее'
   if (pool.pct < 50) return 'запас убывает'
   return 'запас в порядке'

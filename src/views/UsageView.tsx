@@ -122,6 +122,10 @@ export function UsageView() {
   }, [at])
 
   const device = telemetrySummary()
+  /* 0.202: без кода владельца ответ — только «жив/лимит». Экран не притворяется,
+     что чисел нет случайно: он так и говорит и показывает то, что правда живёт на
+     этом устройстве (замеры ниже — они локальные и работают всегда). */
+  const pub = data?.scope === 'public'
   const rows = data?.providers || []
   const minuteSum = rows.reduce((a, r) => a + (r.minute || 0), 0)
   const totals = data?.totals || { attempt: 0, ok: 0, refused: 0, dead: 0 }
@@ -137,8 +141,8 @@ export function UsageView() {
         <div className="grow">
           <h1>Использование и Лимиты</h1>
           <p className="sub">
-            Расход провайдеров за сутки по UTC
-            {data ? ` · сброс квот через ${fmtDuration(data.resetInMs)}` : ''}.
+            {pub ? 'Общий запас агента за сутки по UTC' : 'Расход провайдеров за сутки по UTC'}
+            {data ? ` · сброс через ${fmtDuration(data.resetInMs)}` : ''}.
           </p>
         </div>
         <Activity size={22} color="var(--text-3)" style={{ marginTop: 4, flexShrink: 0 }} />
@@ -168,13 +172,16 @@ export function UsageView() {
           <div className="grow">
             <div className="usage-pool-n">Общий запас агента: {fmtPct(data.pool.pct)}</div>
             <div className="usage-pool-d">
-              {poolLine(data.pool)} · источников за цифрой: {data.pool.live}
+              {poolLine(data.pool)}
+              {typeof data.pool.live === 'number' ? ` · источников за цифрой: ${data.pool.live}` : ''}
+              {data.cap && data.cap.on === false ? ' · суточный потолок выключен' : ''}
             </div>
           </div>
         </div>
       ) : null}
 
       <div className="usage-cards">
+        {!pub ? (
         <div className="usage-card">
           <div className="usage-cap">Запросов сегодня</div>
           <div className="usage-num">{totals.attempt}</div>
@@ -182,6 +189,7 @@ export function UsageView() {
             {totals.ok} с ответом · {totals.refused} отказ · {totals.dead} сбой
           </div>
         </div>
+        ) : null}
         <div className="usage-card">
           <div className="usage-cap">На этом устройстве</div>
           <div className="usage-num">{device.today}</div>
@@ -190,20 +198,30 @@ export function UsageView() {
             {device.tokPerSec ? ` · ~${device.tokPerSec} ток/с` : ''}
           </div>
         </div>
+        {!pub ? (
         <div className="usage-card">
           <div className="usage-cap">В минуту</div>
           <div className="usage-num">{minuteSum}</div>
           <div className="usage-sub">нижняя оценка · по минутным маркам</div>
         </div>
+        ) : (
+        <div className="usage-card">
+          <div className="usage-cap">До сброса</div>
+          <div className="usage-num">{data ? fmtDuration(data.resetInMs) : '—'}</div>
+          <div className="usage-sub">в 00:00 UTC, по ней считаются квоты</div>
+        </div>
+        )}
+        {!pub ? (
         <div className="usage-card">
           <div className="usage-cap">Хранилище</div>
           <div className="usage-num">{data?.kv ? 'KV' : '—'}</div>
           <div className="usage-sub">
             {data?.kv
-              ? `запись раз в ${Math.round((data.precision.writeMs || 0) / 1000)} с`
+              ? `запись раз в ${Math.round((data.precision?.writeMs || 0) / 1000)} с`
               : 'без KV — счёт живёт в памяти изолята'}
           </div>
         </div>
+        ) : null}
       </div>
 
       {/* Живость и скорость (0.164). Стоит выше серверных чисел нарочно: это
@@ -280,6 +298,24 @@ export function UsageView() {
                   {error
                     ? 'Числа появятся, как только ответит GET /api/usage — прежних не подставляю, чтобы не выдать их за свежие.'
                     : 'Это займёт меньше секунды.'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : pub ? (
+        /* Публичный ярус (0.202): имён провайдеров, ключей и расхода наружу больше
+           нет — это было открыто любому, кто наберёт /api/usage. Вместо пустоты
+           объясняем честно, что показано и почему. */
+        <div className="settings-group">
+          <div className="settings-card">
+            <div className="settings-row">
+              <div className="grow">
+                <div className="n">Раскладка по источникам скрыта</div>
+                <div className="d">
+                  Это «жив/лимит»: процент общего запаса и время сброса. Имена
+                  провайдеров, ключи и расход видит только владелец — по коду
+                  устройства. Замеры ниже — ваши собственные, они никуда не уходят.
                 </div>
               </div>
             </div>

@@ -18,12 +18,14 @@
 import { buildTable } from '../../engine/providers.js';
 import { createUsage, poolOf } from '../../engine/usage.js';
 import { limitsInfo } from '../../engine/limits.js';
+import { createDayCap } from '../../engine/daycap.js';
+import { isOwnerCode } from '../../engine/reports.js';
 import { memoryStore, limitsStore } from './chat.js';
 
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, OPTIONS',
-  'access-control-allow-headers': 'content-type',
+  'access-control-allow-headers': 'content-type, x-mt-owner',
   'access-control-max-age': '86400',
 };
 
@@ -35,6 +37,28 @@ const json = (data, status = 200) =>
 
 export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS });
+}
+
+/** Владелец ли это. Код — тот же, что у «Ведомства» (report.js): заголовок
+ *  x-mt-owner с его устройства, а для curl — `?code=`. Отпечаток сверяется,
+ *  сам код нигде в коде не лежит. */
+async function ownerOk(request, env) {
+  if (!request) return false;
+  let code = '';
+  try { code = request.headers.get('x-mt-owner') || ''; } catch (e) { code = ''; }
+  if (!code) {
+    try { code = new URL(request.url).searchParams.get('code') || ''; } catch (e) { code = ''; }
+  }
+  if (!code) return false;
+  try { return await isOwnerCode(code, env && env.REPORT_OWNER_HASH); } catch (e) { return false; }
+}
+
+/** Процент остатка с десятыми — та же арифметика, что у poolOf, чтобы кольцо
+ *  в шапке и панель не расходились на округлении. */
+function pctLeft(used, max) {
+  const m = Number(max) || 0;
+  if (!m) return null;
+  return Math.max(0, Math.min(100, ((m - Math.max(0, Number(used) || 0)) / m) * 100));
 }
 
 /** Сколько осталось до полуночи по UTC — момента, когда суточные квоты провайдеров
@@ -52,6 +76,7 @@ export async function onRequestGet(context) {
   let force = false;
   try { force = !!request && new URL(request.url).searchParams.get('refresh') === '1'; } catch (e) { force = false; }
 
+  const owner = await ownerOk(request, env);
   const store = memoryStore(env);
   const usage = createUsage({ env, store });
   await usage.pull({ force });
@@ -116,6 +141,46 @@ export async function onRequestGet(context) {
      ко всем живым источникам ещё можно сделать сегодня и сколько это в долях.
      Считает движок (poolOf) — дверь только отдаёт наружу. */
   const pool = poolOf(rows);
+
+  /* Суточный потолок (0.202) — теперь главный ограничитель: провайдерских квот
+     больше, чем разрешено потратить за сутки. Панель и кольцо показывают остаток
+     именно по нему, иначе «98 %» стояло бы при уже закрытой двери. */
+  const capPeek = await createDayCap({ env, store: limitsStore(env) }).peek();
+  const capPct = capPeek.on ? pctLeft(capPeek.used, capPeek.max) : null;
+  const capOut = {
+    on: capPeek.on,
+    pct: capPct,
+    used: capPeek.used,
+    max: capPeek.max,
+    remaining: capPeek.remaining,
+    blocked: !!capPeek.blocked,
+    degraded: !!capPeek.degraded,
+    resetInMs: capPeek.resetInMs,
+    day: capPeek.day,
+    note: 'потолок общий на всех: попытки к провайдерам за сутки UTC, резерв кусками по '
+      + capPeek.chunk + ' — отсюда дробные числа в KV и точность «примерно»',
+  };
+
+  /* Дверь двухъярусная (0.202). Раньше ответ был публичным целиком: имена
+     провайдеров, у кого есть ключ, расход и паузы — всё это открывалось любому,
+     кто наберёт /api/usage (так и было найдено в аудите). Без кода владельца
+     наружу уходит только «жив/лимит»: процент общего запаса и время сброса.
+     Полная раскладка — по коду, тем же, что у «Ведомства». */
+  if (!owner) {
+    return json({
+      ok: true,
+      scope: 'public',
+      day: snap.day,
+      tz: 'UTC',
+      resetInMs: msToUtcMidnight(snap.at),
+      /* То же поле `pool`, что читают кольцо и панель: без кода в нём один
+         процент, чтобы экран не разбирал два разных ответа двумя ветками. */
+      pool: { pct: capPeek.on ? capPct : pool.pct },
+      cap: { on: capPeek.on, pct: capPct, blocked: !!capPeek.blocked, resetInMs: capPeek.resetInMs },
+      note: 'полная раскладка по провайдерам — только у владельца (заголовок x-mt-owner)',
+    });
+  }
+
   return json({
     ok: true,
     at: snap.at,
@@ -126,6 +191,8 @@ export async function onRequestGet(context) {
     off: !!snap.off,
     totals: snap.totals,
     pool,
+    cap: capOut,
+    scope: 'owner',
     providers: rows,
     rate: { max: rate.rateMax, windowMs: rate.windowMs, on: rate.on, why: rate.why || '' },
     failover,

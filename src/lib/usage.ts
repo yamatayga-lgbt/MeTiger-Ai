@@ -13,6 +13,24 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LimitsPool } from './limits'
+import { ownerCode } from './report'
+
+/**
+ * Дверь /api/usage двухъярусная (0.202). Без кода владельца сервер отдаёт только
+ * «жив/лимит»: процент общего дневного запаса и время сброса. Полная раскладка по
+ * провайдерам — по коду (тот же, что у «Ведомства»). Заголовок шлём, когда код на
+ * устройстве есть; сервер сам решит, подошёл ли он, — клиент про это ничего не знает.
+ */
+function ownerHeaders(): Record<string, string> {
+  const h: Record<string, string> = { accept: 'application/json' }
+  try {
+    const code = ownerCode()
+    if (code) h['x-mt-owner'] = code
+  } catch {
+    /* приватный режим — попросим публичную дверь */
+  }
+  return h
+}
 
 export interface UsagePause {
   until: number
@@ -38,23 +56,33 @@ export interface UsageRow {
   pct: number | null
 }
 
+/**
+ * Что сервер отдал. `scope:'public'` — без кода владельца: есть только pool.pct и
+ * cap, полей providers/totals/precision нет вовсе. Все «полные» поля поэтому
+ * необязательные: экран обязан работать на обоих ярусах, а тип — напоминать об этом.
+ */
 export interface UsageSnapshot {
   ok: boolean
-  at: number
+  /** 'public' — «жив/лимит»; 'owner' — полная раскладка (или старый сервер: undefined). */
+  scope?: 'public' | 'owner'
+  at?: number
   day: string
   tz: string
   resetInMs: number
-  kv: boolean
-  off: boolean
-  totals: { attempt: number; ok: number; refused: number; dead: number }
+  kv?: boolean
+  off?: boolean
+  totals?: { attempt: number; ok: number; refused: number; dead: number }
   /** Общий запас агента (0.179) — та же цифра, что у кольца в шапке: сервер
       складывает дневные потолки живых источников и уже сделанный расход. */
   pool: LimitsPool
-  providers: UsageRow[]
-  rate: { max: number; windowMs: number; on: boolean; why: string }
+  /** Суточный потолок (0.202) — теперь он главный ограничитель, а не квоты. */
+  cap?: UsageCap
+  providers?: UsageRow[]
+  rate?: { max: number; windowMs: number; on: boolean; why: string }
   /** Подхват: имена моделей, живущие у двух и более провайдеров. */
   failover?: { count: number; sample: { model: string; providers: string[] }[] }
-  precision: {
+  note?: string
+  precision?: {
     approx: boolean
     writeMs: number
     readMs: number
@@ -64,6 +92,23 @@ export interface UsageSnapshot {
     unsaved: number
     note: string
   }
+}
+
+/**
+ * Суточный потолок агента (0.202): общий на всех, попытки к провайдерам за сутки UTC.
+ * `pct` — сколько осталось в процентах; `on:false` — потолок выключен владельцем.
+ */
+export interface UsageCap {
+  on: boolean
+  pct?: number | null
+  used?: number
+  max?: number
+  remaining?: number | null
+  blocked?: boolean
+  degraded?: boolean
+  resetInMs?: number
+  day?: string
+  note?: string
 }
 
 export interface UsageResult {
@@ -76,7 +121,7 @@ export interface UsageResult {
 export async function fetchUsage(refresh = false): Promise<UsageResult> {
   try {
     const res = await fetch(`/api/usage${refresh ? '?refresh=1' : ''}`, {
-      headers: { accept: 'application/json' },
+      headers: ownerHeaders(),
       cache: 'no-store',
     })
     if (!res.ok) return { ok: false, error: `сервер ответил ${res.status}` }

@@ -11,7 +11,10 @@
  */
 import { createUsage, sharedUsage, resetSharedUsage, dayKeyOf, minuteOf, poolOf, storeOf, USAGE_DAY_TTL_SEC } from '../engine/usage.js';
 import { createEngine } from '../engine/chat.js';
+import { ownerHash } from '../engine/reports.js';
+import { createDayCap, capCfg, capDayOf, msToUtcMidnight, DAY_CAP_DEFAULT } from '../engine/daycap.js';
 import { onRequestGet as usageGet } from '../functions/api/usage.js';
+import { onRequestPost as chatPost } from '../functions/api/chat.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -290,15 +293,43 @@ console.log('V — врезка в движок');
 
 console.log('W — дверь GET /api/usage');
 {
-  const ctx = () => ({
-    env: { GROQ_KEYS: 'g1,g2', GEMINI_KEYS: 'gm1', NOKEY_KEYS: '' },
-    request: new Request('https://metiger-ai.pages.dev/api/usage'),
+  /* 0.202: дверь двухъярусная. Без кода владельца — «жив/лимит» (процент и сброс),
+     с кодом — полная раскладка. Код в тесте подставной: отпечаток сверяется через
+     env.REPORT_OWNER_HASH, как у «Ведомства», а сам код — только здесь. */
+  const OWNER = 'W-OWNER-1';
+  const OWNER_HASH = await ownerHash(OWNER);
+  const ENV_W = { GROQ_KEYS: 'g1,g2', GEMINI_KEYS: 'gm1', NOKEY_KEYS: '', REPORT_OWNER_HASH: OWNER_HASH };
+  const H = { 'x-mt-owner': OWNER };
+  const ctx = (headers) => ({
+    env: ENV_W,
+    request: new Request('https://metiger-ai.pages.dev/api/usage', { headers: headers || {} }),
   });
-  const res = await usageGet(ctx());
+  const res = await usageGet(ctx(H));
   const data = await res.json();
   ok('W1: ответ есть всегда и в нём есть счёт, потолки и сноска точности',
     data.ok === true && !!data.totals && !!data.precision && /изолят/i.test(data.precision.note),
     JSON.stringify(data).slice(0, 180));
+  {
+    const open = await (await usageGet(ctx())).json();
+    ok('W1b: публичный ответ — процент запаса и время сброса, и больше ничего',
+      open.ok === true && open.scope === 'public'
+        && typeof open.pool.pct === 'number'
+        && open.cap && typeof open.cap.resetInMs === 'number'
+        && !open.providers && !open.totals && !open.failover && !open.precision
+        && !('kv' in open) && !('rate' in open),
+      JSON.stringify(open).slice(0, 220));
+    ok('W1c: в публичном ответе нет ни одного имени провайдера и ни одного ключа',
+      !/groq|gemini|openrouter|llm7|kilo|keys|балл/i.test(JSON.stringify(open)),
+      JSON.stringify(open).slice(0, 220));
+    const wrong = await (await usageGet(ctx({ 'x-mt-owner': 'NOT-THE-CODE' }))).json();
+    ok('W1d: неверный код не открывает раскладку — падает в публичный ярус',
+      wrong.scope === 'public' && !wrong.providers, 'scope=' + wrong.scope);
+    const url = new Request('https://metiger-ai.pages.dev/api/usage?code=' + encodeURIComponent(OWNER));
+    const byUrl = await (await usageGet({ env: ENV_W, request: url })).json();
+    ok('W1e: curl получает раскладку тем же кодом через ?code= — заголовки не обязательны',
+      byUrl.scope === 'owner' && Array.isArray(byUrl.providers) && byUrl.providers.length > 0,
+      'scope=' + byUrl.scope);
+  }
   const groq = data.providers.find((p) => p.id === 'groq');
   ok('W2: суточный потолок берётся из таблицы провайдеров, остаток посчитан',
     groq && groq.dayLimit === 1000 && groq.remaining === 1000 && groq.rpm === 30 && groq.live === true,
@@ -328,8 +359,8 @@ console.log('W — дверь GET /api/usage');
     JSON.stringify(data.failover && { count: data.failover.count, first: data.failover.sample && data.failover.sample[0] }).slice(0, 200));
 
   const klCtx = () => ({
-    env: {},
-    request: new Request('https://metiger-ai.pages.dev/api/usage'),
+    env: { REPORT_OWNER_HASH: OWNER_HASH },
+    request: new Request('https://metiger-ai.pages.dev/api/usage', { headers: H }),
   });
   const klData = await (await usageGet(klCtx())).json();
   const row = klData.providers.find((p) => p.id === 'llm7');
@@ -361,7 +392,7 @@ console.log('W — дверь GET /api/usage');
   track.outcome('groq', 'refused');
   await track.flush({ force: true });
   const kvEnv = { GROQ_KEYS: 'g1', MEMORY: kv };
-  const res2 = await usageGet({ env: kvEnv, request: new Request('https://metiger-ai.pages.dev/api/usage?refresh=1') });
+  const res2 = await usageGet({ env: Object.assign({ REPORT_OWNER_HASH: OWNER_HASH }, kvEnv), request: new Request('https://metiger-ai.pages.dev/api/usage?refresh=1', { headers: H }) });
   const data2 = await res2.json();
   const g2 = data2.providers.find((p) => p.id === 'groq');
   ok('W7: расход из хранилища доезжает до панели: 2 запроса, 1 ответ, 1 отказ, остаток 998',
@@ -405,7 +436,12 @@ console.log('X — общий запас агента (0.179)');
 
   /* Дверь: та же цифра наружу, и она сходится с строками провайдеров, которые
      панель показывает рядом. */
-  const data3 = await (await usageGet({ env: { GROQ_KEYS: 'g1', MEMORY: fakeKv() }, request: new Request('https://metiger-ai.pages.dev/api/usage') })).json();
+  /* 0.202: раскладка по провайдерам — только по коду владельца, поэтому дверь
+     зовём с подставным отпечатком и заголовком. */
+  const OWNER_X = 'W-OWNER-1';
+  const OWNER_X_HASH = await ownerHash(OWNER_X);
+  const OWNER_HDR = { 'x-mt-owner': OWNER_X };
+  const data3 = await (await usageGet({ env: { GROQ_KEYS: 'g1', MEMORY: fakeKv(), REPORT_OWNER_HASH: OWNER_X_HASH }, request: new Request('https://metiger-ai.pages.dev/api/usage', { headers: OWNER_HDR }) })).json();
   const живой = data3.providers.filter((r) => r.live && r.dayLimit > 0);
   const cap = живой.reduce((a, r) => a + r.dayLimit, 0);
   const used = живой.reduce((a, r) => a + r.attempt, 0);
@@ -426,11 +462,192 @@ console.log('X — общий запас агента (0.179)');
   tx.attempt('groq', 'qwen/qwen3.8-27b');
   tx.outcome('groq', 'refused');
   await tx.flush({ force: true });
-  const data4 = await (await usageGet({ env: { GROQ_KEYS: 'g1', MEMORY: kvX }, request: new Request('https://metiger-ai.pages.dev/api/usage?refresh=1') })).json();
+  const data4 = await (await usageGet({ env: { GROQ_KEYS: 'g1', MEMORY: kvX, REPORT_OWNER_HASH: OWNER_X_HASH }, request: new Request('https://metiger-ai.pages.dev/api/usage?refresh=1', { headers: OWNER_HDR }) })).json();
   ok('X6: после двух запросов запас в кольце меньше ровно на два',
     data4.pool.used === 2 && data4.pool.remaining === data4.pool.capacity - 2
       && data4.pool.pct < 100 && data4.pool.pct > 99,
     JSON.stringify(data4.pool));
+}
+
+console.log('Y — суточный потолок агента (0.202)');
+{
+  /** Хранилище в форме, которую ждёт engine/daycap.js: JSON на чтении, TTL на записи. */
+  const storeOfKv = (kv) => ({
+    get: (k) => kv.get(k, 'json'),
+    put: (k, v, ttl) => kv.put(k, JSON.stringify(v), { expirationTtl: ttl }),
+  });
+  const DAY0 = Date.parse('2026-10-17T10:00:00Z');
+
+  /* Y1: умолчания. Потолок ниже ёмкости пула (~9 900) нарочно: атомарного счётчика
+     у KV нет, два изолята могут прочитать одно число — запас на это и оставлен. */
+  const c0 = capCfg({});
+  ok('Y1: по умолчанию потолок включён, 9 000 попыток в сутки, кусками по 50',
+    c0.on === true && c0.max === DAY_CAP_DEFAULT && c0.max === 9000 && c0.chunk === 50,
+    JSON.stringify(c0));
+
+  /* Y2: тумблер владельца. Выключенный потолок не должен отказывать никому. */
+  const cOff = createDayCap({ env: { DAY_CAP_OFF: '1' }, store: null, now: () => DAY0 });
+  const off1 = await cOff.check();
+  ok('Y2: DAY_CAP_OFF=1 — потолка нет, дверь открыта, счёт молчит',
+    cOff.cfg.on === false && off1.allowed === true && off1.max === 0 && (await cOff.take(50)).used === 0);
+
+  /* Y3: главное. За 100 попыток — ОДНА запись в KV, а не сто: иначе бесплатные
+     1 000 записей в сутки кончились бы на первой сотне вопросов. */
+  const kv3 = fakeKv();
+  const cap3 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv3), now: () => DAY0 });
+  await cap3.check();
+  for (let i = 0; i < 99; i++) await cap3.take(1);
+  /* «Израсходовано» в панели — это взятое из запаса, а не только потраченное:
+     резерв уже отнят у всех, даже если изолят его ещё не истратил. Отсюда 400, а
+     не 401 — впереди расхода не больше одного куска. */
+  ok('Y3: за 99 попыток расход в KV — одна запись резерва, а не 99',
+    kv3.puts === 1 && cap3.stats().spent === 99 && cap3.state().remaining === 400,
+    JSON.stringify(cap3.stats()));
+  await cap3.take(1);
+  await cap3.check();
+  ok('Y3b: кусок кончился — резервируется следующий, второй записью',
+    kv3.puts === 2 && cap3.state().used === 200 && cap3.state().remaining === 300,
+    JSON.stringify({ puts: kv3.puts, st: cap3.state() }));
+
+  /* Y4: два изолята — один запас. Второй видит резерв первого: 100 + 100. */
+  const kv4 = fakeKv();
+  const a4 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv4), now: () => DAY0 });
+  const b4 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv4), now: () => DAY0 });
+  await a4.check();
+  const b4s = await b4.check();
+  /* «Израсходовано» = взято из запаса: первый изолят взял 100, второй увидел это
+     и взял свои 100 — в хранилище 200, и оба не могут перевалить за max. */
+  ok('Y4: второй изолят видит резерв первого и берёт свой — потолок общий, а не на адрес',
+    b4s.used === 200 && b4s.remaining === 300, JSON.stringify(b4s));
+
+  /* Y5: исчерпание. max 150: первому достанется 100, второму — остаток 50,
+     третьему — отказ с временем сброса. */
+  const kv5 = fakeKv();
+  const mk5 = () => createDayCap({ env: { DAY_CAP: 150, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv5), now: () => DAY0 });
+  const e1 = await mk5().check();
+  const e2 = await mk5().check();
+  const e3 = await mk5().check();
+  ok('Y5: последний кусок не больше остатка — 100 + 50, потом честный отказ',
+    e1.allowed === true && e1.used === 100
+      && e2.allowed === true && e2.used === 150 && e2.remaining === 0
+      && e3.allowed === false && e3.blocked === true,
+    JSON.stringify({ e1: e1.used, e2: e2.used, e3: e3.used, allowed: e3.allowed }));
+  ok('Y5b: отказ знает время сброса и сутки, а не «попробуйте позже»',
+    e3.resetInMs === msToUtcMidnight(DAY0) && e3.day === capDayOf(DAY0) && e3.day === '2026-10-17',
+    JSON.stringify({ resetInMs: e3.resetInMs, day: e3.day }));
+
+  /* Y6: смена суток UTC — запас открывается заново, ключ другой. */
+  let now6 = Date.parse('2026-10-17T23:59:00Z');
+  const kv6 = fakeKv();
+  const cap6 = createDayCap({ env: { DAY_CAP: 100, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv6), now: () => now6 });
+  await cap6.check();
+  await cap6.take(100);
+  const before = await cap6.check();
+  now6 = Date.parse('2026-10-18T00:01:00Z');
+  const after = await cap6.check();
+  ok('Y6: полночь UTC открывает запас заново и пишет под новый ключ',
+    before.allowed === false && before.day === '2026-10-17'
+      && after.allowed === true && after.day === '2026-10-18'
+      && kv6._map.has('cap:v1:2026-10-17') && kv6._map.has('cap:v1:2026-10-18'),
+    JSON.stringify({ before: before.allowed, after: after.allowed, day: after.day, keys: [...kv6._map.keys()] }));
+
+  /* Y7: упавшее хранилище НЕ выключает агента: считаем локально, помечаем degraded.
+     Лучше ответить человеку, чем соврать про «лимит кончился» из-за KV. */
+  const bad = { get: async () => { throw new Error('KV недоступен'); }, put: async () => { throw new Error('KV недоступен'); } };
+  const cap7 = createDayCap({ env: { DAY_CAP: 20, DAY_CAP_CHUNK: 10 }, store: bad, now: () => DAY0 });
+  const ok7 = await cap7.check();
+  await cap7.take(20);
+  const out7 = await cap7.check();
+  ok('Y7: без хранилища агент отвечает, но потолок держится по памяти изолята',
+    ok7.allowed === true && cap7.state().degraded === true
+      && out7.allowed === false && out7.used === 20,
+    JSON.stringify({ degraded: cap7.state().degraded, used: out7.used, allowed: out7.allowed }));
+
+  /* Y8: списание больше остатка куска само добирает резерв — ответ из 3 попыток
+     не должен терять две из-за того, что кусок был на 1. */
+  const kv8 = fakeKv();
+  const cap8 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv8), now: () => DAY0 });
+  const s8 = await cap8.take(150);
+  ok('Y8: списание пачки добирает резерв — 150 попыток учтены, не потеряны',
+    s8.used === 200 && kv8.puts === 2 && cap8.stats().spent === 150,
+    JSON.stringify({ used: s8.used, puts: kv8.puts, spent: cap8.stats().spent }));
+
+  /* Y9: дверь показывает тот же потолок: владельцу — числа, публике — процент. */
+  const kv9 = fakeKv();
+  const cap9 = createDayCap({ env: { DAY_CAP: 1000, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv9), now: () => DAY0 });
+  await cap9.check();
+  await cap9.take(250);
+  const OWNER9 = 'Y-OWNER-1';
+  const H9 = { 'x-mt-owner': OWNER9 };
+  const E9 = { GROQ_KEYS: 'g1', MEMORY: kv9, REPORT_OWNER_HASH: await ownerHash(OWNER9), DAY_CAP: 1000 };
+  const open9 = await (await usageGet({ env: E9, request: new Request('https://metiger-ai.pages.dev/api/usage') })).json();
+  const own9 = await (await usageGet({ env: E9, request: new Request('https://metiger-ai.pages.dev/api/usage', { headers: H9 }) })).json();
+  ok('Y9: публичная дверь отдаёт процент потолка, без чисел и имён',
+    open9.cap && open9.cap.on === true && typeof open9.cap.pct === 'number'
+      && open9.pool.pct === open9.cap.pct && !('used' in open9.cap),
+    JSON.stringify(open9.cap));
+  ok('Y9b: владельцу — взятое из запаса и остаток по потолку, с пометкой про резерв',
+    own9.cap && own9.cap.on === true && own9.cap.max === 1000 && own9.cap.used === 300
+      && own9.cap.remaining === 700 && /резерв/i.test(own9.cap.note || ''),
+    JSON.stringify({ used: own9.cap.used, remaining: own9.cap.remaining }));
+}
+
+console.log('Z — отказ суточного потолка на границе /api/chat (0.202)');
+{
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status: 200,
+    text: async () => JSON.stringify({ choices: [{ message: { content: 'ответ' }, finish_reason: 'stop' }] }),
+  });
+  /* rate: 0 — частотный лимит в этих проверках молчит: проверяется именно потолок,
+     иначе 429 пришёл бы раньше и дверь потолка осталась бы непроверенной. */
+  const req = (text) => new Request('http://x/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'cf-connecting-ip': '77.88.99.11' },
+    body: JSON.stringify({ text: text === undefined ? 'привет' : text, rate: 0 }),
+  });
+  const kvZ = fakeKv();
+  const ENV = { GROQ_KEYS: 'g1', MEMORY: kvZ, DAY_CAP: '1', DAY_CAP_CHUNK: '1' };
+
+  const z1 = await chatPost({ request: req(), env: ENV });
+  const z2 = await chatPost({ request: req(), env: ENV });
+  const z2b = await z2.json();
+  ok('Z1: запас в 1 попытку — первый вопрос отвечен, второй получает 503',
+    z1.status === 200 && z2.status === 503, z1.status + ',' + z2.status);
+  ok('Z2: отказ говорит человеческим языком: общий на всех, сброс в 00:00 UTC и сколько ждать',
+    z2b.ok === false && /общий на всех/i.test(z2b.error) && /00:00 UTC/.test(z2b.error)
+      && /через \d/.test(z2b.error) && z2b.cap && z2b.cap.blocked === true
+      && z2b.cap.resetInMs > 0 && z2b.cap.resetInMs <= 86400000,
+    String(z2b.error).slice(0, 160));
+
+  /* Пустой запрос — не ответ и не попытка: он отваливается раньше двери потолка и
+     не имеет права съесть единственный запас дня. */
+  const kvE = fakeKv();
+  const ENVE = { GROQ_KEYS: 'g1', MEMORY: kvE, DAY_CAP: '1', DAY_CAP_CHUNK: '1' };
+  const empty = await chatPost({ request: req(''), env: ENVE });
+  const afterEmpty = await chatPost({ request: req(), env: ENVE });
+  ok('Z3: пустой запрос не тратит суточный запас',
+    empty.status === 400 && afterEmpty.status === 200, empty.status + ',' + afterEmpty.status);
+
+  /* Аварийный тумблер: выключенный потолок не отказывает никому. */
+  const kvO = fakeKv();
+  const ENVO = Object.assign({}, ENV, { MEMORY: kvO, DAY_CAP_OFF: '1' });
+  const o1 = await chatPost({ request: req(), env: ENVO });
+  const o2 = await chatPost({ request: req(), env: ENVO });
+  const o3 = await chatPost({ request: req(), env: ENVO });
+  ok('Z4: DAY_CAP_OFF=1 — потолок не мешает, три вопроса подряд отвечены',
+    o1.status === 200 && o2.status === 200 && o3.status === 200, [o1.status, o2.status, o3.status].join(','));
+
+  /* Упавшее хранилище не имеет права выключать агента: лучше ответ, чем ложное
+     «лимит кончился». Ошибка видна в статистике потолка, а не в лице человека. */
+  const kvB = fakeKv();
+  kvB.fail = true;
+  const ENVB = { GROQ_KEYS: 'g1', MEMORY: kvB, DAY_CAP: '5', DAY_CAP_CHUNK: '1' };
+  const b1 = await chatPost({ request: req(), env: ENVB });
+  ok('Z5: KV упал — агент всё равно отвечает (fail-open), а не врёт про лимит',
+    b1.status === 200, String(b1.status));
+
+  globalThis.fetch = saved;
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

@@ -18,6 +18,7 @@ import { THINK_OPEN, THINK_CLOSE, THINK_OPEN_PARTIAL, stripThinkTags } from '../
 import * as genderLayer from '../../engine/gender.js';
 import * as personaStyle from '../../engine/personastyle.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
+import { createDayCap, msToUtcMidnight } from '../../engine/daycap.js';
 import { createBrave } from '../../engine/brave.js';
 import * as emotionLayer from '../../engine/emotion.js';
 import { TOOL_IDS } from '../../engine/tools.js';
@@ -214,6 +215,17 @@ const CORS = {
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...CORS } });
 
+/** «5 ч 12 мин» — сколько ждать до сброса. В отказе это нужнее самих часов UTC:
+ *  человеку на телефоне важно не «00:00», а «сколько ещё ждать». */
+export function humanLeft(ms) {
+  const m = Math.max(0, Math.round(Number(ms) / 60000));
+  if (m < 1) return 'меньше минуты';
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  if (!h) return mm + ' мин';
+  return h + ' ч' + (mm ? ' ' + mm + ' мин' : '');
+}
+
 /* Лимит частоты и карантин провайдеров.
    Карты живут в модуле — воркер создаётся на каждый запрос, и без общей карты
    счётчик обнулился бы в каждой request'е. Поверх них `engine/limits.js` надстраивает
@@ -281,6 +293,37 @@ async function handlePost(context) {
   const words = String((body && body.text) || '').trim();
   if (words.length > 24000) return json({ ok: false, error: 'слишком длинный запрос' }, 413);
 
+  /* Пустой запрос отсекаем ДО потолка: он не должен съедать резерв дня. Вложение
+     считается содержимым даже без слов — голос и фото читаются ниже. */
+  const hasAtt = Array.isArray(body.attachments) && body.attachments.length > 0;
+  if (!words && !hasAtt) return json({ ok: false, error: 'пустой запрос' }, 400);
+
+  /* Суточный запас агента (0.202) — общий на всех, а не на адрес. Стоит ДО
+     вложений нарочно: иначе исчерпанный день продолжал бы жечь распознавание
+     голоса и картинок по каждому запросу, хотя ответ всё равно 503. Частотный лимит
+     выше считает «не части», этот — «не всё»: 12 запросов в минуту с одного IP это
+     ~17 000 в сутки, а весь бесплатный пул — около 9 900 попыток. Без потолка
+     десять адресов в ритме лимита выключали агента до полуночи UTC всем.
+     Отказ — 503 с honest-причиной и временем сброса, а не общее «попробуйте позже». */
+  const cap = createDayCap({
+    /* Свой экземпляр хранилища: `limits` ниже объявляется только после вложений,
+       а потолок обязан стоять раньше них (иначе голос и фото жгут квоты при уже
+       закрытой двери). Обёртка тонкая — это те же get/put у MEMORY. */
+    env, store: limitsStore(env),
+    log: (lvl, msg) => { try { console.log('[daycap]', lvl, String(msg || '').slice(0, 160)); } catch (e) { /* молча */ } },
+  });
+  const capNow = await cap.check();
+  if (!capNow.allowed) {
+    const ms = capNow.resetInMs || msToUtcMidnight(Date.now());
+    return json({
+      ok: false,
+      error: 'дневной запас агента на сегодня кончился — он общий на всех, не ваш личный. '
+        + 'Новый откроется в 00:00 UTC, через ' + humanLeft(ms)
+        + '. Потолок нужен, чтобы один скрипт не выключил бесплатного агента всем до полуночи.',
+      cap: { blocked: true, day: capNow.day, resetInMs: ms, on: true },
+    }, 503);
+  }
+
   /* Картинки: ровно столько, сколько принимает движок (две), и с потолком веса.
      Бесплатный провайдер обрезает тело запроса раньше, чем мы успеем спросить,
      а_pages function упирается в лимит запроса — лучше отказать словами сразу. */
@@ -301,7 +344,6 @@ async function handlePost(context) {
      человека. Ничего не прочитано и слов нет — отказ 422 со списком причин: слать
      движку «посмотри, что я прислал», когда смотреть нечего, значит тратить квоту
      бесплатной модели на извинение. */
-  const hasAtt = Array.isArray(body.attachments) && body.attachments.length > 0;
   const att = hasAtt ? await readAttachments(body.attachments, env, (u, i) => fetch(u, i), () => {}) : null;
   const attNothing = !!att && !att.images.length && !att.voiceText && !att.docs.some((d) => d.ok);
   if (!words && att && attNothing) {
@@ -607,12 +649,19 @@ async function handlePost(context) {
 
   /* Наказания, набранные в этом ответе, уходят в общее хранилище уже после того,
      как человек получил свой текст: одна запись не должна добавлять ему секунд. */
+  /* Попытки к провайдерам считаются ПОСЛЕ ответа: до движка неизвестно, сколько
+     их будет, а заставлять человека ждать запись в KV нельзя. Берём длину
+     очереди, которую движок уже прошёл, — единица, если он не дошёл до провайдеров. */
+  const capBill = Math.max(1, (r0 && r0.tried && r0.tried.length) || 1);
   const after = () => Promise.all([
     quarantine.flush().catch(() => null),
     brave.flush().catch(() => null),
     /* Счётчик расхода — тем же фоном: он сам решает, пора ли писать в KV
        (USAGE_WRITE_MS), поэтому ответ человеку ждать хранилище не должен. */
     engine.usageFlush().catch(() => null),
+    /* Суточный запас списывается тем же фоном и пачками (engine/daycap.js):
+       за сутки получается ~90 записей вместо тысяч, а ответ не ждёт хранилище. */
+    cap.take(capBill).catch(() => null),
   ]).then(() => null);
   if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 
