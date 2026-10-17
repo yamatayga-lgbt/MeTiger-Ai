@@ -37,6 +37,10 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
      держать открытой «дверь» с прошлого раза. */
   const [ownerOpen, setOwnerOpen] = useState(false)
   const [ownerOn, setOwnerOn] = useState(() => ownerEnabled())
+  /* Дверь в панель показываем, если код владельца уже введён на устройстве.
+     Отдельное состояние от ownerOn: тот живёт в форме входа и сбрасывается
+     вместе с ней, а доступ к панели от формы зависеть не должен. */
+  const [ownerSeen, setOwnerSeen] = useState(() => ownerEnabled())
   const [code, setCode] = useState('')
   const [ownerBusy, setOwnerBusy] = useState(false)
   const taps = useRef<number[]>([])
@@ -72,6 +76,7 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
     if (ok) {
       setOwnerCode(v)
       setOwnerOn(true)
+      setOwnerSeen(true)
       setCode('')
       /* Одно событие — и ID #Dev, и пункт «Админ» встают на место сразу: ждать
          следующего запуска после ввода кода было бы похоже на «не сработало». */
@@ -85,6 +90,7 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
   const dropCode = () => {
     setOwnerCode('')
     setOwnerOn(false)
+    setOwnerSeen(false)
     setOwnerOpen(false)
     announceOwnerChange()
     notify('Ведомство выключено на этом устройстве')
@@ -189,13 +195,33 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
           <IconButton icon={RefreshCw} label="Обновить список моделей" onClick={() => void refreshModels()} size={16} />
         </div>
 
-        <div className="rows-row is-soon">
-          <span className="rows-ic" aria-hidden="true">
-            <ShieldCheck size={20} />
-          </span>
-          <span className="rows-name">Панель управления</span>
-          <Badge tone="blue">Скоро</Badge>
-        </div>
+        {/* Владелец (код введён на этом устройстве) видит живую дверь в панель
+            вместо «Скоро»: она давно работает, а приглашение вело в никуда
+            (0.200). Остальным — «Скоро»: обещать чужому человеку вход нельзя. */}
+        {ownerSeen ? (
+          <button
+            type="button"
+            className="rows-row"
+            onClick={() => {
+              haptic('light')
+              onNavigate('admin')
+            }}
+          >
+            <span className="rows-ic" aria-hidden="true">
+              <ShieldCheck size={20} />
+            </span>
+            <span className="rows-name">Панель управления</span>
+            <ChevronRight size={18} className="rows-chev" aria-hidden="true" />
+          </button>
+        ) : (
+          <div className="rows-row is-soon">
+            <span className="rows-ic" aria-hidden="true">
+              <ShieldCheck size={20} />
+            </span>
+            <span className="rows-name">Панель управления</span>
+            <Badge tone="blue">Скоро</Badge>
+          </div>
+        )}
       </div>
 
       <div className="app-foot">

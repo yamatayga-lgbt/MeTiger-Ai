@@ -739,20 +739,42 @@ export function ChatView({
   const threadScrollRef = useRef<HTMLDivElement>(null)
   const empty = messages.length === 0
 
-  /* Автоскролл вниз при новых сообщениях */
+  /* Автоскролл вниз при новых сообщениях (0.199).
+     Было: «был ли я внизу» считалось ПОСЛЕ того, как сообщение уже раздуло ленту,
+     — и после первого же длинного ответа разница переваливала за 100 px, условие
+     навсегда становилось ложным, и лента замирала: новые реплики и весь поток
+     ответа оставались под сгибом. Человек видел «ничего не происходит».
+     Стало: «липнем ко дну», пока человек сам не отлистал вверх.
+     Листаем по факту изменения содержимого (MutationObserver): ответ печатается
+     из отдельного состояния (draft) и растёт кусками, а Markdown пересобирается
+     целыми узлами — ни число сообщений, ни ResizeObserver на одном узле этого не
+     ловят (узел пересоздаётся, и наблюдение уходит в старый). */
+  const stickToBottomRef = useRef(true)
   useEffect(() => {
-    if (threadScrollRef.current && !empty) {
-      const { scrollTop, scrollHeight, clientHeight } = threadScrollRef.current
-      const isAtBottom = scrollHeight - (scrollTop + clientHeight) < 100
-      if (isAtBottom) {
-        setTimeout(() => {
-          if (threadScrollRef.current) {
-            threadScrollRef.current.scrollTop = threadScrollRef.current.scrollHeight
-          }
-        }, 0)
-      }
+    const el = threadScrollRef.current
+    if (!el || empty) return
+    /* Свою прокрутку не считаем за «человек отлистал»: scroll-событие приходит
+       асинхронно, уже после того как лента подросла, и честная позиция «внизу»
+       выглядела бы как «наверху». */
+    let lock = 0
+    const follow = () => {
+      if (!stickToBottomRef.current) return
+      lock = Date.now() + 250
+      el.scrollTop = el.scrollHeight
     }
-  }, [messages, empty])
+    const onScroll = () => {
+      if (Date.now() < lock) return
+      stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(follow)
+    if (mo) mo.observe(el, { childList: true, subtree: true, characterData: true })
+    follow()
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      if (mo) mo.disconnect()
+    }
+  }, [empty])
 
   /* «N минут назад» под сообщениями сама не обновится без перерисовки —
      тикаем раз в полминуты, этого достаточно и не грузит телефон. */
@@ -1011,6 +1033,9 @@ export function ChatView({
     /* Картинка или файл без вопроса — это запрос «посмотри, что я прислал»: движок
        сам решит, что с этим делать. Совсем пустой ход не отправляем. */
     if (!text && !shots.length && !docs.length) return
+    /* Свою реплику человек хочет видеть: отправил — значит, едем вниз, даже если
+       до этого читал историю выше. Иначе ответ придёт «в пустоту» под сгибом. */
+    stickToBottomRef.current = true
     haptic('medium')
     onSend(
       text || (docs.length ? 'Посмотри, что я приложил' : 'Что на картинке?'),

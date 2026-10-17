@@ -2925,7 +2925,27 @@ kbd {
   background: transparent;
 }
 
-.persona-row:hover,
+/* Углы строк идут за углами карточки (0.199). Заливка наведения внутри
+   .persona-card была прямоугольной, а карточка — со скруглением: на телефоне
+   после тапа по строке :hover залипал, и над карточкой появлялся серый
+   прямоугольник с прямыми углами (видно на экране «Персонализация»). */
+.persona-card .persona-select:first-child .persona-row {
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+.persona-card .persona-select:last-child .persona-row {
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+
+/* Наведение — только там, где есть мышь. На сенсорном экране :hover залипает
+   после касания и строка остаётся подсвеченной, пока не тронешь другое место;
+   открытое меню и так помечено классом is-open. */
+@media (hover: hover) {
+  .persona-row:hover {
+    background: var(--surface-hover);
+  }
+}
+
 .persona-row.is-open {
   background: var(--surface-hover);
 }
@@ -4656,6 +4676,16 @@ button.rows-row:hover {
   color: var(--text);
 }
 
+/* Кольца фокуса у поля палитры нет (0.200). Поле получает фокус само при
+   открытии, и кольцо ложилось на рамку строки вторым прямоугольником — на
+   телефоне это читалось как чужой чёрный бордюр вокруг поля ввода.
+   Палитра — модальное окно с единственным полем: место фокуса и так очевидно,
+   а клавиатурная навигация ведёт по списку подсказок (стрелки, Enter). */
+.palette-input-row input:focus,
+.palette-input-row input:focus-visible {
+  outline: none;
+}
+
 .palette-input-row input::placeholder {
   color: var(--text-3);
 }
@@ -4719,6 +4749,14 @@ button.rows-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+/* На телефоне подсказки про клавиши — шум: клавиатуры у человека нет, а место
+   в палитре они занимают (0.200). Прячем только там, где нет мыши и клавиш. */
+@media (hover: none) and (pointer: coarse) {
+  .palette-foot {
+    display: none;
+  }
 }
 
 /* ---------- Toast ---------- */
