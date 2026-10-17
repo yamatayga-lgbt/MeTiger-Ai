@@ -25,10 +25,9 @@ import { packFiles, formatFromText, nameFromText } from './filegen.js';
 import { packCharts } from './chart.js';
 import * as personaStyle from './personastyle.js';
 
-/* 0.197: от первого лица «не делаю … с фото/картинкой» — отказ, даже когда
-   сформулирован без «не могу». Ловим только форму первого лица и только по фото
-   (в attemptOne проверяется вместе с images.length). */
-const IMG_REFUSE_RE = /(?:я|мне)[^.\n]{0,24}не\s+(?:буду\s+)?(?:анализир|комментир|рассматрив|оценив|просматрив|описыв|показыв|разбир)|не\s+(?:анализирую|комментирую|рассматриваю|оцениваю|просматриваю|показываю)|не\s+могу\s+(?:анализир|комментир|рассматрив|оценив|просмотр|описыв|показыв|разбир)|I\s+(?:cannot|can't|won't|do not|don't)\s+(?:analyze|analyse|comment|view|describe|assess|review|discuss)/i;
+/* 0.198 «Отказодавильня»: формы вежливого отказа (первое лицо без «не могу»,
+   ссылки на правила) ловит freedom.isPoliteRefusal — и в тексте, и по фото. */
+const CREATIVE_ASK_RE = /(?:напиши|расскажи|опридумай|сочини|опиши)?[^.\n]{0,24}(рассказ|истори[юя]|сцен[уаи]|ролев\w*|стих\w*|роман|сценарий|новелл)/i;
 import { TOOL_TITLES } from './tools.js';
 import * as freedom from './freedom.js';
 import { block as jbBlock } from './jailbreak.js';
@@ -258,7 +257,7 @@ export function createEngine(opts) {
    * Одна попытка: конкретный провайдер + конкретная модель.
    * Возвращает { ok, reply, reasoning, provider, model, finish } или { ok:false, why }.
    */
-  async function attemptOne(id, model, req, deadlineLeft, hasPhoto) {
+  async function attemptOne(id, model, req, deadlineLeft) {
     /* Считаем попытку ДО сети: таймаут и отказ — тоже расход квоты провайдера. */
     usageTrack.attempt(id, model);
     const budget = Math.min(TIMEOUT[req.tier] || 30000, deadlineLeft);
@@ -323,11 +322,11 @@ export function createEngine(opts) {
     if (isProviderError(rawReply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
     const fr = freedom.salvageOrRefuse(rawReply, env);
     if (fr.refused) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
-    /* 0.197: вежливый отказ по фото — тоже отказ. «Я не анализирую и не комментирую
-       интимные фотографии» не содержит «не могу/не буду», проходила оба детектора
-       и доезжала до человека как ГОЛОС ПРИЛОЖЕНИЯ. По фото говорим: это отказ —
-       пробуем следующего зрячего. На текстовый путь не влияет. */
-    if (hasPhoto && IMG_REFUSE_RE.test(rawReply)) { note(id, 'refused'); return { ok: false, why: 'отказ по содержанию фото', status: res.status, soft: true }; }
+    /* 0.198: вежливый отказ без «не могу» — тоже отказ, и в тексте тоже. «Я не
+       анализирую и не комментирую…» или «выходит за рамки моих правил» не должны
+       доезжать до человека как ГОЛОС ПРИЛОЖЕНИЯ: это мягкий отказ — очередь идёт
+       дальше, работает эскалация (до двух попыток в других рамках). */
+    if (freedom.isPoliteRefusal(rawReply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
     const reply = style.polish(fr.text, { env, intent: req.intent });
     note(id, 'ok');
     quar.delete(id);   /* ожил — карантин снят сразу */
@@ -947,7 +946,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
     const allowReframe = input.allowReframe !== false && freedom.canReframe(text, env);
     let reframed = false;
     let reframedCalls = 0;
-    let firstSoft = null;
+    const softSeen = [];   /* 0.198: кто мягко отказал — до двух эскалаций по порядку */
 
     /* Длинный материал — вперёд те, кому есть чем его принять.
        Порядок обхода выстраивался под задачу и скорость, и первым в нём обычно
@@ -1054,7 +1053,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
-        let r = await attemptOne(id, model, req, left, images.length > 0);
+        let r = await attemptOne(id, model, req, left);
         /* 429 на этом ключе — та же модель сразу на другом ключе того же провайдера:
            лимит считается на ключ, а модель уже выбрана как лучшая для задачи. */
         const keysUsed = new Set([keyIdx]);
@@ -1069,7 +1068,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
             presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           });
           req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent;
-          r = await attemptOne(id, model, req2, deadline - Date.now(), images.length > 0);
+          r = await attemptOne(id, model, req2, deadline - Date.now());
         }
         /* Не сошлось — черновик, который уже потёк в окно, надо убрать, а не бросать
            посреди экрана: следующая голова отвечает совсем другим текстом. */
@@ -1151,27 +1150,31 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
         }
         if (r.soft && allowReframe) {
           reframed = true;
-          if (!firstSoft) firstSoft = { id, model, cfg };
+          if (!softSeen.some((c) => c.id === id)) softSeen.push({ id, model, cfg });
         }
         tried.push({ provider: id, model, why: r.why, status: r.status, soft: r.soft, reframed: useReframe || undefined });
       }
     }
 
-    /* Если в очереди была всего одна модель (например, при пине модели или modelsPerProvider=1)
-       и она дала мягкий отказ на исходный текст — делаем одну попытку в нейтральной рамке. */
-    if (reframed && reframedCalls === 0 && firstSoft && (deadline - Date.now()) >= 2500) {
-      const { id, model, cfg } = firstSoft;
-      const keyIdx = pickKey(P, id, health);
-      const left = deadline - Date.now();
-      if (keyIdx >= 0 && await pace(id, left)) {
+    /* Отказодавильня (0.198): мягко отказавшим — до ДВУХ эскалаций по порядку.
+       Творческий запрос (рассказ, сцена) переформулируется в творческой рамке,
+       остальные — в справочной. Время и лимит попыток соблюдаются. */
+    if (reframed && softSeen.length && (deadline - Date.now()) >= 2500) {
+      const creativeAsk = CREATIVE_ASK_RE.test(String(text || ''));
+      for (const cand of softSeen.slice(0, 2)) {
+        if ((deadline - Date.now()) < 2500) break;
+        const { id, model, cfg } = cand;
+        const keyIdx = pickKey(P, id, health);
+        const left = deadline - Date.now();
+        if (!(keyIdx >= 0 && await pace(id, left))) continue;
         lastCallAt[id] = Date.now();
         /* Та же подгонка, что и в очереди: окно этой головы, история из pristine. */
         const refit = fitContext({
           system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
           history: pristine.history, images, env, maxOut: input.maxTokens || 1200, window: windowFor(id, model),
           text: toolsRes.block
-            ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block
-            : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
+            ? freedom.reframePrompt(text, { creative: creativeAsk }) + '\n\n' + toolsRes.block
+            : freedom.reframePrompt(text, { creative: creativeAsk }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
         });
         const curMessages = refit.history.concat([{ role: 'user', content: refit.text }]);
         const req = buildRequest({
@@ -1181,7 +1184,7 @@ const pristine = { system: system + (images.length && PRO_PHOTO_RE.test(String(t
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent;
-        const r = await attemptOne(id, model, req, left, images.length > 0);
+        const r = await attemptOne(id, model, req, left);
         if (r.ok) {
           ctxNotes = (refit.notes || []).slice();
           if (refit.overflow) ctxNotes = ctxNotes.concat([refit.overflow]);

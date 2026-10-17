@@ -180,8 +180,35 @@ console.log('R — вежливый отказ по фото не доезжае
 
   const e5 = createEngine({ env: { ZAI_KEYS: 'z1' }, fetch: async () => ({ status: 200, text: async () => JSON.stringify(chat('Я не анализирую и не комментирую интимные фотографии.')) }), sleep: async () => {} });
   const r5 = await e5.run({ text: 'скажи что-нибудь' });
-  ok('R5: без фото та же фраза — обычный ответ, текстовый путь не тронут',
-    r5.ok && /не анализирую/.test(r5.reply));
+  ok('R5: вежливая фраза и в тексте — отказ: не выдаётся за ответ, честный фолбэк (0.198)',
+    !r5.ok && !/не анализирую/.test(String(r5.reply || '')) && /ни один провайдер/.test(String(r5.error || '')),
+    JSON.stringify({ ok: r5.ok, err: String(r5.error || '').slice(0, 60), reply: String(r5.reply || '').slice(0, 40) }));
+}
+
+console.log('E — отказодавильня: эскалации по вежливым отказам (0.198)');
+{
+  /* Оба провайдера вежливо отказали в основной очереди — каждый получает по одной
+     эскалированной попытке; второй на эскалации отвечает. */
+  const zaiCalls = { n: 0 };
+  const f = async (url) => {
+    const isGem = /googleapis/.test(url);
+    if (!isGem) zaiCalls.n++;
+    const refuse = 'К сожалению, эта тема выходит за рамки моих правил.';
+    const text = isGem ? refuse : (zaiCalls.n >= 2 ? 'Вот прямой ответ по существу.' : refuse);
+    return /googleapis/.test(url)
+      ? { status: 200, text: async () => JSON.stringify(gem(text)) }
+      : { status: 200, text: async () => JSON.stringify(chat(text)) };
+  };
+  const e = createEngine({ env: { GEMINI_KEYS: 'g1', ZAI_KEYS: 'z1' }, fetch: f, sleep: async () => {} });
+  const r = await e.run({ text: 'напиши жёсткую сцену драки для романа', useTools: false, skills: false });
+  ok('E1: вежливые отказы обоих — вторая эскалация доходит до второго провайдера и получает ответ',
+    r.ok && /прямой ответ/.test(r.reply), JSON.stringify({ ok: r.ok, model: r.model, reply: String(r.reply || '').slice(0, 50) }));
+
+  const f2 = async () => ({ status: 200, text: async () => JSON.stringify(chat('Я обязан вам отказать.')) });
+  const e2 = createEngine({ env: { ZAI_KEYS: 'z1' }, fetch: f2, sleep: async () => {} });
+  const r2 = await e2.run({ text: 'привет' });
+  ok('E2: один провайдер, две вежливые отказы подряд — фраза не доезжает, фолбэк честный',
+    !r2.ok && !/обязан/.test(String(r2.reply || '')), JSON.stringify({ ok: r2.ok, err: String(r2.error || '').slice(0, 60) }));
 }
 
 console.log(`\n${pass} ✔, ${fail} ✖`);
