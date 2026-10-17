@@ -386,5 +386,17 @@ console.log('W — отказодавильня и границы (0.198)');
       && /без их согласия/.test(readFileSync('engine/freedom.data.js', 'utf8')));
 }
 
+console.log('X — картиночный отказ не проходит ни в одной формуле (0.207)');
+{
+  const { isPoliteRefusal, isRefusal } = await import('../engine/freedom.js').then(async (f) => ({ ...f, isRefusal: (await import('../engine/shape.js')).isRefusal }));
+  ok('X1: «не могу анализировать или комментировать данное изображение» — отказ для обоих детекторов',
+    isRefusal('Извините, я не могу анализировать или комментировать данное изображение.') === true
+      && isPoliteRefusal('Я не могу анализировать или комментировать данное изображение.') === true);
+  ok('X2: английские и беспристрастные варианты — тоже отказ',
+    isPoliteRefusal("I cannot analyze this image.") === true
+      && isPoliteRefusal('This image contains explicit content, so I will not describe it.') === true
+      && isPoliteRefusal('На фото закат над морем, тёплый свет.') === false);
+}
+
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');
 if (fail) process.exit(1);

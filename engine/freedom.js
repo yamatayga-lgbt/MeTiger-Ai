@@ -156,7 +156,12 @@ export function isAiRefusalOnly(text) {
    • ссылка на правила: «выходит за рамки моих правил», «must decline».
    Работает только на короткой реплике без разворота к сути: длинный ответ,
    где такая фраза — одна из оговорок, остаётся ответом. */
-const FIRST_PERSON_REFUSE_RE = /(?:я|мы)[^.\n]{0,24}не\s+(?:буду\s+|стану\s+)?(?:анализир|комментир|рассматрив|оценив|просматрив|описыв|показыв|разбир|создава|генерир|участв)/i;
+const FIRST_PERSON_REFUSE_RE = /(?:я|мы)[^.\n]{0,24}не\s+(?:буду\s+|стану\s+)?(?:анализир|комментир|рассматрив|оценив|просматрив|описыв|показыв|разбир|создава|генерир|участв|обсужд|помог)/i;
+/* 0.207: отказ по содержанию картинки — с «не могу» или без, с политикой или
+   с «помогу с чем-то другим». Фраза «я не могу анализировать или комментировать
+   данное изображение» — главная мишень: ответ по фото должен быть ВСЕГДА,
+   отказ провайдера движок обязан распознать и идти по лестнице дальше. */
+const VISION_REFUSE_RE = /(?:анализир\w*|комментир\w*|описыва\w*|рассматрива\w*|просматрива\w*|оценива\w*)[^.\n]{0,30}?(?:данн\w+\s+)?(?:изображени\w*|фотографи\w*|картинк\w*|сним\w*)[^.\n]{0,95}?(?:не могу|нельзя|неприемлем|неуместн|против правил|политики)|(?:изображени\w*|фотографи\w*|картинк\w*|сним\w*)[^.\n]{0,70}?(?:содержит|откровенн\w*|интимн\w*|неприемлем\w*|неуместн\w*|непристойн\w*)[^.\n]{0,90}?(?:не могу|нельзя|не буду|отказыва|политик)|(?:cannot|can't|can not|unable to|not able to|i do not|won't)\s+(?:analyze|analyse|comment on|describe|view|examine)\s+(?:on\s+)?(?:this\s+|the\s+)?(?:image|photo|picture)|(?:image|photo|picture)\s+(?:contains|is)\s+[^.\n]{0,40}?(?:explicit|sexual|inappropriate|nsfw|graphic|sensitive)/i;
 const POLICY_REFUSE_RE = /выходит\s+за\s+рамки|не\s+соответствует\s+(?:нашим\s+)?политик|нарушает\s+(?:наши\s+)?правила|противоречит\s+(?:нашим\s+)?правил|не\s+в\s+моих\s+правилах|(?:вынужден|вынуждена|должен|должна|обязан)\s+(?:вам\s+)?отказать|must\s+decline|against\s+(?:my|our|the)\s+(?:guidelines|policies|usage|terms)|violates\s+(?:my|our|the)\s+(?:policy|guidelines)/i;
 
 export function isPoliteRefusal(text) {
@@ -165,7 +170,7 @@ export function isPoliteRefusal(text) {
   if (isRefusal(t) || isAiRefusalOnly(t)) return true;
   if (/(?:,\s*|\s+—\s+|\.\s+)(?:но|однако|тем\s+не\s+менее|впрочем|при\s+этом|однако\s+же|however|but|that\s+said|nevertheless)\s+\S/i.test(t)) return false;
   if (t.indexOf('\n') >= 0 && t.split(/\n+/).filter((p) => p.trim().length > 20).length >= 2) return false;
-  return FIRST_PERSON_REFUSE_RE.test(t) || POLICY_REFUSE_RE.test(t);
+  return FIRST_PERSON_REFUSE_RE.test(t) || POLICY_REFUSE_RE.test(t) || VISION_REFUSE_RE.test(t);
 }
 
 function capFirst(s) {

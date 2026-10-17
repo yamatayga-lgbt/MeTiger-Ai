@@ -93,13 +93,19 @@ export function isProviderError(text) {
 const RU_HEAD = /^\s*(извини(те)?|прости(те)?|к\s+сожалению|сожалею|увы|боюсь,?\s+не)(?![а-яёa-z])/i;
 const REFUSAL_BODY = /(не могу|не буду|не в состояни|отказыва|не получится|не умею|не должен)/i;
 const EN_REFUSAL = /^(i('| a)m sorry|sorry,? but|i can'?t|i cannot|i'?m not able to|as an ai|as a language model)(?![a-z])/i;
+/* 0.207: картиночный отказ — отдельная порода. Владельцу надоела формула
+   «Извините, я не могу анализировать или комментировать данное изображение»:
+   здесь хватаются и такие, и безголовые варианты («не могу анализировать это
+   изображение»), и английские («unable to describe this image»). Только в
+   короткой реплике (isRefusal и так отрезан по длине). */
+const VISION_REFUSAL = /(?:не могу|не буду|не в состояни\w*|не имею возможности|не в состоянии)[^.\n]{0,40}?(?:анализир\w*|комментир\w*|описыва\w*|рассматрива\w*|просматрива\w*|распознава\w*)[^.\n]{0,30}?(?:изображени\w*|фотографи\w*|фото|картинк\w*|сним\w*)|(?:cannot|can't|can not|unable to|not able to|won't)[^.\n]{0,40}?(?:analyze|analyse|comment|describe|view|look at|examine)[^.\n]{0,30}?(?:image|photo|picture)|(?:image|photo|picture)\b[^.\n]{0,60}?(?:explicit|inappropriate|nsfw|graphic)[^.\n]{0,40}?(?:can't|cannot|unable|not able)/i;
 export function isRefusal(text) {
   /* Модели отдают отказ в «красивой» типографике — с ’ вместо ' (gpt-oss любит
      «I’m sorry, but I can’t help with that.»). Без этой замены английский отказ
      не узнавался, и голая фраза «не могу» уезжала человеку как ответ. */
   const t = String(text || '').trim().replace(/[\u2019\u2018\u02bc\u02b9]/g, "'");
   if (t.length > 320) return false;
-  return RU_HEAD.test(t) && REFUSAL_BODY.test(t) || EN_REFUSAL.test(t);
+  return (RU_HEAD.test(t) && REFUSAL_BODY.test(t)) || EN_REFUSAL.test(t) || VISION_REFUSAL.test(t);
 }
 
 export function buildRequest(o) {

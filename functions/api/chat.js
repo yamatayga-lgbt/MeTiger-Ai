@@ -764,6 +764,8 @@ async function handlePost(context) {
     freedomCleaned: !!r.freedomCleaned,
     /* 0.203: модель смягчила слова человека, зеркало лексики вернуло их обратно */
     lexiconRestored: !!r.lexiconRestored,
+    photoRefused: !!r.photoRefused,
+    photoNeutral: !!r.photoNeutral,
     /* 0.204: после обратной замены в ответе всё ещё остались эвфемизмы */
     lexiconSanitized: !!r.lexiconSanitized,
     tried: r.tried.slice(0, 6),

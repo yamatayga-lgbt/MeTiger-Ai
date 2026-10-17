@@ -111,9 +111,10 @@ console.log('V — отказ зрячей модели: картиночный 
   const fall = async () => ({ status: 200, text: async () => JSON.stringify(chat('Извини, я не могу это показать.')) });
   const e2 = createEngine({ env: { GEMINI_KEYS: 'gm1', ZAI_KEYS: 'z1' }, fetch: fall, sleep: async () => {} });
   const r2 = await e2.run({ text: 'разбери фото', images: ['data:image/png;base64,AA'] });
-  ok('V2: отказали все — честный отказ без выдуманного ответа (0.197: с фото это маркер SEERS_REFUSED_PHOTO)',
-    !r2.ok && !r2.reply && /SEERS_REFUSED_PHOTO|ни один провайдер не ответил/.test(String(r2.error || '')),
-    JSON.stringify({ ok: r2.ok, err: String(r2.error).slice(0, 120) }));
+  ok('V2: отказали все — 0.207: честный ОТВЕТ движка (без выдуманного содержимого), а не ошибка',
+    r2.ok && !!r2.reply && r2.photoRefused === true && /переспросил все зрячие модели/.test(r2.reply)
+      && !/На фото/.test(r2.reply),
+    JSON.stringify({ ok: r2.ok, err: String(r2.error).slice(0, 120), pr: r2.photoRefused }));
 }
 
 console.log('B — понимание картинки: слепых не зовём, опытных — первыми (0.192)');
@@ -161,8 +162,9 @@ console.log('R — вежливый отказ по фото не доезжае
   const fall = async () => ({ status: 200, text: async () => JSON.stringify(chat('Я не анализирую и не комментирую интимные фотографии.')) });
   const e2 = createEngine({ env: { GEMINI_KEYS: 'g1', ZAI_KEYS: 'z1' }, fetch: fall, sleep: async () => {} });
   const r2 = await e2.run({ text: 'разбери фото', images: ['data:image/png;base64,AA'] });
-  ok('R2: отказали все вежливой фразой — маркер SEERS_REFUSED_PHOTO (дверь скажет честно), а не «ответ»',
-    !r2.ok && r2.error === 'SEERS_REFUSED_PHOTO' && !r2.reply, JSON.stringify({ ok: r2.ok, err: r2.error }));
+  ok('R2: отказали все вежливой фразой — 0.207: человек получает ответ движка с photoRefused, не отказ приложения',
+    r2.ok && r2.photoRefused === true && /переспросил все зрячие модели/.test(r2.reply) && !/не анализирую/i.test(r2.reply),
+    JSON.stringify({ ok: r2.ok, err: r2.error }));
 
   let sys = '';
   const f3 = async (url, init) => { try { sys = String((JSON.parse(String(init && init.body)).messages || []).find((m) => m.role === 'system')?.content || ''); } catch {} return { status: 200, text: async () => JSON.stringify(chat('родинка 4 мм, края ровные.')) }; };
@@ -209,6 +211,36 @@ console.log('E — отказодавильня: эскалации по веж�
   const r2 = await e2.run({ text: 'привет' });
   ok('E2: один провайдер, две вежливые отказы подряд — фраза не доезжает, фолбэк честный',
     !r2.ok && !/обязан/.test(String(r2.reply || '')), JSON.stringify({ ok: r2.ok, err: String(r2.error || '').slice(0, 60) }));
+}
+
+console.log('W — фото: ответ есть всегда, холодный проход и риски (0.207)');
+{
+  /* Точная формула из жалобы владельца — «не могу анализировать или
+     комментировать данное изображение»: движок обязан её распознать как
+     отказ и не доставить человеку; дальше холодный проход отвечает. */
+  let calls = 0;
+  const f = async (url, init) => {
+    calls++;
+    let sys = '';
+    try { sys = JSON.stringify(JSON.parse(String((init && init.body) || '{}'))); } catch {}
+    const cold = /инвентаризация видимого/i.test(sys);
+    const body = cold
+      ? chat('Фактологически: в кадре взрослый человек, поза сидя, фон нейтральный, свет мягкий; качество среднее.')
+      : chat('Извините, я не могу анализировать или комментировать данное изображение.');
+    return { status: 200, text: async () => JSON.stringify(body) };
+  };
+  const e = createEngine({ env: { ZAI_KEYS: 'z1' }, fetch: f, sleep: async () => {} });
+  const r = await e.run({ text: 'что на этом фото? оцени кадр', images: ['data:image/png;base64,AA'], noCouncils: true });
+  ok('W1: формула «не могу анализировать данное изображение» распознана; холодный проход дал ответ',
+    r.ok && r.photoNeutral === true && /Фактологически/.test(r.reply) && !/не могу анализировать/i.test(r.reply),
+    JSON.stringify({ ok: r.ok, calls, pn: r.photoNeutral, reply: String(r.reply || '').slice(0, 60) }));
+  const fall = async () => ({ status: 200, text: async () => JSON.stringify(chat('Извините, я не могу анализировать или комментировать данное изображение.')) });
+  const e2 = createEngine({ env: { ZAI_KEYS: 'z1' }, fetch: fall, sleep: async () => {} });
+  const r2 = await e2.run({ text: 'что на этом фото?', images: ['data:image/png;base64,AA'], noCouncils: true });
+  ok('W2: финальный ответ движка несёт риски и способ спросить иначе, а не голый отказ',
+    r2.ok && r2.photoRefused === true && /согласия человека в кадре/.test(r2.reply)
+      && /спроси по конкретной детали/.test(r2.reply) && !/не могу анализировать/i.test(r2.reply),
+    JSON.stringify({ ok: r2.ok, pr: r2.photoRefused }));
 }
 
 console.log(`\n${pass} ✔, ${fail} ✖`);
