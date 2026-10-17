@@ -273,4 +273,37 @@ console.log('Q — смягчение учит рейтинг смелых (0.20
     { soft: rSoft.lexiconRestored, direct: rDirect.lexiconRestored })
 }
 
+console.log('\nИскажённое написание (0.205)')
+{
+  const { denoise, obfuscatedWords, detectConcepts, hasAdultTopic, mirrorBlock, restore } = lexicon
+  ok('R1: цифры-омоглифы и смесь алфавитов читаются',
+    denoise('скажи про Dro4ку') === 'скажи про дрочку'
+      && denoise('др0чка и с3кс') === 'дрочка и секс'
+      && /дрочка/.test(denoise('д' + 'po' + 'чк' + 'a')))
+  ok('R2: транслит читается целиком',
+    denoise('они trahatsya, а это drochka и seks') === 'они трахаться, а это дрочка и секс'
+      && denoise('xuy и chlen') === 'хуй и член'
+      && denoise('sex') === 'секс')
+  ok('R3: звёздочки, дефисы и разрядка читаются',
+    denoise('др***ка, х*й и с*кс') === 'дрочка, хуй и секс'
+      && denoise('д-р-о-ч-к-а и с.е.к.с') === 'дрочка и секс'
+      && denoise('д р о ч к а вредна?') === 'дрочка вредна?')
+  ok('R4: обычная речь и имена не искажаются нормализацией',
+    denoise('кое-что про северо-запад') === 'кое-что про северо-запад'
+      && denoise('eBay и channel на youtube') === 'eBay и channel на youtube'
+      && denoise('**привет**, как дела') === '**привет**, как дела'
+      && detectConcepts(['член семьи, анализ данных, eBay и channel']).length === 0)
+  ok('R5: искажённое даёт понятие и взрослую тему',
+    detectConcepts(['расскажи про Dro4ку']).some((c) => c.id === 'masturbation' && c.register === 'vulgar' && c.words.includes('дрочку'))
+      && hasAdultTopic(['д р о ч к а вредна?'])
+      && freedom.isAdultAsk('расскажи про Dro4ку')
+      && !freedom.isAdultAsk('расскажи про channel и eBay'))
+  ok('R6: подсказка: искажённое понять, отвечать нормальными словами',
+    (() => { const m = mirrorBlock(['скажи про Dro4ку и др***ку']); return m.includes('искажённо') && m.includes('Dro4ку') && m.includes('нормальными словами') && m.includes('не переспрашивай') })()
+      && JSON.stringify(obfuscatedWords(['про Dro4ку и с е к с'])) === JSON.stringify(['с е к с', 'Dro4ку']))
+  ok('R7: обратная замена работает и от искажённого источника',
+    restore('Это мастурбация: стимуляция пениса.', ['скажи про Dro4ку и xuy']).text === 'Это дрочка: дрочка хуя.'
+      && restore('Заниматься сексом полезно.', ['они любят trahatsya']).text === 'Трахаться полезно.')
+}
+
 console.log('\n' + pass + ' пройдено, 0 провалено')

@@ -23,6 +23,7 @@ import {
   ADULT_SYSTEM, FREEDOM_CHECKSUMS,
 } from './freedom.data.js';
 import { block as jbBlock, mark as jbMark, cfgOf as jbCfg, stats as jbStats } from './jailbreak.js';
+import { denoise } from './lexicon.js';
 
 /**
  * Режимы слоя. `FREEDOM_MODE` принимает только эти четыре строки, всё остальное
@@ -50,7 +51,10 @@ const TALK_INTENTS = ['creative', 'fast', 'vision', 'talk', 'advice'];
 const ADULT_ASK = /(секс|сексуаль|эрот|порно|18\+|флирт|интим|возбужд|ласк|оргазм|бдсм|петтинг|дроч|мастурб|минет|кун+илингус|отсос|анальн|сперм|клитор|(?<![а-яё])(?:по|пере|за|от|вы)?трах(?:а|н)|anal|blowjob|handjob|bondage|bdsm|nude|naked|topless|erotic|erotica|porn|sexual|masturbat|jerk\s*off|jack\s*off|make love|для взрослых)/i;
 
 export function isAdultAsk(text) {
-  return ADULT_ASK.test(String(text || '').slice(0, 4000));
+  const t = String(text || '').slice(0, 4000);
+  /* 0.205: «Dro4ка», «seks», «с е к с» — взрослая тема тоже, читаем
+     искажённое написание через нормализацию словаря. */
+  return ADULT_ASK.test(t) || ADULT_ASK.test(denoise(t));
 }
 
 export function cfgOf(env) {

@@ -52,6 +52,182 @@ export function wantsFormal(text) {
   return FORMAL_ASK.test(String(text || ''));
 }
 
+/* ── Понимание искажённых написаний (0.205) ────────────────────────────────
+   Человек пишет «Dro4ка», «др*чка», «drochka», «д р о ч к а», «с3кс» —
+   смысл тот же, а словарь по корням такое не ловил, и зеркало не
+   включалось ровно там, где человек и так шифруется. denoise() строит
+   НОРМАЛИЗОВАННУЮ КОПИЮ только для распознавания (понятия, взрослая тема,
+   обратная замена): само сообщение человека в модель едет как написано,
+   его текст мы не переписываем. Нормальная речь проходит без изменений:
+   транслит применяется к слову лишь когда результат содержит известный
+   словарный корень — «channel» и «eBay» от этого не страдают. */
+
+const DENOISE_STEMS = ['дроч', 'секс', 'трах', 'еба', 'ебё', 'ебу', 'хуй', 'хуя', 'хуе', 'пизд', 'минет', 'член', 'оргазм', 'мастурб', 'порн', 'вагин', 'влагалищ', 'сперм', 'клитор', 'отсос', 'киск', 'жоп', 'сиськ', 'бля', 'мудак', 'говн', 'пенис', 'куни', 'анал'];
+function hasStem(w) {
+  const s = String(w || '').toLowerCase();
+  return DENOISE_STEMS.some((x) => s.indexOf(x) >= 0);
+}
+
+const TRANSLIT_MULTI = [
+  ['shch', 'щ'], ['sch', 'щ'], ['tsya', 'ться'], ['ch', 'ч'], ['sh', 'ш'],
+  ['zh', 'ж'], ['kh', 'х'], ['ts', 'ц'], ['yu', 'ю'], ['ya', 'я'],
+  ['yo', 'ё'], ['ye', 'е'], ['ju', 'ю'], ['ja', 'я'], ['je', 'е'],
+];
+const TRANSLIT_ONE = {
+  a: ['а'], b: ['б'], v: ['в'], g: ['г'], d: ['д'], e: ['е'], z: ['з'],
+  i: ['и'], j: ['й', 'ю', 'я'], k: ['к'], l: ['л'], m: ['м'], n: ['н'],
+  o: ['о'], p: ['п'], r: ['р'], s: ['с'], t: ['т'], u: ['у'], f: ['ф'],
+  h: ['х', 'г'], c: ['к', 'с'], w: ['в'], q: ['к'], x: ['кс', 'х'],
+  y: ['и', 'й', 'ы'], '0': ['о'], '1': ['и', 'л'], '3': ['е', 'з'],
+  '4': ['ч', 'а'], '5': ['с'], '6': ['б', 'г'], '@': ['а'], '$': ['с'],
+};
+/* Варианты транслитерации: неоднозначности (x=кс/х, 4=ч/а, 3=е/з) решаются
+   не угадайкой, а словарём — берётся вариант с известным корнем. */
+function translitCandidates(word) {
+  const s = String(word || '').toLowerCase();
+  let results = [''];
+  let i = 0;
+  while (i < s.length) {
+    const multi = TRANSLIT_MULTI.find(([m]) => s.startsWith(m, i));
+    let opts; let len;
+    if (multi) { opts = [multi[1]]; len = multi[0].length; }
+    else { opts = TRANSLIT_ONE[s[i]] || [s[i]]; len = 1; }
+    const next = [];
+    for (const r of results) for (const o of opts) next.push(r + o);
+    results = next.slice(0, 32);
+    i += len;
+  }
+  return results;
+}
+const CYR_DIGITS = { '0': ['о'], '3': ['з', 'е'], '4': ['ч', 'а'], '1': ['и', 'л'], '6': ['б'], '@': ['а'], '$': ['с'] };
+function cyrDigitCandidates(word) {
+  let results = [''];
+  for (const ch of String(word || '').toLowerCase()) {
+    const opts = CYR_DIGITS[ch] || [ch];
+    const next = [];
+    for (const r of results) for (const o of opts) next.push(r + o);
+    results = next.slice(0, 16);
+  }
+  return results;
+}
+const HOMOGLYPH = {
+  a: 'а', c: 'с', e: 'е', o: 'о', p: 'р', x: 'х', y: 'у',
+  A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х',
+};
+
+const MASK_LEMMAS = ['дрочка', 'дрочки', 'дрочке', 'дрочку', 'дрочить', 'дрочит', 'дрочил', 'секс', 'трахать', 'трахаться', 'трахается', 'ебать', 'ебаться', 'ебётся', 'хуй', 'хуя', 'хую', 'пизда', 'пизде', 'пизду', 'минет', 'минета', 'отсос', 'член', 'члена', 'оргазм', 'порно', 'порнуха', 'мастурбация', 'мастурбировать', 'сперма', 'киска', 'жопа', 'сиськи', 'кончить', 'кончать', 'блядь', 'сука', 'клитор', 'вагина', 'влагалище', 'пенис', 'куннилингус'];
+const MASK_LATIN = { drochka: 'дрочка', seks: 'секс', sex: 'секс', minet: 'минет', chlen: 'член', pizda: 'пизда', huy: 'хуй', khuy: 'хуй', xuy: 'хуй', porno: 'порно', orgazm: 'оргазм', ebat: 'ебать' };
+function maskedLemma(core) {
+  const w = String(core || '').toLowerCase();
+  if (w.indexOf('*') < 0) return null;
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /* Серия звёздочек — ОДИН пропуск любой длины: в «др***ка» три звезды
+     закрывают «оч» (две буквы), а не требуют три буквы по числу звёзд. */
+  const pat = (str, cls) => new RegExp('^' + String(str).split(/(\*+)/)
+    .map((part) => (part.startsWith('*') ? cls : [...part].map(esc).join(''))).join('') + '$');
+  if (/^[a-z*]+$/.test(w)) {
+    const re = pat(w, '[a-z]*');
+    for (const [lat, ru] of Object.entries(MASK_LATIN)) if (re.test(lat)) return ru;
+  }
+  for (const variant of [w].concat(translitCandidates(w))) {
+    const re = pat(variant, '[а-яё]*');
+    const hit = MASK_LEMMAS.filter((l) => re.test(l)).sort((a, b) => a.length - b.length)[0];
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function denoiseToken(coreOrig) {
+  const orig = String(coreOrig || '');
+  let core = orig.toLowerCase();
+  if (!/[a-zа-яё]/i.test(core)) return orig;
+  /* разделители между буквами: д-р-о-ч-к-а, с.е.к.с */
+  const stripped = core.replace(/([a-zа-яё0-9])[-._·•]+(?=[a-zа-яё0-9])/g, '$1');
+  if (stripped !== core && hasStem(stripped)) return stripped;
+  if (stripped !== core) core = stripped;
+  /* звёздочки вместо букв: др***ка, х*й, с*кс */
+  if (core.indexOf('*') >= 0) {
+    const lemma = maskedLemma(core);
+    if (lemma) return lemma;
+    core = core.replace(/\*+/g, '');
+    if (hasStem(core)) return core;
+  }
+  const hasCyr = /[а-яё]/i.test(core);
+  const hasLat = /[a-z]/i.test(core);
+  const hasDig = /[0-9@$]/.test(core);
+  if (hasLat && hasCyr) {
+    const cand = translitCandidates(core).find(hasStem);
+    if (cand) return cand;
+    const homo = [...core].map((ch) => HOMOGLYPH[ch] || (CYR_DIGITS[ch] ? CYR_DIGITS[ch][0] : ch)).join('');
+    return homo !== core ? homo : orig;
+  }
+  if (hasLat) {
+    if (/[a-z][A-Z]/.test(orig)) return orig; /* eBay, iPhone — не транслит */
+    const cand = translitCandidates(core).find(hasStem);
+    return cand || orig;
+  }
+  if (hasCyr && hasDig) {
+    const cand = cyrDigitCandidates(core);
+    return cand.find(hasStem) || cand[0];
+  }
+  return orig;
+}
+
+function denoiseChunk(part) {
+  const m = /^([^A-Za-zА-Яа-яЁё0-9*@$]*)([A-Za-zА-Яа-яЁё0-9*@$._·•-]+)([^A-Za-zА-Яа-яЁё0-9*@$]*)$/.exec(part);
+  if (!m) return part;
+  return m[1] + denoiseToken(m[2]) + m[3];
+}
+
+/* Разрядка «и с е к с»: висящий союз/предлог одной буквой — не часть слова. */
+function spacedParts(seq) {
+  const letters = [...String(seq || '').replace(/\s+/g, '')];
+  let lead = 0;
+  while (letters.length - lead > 4 && 'иавксуоai'.indexOf(letters[lead].toLowerCase()) >= 0) {
+    const rest = letters.slice(lead + 1).join('');
+    if (denoiseToken(rest).toLowerCase() === rest.toLowerCase() && !hasStem(rest)) break;
+    if (!hasStem(denoiseToken(rest))) break;
+    lead++;
+  }
+  const core = letters.slice(lead).join('');
+  const word = denoiseToken(core);
+  return hasStem(word) ? { lead, letters: letters.slice(lead), word } : null;
+}
+
+/** Нормализованная копия текста для распознавания. Оригинал не трогаем. */
+export function denoise(text) {
+  let s = String(text || '');
+  /* разрядка: «д р о ч к а», «с е к с» — четыре и больше одиночных букв подряд */
+  s = s.replace(/(^|[\s(«"'])([A-Za-zА-Яа-яЁё](?:\s[A-Za-zА-Яа-яЁё]){3,})(?=$|[\s.,!?;:)»"'])/g,
+    (m, pref, seq) => {
+      const p = spacedParts(seq);
+      if (!p) return m;
+      const leadW = p.lead ? [...seq.replace(/\s+/g, '')].slice(0, p.lead).join(' ') + ' ' : '';
+      return pref + leadW + p.word;
+    });
+  return s.split(/(\s+)/).map((part) => (/^\s+$/.test(part) || !part ? part : denoiseChunk(part))).join('');
+}
+
+/** Какие именно написания человек исказил — для подсказки модели примерами. */
+export function obfuscatedWords(texts) {
+  const list = Array.isArray(texts) ? texts : [texts];
+  const out = [];
+  const seen = new Set();
+  const push = (w) => { const v = String(w || '').trim(); if (v && !seen.has(v) && out.length < 5) { seen.add(v); out.push(v); } };
+  for (const t of list) {
+    const s = String(t || '');
+    const spaced = [...s.matchAll(/(?:^|[\s(«"'])([A-Za-zА-Яа-яЁё](?:\s[A-Za-zА-Яа-яЁё]){3,})/g)].map((m) => m[1]);
+    for (const seq of spaced) { const p = spacedParts(seq); if (p) push(p.letters.join(' ')); }
+    for (const raw of s.split(/\s+/)) {
+      const core = raw.replace(/^[^A-Za-zА-Яа-яЁё0-9*@$]+|[^A-Za-zА-Яа-яЁё0-9*@$]+$/g, '');
+      if (core.length < 3) continue;
+      const norm = denoise(core);
+      if (norm.toLowerCase() !== core.toLowerCase() && hasStem(norm)) push(core);
+    }
+  }
+  return out;
+}
+
 /* ── Парадигмы: грамматика таблицами, а не заменой корня ───────────────────
    «при стимуляции» обязано стать «при дрочке», а не «при дрочки». */
 
@@ -237,7 +413,11 @@ function findSurfaces(text, resList, cap) {
 export function detectConcepts(texts) {
   const list = (Array.isArray(texts) ? texts : [texts]).map((t) => String(t || '').slice(0, 8000)).filter(Boolean);
   if (!list.length) return [];
-  const joined = list.join('\n');
+  /* 0.205: ищем и по нормализованной копии — «Dro4ка» даёт понятие мастурбации
+     его нормальным словом «дрочка», хотя в оригинале корня нет. */
+  const origJoined = list.join('\n');
+  const normJoined = list.map((t) => denoise(t)).join('\n');
+  const joined = normJoined === origJoined ? origJoined : origJoined + '\n' + normJoined;
   const byId = new Map();
   const add = (id, register, words) => {
     if (!words.length) return;
@@ -271,7 +451,8 @@ export function hasAdultTopic(texts) {
 
 /** Контекст разговора — им решается, где точность важнее сленга. */
 export function contextOf(texts) {
-  const joined = (Array.isArray(texts) ? texts : [texts]).map((t) => String(t || '')).join('\n');
+  const base = (Array.isArray(texts) ? texts : [texts]).map((t) => String(t || '')).join('\n');
+  const joined = base + '\n' + denoise(base);
   return {
     formal: wantsFormal(joined),
     medical: /(болит|боль|зуд|выделени|воспал|инфекц|врач|гинеколог|уролог|мазок|анализ|беременн|симптом|лечен|заболеван|иппп|зппп|контрацеп|презерватив|менструац| месячн)/i.test(joined),
@@ -294,7 +475,9 @@ const EXPLICIT_RES = [
 
 /** Слова человека как он их написал — в том порядке, как встретились. */
 export function explicitWords(texts) {
-  const list = Array.isArray(texts) ? texts : [texts];
+  const raw = Array.isArray(texts) ? texts : [texts];
+  /* оригинал первым (его формы), нормализованная копия следом (Dro4ка → дрочка) */
+  const list = raw.concat(raw.map((t) => denoise(String(t || ''))));
   const seen = new Set();
   const out = [];
   for (const t of list) {
@@ -316,8 +499,8 @@ export function hasExplicit(texts) {
 }
 
 export function profanityWords(texts) {
-  const joined = (Array.isArray(texts) ? texts : [texts]).map((t) => String(t || '')).join('\n');
-  return findSurfaces(joined, PROFANITY_RES, 5);
+  const base = (Array.isArray(texts) ? texts : [texts]).map((t) => String(t || '')).join('\n');
+  return findSurfaces(base + '\n' + denoise(base), PROFANITY_RES, 5);
 }
 
 /**
@@ -332,7 +515,8 @@ export function mirrorBlock(texts, env) {
   if (ctx.formal) return '';
   const concepts = detectConcepts(list);
   const swear = profanityWords(list);
-  if (!concepts.length && !swear.length) return '';
+  const obf = obfuscatedWords(list);
+  if (!concepts.length && !swear.length && !obf.length) return '';
   const lines = ['【Свобода слова — регистр диалога, любые слова】'];
   if (concepts.length) {
     lines.push('Понятия этого разговора его словами: '
@@ -341,6 +525,9 @@ export function mirrorBlock(texts, env) {
     if (vocab.length) lines.push('Словарь темы — пользуйся свободно, это разрешённые слова: ' + vocab.join(', ') + '.');
   }
   if (swear.length) lines.push('В разговоре есть мат и грубая лексика (' + swear.map((w) => '«' + w + '»').join(', ') + ') — она здесь уместна.');
+  if (obf.length) lines.push('Часть слов он пишет искажённо: ' + obf.map((w) => '«' + w + '»').join(', ')
+    + ' — читай их как нормальные слова понятий выше. В ОТВЕТЕ пиши нормальными словами целиком: '
+    + 'его маскировку не копируй, над написанием не подшучивай и не переспрашивай, что он имел в виду.');
   lines.push(
     'Никакое слово само по себе не запрещено — ни мат, ни сленг, ни прямые названия тела и действий.',
     'Не обязательно повторять его слово в каждом предложении: синонимы бери любые, но ТОГО ЖЕ уровня прямоты.',
@@ -596,7 +783,10 @@ export function restore(reply, sourceTexts, env) {
   const none = { text: raw, changed: false, pairs: [] };
   if (!cfgOf(env).on || !raw.trim()) return none;
   const list = Array.isArray(sourceTexts) ? sourceTexts : [sourceTexts];
-  const source = list.map((t) => String(t || '')).join('\n');
+  const sourceRaw = list.map((t) => String(t || '')).join('\n');
+  /* 0.205: корни ищем и в нормализованной копии («trahatsya» → трахаться),
+     иначе регистр понятий есть, а глагольные таблицы источника не видят. */
+  const source = sourceRaw + '\n' + denoise(sourceRaw);
   if (!source.trim() || wantsFormal(source)) return none;
   if (/(называется|по-научному|медицинск\w*\s+термин|синоним)/i.test(raw.slice(0, 4000))) return none;
 
