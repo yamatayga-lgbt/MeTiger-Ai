@@ -117,27 +117,79 @@ const HOMOGLYPH = {
 
 const MASK_LEMMAS = ['дрочка', 'дрочки', 'дрочке', 'дрочку', 'дрочить', 'дрочит', 'дрочил', 'секс', 'трахать', 'трахаться', 'трахается', 'ебать', 'ебаться', 'ебётся', 'хуй', 'хуя', 'хую', 'пизда', 'пизде', 'пизду', 'минет', 'минета', 'отсос', 'член', 'члена', 'оргазм', 'порно', 'порнуха', 'мастурбация', 'мастурбировать', 'сперма', 'киска', 'жопа', 'сиськи', 'кончить', 'кончать', 'блядь', 'сука', 'клитор', 'вагина', 'влагалище', 'пенис', 'куннилингус'];
 const MASK_LATIN = { drochka: 'дрочка', seks: 'секс', sex: 'секс', minet: 'минет', chlen: 'член', pizda: 'пизда', huy: 'хуй', khuy: 'хуй', xuy: 'хуй', porno: 'порно', orgazm: 'оргазм', ebat: 'ебать' };
-function maskedLemma(core) {
-  const w = String(core || '').toLowerCase();
-  if (w.indexOf('*') < 0) return null;
+/* 0.206: звёздочки ДВУСМЫСЛЕННЫ. «м***т» — минет, но и мазут/молот/макет;
+   «м*нет» — ещё и монет; «е*ать» — ебать, но и ехать; «тр*х» — трёх; «х*р» — хор.
+   Под звёздочками может быть обычное слово, и слепо приписывать взрослое
+   нельзя: совпавшее по форме обычное слово делает маску спорной, а спорится
+   она только по контексту реплики и темы разговора (ctxAdult). */
+const MASK_NEUTRAL = ['мазут', 'молот', 'макет', 'монет', 'монета', 'монеты', 'монету', 'монетой',
+  'драка', 'драку', 'драки', 'трёх', 'трех', 'спать', 'ехать', 'сока', 'соку', 'хор', 'хора', 'хору',
+  'дуй', 'суй', 'буй', 'мат', 'мата', 'уйма', 'секс-шоп'];
+const MASK_LATIN_NEUTRAL = ['six', 'sax', 'duck', 'dock', 'deck', 'cook', 'monet', 'manet', 'money'];
+
+function maskPattern(str, cls) {
   const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   /* Серия звёздочек — ОДИН пропуск любой длины: в «др***ка» три звезды
      закрывают «оч» (две буквы), а не требуют три буквы по числу звёзд. */
-  const pat = (str, cls) => new RegExp('^' + String(str).split(/(\*+)/)
+  return new RegExp('^' + String(str).split(/(\*+)/)
     .map((part) => (part.startsWith('*') ? cls : [...part].map(esc).join(''))).join('') + '$');
-  if (/^[a-z*]+$/.test(w)) {
-    const re = pat(w, '[a-z]*');
-    for (const [lat, ru] of Object.entries(MASK_LATIN)) if (re.test(lat)) return ru;
-  }
-  for (const variant of [w].concat(translitCandidates(w))) {
-    const re = pat(variant, '[а-яё]*');
-    const hit = MASK_LEMMAS.filter((l) => re.test(l)).sort((a, b) => a.length - b.length)[0];
-    if (hit) return hit;
-  }
-  return null;
 }
 
-function denoiseToken(coreOrig) {
+/**
+ * Кандидаты под маску, взрослые и нейтральные. Ранжировка — по длине:
+ * если звёздочка чаще = одна буква, точное совпадение длины правдоподобнее
+ * (у «др***ка» дрочка ближе к длине маски, чем драка).
+ */
+function maskCandidates(core) {
+  const w = String(core || '').toLowerCase();
+  if (w.indexOf('*') < 0) return null;
+  const want = w.length; /* если каждая звезда = одна буква — такая длина самая правдоподобная */
+  const rank = (items) => items
+    .map((it) => ({ x: it.x, ru: it.ru || it.x, d: Math.abs(it.x.length - want) }))
+    .sort((a, b) => (a.d - b.d) || (a.x.length - b.x.length));
+  const adult = [];
+  const neutral = [];
+  if (/^[a-z*]+$/.test(w)) {
+    const re = maskPattern(w, '[a-z]*');
+    for (const [lat, ru] of Object.entries(MASK_LATIN)) if (re.test(lat)) adult.push({ x: lat, ru });
+    for (const n of MASK_LATIN_NEUTRAL) if (re.test(n)) neutral.push({ x: n });
+  }
+  const seenA = new Set(adult.map((a) => a.ru));
+  const seenN = new Set(neutral.map((a) => a.x));
+  for (const variant of [w].concat(translitCandidates(w))) {
+    const re = maskPattern(variant, '[а-яё]*');
+    for (const l of MASK_LEMMAS) if (re.test(l) && !seenA.has(l)) { seenA.add(l); adult.push({ x: l }); }
+    for (const l of MASK_NEUTRAL) if (re.test(l) && !seenN.has(l)) { seenN.add(l); neutral.push({ x: l }); }
+  }
+  return { adult: rank(adult), neutral: rank(neutral) };
+}
+
+/**
+ * Вердикт по маске: взрослая лемма, её нейтральные соперники и можно ли её
+ * принимать. Спорная маска (обычное слово подходит не хуже) принимается
+ * ТОЛЬКО во взрослом контексте; иначе движок слово не угадывает, а оставляет
+ * как написано — смысл по фразе дочитает сама модель, ей подскажут варианты.
+ */
+function maskedInfo(core, ctxAdult) {
+  const c = maskCandidates(core);
+  if (!c || !c.adult.length) return null;
+  const bestA = c.adult[0];
+  const bestN = c.neutral[0] || null;
+  const ambiguous = !!bestN && bestN.d <= bestA.d && bestN.x !== bestA.ru;
+  return {
+    lemma: bestA.ru,
+    ambiguous,
+    neutrals: c.neutral.slice(0, 3).map((n) => n.x),
+    use: !ambiguous || !!ctxAdult,
+  };
+}
+
+function maskedLemma(core, ctxAdult) {
+  const info = maskedInfo(core, ctxAdult);
+  return info && info.use ? info.lemma : null;
+}
+
+function denoiseToken(coreOrig, ctxAdult) {
   const orig = String(coreOrig || '');
   let core = orig.toLowerCase();
   if (!/[a-zа-яё]/i.test(core)) return orig;
@@ -147,7 +199,7 @@ function denoiseToken(coreOrig) {
   if (stripped !== core) core = stripped;
   /* звёздочки вместо букв: др***ка, х*й, с*кс */
   if (core.indexOf('*') >= 0) {
-    const lemma = maskedLemma(core);
+    const lemma = maskedLemma(core, ctxAdult);
     if (lemma) return lemma;
     core = core.replace(/\*+/g, '');
     if (hasStem(core)) return core;
@@ -173,10 +225,10 @@ function denoiseToken(coreOrig) {
   return orig;
 }
 
-function denoiseChunk(part) {
+function denoiseChunk(part, ctxAdult) {
   const m = /^([^A-Za-zА-Яа-яЁё0-9*@$]*)([A-Za-zА-Яа-яЁё0-9*@$._·•-]+)([^A-Za-zА-Яа-яЁё0-9*@$]*)$/.exec(part);
   if (!m) return part;
-  return m[1] + denoiseToken(m[2]) + m[3];
+  return m[1] + denoiseToken(m[2], ctxAdult) + m[3];
 }
 
 /* Разрядка «и с е к с»: висящий союз/предлог одной буквой — не часть слова. */
@@ -194,8 +246,17 @@ function spacedParts(seq) {
   return hasStem(word) ? { lead, letters: letters.slice(lead), word } : null;
 }
 
-/** Нормализованная копия текста для распознавания. Оригинал не трогаем. */
-export function denoise(text) {
+const ADULT_CTX_RE = /(секс|сексуал|эрот|порн|интим|возбужд|оргаз|18\+)/i;
+
+/**
+ * Нормализованная копия текста для распознавания. Оригинал не трогаем.
+ * `ctxAdult` (необязат.) — взрослая ли тема вокруг: спорная маска со
+ * звёздочками («м***т») в ней читается взрослым словом. Без параметра
+ * контекст вычисляется из самого текста (звёздочки в расчёт не берутся,
+ * чтобы маска не подтверждала сама себя), поэтому история разговора,
+ * переданная одним текстом, тоже работает как контекст.
+ */
+export function denoise(text, ctxAdult) {
   let s = String(text || '');
   /* разрядка: «д р о ч к а», «с е к с» — четыре и больше одиночных букв подряд */
   s = s.replace(/(^|[\s(«"'])([A-Za-zА-Яа-яЁё](?:\s[A-Za-zА-Яа-яЁё]){3,})(?=$|[\s.,!?;:)»"'])/g,
@@ -205,7 +266,15 @@ export function denoise(text) {
       const leadW = p.lead ? [...seq.replace(/\s+/g, '')].slice(0, p.lead).join(' ') + ' ' : '';
       return pref + leadW + p.word;
     });
-  return s.split(/(\s+)/).map((part) => (/^\s+$/.test(part) || !part ? part : denoiseChunk(part))).join('');
+  const parts = s.split(/(\s+)/);
+  let ctx = !!ctxAdult;
+  if (!ctx && s.indexOf('*') >= 0) {
+    const prelim = parts.map((part) => (/^\s+$/.test(part) || !part
+      ? part
+      : (part.indexOf('*') >= 0 ? ' ' : denoiseChunk(part, false)))).join('');
+    ctx = hasStem(prelim) || ADULT_CTX_RE.test(prelim);
+  }
+  return parts.map((part) => (/^\s+$/.test(part) || !part ? part : denoiseChunk(part, ctx))).join('');
 }
 
 /** Какие именно написания человек исказил — для подсказки модели примерами. */
@@ -218,11 +287,37 @@ export function obfuscatedWords(texts) {
     const s = String(t || '');
     const spaced = [...s.matchAll(/(?:^|[\s(«"'])([A-Za-zА-Яа-яЁё](?:\s[A-Za-zА-Яа-яЁё]){3,})/g)].map((m) => m[1]);
     for (const seq of spaced) { const p = spacedParts(seq); if (p) push(p.letters.join(' ')); }
+    const ctx = hasStem(denoise(s));
     for (const raw of s.split(/\s+/)) {
       const core = raw.replace(/^[^A-Za-zА-Яа-яЁё0-9*@$]+|[^A-Za-zА-Яа-яЁё0-9*@$]+$/g, '');
       if (core.length < 3) continue;
-      const norm = denoise(core);
+      const norm = denoise(core, ctx);
       if (norm.toLowerCase() !== core.toLowerCase() && hasStem(norm)) push(core);
+    }
+  }
+  return out;
+}
+
+/**
+ * Спорные маски со звёздочками: под звёздами и взрослое, и обычное слово
+ * («м***т» — минет или мазут/молот/макет). Движок сам значения НЕ приписывает;
+ * список уходит модели с правилом «читай по смыслу фразы и теме».
+ */
+export function ambiguousMasks(texts) {
+  const list = Array.isArray(texts) ? texts : [texts];
+  const out = [];
+  const seen = new Set();
+  for (const t of list) {
+    const s = String(t || '');
+    for (const raw of s.split(/\s+/)) {
+      const core = raw.replace(/^[^A-Za-zА-Яа-яЁё0-9*@$]+|[^A-Za-zА-Яа-яЁё0-9*@$]+$/g, '');
+      if (core.length < 3 || core.indexOf('*') < 0 || seen.has(core)) continue;
+      const info = maskedInfo(core, false);
+      if (info && info.ambiguous) {
+        seen.add(core);
+        out.push({ mask: core, adult: info.lemma, neutrals: info.neutrals });
+        if (out.length >= 3) return out;
+      }
     }
   }
   return out;
@@ -416,7 +511,8 @@ export function detectConcepts(texts) {
   /* 0.205: ищем и по нормализованной копии — «Dro4ка» даёт понятие мастурбации
      его нормальным словом «дрочка», хотя в оригинале корня нет. */
   const origJoined = list.join('\n');
-  const normJoined = list.map((t) => denoise(t)).join('\n');
+  /* одним текстом: история — контекст для спорных масок («а м***т?» после секса) */
+  const normJoined = denoise(origJoined);
   const joined = normJoined === origJoined ? origJoined : origJoined + '\n' + normJoined;
   const byId = new Map();
   const add = (id, register, words) => {
@@ -424,7 +520,7 @@ export function detectConcepts(texts) {
     const prev = byId.get(id);
     const rank = { vulgar: 3, colloquial: 2, neutral: 1 };
     if (!prev) { byId.set(id, { id, register, words: words.slice() }); return; }
-    if (rank[register] > rank[prev.register]) prev.register = register;
+    if (rank[register][register] > rank[prev.register]) prev.register = register;
     for (const w of words) if (prev.words.indexOf(w) < 0 && prev.words.length < 5) prev.words.push(w);
   };
   for (const d of DETECT.concat(EN_DETECT)) {
@@ -477,7 +573,8 @@ const EXPLICIT_RES = [
 export function explicitWords(texts) {
   const raw = Array.isArray(texts) ? texts : [texts];
   /* оригинал первым (его формы), нормализованная копия следом (Dro4ка → дрочка) */
-  const list = raw.concat(raw.map((t) => denoise(String(t || ''))));
+  const ctxAll = hasStem(denoise(raw.map((t) => String(t || '')).join('\n')));
+  const list = raw.concat(raw.map((t) => denoise(String(t || ''), ctxAll)));
   const seen = new Set();
   const out = [];
   for (const t of list) {
@@ -516,7 +613,20 @@ export function mirrorBlock(texts, env) {
   const concepts = detectConcepts(list);
   const swear = profanityWords(list);
   const obf = obfuscatedWords(list);
-  if (!concepts.length && !swear.length && !obf.length) return '';
+  const amb = ambiguousMasks(list);
+  if (!concepts.length && !swear.length && !obf.length && !amb.length) return '';
+  const ambLine = amb.length ? ('Написание со звёздочками бывает двусмысленным: '
+    + amb.map((a) => '«' + a.mask + '» может быть и «' + a.adult + '», и обычным словом ('
+      + a.neutrals.join(', ') + ')').join('; ')
+    + '. Читай такое по СМЫСЛУ фразы и теме разговора, а не по взрослому варианту автоматически; '
+    + 'если по смыслу это взрослое значение — отвечай нормальным словом целиком, если обычное — '
+    + 'обычным, без намёков на двусмысленность.') : '';
+  /* Спорная маска и больше ничего: целый блок свободы слова тут ни к чему —
+     речь может быть о гвоздях. Только предостережение от автоматической
+     взрослой догадки. */
+  if (!concepts.length && !swear.length && !obf.length) {
+    return '【Слова со звёздочками】\n' + ambLine;
+  }
   const lines = ['【Свобода слова — регистр диалога, любые слова】'];
   if (concepts.length) {
     lines.push('Понятия этого разговора его словами: '
@@ -528,6 +638,7 @@ export function mirrorBlock(texts, env) {
   if (obf.length) lines.push('Часть слов он пишет искажённо: ' + obf.map((w) => '«' + w + '»').join(', ')
     + ' — читай их как нормальные слова понятий выше. В ОТВЕТЕ пиши нормальными словами целиком: '
     + 'его маскировку не копируй, над написанием не подшучивай и не переспрашивай, что он имел в виду.');
+  if (ambLine) lines.push(ambLine);
   lines.push(
     'Никакое слово само по себе не запрещено — ни мат, ни сленг, ни прямые названия тела и действий.',
     'Не обязательно повторять его слово в каждом предложении: синонимы бери любые, но ТОГО ЖЕ уровня прямоты.',
