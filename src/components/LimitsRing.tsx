@@ -23,7 +23,7 @@
  */
 import type { CSSProperties } from 'react'
 import { haptic } from '../lib/haptic'
-import { fmtPct, isExhausted, poolLine, ringHue, type LimitsPool } from '../lib/limits'
+import { fmtPct, isExhausted, poolLine, reservePct, ringHue } from '../lib/limits'
 import { useUsageLive } from '../lib/usage'
 
 /** Раз в минуту: чаще незачем — цифра меняется от запросов, а не от времени. */
@@ -69,14 +69,10 @@ export function LimitsRingGlyph({ pct, size = 22, stroke = 2.6 }: { pct: number;
  */
 export function LimitsRing({ onOpen }: { onOpen: () => void }) {
   const { data } = useUsageLive(true, RING_EVERY_MS)
-  const pool: LimitsPool | null = (data && data.pool) || null
-  /* 0.202: кольцо показывает остаток по суточному потолку, когда он включён, — это
-     и есть та цифра, которая решает, ответит ли агент. Сумма квот провайдеров
-     (~9 900) больше потолка (9 000), и кольцо по ней стояло бы выше настоящего
-     запаса. Без потолка и на старом сервере остаётся прежний pool.pct. */
-  const pct = data && data.cap && data.cap.on && data.cap.pct != null
-    ? data.cap.pct
-    : pool && pool.pct != null ? pool.pct : null
+  const pool = (data && data.pool) || null
+  /* 0.216: одна функция reservePct — шапка, профиль и экран лимитов не могут
+     разойтись. Потолок, когда включён, важнее суммы квот провайдеров. */
+  const pct = reservePct(data)
   if (pct == null) return null
 
   const empty = isExhausted(pct)

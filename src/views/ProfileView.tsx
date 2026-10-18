@@ -32,7 +32,7 @@ import {
   Smile,
   Sun,
 } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Badge, Button, Segmented } from '../components/ui'
 import { ReportSheet } from '../components/ReportSheet'
 import { loadReports, ownerEnabled } from '../lib/report'
@@ -41,6 +41,9 @@ import { haptic } from '../lib/haptic'
 import type { ThemePref } from '../hooks/useTheme'
 
 import { displayName, initials, type Person } from '../lib/user'
+import { fmtPct, reservePct, ringHue } from '../lib/limits'
+import { useUsageLive } from '../lib/usage'
+import { RING_EVERY_MS } from '../components/LimitsRing'
 import type { ViewId } from '../App'
 
 interface ProfileViewProps {
@@ -66,6 +69,8 @@ function Row({
   soon,
   chevron,
   onClick,
+  reserve,
+  style,
 }: {
   icon: ReactNode
   label: string
@@ -73,6 +78,8 @@ function Row({
   soon?: boolean
   chevron?: boolean
   onClick?: () => void
+  reserve?: boolean
+  style?: CSSProperties
 }) {
   const body = (
     <>
@@ -80,7 +87,7 @@ function Row({
         {icon}
       </span>
       <span className="rows-name">{label}</span>
-      {value ? <span className="rows-val">{value}</span> : null}
+      {value ? <span className={`rows-val${reserve ? ' is-reserve' : ''}`}>{value}</span> : null}
       {soon ? <Badge tone="gray">Скоро</Badge> : null}
       {chevron ? (
         <ChevronRight size={17} className="rows-chev" aria-hidden="true" />
@@ -88,12 +95,13 @@ function Row({
     </>
   )
   if (!onClick) {
-    return <div className={`rows-row${soon ? ' is-soon' : ''}`}>{body}</div>
+    return <div className={`rows-row${soon ? ' is-soon' : ''}`} style={style}>{body}</div>
   }
   return (
     <button
       type="button"
       className="rows-row tappable"
+      style={style}
       onClick={() => {
         haptic('light')
         onClick()
@@ -101,6 +109,23 @@ function Row({
     >
       {body}
     </button>
+  )
+}
+
+/** Строка «Использование и лимиты»: запас виден сразу, без захода на экран. */
+function UsageLimitsRow({ onOpen }: { onOpen: () => void }) {
+  const { data } = useUsageLive(true, RING_EVERY_MS)
+  const pct = reservePct(data)
+  return (
+    <Row
+      icon={<BarChart3 size={20} />}
+      label="Использование и лимиты"
+      value={pct == null ? undefined : fmtPct(pct)}
+      chevron
+      onClick={onOpen}
+      reserve={pct != null}
+      style={pct == null ? undefined : { '--ring-h': String(Math.round(ringHue(pct) * 10) / 10) } as CSSProperties}
+    />
   )
 }
 
@@ -196,12 +221,7 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, 
           почта» — заготовка входа по адресу. */}
       <div className="rows-label">Учетная запись</div>
       <div className="rows-card">
-        <Row
-          icon={<BarChart3 size={20} />}
-          label="Использование и лимиты"
-          chevron
-          onClick={() => onNavigate('usage')}
-        />
+        <UsageLimitsRow onOpen={() => onNavigate('usage')} />
         {/* 0.176: вместо профилей — ID, который человек выбирает сам («При новом
             пользователе с устройства он сам будет вызначать себе айди»). Срок
             смены считает сервер; здесь только поле и слова. */}

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { LimitsRingGlyph } from '../components/LimitsRing'
 import { Toast } from '../components/Toast'
 import { Badge, Button, cx } from '../components/ui'
-import { fmtPct, poolLine, ringHue, type LimitsPool } from '../lib/limits'
+import { fmtPct, poolLine, poolNote, reservePct, ringHue, type LimitsPool } from '../lib/limits'
 import { clearSpeed, fmtSec, speedSummary, telemetrySummary, type SpeedSummary } from '../lib/models'
 import { fmtAgo, fmtDuration } from '../lib/time'
 import { useUsageLive, type UsageRow } from '../lib/usage'
@@ -128,17 +128,21 @@ export function UsageView() {
   const pub = data?.scope === 'public'
   /* Карточка запаса считает по суточному потолку, когда он включён (0.202):
      сумма квот провайдеров — не то, что решает, ответит ли агент. `live` берём
-     из пула провайдеров — это число источников за цифрой, оно не про потолок. */
+     из пула провайдеров — это число источников за цифрой, оно не про потолок.
+     0.216: процент — reservePct, та же цифра, что в шапке и в строке профиля. */
   const capOn = !!(data?.cap && data.cap.on)
   const capPct = capOn && data?.cap?.pct != null ? data.cap.pct : null
+  const pct = reservePct(data)
   /* Абсолютных чисел потолка в публичном ответе нет (это и есть закрытие двери),
      поэтому недостающие поля — NaN, а не нули: «осталось 0 из 0» было бы враньём,
      а poolLine на нечисле честно говорит только процент. */
   const capNum = (v: unknown) => (v != null && Number.isFinite(Number(v)) ? Number(v) : NaN)
-  const pool: LimitsPool | null = capPct != null
-    ? { live: (data?.pool?.live as number), capacity: capNum(data?.cap?.max), used: capNum(data?.cap?.used),
-        remaining: capNum(data?.cap?.remaining), pct: capPct }
-    : data?.pool || null
+  const pool: LimitsPool | null = pct != null
+    ? (capPct != null
+      ? { live: (data?.pool?.live as number), capacity: capNum(data?.cap?.max), used: capNum(data?.cap?.used),
+          remaining: capNum(data?.cap?.remaining), pct }
+      : data?.pool ? { ...data.pool, pct } : { live: 0, capacity: NaN, used: NaN, remaining: NaN, pct })
+    : null
   const rows = data?.providers || []
   const minuteSum = rows.reduce((a, r) => a + (r.minute || 0), 0)
   const totals = data?.totals || { attempt: 0, ok: 0, refused: 0, dead: 0 }
@@ -180,13 +184,15 @@ export function UsageView() {
       {pool && pool.pct != null ? (
         <div className="usage-pool">
           <span className="usage-pool-ring" style={{ '--ring-h': String(Math.round(ringHue(pool.pct) * 10) / 10) } as CSSProperties}>
-            <LimitsRingGlyph pct={pool.pct} size={36} stroke={3.4} />
+            <LimitsRingGlyph pct={pool.pct} size={52} stroke={4.2} />
           </span>
           <div className="grow">
             <div className="usage-pool-n">Общий запас агента: {fmtPct(pool.pct)}</div>
             <div className="usage-pool-d">
+              {poolNote(pool)}
+              {' · '}
               {poolLine(pool)}
-              {typeof pool.live === 'number' ? ` · источников за цифрой: ${pool.live}` : ''}
+              {data ? ` · сброс через ${fmtDuration(data.resetInMs)}` : ''}
               {data?.cap && data.cap.on === false ? ' · суточный потолок выключен' : ''}
             </div>
           </div>

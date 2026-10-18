@@ -27,6 +27,27 @@ export interface LimitsPool {
   pct: number | null
 }
 
+/**
+ * Одна цифра запаса для шапки, профиля и экрана лимитов.
+ *
+ * Когда включён суточный потолок — он и есть запас (квот провайдеров больше,
+ * чем агенту разрешено потратить за сутки). Без потолка остаётся сумма живых
+ * источников. Фронт свой процент не считает: берёт то, что уже посчитал сервер.
+ */
+export function reservePct(data: {
+  cap?: { on?: boolean; pct?: number | null } | null
+  pool?: { pct?: number | null } | null
+} | null | undefined): number | null {
+  if (!data) return null
+  if (data.cap && data.cap.on && data.cap.pct != null && Number.isFinite(Number(data.cap.pct))) {
+    return Number(data.cap.pct)
+  }
+  if (data.pool && data.pool.pct != null && Number.isFinite(Number(data.pool.pct))) {
+    return Number(data.pool.pct)
+  }
+  return null
+}
+
 /** «98,9 %» — процент с десятыми, русской запятой и неразрывным пробелом. */
 export function fmtPct(pct: number | null | undefined): string {
   if (pct == null || !Number.isFinite(Number(pct))) return '—'

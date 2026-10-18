@@ -4508,6 +4508,11 @@ kbd {
   background: var(--surface);
   overflow: hidden;
 }
+/* Тёмная тема: карточки — мягкий серый, не белые «кнопки» на чёрном.
+   Текст строк — как основной текст экрана (почти белый), не чёрный. */
+[data-theme='dark'] .rows-card {
+  background: #2c2c34;
+}
 
 .rows-row {
   display: flex;
@@ -4518,8 +4523,8 @@ kbd {
   padding: 9px 16px;
   border: 0;
   border-bottom: 1px solid var(--border);
-  background: white;
-  color: black;
+  background: transparent;
+  color: var(--text);
   font: inherit;
   /* 15.5px — размер строки из приложения ChatGPT. */
   font-size: 15.5px;
@@ -4537,13 +4542,13 @@ button.rows-row {
 }
 
 button.rows-row:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .rows-ic {
   display: inline-flex;
   flex: none;
-  color: black;
+  color: var(--text);
 }
 
 .rows-name {
@@ -4564,6 +4569,14 @@ button.rows-row:hover {
   font-size: 13.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.rows-val.is-reserve {
+  color: hsl(var(--ring-h, 120) 62% 42%);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+[data-theme='dark'] .rows-val.is-reserve {
+  color: hsl(var(--ring-h, 120) 62% 58%);
 }
 
 .rows-chev {
@@ -5265,12 +5278,15 @@ button.rows-row:hover {
 .usage-pool {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 14px;
+  padding: 16px;
   margin: 12px 0 4px;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--bg-elevated);
+}
+[data-theme='dark'] .usage-pool {
+  background: #2c2c34;
 }
 
 .usage-pool-ring {
@@ -5285,9 +5301,10 @@ button.rows-row:hover {
 }
 
 .usage-pool-n {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-pool-d {

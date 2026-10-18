@@ -173,8 +173,8 @@ ok('U179t панель «Использование и лимиты» показ
     && /\[data-theme='dark'\] \.usage-pool-ring/.test(css)
     /* 0.202: и кольцо в шапке, и эта карточка считают остаток по суточному
        потолку, когда он включён, — иначе одна и та же цифра значила бы разное. */
-    && /capOn && data\?\.cap\?\.pct != null/.test(view)
-    && /data\.cap\.on && data\.cap\.pct != null/.test(ring))
+    && /reservePct\(data\)/.test(view)
+    && /reservePct\(data\)/.test(ring))
 
 ok('U179u проверка подключена к общему прогону — иначе она бы «прошла» сама по себе',
   /test\/ui179\.test\.js/.test(chain) && /test\/usage\.test\.js/.test(chain))
