@@ -742,8 +742,10 @@ export default function App() {
         <main
           className={`content${NO_ANIM_VIEWS.includes(view) ? ' settings-scroll' : ''}`}
         >
-          {view === 'chat' ? (
-            <div className="screen-wrap">
+          {/* Чат не размонтируем (0.219): в установленном приложении уход в профиль
+              снимал весь экран, и по возврату пузыри, поле и лента снова «прогружались».
+              hidden прячет узел, состояние и прокрутка остаются. */}
+          <div className="screen-wrap" hidden={view !== 'chat'}>
               <div className="chat-shell">
                 <ChatView
                 key={activeChatId}
@@ -763,7 +765,6 @@ export default function App() {
                 />
               </div>
             </div>
-          ) : null}
           <Suspense fallback={null}>
           {/* Профиль — это и есть настройки (0.159): тема выбирается прямо тут,
               как и на экране настроек прежде. Отдельной вкладки настроек нет. */}

@@ -19,7 +19,32 @@
     <meta name="apple-mobile-web-app-title" content="MeTiger Ai" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Стартовая заставка с иконкой (0.219): iOS иначе рисует крошечный apple-touch-icon
+         по центру пустого кадра. Картинки — тот же тигр, 112 CSS-пикселей, фон как у темы. -->
+    <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash-1290x2796.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash-1179x2556.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash-1170x2532.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash-1125x2436.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash-1284x2778.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" href="./icons/splash-828x1792.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash-1242x2688.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" href="./icons/splash-750x1334.png" />
     <title>MeTiger Ai — чат с ИИ</title>
+    <style>
+      /* До бандла CSS: иначе между системной заставкой и React — пустой кадр,
+         и интерфейс потом «прогружается» второй раз. */
+      html, body, #root { height: 100%; margin: 0; background: #0A0A0C; }
+      html[data-theme="light"], html[data-theme="light"] body, html[data-theme="light"] #root { background: #f7f6f2; }
+      #boot {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        background: #0A0A0C;
+      }
+      html[data-theme="light"] #boot { background: #f7f6f2; }
+      #boot img { width: 112px; height: 112px; display: block; }
+      html[data-theme="dark"] #boot img { mix-blend-mode: screen; }
+      html[data-theme="light"] #boot img { border-radius: 24px; }
+    </style>
     <script>
       // Тема до первого кадра — без мигания
       (function () {
@@ -32,7 +57,11 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot" aria-hidden="true">
+        <img src="./icons/icon-192.png" alt="" width="112" height="112" />
+      </div>
+    </div>
     <script type="module" src="./src/main.tsx"></script>
     <script>
       // Service worker — только он делает иконку на главном экране «приложением»,

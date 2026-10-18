@@ -1279,24 +1279,16 @@ kbd {
 }
 
 .view {
-  animation: fadeUp var(--t-med) both;
+  animation: none;
 }
 
-/* Плавное переключение между экранами */
+/* Переключение экранов без «въезда»: в приложении анимация проигрывалась
+   заново при каждом возврате, и казалось, что интерфейс перезагружается (0.219). */
 .screen-wrap {
   height: 100%;
-  animation: screenFadeIn var(--t-med) both;
 }
-
-@keyframes screenFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.screen-wrap[hidden] {
+  display: none !important;
 }
 
 /* ---------- Chat ---------- */
@@ -6002,14 +5994,8 @@ button.rows-row:hover {
 .side-foot-row .icon-btn:hover svg { transform: rotate(40deg); }
 
 /* Пункты истории: въезд сбоку с небольшим каскадом внутри группы. */
-.history-group .chat-item { animation: itemIn .32s var(--ease-out) both; }
-.history-group .chat-item:nth-child(2) { animation-delay: .02s; }
-.history-group .chat-item:nth-child(3) { animation-delay: .04s; }
-.history-group .chat-item:nth-child(4) { animation-delay: .06s; }
-.history-group .chat-item:nth-child(5) { animation-delay: .08s; }
-.history-group .chat-item:nth-child(n+6) { animation-delay: .1s; }
-.history-label { animation: fadeIn .3s var(--ease-out) both; }
-@keyframes itemIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+.history-group .chat-item { animation: none; }
+.history-label { animation: none; }
 .chat-item .more-btn svg { transition: transform .3s var(--spring); }
 .chat-item:hover .more-btn svg { transform: rotate(90deg); }
 
@@ -6017,9 +6003,7 @@ button.rows-row:hover {
    мягкий подъём 150 мс в момент появления потока, не на каждый кусок и не
    на всю старую переписку при открытии чата. */
 .msg-ai.msg-arrive { animation: msgArrive 150ms var(--ease-out) both; }
-.msg-user .bubble { animation: bubbleIn .38s var(--spring) both; transform-origin: right bottom; }
 @keyframes msgArrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes bubbleIn { from { opacity: 0; transform: scale(.9) translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Плашки источников и сноски — проявляются по очереди. */
 .msg-sources > * { animation: fadeUp .35s var(--ease-out) both; }
