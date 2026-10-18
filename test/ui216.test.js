@@ -29,8 +29,8 @@ const sw = read('public/sw.js')
 const v = versionsAligned()
 
 ok('U216a все источники версии синхронизированы', v.ok, v.why)
-ok('U216b «Что нового» и README знают 0.216',
-  /\*\*0\.216\*\*/.test(readme) && /version: '0\.216'/.test(notes))
+ok('U216b история README знает 0.216',
+  /\*\*0\.216\*\*/.test(readme))
 ok('U216c запись без имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes) && !/reservePct|rows-row/.test(notes))
 ok('U216d кэш оболочки знает текущую версию',

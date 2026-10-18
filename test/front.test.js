@@ -1882,9 +1882,11 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       && !/\.settings-row \.segmented \{\s*flex: 1 0 100%/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')));
 
 
-  ok('N19: мелочи плоские — капсула чата, круглые кнопки шапки и активный пункт сайдбара с плотной заливкой',
-    /\.topbar-pill,[\s\S]{0,120}\.icon-btn\.topbar-round,[\s\S]{0,120}\.side-item\.active \{/.test(flatArea)
-      && /\.topbar-pill,[\s\S]{0,300}background-color: var\(--surface-2\)/.test(flatArea));
+  ok('N19: круглые кнопки шапки и активный пункт сайдбара с плотной заливкой; заголовок шапки без капсулы',
+    /\.icon-btn\.topbar-round,[\s\S]{0,80}\.side-item\.active \{/.test(flatArea)
+      && /\.icon-btn\.topbar-round,[\s\S]{0,200}background-color: var\(--surface-2\)/.test(flatArea)
+      && /background: transparent/.test((css.match(/\.topbar-pill \{[\s\S]*?\n\}/) || [''])[0])
+      && !/\.topbar-pill,[\s\S]{0,120}\.icon-btn\.topbar-round/.test(flatArea));
 
   ok('N21: обоев под интерфейсом нет — фон страницы одноцветный (var(--bg)), без градиентов на весь экран',
     !/--wall/.test(bareCss) && /background: var\(--bg\)/.test(stripCssComments(css.slice(css.indexOf('body {'), css.indexOf('}', css.indexOf('body {'))))));

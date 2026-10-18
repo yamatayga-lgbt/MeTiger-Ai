@@ -828,11 +828,11 @@ a {
 /* ---------- Topbar ---------- */
 .topbar {
   display: grid;
-  /* Боковые колонки одной ширины (--topbar-side): справа теперь кольцо лимитов и
-     папка, и без выравнивания капсула с названием чата уехала бы влево от центра
-     экрана. Ширина переменной, а не подгонкой «на глаз»: на узких экранах её
-     уменьшает правило ниже. */
-  --topbar-side: 118px;
+  /* Боковые колонки одной ширины — ровно под круглую кнопку (38 px) плюс воздух.
+     Раньше 118 px оставляли пустые поля по бокам заголовка, и «Персонализация»
+     обрезалась в капсуле, хотя место было. Кольцо лимитов живёт в поле ввода,
+     не здесь. */
+  --topbar-side: 44px;
   grid-template-columns: var(--topbar-side) 1fr var(--topbar-side);
   align-items: center;
   height: var(--header-h);
@@ -939,14 +939,9 @@ a {
   }
 }
 
-/* На очень узких экранах (до 360 px) подпись уступает место капсуле с названием:
-   кольцо и цвет остаются, лишние знаки уходят, и боковые колонки сжимаются
-   ровно на столько, сколько освободила скрытая подпись. */
+/* На очень узких экранах процент у кольца в поле ввода прячется — само кольцо
+   и цвет остаются. Боковые колонки шапки уже узкие (44 px), сжимать нечего. */
 @media (max-width: 359px) {
-  .topbar {
-    --topbar-side: 92px;
-  }
-
   .limits-pct {
     display: none;
   }
@@ -959,55 +954,59 @@ a {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 14.5px;
+  font-size: 18px;
   font-weight: 650;
   letter-spacing: -0.01em;
 }
 
-/* Капсула «Настройки» посередине шапки — на месте апселла подписки у ChatGPT.
-   У нас всё бесплатно, поэтому вместо «Подключить» тут прямой переход в настройки. */
+/* Заголовок шапки — без капсулы: фон страницы, крупнее, на всю ширину между
+   круглыми кнопками «назад» и папкой. Обрезка только если слово всё равно
+   не влезает (длинное имя чата). */
 .topbar-pill {
-  justify-self: center;
+  justify-self: stretch;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  height: 34px;
-  padding: 0 16px;
-  border-radius: var(--r-full);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 6px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
   color: var(--text);
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 650;
-  letter-spacing: -0.01em;
-  max-width: 100%;
+  letter-spacing: -0.015em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background-color var(--t-fast), transform var(--t-fast);
+  transition: color var(--t-fast), transform var(--t-fast);
 }
 
 .topbar-pill:hover {
-  background: var(--surface-hover);
+  background: transparent;
 }
 
 .topbar-pill:active {
-  transform: scale(0.96);
+  transform: none;
 }
 
 .topbar-pill span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Раздел без своего чата (например, «Настройки») — капсула не кликается и
+/* Раздел без своего чата (например, «Настройки») — подпись не кликается и
    не намекает на меню стрелкой: там нечего переименовывать/удалять. */
 .topbar-pill-static {
   cursor: default;
 }
 
 .topbar-pill-static:hover {
-  background: var(--surface-2);
+  background: transparent;
 }
 
 /* Переименование прямо в шапке — то же поле, что и у пункта чата в сайдбаре,
@@ -5576,15 +5575,14 @@ button.rows-row:hover {
   background-color: var(--bg-elevated);
 }
 
-/* Капсула названия чата, круглые кнопки шапки, активный пункт сайдбара. */
-.topbar-pill,
+/* Круглые кнопки шапки и активный пункт сайдбара — плотная заливка.
+   Заголовок шапки без капсулы: фон не красим (просьба 0.217). */
 .icon-btn.topbar-round,
 .side-item.active {
   background-color: var(--surface-2);
   border-color: var(--border);
 }
 
-.topbar-pill:hover,
 .icon-btn.topbar-round:hover,
 .side-item.active:hover {
   background-color: var(--surface-hover);

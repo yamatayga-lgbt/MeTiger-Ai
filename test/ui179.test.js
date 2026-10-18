@@ -161,11 +161,11 @@ ok('U179r мигание при нуле есть, и «меньше движе�
     && /prefers-reduced-motion: reduce/.test(css)
     && /is-empty/.test(css) && /steps\(1, end\)/.test(css))
 
-ok('U179s капсула с названием чата осталась посередине: боковые колонки шапки равны',
-  /--topbar-side: 118px/.test(css)
+ok('U179s название чата посередине: боковые колонки шапки равны и узкие — место заголовку',
+  /--topbar-side: 44px/.test(css)
     && /grid-template-columns: var\(--topbar-side\) 1fr var\(--topbar-side\)/.test(css)
-    && /--topbar-side: 92px/.test(css),
-  'на узких экранах колонки сжимаются вместе с подписью')
+    && !/--topbar-side: 118px/.test(css) && !/--topbar-side: 92px/.test(css),
+  'колонки шире кнопки — снова пустые поля по бокам заголовка')
 
 ok('U179t панель «Использование и лимиты» показывает ту же цифру первой',
   /usage-pool/.test(view) && /Общий запас агента: \{fmtPct\(pool\.pct\)\}/.test(view)
