@@ -50,8 +50,8 @@ const storeOfKv = (kv) => ({
 })
 
 ok('U220a все источники версии синхронизированы', v.ok, v.why)
-ok('U220b «Что нового» и README знают 0.220',
-  /\*\*0\.220\*\*/.test(readme) && /version: '0\.220'/.test(notes))
+ok('U220b история README знает 0.220',
+  /\*\*0\.220\*\*/.test(readme))
 ok('U220c запись без имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes) && !/DAY_CAP|usedShared|flush\(/.test(notes))
 ok('U220d кэш оболочки знает текущую версию',

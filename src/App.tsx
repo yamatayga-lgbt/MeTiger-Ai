@@ -745,10 +745,11 @@ export default function App() {
           {/* Чат не размонтируем (0.219): в установленном приложении уход в профиль
               снимал весь экран, и по возврату пузыри, поле и лента снова «прогружались».
               hidden прячет узел, состояние и прокрутка остаются. */}
-          <div className="screen-wrap" hidden={view !== 'chat'}>
+          <div className={`screen-wrap${view === 'chat' ? '' : ' is-away'}`} hidden={view !== 'chat'}>
               <div className="chat-shell">
                 <ChatView
                 key={activeChatId}
+                active={view === 'chat'}
                 user={user}
                 messages={activeChat?.messages ?? []}
                 typing={typing}

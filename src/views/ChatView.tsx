@@ -646,6 +646,9 @@ interface ChatViewProps {
   onGenParamsChange?: (next: GenParams) => void
   /** Открыть экран «Использование и лимиты» */
   onOpenLimits?: () => void
+  /** Экран чата сейчас виден. Пока узел display:none, высота textarea
+      считается нулём — без этого поле схлопывается после возврата (0.221). */
+  active?: boolean
 }
 
 export function ChatView({
@@ -662,6 +665,7 @@ export function ChatView({
   genParams = DEFAULT_GEN_PARAMS,
   onGenParamsChange,
   onOpenLimits,
+  active = true,
 }: ChatViewProps) {
   /* Стабильная ссылка на «выполнить код и вернуть вывод в чат»: Markdown
      обёрнут в memo и сверяет props по ссылке. Без useCallback каждая буква
@@ -837,13 +841,22 @@ export function ChatView({
     return () => window.removeEventListener('keydown', onKey)
   }, [addMenuOpen, paramsOpen, lightbox])
 
-  // авто-высота поля и при программном изменении текста (голос)
+  // авто-высота поля: при наборе, голосе и когда чат снова виден. Пока родитель
+  // display:none, scrollHeight = 0 — такую высоту не ставим, иначе поле схлопнется.
   useEffect(() => {
+    if (!active) return
     const el = textareaRef.current
     if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-  }, [value])
+    const fit = () => {
+      el.style.height = 'auto'
+      const h = el.scrollHeight
+      if (h < 8) return
+      el.style.height = `${Math.min(h, 160)}px`
+    }
+    fit()
+    const id = window.requestAnimationFrame(fit)
+    return () => window.cancelAnimationFrame(id)
+  }, [value, active])
 
   // при уходе со экрана микрофон выключается
   useEffect(() => () => sessionRef.current?.cancel(), [])

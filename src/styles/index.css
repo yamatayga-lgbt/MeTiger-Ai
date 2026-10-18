@@ -564,6 +564,9 @@ a {
   position: fixed;
   inset: 0;
   z-index: 55;
+  /* Без фона: в Chrome пустой fixed-слой иногда красится чёрным и накрывает чат
+     вторым «экраном», когда открывают имя чата. Клики ловит и так. */
+  background: transparent;
 }
 
 .chat-menu {
@@ -1270,6 +1273,7 @@ kbd {
   overscroll-behavior: contain;
   padding: 20px 16px 32px;
   scroll-behavior: smooth;
+  background: var(--bg);
 }
 
 .container {
@@ -1290,6 +1294,12 @@ kbd {
 .screen-wrap[hidden] {
   display: none !important;
 }
+.screen-wrap.is-away {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden;
+}
 
 /* ---------- Chat ---------- */
 .chat-shell {
@@ -1300,6 +1310,7 @@ kbd {
      а .content никогда не скроллится сам (нет «двойного» скролла). */
   height: 100%;
   width: 100%;
+  background: var(--bg);
 }
 
 .chat-root {
@@ -2596,6 +2607,7 @@ kbd {
   margin: 0 -16px -32px;
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   background: var(--bg);
+  overflow: visible;
 }
 
 /* Кольцо лимитов стоит внутри строки кнопок (слева, после параметров) —
@@ -2874,6 +2886,7 @@ kbd {
   gap: 0;
   padding: 8px 16px 2px;
   min-width: 0;
+  min-height: 52px;
 }
 
 /* Ряд 2 — кнопки: левая группа прижата к краю, правая — к противоположному. */
@@ -4075,6 +4088,7 @@ kbd {
 .composer textarea {
   flex: 1;
   resize: none;
+  min-height: 44px;
   max-height: 160px;
   padding: 8px;
   font-size: 15px;
@@ -4840,6 +4854,18 @@ button.rows-row:hover {
   .sidebar {
     padding-top: calc(14px + env(safe-area-inset-top));
     padding-left: calc(12px + env(safe-area-inset-left));
+  }
+
+  /* Боковые вырезы (жесты, камера): иначе фон чата выглядит обрезанным по краям. */
+  .content {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+  .composer-wrap {
+    margin-left: calc(-1 * max(16px, env(safe-area-inset-left)));
+    margin-right: calc(-1 * max(16px, env(safe-area-inset-right)));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
   }
 }
 
