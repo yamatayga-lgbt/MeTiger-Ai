@@ -15,6 +15,7 @@
  */
 import { envKeys } from './providers.js';
 import { mapLimit, netCfg } from './netpool.js';
+import * as locale from './locale.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const CACHE = new Map();             /* запрос → { at, res } на изолят */
@@ -81,6 +82,7 @@ export async function geminiSearch({ q, env, fetch: fi, ms, maxSources, resolveS
   if (!keys.length) return { ok: false, why: 'нет ключа Gemini' };
   const models = String((env && env.SEARCH_GEMINI_MODELS) || 'gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-2.5-flash').split(',').map((s) => s.trim()).filter(Boolean);
   const today = new Date().toISOString().slice(0, 10);
+  const loc = locale.searchPrompt(q);
   const prompt = `Сегодня ${today}. Найди в интернете самую свежую и точную информацию по запросу и изложи найденные факты: `
     + `коротко, пунктами (до 10), с цифрами, датами и названиями, без воды и без советов. Если источники расходятся — скажи. `
     /* Живой стенд 12 окт: по белорусским темам выдача уходила в энциклопедию —
@@ -89,7 +91,9 @@ export async function geminiSearch({ q, env, fetch: fi, ms, maxSources, resolveS
        меняет и выбор страниц, и то, что модель говорит человеку. */
     + `Отдавай предпочтение свежим и официальным источникам (сайты ведомств, банков, статистики, погодных служб, новости этого года) `
     + `и в ответе обязательно указывай, на какую дату (число, месяц, год) приведены данные. `
-    + `Отвечай на языке запроса.\n\nЗапрос: ${q}`;
+    + `Отвечай на языке запроса.`
+    + (loc ? ' ' + loc : '')
+    + `\n\nЗапрос: ${q}`;
   let last = '';
   for (const model of models) {
     for (let k = 0; k < keys.length; k++) {
@@ -162,6 +166,7 @@ export async function groqSearch({ q, env, fetch: fi, ms, maxSources }) {
   const ownG = envKeys(env, 'GROQ_SEARCH');
   const keys = ownG.length ? ownG : envKeys(env, 'GROQ');
   if (!keys.length) return { ok: false, why: 'нет ключа Groq' };
+  const loc = locale.searchPrompt(q);
   let last = '';
   for (let k = 0; k < keys.length; k++) {
     const key = keys[(keyTurn + k) % keys.length];
@@ -174,7 +179,7 @@ export async function groqSearch({ q, env, fetch: fi, ms, maxSources }) {
           reasoning_effort: 'low',
           max_completion_tokens: 900,
           tools: [{ type: 'browser_search' }],
-          messages: [{ role: 'user', content: `Найди в интернете свежую точную информацию и перечисли факты пунктами с цифрами и датами; предпочитай официальные источники и назови, на какую дату данные. Запрос: ${q}` }],
+          messages: [{ role: 'user', content: `Найди в интернете свежую точную информацию и перечисли факты пунктами с цифрами и датами; предпочитай официальные источники и назови, на какую дату данные.${loc ? ' ' + loc : ''} Запрос: ${q}` }],
         }),
       }, ms || 20000);
       const txt = await r.text();

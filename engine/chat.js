@@ -36,6 +36,7 @@ import { block as jbBlock } from './jailbreak.js';
 import * as gender from './gender.js';
 import * as emotion from './emotion.js';
 import * as style from './style.js';
+import * as locale from './locale.js';
 import * as ensemble from './ensemble.js';
 import { createMemory } from './memory.js';
 import * as modelreg from './modelreg.js';
@@ -535,7 +536,9 @@ export function createEngine(opts) {
         + ' Даты, время и адреса бери только из данных: чего в них нет, того не пиши — лучше скажи, что даты нет, чем назови выдуманную.'
         + (toolsRes.sources && toolsRes.sources.length ? ' Ссылайся на источники номерами [1], [2] по порядку их появления.' : '.')
       : '';
-    const styleHint = isDefaultSys ? style.hintFor(intent, env) : '';
+    const styleHint = isDefaultSys
+      ? [style.hintFor(intent, env), locale.hint(text)].filter(Boolean).join('\n')
+      : '';
     /* Блок навыков идёт после подсказки про инструменты, указание про файл — самым
        последним: что ниже, то модель слушает сильнее, а оформление блока не должно
        перегореть под общими правилами. */

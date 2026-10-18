@@ -213,7 +213,58 @@ function sharedStrings(xml) {
   return out;
 }
 
-function sheet(xml, sst) {
+/* Встроенные numFmtId Excel, которые означают дату (не время mm:ss). */
+const DATE_FMT = new Set([14, 15, 16, 17, 22, 27, 30, 36, 50, 57]);
+
+/** Excel serial → ДД.ММ.ГГГГ. Эпоха 1899-12-30 учитывает ошибку високосного 1900. */
+export function excelSerial(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 1 || v >= 2958466) return '';
+  const whole = Math.floor(v + 1e-9);
+  const d = new Date(Date.UTC(1899, 11, 30) + whole * 86400000);
+  if (!Number.isFinite(d.getTime())) return '';
+  const yyyy = d.getUTCFullYear();
+  if (yyyy < 1900 || yyyy > 2200) return '';
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return dd + '.' + mm + '.' + yyyy;
+}
+
+function isDateFmt(id, code) {
+  if (DATE_FMT.has(id)) return true;
+  if (code && /y{2,}|d{1,2}/i.test(code) && !/h{1,2}|ss/i.test(code)) return true;
+  return false;
+}
+
+/** Индексы xf из styles.xml, которые рисуют дату, а не просто число. */
+function dateXf(xml) {
+  const custom = Object.create(null);
+  const fmtRe = /<numFmt\b([^>]*)\/?>/g;
+  let fm;
+  while ((fm = fmtRe.exec(xml || ''))) {
+    const attrs = fm[1] || '';
+    const id = Number((/numFmtId="(\d+)"/.exec(attrs) || [])[1] || 0);
+    const code = unesc((/formatCode="([^"]*)"/.exec(attrs) || [])[1] || '');
+    if (id) custom[id] = code;
+  }
+  const dateIds = new Set(DATE_FMT);
+  for (const [id, code] of Object.entries(custom)) {
+    if (isDateFmt(Number(id), code)) dateIds.add(Number(id));
+  }
+  const xf = new Set();
+  const block = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(xml || '');
+  if (!block) return xf;
+  const xfRe = /<xf\b([^>]*?)\/?>/g;
+  let i = 0, xm;
+  while ((xm = xfRe.exec(block[1]))) {
+    const id = Number((/numFmtId="(\d+)"/.exec(xm[1] || '') || [])[1] || 0);
+    if (dateIds.has(id) || isDateFmt(id, custom[id] || '')) xf.add(i);
+    i++;
+  }
+  return xf;
+}
+
+function sheet(xml, sst, dates) {
   const rows = [];
   const rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g;
   let rm;
@@ -228,11 +279,19 @@ function sheet(xml, sst) {
       const type = t ? t[1] : '';
       const ref = /r="([A-Z]+)\d+"/.exec(attrs);
       const v = /<v[^>]*>([\s\S]*?)<\/v>/.exec(body);
+      const sAttr = /s="(\d+)"/.exec(attrs);
+      const xf = sAttr ? Number(sAttr[1]) : -1;
       let val = '';
       if (type === 's' && v) val = sst[Number(v[1])] || '';
       else if (type === 'inlineStr') val = clean(unesc((body.replace(/<[^>]+>/g, ' '))));
       else if (type === 'b' && v) val = v[1].trim() === '1' ? 'ИСТИНА' : 'ЛОЖЬ';
-      else if (v) val = unesc(v[1]).trim();
+      else if (v) {
+        val = unesc(v[1]).trim();
+        if (dates && dates.has(xf) && /^-?\d+(\.\d+)?$/.test(val)) {
+          const d = excelSerial(val);
+          if (d) val = d;
+        }
+      }
       const idx = ref ? colIndex(ref[1]) : cells.length;
       if (idx < 0) continue;
       while (cells.length < idx) cells.push('');
@@ -257,12 +316,14 @@ function xlsx(bytes) {
   }
   const sstEnt = zipFind(ents, 'xl/sharedStrings.xml');
   const sst = sstEnt ? sharedStrings(toText(zipRead(bytes, sstEnt, { maxOut: ENTRY_LIMIT }))) : [];
+  const stylesEnt = zipFind(ents, 'xl/styles.xml');
+  const dates = stylesEnt ? dateXf(toText(zipRead(bytes, stylesEnt, { maxOut: 4 * 1024 * 1024 }))) : new Set();
   const sheets = ents.filter((e) => /^xl\/worksheets\/[^/]+\.xml$/.test(e.name))
     .sort((a, b) => Number(/(\d+)(?:\.xml)?$/.exec(a.name)[1] || 0) - Number(/(\d+)(?:\.xml)?$/.exec(b.name)[1] || 0));
   if (!sheets.length) throw new Error('в книге нет ни одного листа');
   const parts = [];
   for (let i = 0; i < sheets.length; i++) {
-    const rows = sheet(toText(zipRead(bytes, sheets[i], { maxOut: ENTRY_LIMIT })), sst);
+    const rows = sheet(toText(zipRead(bytes, sheets[i], { maxOut: ENTRY_LIMIT })), sst, dates);
     parts.push('лист «' + (names[i] || sheets[i].name.replace(/^xl\/worksheets\//, '').replace(/\.xml$/, '')) + '» (' + rows.length + ' строк)\n' + rows.join('\n'));
   }
   return {

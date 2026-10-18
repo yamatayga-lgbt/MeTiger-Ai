@@ -1507,14 +1507,21 @@ kbd {
   margin: 6px 0;
 }
 
-.msg-text table {
+.md-table {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   margin: 4px 0 10px;
+  max-width: 100%;
+}
+.msg-text table {
+  margin: 0;
   border-collapse: collapse;
   width: max-content;
-  max-width: 100%;
-  overflow-x: auto;
-  display: block;
+  min-width: 100%;
+  max-width: none;
+  display: table;
   font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
 }
 .msg-text th,
 .msg-text td {
@@ -1525,6 +1532,10 @@ kbd {
 .msg-text thead th {
   background: var(--surface-2);
   font-weight: 650;
+  white-space: nowrap;
+}
+.msg-text .md-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
 }
 
 .msg-text code.inline {

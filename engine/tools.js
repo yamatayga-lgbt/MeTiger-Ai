@@ -390,11 +390,36 @@ export const TOOLS = [
     when: (t) => /курс|валют|обмен/i.test(t) && /доллар|евро|рубл|юан|гривн|злот|фунт|byn|usd|eur|rub|cny|\$/i.test(t),
     async run({ text, fetch: fi }) {
       const base = /рубл/i.test(text) && !/белар|byn/i.test(text) ? 'RUB' : 'BYN';
+      const want = ['USD', 'EUR', 'BYN', 'RUB', 'CNY', 'PLN', 'UAH'].filter((c) => c !== base);
+      /* 0.215: для BYN сначала официальный курс Нацбанка РБ — это и есть локальный
+         факт против GigaChat/Алисы, которые тянут «российский» курс по умолчанию.
+         Если НБРБ молчит, остаётся прежний er-api. */
+      if (base === 'BYN') {
+        try {
+          const nb = await fetchT(fi, 'https://api.nbrb.by/exrates/rates?periodicity=0');
+          const arr = await nb.json();
+          if (Array.isArray(arr) && arr.length) {
+            const byCode = Object.create(null);
+            for (const row of arr) {
+              const code = row && row.Cur_Abbreviation;
+              const scale = Number(row && row.Cur_Scale) || 1;
+              const rate = Number(row && row.Cur_OfficialRate);
+              if (code && rate > 0) byCode[code] = rate / scale;
+            }
+            const parts = want.filter((c) => byCode[c] > 0)
+              .map((c) => `1 ${c} = ${fmtNum(Math.round(byCode[c] * 10000) / 10000)} BYN`);
+            if (parts.length) {
+              const day = String((arr[0] && arr[0].Date) || '').slice(0, 10);
+              const src = `1) ${SRC_TITLE.currency} (https://api.nbrb.by/exrates/rates${day ? ' · от ' + day : ''})`;
+              return `Курсы на сегодня (база BYN, Нацбанк РБ): ${parts.join(', ')}.\n${src}`;
+            }
+          }
+        } catch { /* запасной er-api ниже */ }
+      }
       const r = await fetchT(fi, `https://open.er-api.com/v6/latest/${base}`);
       const j = await r.json();
       const rates = (j && j.rates) || null;
       if (!rates) return null;
-      const want = ['USD', 'EUR', 'BYN', 'RUB', 'CNY', 'PLN', 'UAH'].filter((c) => c !== base);
       /* er-api отдаёт «сколько валюты в 1 единице базы» — для человека переворачиваем:
          «1 USD = X BYN», а не наоборот. */
       const parts = want

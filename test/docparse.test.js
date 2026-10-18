@@ -7,7 +7,7 @@
  * Запуск: node test/docparse.test.js
  */
 import zlib from 'node:zlib';
-import { parse, describeLine, blockOf, sniff, stats, MAX_OUT, MAX_BYTES } from '../engine/docparse.js';
+import { parse, describeLine, blockOf, sniff, stats, MAX_OUT, MAX_BYTES, excelSerial } from '../engine/docparse.js';
 import { inflateAuto } from '../engine/inflate.js';
 
 let pass = 0, fail = 0;
@@ -104,6 +104,16 @@ console.log('F — документы: читаем то, что прислал 
   ok('F8: пустые ячейки сохраняют колонки (C3 не уезжает в B3)', /Хлеб & батон\t\t42/.test(r.text), JSON.stringify(r.text.split('\n')[2]));
   ok('F9: inlineStr, булево и имя листа учтены', /скидка/.test(r.text) && /ИСТИНА/.test(r.text) && /лист «Продажи»/.test(r.text), r.text.split('\n')[0]);
   ok('F10: describeLine в одну строку — для человека и логов', /xlsx · \d+ симв\. · 1 лист\./.test(describeLine(r)), describeLine(r));
+}
+{
+  ok('F10a: serial 44927 → 01.01.2023', excelSerial(44927) === '01.01.2023', excelSerial(44927));
+  const dated = parse(zip([
+    { name: 'xl/workbook.xml', data: '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Даты" sheetId="1"/></sheets></workbook>' },
+    { name: 'xl/styles.xml', data: '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="14" applyNumberFormat="1"/></cellXfs></styleSheet>' },
+    { name: 'xl/worksheets/sheet1.xml', data: '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>дата</t></is></c><c r="B1" s="1"><v>44927</v></c><c r="C1"><v>1.5</v></c></row></sheetData></worksheet>' },
+  ]), { name: 'даты.xlsx' });
+  ok('F10b: ячейка с numFmtId 14 читается как ДД.ММ.ГГГГ, соседнее число не трогаем',
+    dated.ok && /дата\t01\.01\.2023\t1\.5/.test(dated.text), JSON.stringify(dated.text || dated.why).slice(0, 220));
 }
 {
   const r = parse(b2u(PDF), { name: 'отчёт.pdf' });

@@ -108,6 +108,15 @@ export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sou
             // eslint-disable-next-line jsx-a11y/alt-text
             return <img src={src} alt={alt || ''} loading="lazy" className="md-img" />
           },
+          /* Таблица GFM: обёртка даёт горизонтальный скролл на телефоне.
+             Сам <table> с display:block ломает колонки — скроллим снаружи. */
+          table({ children }: { children?: ReactNode }) {
+            return (
+              <div className="md-table">
+                <table>{children}</table>
+              </div>
+            )
+          },
         } as Components}
       >
         {hidden.text}

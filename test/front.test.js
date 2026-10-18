@@ -1821,6 +1821,14 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       !/<em>/.test(starHtml) && /math-fx/.test(starHtml) && /math-sub/.test(starHtml)
         && plain(starHtml).indexOf('a*b*c') >= 0,
       JSON.stringify(plain(starHtml).slice(0, 80)));
+
+    const tblHtml = htmlOf('| Колонка | Значение |\n| --- | --- |\n| Курс | 3,06 |')
+    ok('N74: GFM-таблица в обёртке с горизонтальной прокруткой, заголовок на месте',
+      /md-table/.test(tblHtml) && /<table>/.test(tblHtml) && /<th>/.test(tblHtml) && /Курс/.test(tblHtml),
+      tblHtml.slice(0, 220));
+    ok('N75: у таблиц в чате — прокрутка снаружи и «бухгалтерские» цифры',
+      /\.md-table \{/.test(cssMath) && /font-variant-numeric: tabular-nums/.test(cssMath)
+        && /-webkit-overflow-scrolling: touch/.test(cssMath));
   }
 
   ok('N52: время ответа продлевается, пока поток живой, а молчание и общий потолок остаются',

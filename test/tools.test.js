@@ -69,6 +69,25 @@ const cur = await gatherTools('курс доллара к рублю', {}, fakeF
 }));
 ok('T8: «курс доллара» → база RUB и USD в ответе', cur.used.join() === 'currency' && cur.block.includes('RUB') && cur.block.includes('USD'), cur.block);
 
+const curBy = await gatherTools('курс доллара', {}, fakeFetch({
+  'api.nbrb.by/exrates/rates': [
+    { Cur_Abbreviation: 'USD', Cur_OfficialRate: 3.0637, Cur_Scale: 1, Date: '2026-10-18T00:00:00' },
+    { Cur_Abbreviation: 'EUR', Cur_OfficialRate: 3.55, Cur_Scale: 1, Date: '2026-10-18T00:00:00' },
+    { Cur_Abbreviation: 'RUB', Cur_OfficialRate: 3.45, Cur_Scale: 100, Date: '2026-10-18T00:00:00' },
+  ],
+}));
+ok('T8b: «курс доллара» без «рубля» — Нацбанк РБ, 1 USD = 3.0637 BYN',
+  curBy.used.join() === 'currency' && /Нацбанк РБ/.test(curBy.block) && /1 USD = 3\.0637 BYN/.test(curBy.block)
+    && /nbrb\.by/.test(curBy.block), curBy.block);
+
+const curFb = await gatherTools('курс евро', {}, fakeFetch({
+  'api.nbrb.by': new Error('nbrb down'),
+  'open.er-api.com/v6/latest/BYN': { rates: { USD: 0.326, EUR: 0.282, RUB: 29.1 }, time_last_update_unix: 1791619200 },
+}));
+ok('T8c: НБРБ молчит — запасной er-api с базой BYN',
+  curFb.used.join() === 'currency' && /база BYN/.test(curFb.block) && /1 EUR = /.test(curFb.block)
+    && /er-api/.test(curFb.block), curFb.block);
+
 /* Геокодер отвечает ТОЛЬКО на правильное имя: если извлечение города сломается,
    мок вернёт пусто и тест упадёт, а не подыграет, как раньше. */
 const GEO = {
