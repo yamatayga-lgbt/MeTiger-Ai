@@ -95,7 +95,7 @@ ok('U179h мигание — ровно при нуле, а не при «поч
    пробелы к обычному, — иначе проверка падала бы на форме записи, а не на смысле. */
 const flat = (t) => String(t).replace(/[\u00a0\u202f\s]+/g, ' ')
 ok('U179i строка под кольцом говорит словами и склоняет запросы',
-  flat(poolLine({ live: 12, capacity: 9900, used: 112, remaining: 9788, pct: 98.87 })) === 'осталось 9 788 запросов из 9 900'
+  flat(poolLine({ live: 12, capacity: 9900, used: 112, remaining: 9788, pct: 98.87 })) === 'израсходовано 112 · осталось 9 788 запросов из 9 900'
     && requestsWord(1) === 'запрос' && requestsWord(2) === 'запроса' && requestsWord(5) === 'запросов'
     && requestsWord(11) === 'запросов' && requestsWord(21) === 'запрос',
   poolLine({ live: 12, capacity: 9900, used: 112, remaining: 9788, pct: 98.87 }))

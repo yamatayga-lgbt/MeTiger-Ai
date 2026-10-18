@@ -496,46 +496,47 @@ console.log('Y — суточный потолок агента (0.202)');
   ok('Y2: DAY_CAP_OFF=1 — потолка нет, дверь открыта, счёт молчит',
     cOff.cfg.on === false && off1.allowed === true && off1.max === 0 && (await cOff.take(50)).used === 0);
 
-  /* Y3: главное. За 100 попыток — ОДНА запись в KV, а не сто: иначе бесплатные
-     1 000 записей в сутки кончились бы на первой сотне вопросов. */
+  /* Y3: на одном изоляте кусок копит запись. 99 take — ещё не пишем; сотый
+     сбрасывает одну запись на 100 реальных попыток, а не резерв 200. */
   const kv3 = fakeKv();
   const cap3 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv3), now: () => DAY0 });
   await cap3.check();
   for (let i = 0; i < 99; i++) await cap3.take(1);
-  /* «Израсходовано» в панели — это взятое из запаса, а не только потраченное:
-     резерв уже отнят у всех, даже если изолят его ещё не истратил. Отсюда 400, а
-     не 401 — впереди расхода не больше одного куска. */
-  ok('Y3: за 99 попыток расход в KV — одна запись резерва, а не 99',
-    kv3.puts === 1 && cap3.stats().spent === 99 && cap3.state().remaining === 400,
+  ok('Y3: за 99 попыток KV ещё молчит — кусок 100 не заполнен',
+    kv3.puts === 0 && cap3.stats().spent === 99 && cap3.state().remaining === 401,
     JSON.stringify(cap3.stats()));
   await cap3.take(1);
-  await cap3.check();
-  ok('Y3b: кусок кончился — резервируется следующий, второй записью',
-    kv3.puts === 2 && cap3.state().used === 200 && cap3.state().remaining === 300,
+  ok('Y3b: сотый списывает факт 100 одной записью, без запасного куска',
+    kv3.puts === 1 && cap3.state().used === 100 && cap3.state().remaining === 400,
     JSON.stringify({ puts: kv3.puts, st: cap3.state() }));
 
-  /* Y4: два изолята — один запас. Второй видит резерв первого: 100 + 100. */
+  /* Y4: два изолята — один запас. Второй видит уже записанное списание первого. */
   const kv4 = fakeKv();
   const a4 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv4), now: () => DAY0 });
   const b4 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv4), now: () => DAY0 });
   await a4.check();
+  await a4.take(100);
+  await a4.flush();
   const b4s = await b4.check();
-  /* «Израсходовано» = взято из запаса: первый изолят взял 100, второй увидел это
-     и взял свои 100 — в хранилище 200, и оба не могут перевалить за max. */
-  ok('Y4: второй изолят видит резерв первого и берёт свой — потолок общий, а не на адрес',
-    b4s.used === 200 && b4s.remaining === 300, JSON.stringify(b4s));
+  ok('Y4: второй изолят видит списание первого — потолок общий, а не на адрес',
+    b4s.used === 100 && b4s.remaining === 400, JSON.stringify(b4s));
 
-  /* Y5: исчерпание. max 150: первому достанется 100, второму — остаток 50,
-     третьему — отказ с временем сброса. */
+  /* Y5: исчерпание. max 150: 100 + 50 записаны, третьему — отказ. */
   const kv5 = fakeKv();
   const mk5 = () => createDayCap({ env: { DAY_CAP: 150, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv5), now: () => DAY0 });
-  const e1 = await mk5().check();
-  const e2 = await mk5().check();
+  const c1 = mk5();
+  const e1 = await c1.check();
+  await c1.take(100);
+  await c1.flush();
+  const c2 = mk5();
+  const e2 = await c2.check();
+  await c2.take(50);
+  await c2.flush();
   const e3 = await mk5().check();
-  ok('Y5: последний кусок не больше остатка — 100 + 50, потом честный отказ',
-    e1.allowed === true && e1.used === 100
-      && e2.allowed === true && e2.used === 150 && e2.remaining === 0
-      && e3.allowed === false && e3.blocked === true,
+  ok('Y5: 100 + 50 реальных попыток, потом честный отказ',
+    e1.allowed === true
+      && e2.allowed === true
+      && e3.allowed === false && e3.blocked === true && e3.used === 150 && e3.remaining === 0,
     JSON.stringify({ e1: e1.used, e2: e2.used, e3: e3.used, allowed: e3.allowed }));
   ok('Y5b: отказ знает время сброса и сутки, а не «попробуйте позже»',
     e3.resetInMs === msToUtcMidnight(DAY0) && e3.day === capDayOf(DAY0),
@@ -547,9 +548,12 @@ console.log('Y — суточный потолок агента (0.202)');
   const cap6 = createDayCap({ env: { DAY_CAP: 100, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv6), now: () => now6 });
   await cap6.check();
   await cap6.take(100);
+  await cap6.flush();
   const before = await cap6.check();
   now6 = Date.parse('2026-10-18T00:01:00Z');
   const after = await cap6.check();
+  await cap6.take(1);
+  await cap6.flush();
   ok('Y6: полночь UTC открывает запас заново и пишет под новый ключ',
     before.allowed === false && before.day === '2026-10-17'
       && after.allowed === true && after.day === '2026-10-18'
@@ -568,13 +572,12 @@ console.log('Y — суточный потолок агента (0.202)');
       && out7.allowed === false && out7.used === 20,
     JSON.stringify({ degraded: cap7.state().degraded, used: out7.used, allowed: out7.allowed }));
 
-  /* Y8: списание больше остатка куска само добирает резерв — ответ из 3 попыток
-     не должен терять две из-за того, что кусок был на 1. */
+  /* Y8: пачка 150 пишется как 150, а не как два резервных куска 200. */
   const kv8 = fakeKv();
   const cap8 = createDayCap({ env: { DAY_CAP: 500, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv8), now: () => DAY0 });
   const s8 = await cap8.take(150);
-  ok('Y8: списание пачки добирает резерв — 150 попыток учтены, не потеряны',
-    s8.used === 200 && kv8.puts === 2 && cap8.stats().spent === 150,
+  ok('Y8: списание пачки учитывает 150 попыток, без запасного куска',
+    s8.used === 150 && cap8.stats().spent === 150 && kv8.puts === 1,
     JSON.stringify({ used: s8.used, puts: kv8.puts, spent: cap8.stats().spent }));
 
   /* Y9: дверь показывает тот же потолок: владельцу — числа, публике — процент. */
@@ -582,6 +585,7 @@ console.log('Y — суточный потолок агента (0.202)');
   const cap9 = createDayCap({ env: { DAY_CAP: 1000, DAY_CAP_CHUNK: 100 }, store: storeOfKv(kv9), now: () => DAY0 });
   await cap9.check();
   await cap9.take(250);
+  await cap9.flush();
   const OWNER9 = 'Y-OWNER-1';
   const H9 = { 'x-mt-owner': OWNER9 };
   const E9 = { GROQ_KEYS: 'g1', MEMORY: kv9, REPORT_OWNER_HASH: await ownerHash(OWNER9), DAY_CAP: 1000 };
@@ -591,10 +595,10 @@ console.log('Y — суточный потолок агента (0.202)');
     open9.cap && open9.cap.on === true && typeof open9.cap.pct === 'number'
       && open9.pool.pct === open9.cap.pct && !('used' in open9.cap),
     JSON.stringify(open9.cap));
-  ok('Y9b: владельцу — взятое из запаса и остаток по потолку, с пометкой про резерв',
-    own9.cap && own9.cap.on === true && own9.cap.max === 1000 && own9.cap.used === 300
-      && own9.cap.remaining === 700 && /резерв/i.test(own9.cap.note || ''),
-    JSON.stringify({ used: own9.cap.used, remaining: own9.cap.remaining }));
+  ok('Y9b: владельцу — факт списания и остаток по потолку',
+    own9.cap && own9.cap.on === true && own9.cap.max === 1000 && own9.cap.used === 250
+      && own9.cap.remaining === 750 && /попытк/i.test(own9.cap.note || ''),
+    JSON.stringify({ used: own9.cap.used, remaining: own9.cap.remaining, note: own9.cap.note }));
 }
 
 console.log('Z — отказ суточного потолка на границе /api/chat (0.202)');

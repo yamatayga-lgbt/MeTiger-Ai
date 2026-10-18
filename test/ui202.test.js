@@ -121,17 +121,20 @@ const req = (headers) => new Request('https://metiger-ai.pages.dev/api/usage', {
   const a = createDayCap({ env: { DAY_CAP: '300', DAY_CAP_CHUNK: '100' }, store: storeOfKv(kv2), now: () => DAY })
   const b = createDayCap({ env: { DAY_CAP: '300', DAY_CAP_CHUNK: '100' }, store: storeOfKv(kv2), now: () => DAY })
   const sa = await a.check()
+  await a.take(100)
+  await a.flush()
   const sb = await b.check()
-  ok('U202h потолок общий: второй изолят видит резерв первого',
-    sa.allowed === true && sb.allowed === true && sb.used === 200 && sb.remaining === 100,
+  ok('U202h потолок общий: второй изолят видит списание первого, а не заранее откусанный кусок',
+    sa.allowed === true && sb.allowed === true && sb.used === 100 && sb.remaining === 200,
     JSON.stringify({ a: sa.used, b: sb.used, left: sb.remaining }))
-  await b.take(100)
+  await b.take(200)
+  await b.flush()
   const third = await createDayCap({ env: { DAY_CAP: '300', DAY_CAP_CHUNK: '100' }, store: storeOfKv(kv2), now: () => DAY }).check()
   const fourth = await createDayCap({ env: { DAY_CAP: '300', DAY_CAP_CHUNK: '100' }, store: storeOfKv(kv2), now: () => DAY }).check()
   ok('U202i исчерпанный запас — честный отказ, а не тихое превышение',
-    third.allowed === true && third.used === 300 && third.remaining === 0
+    third.allowed === false && third.used === 300 && third.remaining === 0
       && fourth.allowed === false && fourth.blocked === true,
-    JSON.stringify({ third: third.allowed, fourth: fourth.allowed }))
+    JSON.stringify({ third: third.allowed, fourth: fourth.allowed, used: third.used }))
 
   /* Ключ под сутки UTC: завтрашний день не должен видеть сегодняшний расход. */
   ok('U202j ключ потолка — сутки UTC, TTL двое суток',

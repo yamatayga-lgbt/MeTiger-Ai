@@ -753,9 +753,9 @@ async function handlePost(context) {
     /* Счётчик расхода — тем же фоном: он сам решает, пора ли писать в KV
        (USAGE_WRITE_MS), поэтому ответ человеку ждать хранилище не должен. */
     engine.usageFlush().catch(() => null),
-    /* Суточный запас списывается тем же фоном и пачками (engine/daycap.js):
-       за сутки получается ~90 записей вместо тысяч, а ответ не ждёт хранилище. */
-    ownerPriority ? Promise.resolve(null) : cap.take(capBill).catch(() => null),
+    /* Суточный запас списывается тем же фоном (engine/daycap.js): в KV уходит
+       факт попыток, а не заранее откусанный кусок. Ответ хранилище не ждёт. */
+    ownerPriority ? Promise.resolve(null) : cap.take(capBill).then(() => cap.flush()).catch(() => null),
   ]).then(() => null);
   if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 

@@ -25,8 +25,8 @@ const chain = String(pkg.scripts.test || '')
 const v = versionsAligned()
 
 ok('U219a все источники версии синхронизированы', v.ok, v.why)
-ok('U219b «Что нового» и README знают 0.219',
-  /\*\*0\.219\*\*/.test(readme) && /version: '0\.219'/.test(notes))
+ok('U219b история README знает 0.219',
+  /\*\*0\.219\*\*/.test(readme))
 ok('U219c запись без имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes)
     && !/screen-wrap|screenFadeIn|hidden=|apple-touch/.test(notes))

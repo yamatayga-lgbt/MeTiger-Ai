@@ -113,6 +113,10 @@ export function poolLine(pool: LimitsPool | null | undefined): string {
   }
   const left = Math.max(0, Math.round(pool.remaining)).toLocaleString('ru-RU')
   const all = Math.max(0, Math.round(pool.capacity)).toLocaleString('ru-RU')
+  if (Number.isFinite(Number(pool.used))) {
+    const gone = Math.max(0, Math.round(pool.used)).toLocaleString('ru-RU')
+    return `израсходовано ${gone} · осталось ${left} ${requestsWord(pool.remaining)} из ${all}`
+  }
   return `осталось ${left} ${requestsWord(pool.remaining)} из ${all}`
 }
 

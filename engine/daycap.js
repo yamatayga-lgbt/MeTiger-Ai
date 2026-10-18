@@ -1,29 +1,24 @@
 /**
- * Суточный потолок агента (0.202) — общий запас на ВСЕХ людей, а не на адрес.
+ * Суточный потолок агента (0.202, правка 0.220) — общий запас на ВСЕХ людей.
  *
  * Зачем. `engine/limits.js` считает частоту по IP: 30 запросов в минуту — это
  * ~43 000 в сутки с ОДНОГО адреса, а весь бесплатный пул — около 9 900 попыток
- * до провайдеров. Значит десять адресов, стучащих в ритме лимита, выключают
- * бесплатного агента до полуночи UTC — для всех, включая владельца. Частотный
- * лимит от этого не спасает по устройству: он про «не части», а не «не всё».
+ * до провайдеров. Без потолка десять адресов в ритме лимита выключали агента
+ * всем до полуночи UTC.
  *
- * Как устроено. Бюджет не считаем на каждый запрос — это 9 900 записей в KV при
- * бесплатных 1 000 в сутки. Изолят РЕЗЕРВИРУЕТ кусок (по умолчанию 50 попыток)
- * на всё хранилище и тратит его из памяти; когда кусок кончился — резервирует
- * следующий. Записей за сутки получается около max/chunk (180 из 1 000 бесплатных),
- * а потолок всё равно общий: сумма резервов не может перевалить за max. Кусок
- * не берём крупнее: резерв сразу виден в проценте кольца, и на 100 он прыгал бы
- * на 1,1 % при одном-единственном вопросе.
+ * 0.220. Раньше изолят РЕЗЕРВИРОВАЛ кусок (50) в KV ещё до ответа, а тратил
+ * его из памяти. На Cloudflare каждый холодный запуск — новый изолят: он
+ * откусывал 50, тратил 1–3, умирал — и 47 сгорали навсегда. 184 живых попытки
+ * выглядели как половина дневного запаса. Теперь в KV пишется только то, что
+ * реально ушло к провайдерам. Кусок 50 остаётся экономией записей ВНУТРИ
+ * одного изолята (сто take подряд — две записи), а не платой за холодный старт.
  *
- * Чего это НЕ обещает. Атомарного счётчика у KV нет: два изолята могут прочитать
- * одно число и записать одно и то же — тогда резерв «потеряется», и потолок
- * сдвинется на этот кусок. Поэтому max берётся с запасом от ёмкости пула
- * (9 000 против ~9 900), а не впритык. Это честнее, чем обещать точность,
- * которой у бесплатного KV нет.
+ * check() только смотрит счётчик, не резервирует. take(n) копит списание;
+ * flush() (или набор до размера куска) записывает его. Атомарного счётчика у KV
+ * нет — два изолята могут перезаписать одно число; потолок 9 000 против ~9 900
+ * ёмкости пула, небольшой недосчёт честнее, чем ложный «день кончился».
  *
- * Отказ хранилища НЕ выключает агента: без KV потолок держится только внутри
- * изолятора (и помечается degraded). Лучше ответить человеку, чем показать
- * «лимит кончился» из-за недоступного KV.
+ * Отказ хранилища НЕ выключает агента: без KV потолок держится в памяти изолята.
  */
 
 export const DAY_CAP_DEFAULT = 9000;
@@ -67,8 +62,8 @@ export function capKeyOf(day, prefix) {
 }
 
 /**
- * Экземпляр на запрос. `check()` — перед движком, `take(n)` — после ответа:
- * потолок считается в попытках к провайдерам, потому что пул измеряется ими же.
+ * Экземпляр на запрос. `check()` — перед движком, `take(n)` — после ответа,
+ * `flush()` — дописать хвост в KV (дверь зовёт из waitUntil).
  */
 export function createDayCap(opts) {
   const o = opts || {};
@@ -77,35 +72,36 @@ export function createDayCap(opts) {
   const now = o.now || (() => Date.now());
   const log = o.log || (() => {});
 
-  let day = '';          // сутки, под которые взяты локальные состояния ниже
-  let have = 0;          // зарезервировано, но ещё не потрачено этим изолятором
-  let usedShared = 0;    // последний известный общий резерв в хранилище
-  let spent = 0;         // сколько потрачено этим изолятором (без KV — единственный счёт)
-  let degraded = false;  // хранилище не ответило: держимся локальным пределом
-  let blocked = false;   // потолок объявлен исчерпанным (до смены суток)
+  let day = '';
+  let usedShared = 0;  // последний известный общий расход в хранилище
+  let pending = 0;     // потрачено этим изолятом, ещё не записано
+  let spent = 0;       // потрачено этим изолятом всего (без KV — единственный счёт)
+  let degraded = false;
+  let blocked = false;
   let reads = 0, writes = 0;
 
   function rollover() {
     const d = capDayOf(now());
     if (d === day) return;
     day = d;
-    have = 0;
     usedShared = 0;
+    pending = 0;
     spent = 0;
     blocked = false;
   }
 
+  function booked() {
+    return Math.max(0, usedShared + pending, spent);
+  }
+
   function state(extra) {
     rollover();
-    /* «Израсходовано» — это резерв, а не только потраченное: запас уже отнят у
-       всех, даже если этот изолят его ещё не истратил. Собственный расход берём
-       вторым слагаемым — без хранилища и после его отказа он единственный. */
-    const used = Math.max(0, usedShared, spent);
+    const used = Math.min(booked(), cfg.on ? cfg.max : booked());
     return Object.assign({
       on: cfg.on,
       day,
       max: cfg.on ? cfg.max : 0,
-      used: Math.min(used, cfg.on ? cfg.max : used),
+      used,
       remaining: cfg.on ? Math.max(0, cfg.max - used) : null,
       chunk: cfg.chunk,
       resetInMs: msToUtcMidnight(now()),
@@ -114,66 +110,69 @@ export function createDayCap(opts) {
     }, extra || {});
   }
 
-  /** Выдать кусок из памяти изолятора: без хранилища и когда оно отказало. */
-  function grantLocal() {
-    const grant = Math.min(cfg.chunk, Math.max(0, cfg.max - spent - have));
-    if (grant <= 0) { blocked = true; return 0; }
-    have += grant;
-    return grant;
-  }
-
-  /** Взять у хранилища ещё один кусок. true — бюджет есть, false — исчерпан. */
-  async function reserve() {
-    if (!cfg.on) return true;
-    if (blocked) return false;
+  async function readUsed() {
     if (!store) {
-      /* Без связки MEMORY резервировать нечего: потолок держим по памяти изолятора —
-         кусок «выдаём» себе сами, иначе списание не с чего начинать. */
       degraded = true;
-      if (grantLocal() <= 0) return false;
-      return true;
+      return spent;
     }
-    const key = capKeyOf(day, cfg.keyPrefix);
-    let used = usedShared;
     try {
-      const rec = await store.get(key);
+      const rec = await store.get(capKeyOf(day, cfg.keyPrefix));
       reads++;
-      if (rec && typeof rec.used === 'number' && rec.used >= 0) used = rec.used;
-      else used = 0;
+      const used = rec && typeof rec.used === 'number' ? Math.max(0, rec.used) : 0;
+      usedShared = Math.max(usedShared, used);
+      return usedShared;
     } catch (e) {
       degraded = true;
       log('warn', 'суточный потолок не прочитан: ' + ((e && e.message) || e));
-      if (grantLocal() <= 0) return false;
-      return true;
+      return Math.max(usedShared, spent);
     }
-    if (used >= cfg.max) {
-      usedShared = used;
-      blocked = true;
-      return false;
-    }
-    /* Последний кусок может быть меньше обычного — не теряем остаток. */
-    const grant = Math.min(cfg.chunk, cfg.max - used);
-    try {
-      await store.put(key, { used: used + grant, day }, cfg.ttlSec);
-      writes++;
-    } catch (e) {
-      degraded = true;
-      log('warn', 'суточный потолок не записан: ' + ((e && e.message) || e));
-      if (grantLocal() <= 0) return false;
-      return true;
-    }
-    usedShared = used + grant;
-    have += grant;
-    return true;
   }
 
-  /** Можно ли идти дальше. true — в запасе есть хотя бы одна попытка. */
+  /** Дописать pending в KV. Никогда не бросает. */
+  async function flush() {
+    rollover();
+    if (!cfg.on || pending <= 0) return state();
+    if (!store) {
+      degraded = true;
+      pending = 0;
+      if (spent >= cfg.max) blocked = true;
+      return state();
+    }
+    const key = capKeyOf(day, cfg.keyPrefix);
+    const add = pending;
+    pending = 0;
+    try {
+      const rec = await store.get(key);
+      reads++;
+      const used = rec && typeof rec.used === 'number' ? Math.max(0, rec.used) : 0;
+      const next = Math.min(cfg.max, used + add);
+      await store.put(key, { used: next, day }, cfg.ttlSec);
+      writes++;
+      usedShared = next;
+      if (usedShared >= cfg.max) blocked = true;
+    } catch (e) {
+      /* Запись не вышла — возвращаем хвост в pending, чтобы state() не врал
+         «списано 0», и продолжаем по памяти изолята. */
+      pending += add;
+      degraded = true;
+      log('warn', 'суточный потолок не записан: ' + ((e && e.message) || e));
+      if (spent >= cfg.max) blocked = true;
+    }
+    return state();
+  }
+
+  /** Можно ли идти дальше. Смотрит счётчик, кусок заранее не откусывает. */
   async function check() {
     rollover();
     if (!cfg.on) return Object.assign(state(), { allowed: true });
-    if (have > 0) return Object.assign(state(), { allowed: true });
-    const okReserve = await reserve();
-    return Object.assign(state(), { allowed: !!okReserve && have > 0 });
+    if (blocked) return Object.assign(state(), { allowed: false });
+    const used = await readUsed();
+    const nowUsed = Math.max(used, spent) + pending;
+    if (nowUsed >= cfg.max) {
+      blocked = true;
+      return Object.assign(state(), { allowed: false });
+    }
+    return Object.assign(state(), { allowed: true });
   }
 
   /** Списать потраченные попытки. Никогда не бросает: ответ уже у человека. */
@@ -181,44 +180,33 @@ export function createDayCap(opts) {
     rollover();
     const k = Math.max(1, Math.floor(Number(n) || 1));
     if (!cfg.on) return state();
-    let left = k;
-    while (left > 0) {
-      if (have <= 0) {
-        const got = await reserve();
-        if (!got) break;
-        if (have <= 0) break;
-      }
-      const use = Math.min(have, left);
-      have -= use;
-      spent += use;
-      left -= use;
-    }
+    const room = Math.max(0, cfg.max - booked());
+    const use = Math.min(k, room);
+    if (use <= 0) { blocked = true; return state(); }
+    spent += use;
+    pending += use;
+    if (booked() >= cfg.max) blocked = true;
+    if (store && pending >= cfg.chunk) await flush();
     return state();
   }
 
-  /** Сколько уже потрачено — без резервирования. Для диагностики и панели. */
+  /** Сколько уже потрачено — без списания. Для панели. */
   async function peek() {
     rollover();
     if (!cfg.on) return state();
     if (!store) { degraded = true; return state(); }
-    try {
-      const rec = await store.get(capKeyOf(day, cfg.keyPrefix));
-      reads++;
-      const used = rec && typeof rec.used === 'number' ? Math.max(0, rec.used) : 0;
-      usedShared = Math.max(usedShared, used);
-    } catch (e) {
-      degraded = true;
-      log('warn', 'суточный потолок не прочитан: ' + ((e && e.message) || e));
-    }
+    await readUsed();
+    if (usedShared >= cfg.max) blocked = true;
     return state();
   }
 
   return {
     check,
     take,
+    flush,
     peek,
     state,
-    stats: () => ({ on: cfg.on, max: cfg.max, chunk: cfg.chunk, reads, writes, degraded, have, spent }),
+    stats: () => ({ on: cfg.on, max: cfg.max, chunk: cfg.chunk, reads, writes, degraded, pending, spent }),
     cfg,
   };
 }
