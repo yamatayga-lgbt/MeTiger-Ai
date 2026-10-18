@@ -25,17 +25,21 @@ import { readIntent, readReaction, directivesFrom, buildAttunePrompt, resolveInt
 import { kvKey } from './kvkey.js';
 
 export const LIMITS = {
-  hot: 40,          // сколько последних реплик отдаются целиком
-  compactAt: 120,   // когда пора сжимать
-  keepAfter: 30,    // сколько оставить после сжатия
-  factsMax: 40,
-  lessonsMax: 6,
-  prefsMax: 12,
-  goalsMax: 12,
-  msgChars: 20000,
-  docChars: 12000,   // выписки из последнего приложенного файла: по ним отвечаем на «а что там в п. 7?»
+  /* 0.212 «больше памяти»: сырая история дольше остаётся доступной поиску по
+     релевантности, а не уходит в механическую сводку уже на 121-й реплике.
+     Хранилище и промпт не безразмерны, поэтому рост парный: храним шире, а в
+     контекст по-прежнему достаём горячее + найденное по смыслу. */
+  hot: 80,          // сколько последних реплик отдаются целиком
+  compactAt: 300,   // когда пора сжимать
+  keepAfter: 80,    // сколько оставить после сжатия
+  factsMax: 120,
+  lessonsMax: 12,
+  prefsMax: 24,
+  goalsMax: 24,
+  msgChars: 32000,
+  docChars: 30000,   // выписки из последнего приложенного файла: по ним отвечаем на «а что там в п. 7?»
   factChars: 300,
-  cacheMax: 60,     // записей в isolate-кэше
+  cacheMax: 80,     // записей в isolate-кэше
 };
 
 /** Настройки из окружения (в Worker нет process.env — env приходит параметром). */
@@ -76,7 +80,7 @@ export function normalize(chatId, raw) {
   return {
     chatId: String(chatId || d.chatId || 'guest'),
     updatedAt: Number(d.updatedAt) || 0,
-    summary: String(d.summary || '').slice(0, 20000),
+    summary: String(d.summary || '').slice(0, 40000),
     messages: Array.isArray(d.messages)
       ? d.messages
         .filter((m) => m && typeof m.content === 'string')
@@ -133,7 +137,7 @@ export function normalize(chatId, raw) {
       ? d.images
         .filter((x) => x && typeof x.description === 'string')
         .map((x) => ({ ts: Number(x.ts) || 0, description: String(x.description).slice(0, 2000), snippet: String(x.snippet || '').slice(0, 300), origin: String(x.origin || '').slice(0, 80) }))
-        .slice(-12)
+        .slice(-24)
       : [],
     attune: {
       prefs: Array.isArray(d.attune && d.attune.prefs)
@@ -272,7 +276,7 @@ export function createMemory(opts) {
     const d = await load(chatId);
     d.messages.push({ role: role === 'assistant' ? 'assistant' : 'user', content: String(content || '').slice(0, LIMITS.msgChars), ts: now(), origin: String(origin || '') });
     /* жёсткий потолок длины истории: KV не безразмерен, а старое уже есть в сводке */
-    const cap = Math.max(cfg.compactAt * 4, 200);
+    const cap = Math.max(cfg.compactAt * 4, 1000);
     if (d.messages.length > cap) d.messages = d.messages.slice(-cap);
     return save(chatId, d);
   }
@@ -380,10 +384,30 @@ export function createMemory(opts) {
     const hot = d.messages.slice(-cfg.hot);
     const parts = [];
     if (d.summary) parts.push('【Сводка прошлого разговора】\n' + d.summary);
-    if (d.facts.length) parts.push('【Что важно помнить о собеседнике】\n' + d.facts.map((f) => '• ' + f.text).join('\n'));
+    if (d.facts.length) {
+      /* Фактов теперь храним до 120, но тащить все в каждый промпт — значит
+         обменять память на шум. До 40 поведение прежнее; дальше в контекст
+         едут релевантные текущему вопросу + самые свежие, максимум 40. */
+      let shownFacts = d.facts;
+      if (d.facts.length > 40) {
+        const kws = keywords(goal);
+        const picked = new Set();
+        d.facts
+          .map((f) => ({ f, s: score(f.text, kws) }))
+          .filter((x) => x.s > 0)
+          .sort((a, b) => (b.s - a.s) || ((b.f.ts || 0) - (a.f.ts || 0)))
+          .slice(0, 24)
+          .forEach((x) => picked.add(x.f));
+        for (const f of d.facts.slice(-16)) picked.add(f);
+        shownFacts = d.facts.filter((f) => picked.has(f)).slice(-40);
+      }
+      parts.push('【Что важно помнить о собеседнике'
+        + (shownFacts.length < d.facts.length ? ' — релевантные и свежие из ' + d.facts.length + ' фактов' : '')
+        + '】\n' + shownFacts.map((f) => '• ' + f.text).join('\n'));
+    }
     if (!fast && d.lessons.length) parts.push('【Выученное в этом чате】\n' + d.lessons.map((l) => '• ' + l.text).join('\n'));
     if (!fast && d.images.length) {
-      parts.push('【Что было на картинках】\n' + d.images.slice(-3).map((x) => '• ' + x.description.slice(0, 300)).join('\n'));
+      parts.push('【Что было на картинках】\n' + d.images.slice(-6).map((x) => '• ' + x.description.slice(0, 300)).join('\n'));
     }
     let relevant = [];
     if (!fast) {
@@ -394,12 +418,12 @@ export function createMemory(opts) {
           .map((m) => ({ m, s: score(m.content, kws) }))
           .filter((x) => x.s > 0)
           .sort((a, b) => b.s - a.s)
-          .slice(0, 8)
+          .slice(0, 12)
           .map((x) => x.m);
       }
     }
     if (relevant.length) {
-      parts.push('【Релевантное из ранней истории чата】\n' + relevant.map((m) => (m.role === 'assistant' ? 'Агент' : 'Пользователь') + ': ' + m.content.slice(0, 400)).join('\n'));
+      parts.push('【Релевантное из ранней истории чата】\n' + relevant.map((m) => (m.role === 'assistant' ? 'Агент' : 'Пользователь') + ': ' + m.content.slice(0, 600)).join('\n'));
     }
     const block = parts.length ? '【Память чата — используй её, это продолжение того же разговора】\n' + parts.join('\n\n') : '';
     return { block, recent: hot, total: d.messages.length };
@@ -467,7 +491,7 @@ export function createMemory(opts) {
       const cut = d.messages.length - cfg.keepAfter;
       const old = d.messages.slice(0, Math.max(0, cut));
       if (!old.length) return null;
-      const text = old.map((m) => (m.role === 'assistant' ? 'Агент' : 'Пользователь') + ': ' + m.content.slice(0, 600)).join('\n');
+      const text = old.map((m) => (m.role === 'assistant' ? 'Агент' : 'Пользователь') + ': ' + m.content.slice(0, 350)).join('\n').slice(0, 80000);
       let summary = '';
       if (cfg.summarize && typeof summarize === 'function') {
         try {
@@ -494,8 +518,19 @@ export function createMemory(opts) {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
-    const took = lines.length > 40 ? lines.filter((_, i) => i % 2 === 0) : lines;
-    return 'Сжато механически (' + lines.length + ' реплик): ' + took.slice(0, 24).join(' | ').slice(0, 4000);
+    /* Раньше брались первые 24 строки: при сжатии 220 реплик середина и конец
+       старого разговора исчезали полностью. Теперь выборка равномерно
+       покрывает весь сворачиваемый отрезок и сохраняет до 80 опорных строк. */
+    const maxLines = 80;
+    let took = lines;
+    if (lines.length > maxLines) {
+      took = [];
+      for (let i = 0; i < maxLines; i++) {
+        took.push(lines[Math.floor((i * lines.length) / maxLines)]);
+      }
+    }
+    return 'Сжато механически (' + lines.length + ' реплик): '
+      + took.map((l) => l.slice(0, 180)).join(' | ').slice(0, 12000);
   }
 
   /** Запомнить выписки по приложенному файлу — для следующих реплик этого чата. */

@@ -43,6 +43,7 @@ import * as longdoc from './longdoc.js';
 import * as vcouncil from './vcouncil.js';
 import { detectLang, langMind } from './langmind.js';
 import * as depth from './depth.js';
+import { planDeepWork } from './deepwork.js';
 import * as check from './check.js';
 import { mapLimit, netCfg } from './netpool.js';
 
@@ -410,6 +411,23 @@ export function createEngine(opts) {
       deep = depthVerdict.deep === true;
       depthWhy = depthVerdict.why || '';
     }
+    /* 0.212: судья глубины говорит «задача дорогая», а план глубокой работы —
+       чем именно платить: несколькими поисковыми подзапросами, большим
+       бюджетом рассуждения или обоими. Внутренние ходы (головы совета,
+       починка, чтение частей документа) помечаются noDeepWork: иначе одна
+       исследовательская задача рекурсивно рождала бы исследования внутри
+       каждой проверяющей головы и сжигала квоту вместо качества. */
+    const deepWork = planDeepWork({
+      text, intent, images, env,
+      deep, depth: depthVerdict,
+      webSearch: input.webSearch === true,
+      owner: input.ownerPriority === true,
+      noDeepWork: input.noDeepWork === true,
+    });
+    if (deepWork.research) {
+      deep = true;
+      depthWhy = [depthWhy, deepWork.why].filter(Boolean).join(' · ');
+    }
     if (deep && (intent === 'fast' || intent === 'creative')) intent = 'reasoning';
     const tier = input.tier || tierFor(intent);
     /* 0.211: бюджет ответа и ширина пула — параметры задачи, а не одна
@@ -421,19 +439,19 @@ export function createEngine(opts) {
       input.maxTokens || env.MAX_TOKENS,
       64,
       65536,
-      tier === 'smart' ? 4000 : 1600,
+      deepWork.extended ? deepWork.reasoning.maxTokens : (tier === 'smart' ? 4000 : 1600),
     ));
     const modelsPerProviderWanted = Math.max(1, Math.floor(clampNumber(
       input.modelsPerProvider || env.MODELS_PER_PROVIDER,
       1,
       6,
-      tier === 'smart' || deep || images.length ? 3 : 2,
+      deepWork.extended ? deepWork.reasoning.modelsPerProvider : (tier === 'smart' || deep || images.length ? 3 : 2),
     )));
     const maxContinuationsWanted = Math.max(0, Math.floor(clampNumber(
       input.maxContinuations != null ? input.maxContinuations : env.CHAT_CONTINUATIONS,
       0,
       5,
-      3,
+      deepWork.extended ? deepWork.reasoning.continuations : 3,
     )));
     /* Бесконечная память (0.195): ленту не режем вовсе — окно модели уместит
        нужное, не влезающее fit сожмёт в выжимку. Явный historyKeep сильнее. */
@@ -471,10 +489,11 @@ export function createEngine(opts) {
     } catch (_e) { /* langmind не должен ломать запрос */ }
     const wantWeb = input.webSearch === true;
     const toolsRes = input.useTools === false
-      ? { used: [], block: '', directive: '', sources: [], webSteps: [] }
+      ? { used: [], block: '', directive: '', sources: [], webSteps: [], notes: [], research: null }
       : await gatherTools(text, env, fetchImpl, {
           force: skillTools(skills),
-          deep: wantWeb,
+          deep: wantWeb || deepWork.research,
+          research: deepWork,
           img: imggen,
           onStep: onDelta ? (step) => onDelta({ kind: 'web', step }) : undefined,
         });
@@ -511,16 +530,28 @@ export function createEngine(opts) {
     /* Рассуждение на английском для точности русского ответа: когда включён режим
        «Думает» (showReasoning), просим модель сначала кратко продумать ход решения
        на английском внутри <think>...</think>, а затем дать точный ответ на языке человека. */
-    const thinkEffortHint = input.reasoningEffort === 'low'
+    const effectiveReasoningEffort = deepWork.extended && input.reasoningEffort !== 'low'
+      ? 'high'
+      : input.reasoningEffort;
+    const thinkEffortHint = effectiveReasoningEffort === 'low'
       ? 'Keep the <think> block brief (1–3 sentences).'
-      : input.reasoningEffort === 'high'
+      : effectiveReasoningEffort === 'high'
         ? 'Make the <think> block thorough, verifying steps and edge cases.'
         : 'Keep the <think> block concise and structured (2–5 sentences).';
     const thinkHint = isDefaultSys && input.showReasoning === true
       ? '\n\n[Thinking protocol]: Before answering, ALWAYS think step-by-step IN ENGLISH inside <think>...</think> tags (reasoning in English maximizes logical and factual accuracy), then close </think> and write the final response in the user\'s language (Russian unless asked otherwise). '
         + thinkEffortHint
       : '';
-    let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint + thinkHint
+    /* Когда ход мысли человеку не показывают, расширенное рассуждение всё
+       равно должно менять работу, а не только потолок токенов: молча проверить
+       условия и крайние случаи, а наружу дать вывод и проверяемые основания. */
+    const extendedHint = isDefaultSys && deepWork.extended && input.showReasoning !== true
+      ? '\n\n[Расширенное рассуждение]: перед ответом молча раздели задачу на части, проверь условия, противоречия и крайние случаи. Не пересказывай внутреннюю кухню: дай вывод, ключевые основания и явно назови допущения или непроверенное.'
+      : '';
+    const researchHint = isDefaultSys && deepWork.research
+      ? '\n\n[Глубокое исследование]: ответ строй как исследование — короткий вывод, доказательства по подвопросам, расхождения источников и пробелы. Опирайся только на данные инструментов и ставь [номер] после проверяемых фактов; если поиск деградировал или часть подзапросов не проверена, скажи это прямо.'
+      : '';
+    let system = (input.system || PERSONA_SYSTEM) + styleHint + toolsHint + thinkHint + extendedHint + researchHint
       + (skBlock ? '\n\n' + skBlock : '')
       + (toolsRes.directive ? '\n\n' + toolsRes.directive : '')
       + langMindBlock;
@@ -696,7 +727,7 @@ export function createEngine(opts) {
       for (const pid of order) {
         const cfg = P[pid];
         if (!cfg) continue;
-        for (const model of (modelsFor(cfg, tier, intent, images, env, deep) || []).slice(0, 3)) {
+        for (const model of (modelsFor(cfg, tier, intent, images, env, deep) || []).slice(0, modelsPerProviderWanted)) {
           const w = windowFor(pid, model);
           if (w > best) best = w;
         }
@@ -756,7 +787,7 @@ export function createEngine(opts) {
               const r = await run({
                 ...input, docs: null, text: longdoc.readPrompt(d.name, text, part),
                 history: [], system: longdoc.MAP_SYSTEM, useTools: false, webSearch: false,
-                skills: false, chatId: undefined, noCouncils: true, noCheck: true,
+                skills: false, chatId: undefined, noCouncils: true, noCheck: true, noDeepWork: true,
                 allowReframe: false, deadlineMs: slice, maxTokens: 700,
               });
               if (r && r.ok && r.reply && !longdoc.isEmptyExtract(r.reply)) got = String(r.reply);
@@ -1009,19 +1040,26 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
       if (checkWanted) {
         checkDone = true;
         try {
-          const dec = check.decide({
+          /* 0.212: обычная задача по-прежнему получает один проход починки.
+             Расширенное рассуждение/исследование — два (владельцу три): первый
+             досыл может закрыть одну пропущенную часть и оставить вторую, и
+             именно на дорогой задаче второй проход окупается. */
+          const repairBudget = deepWork.extended ? deepWork.reasoning.repairPasses : check.cfgOf(env).budget;
+          let spent = 0;
+          let dec = check.decide({
             text, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
-            ok: out.ok, spent: 0, env,
+            ok: out.ok, spent, budget: repairBudget, env,
           });
-          checkVerdict = { on: dec.on, notes: dec.notes, fixed: false, skipped: '' };
-          if (dec.needFix && dec.notes.length) {
+          checkVerdict = { on: dec.on, notes: dec.notes, fixed: false, skipped: '', passes: 0 };
+          while (dec.needFix && dec.notes.length && spent < repairBudget) {
             /* Досыл стоит секунд, поэтому он не делается впритык к потолку:
                начать его, не успеть и отдать пустой ответ — хуже, чем честно
                показать зацепку. Пол — 12 секунд живого времени. */
             const left = (Number(input.deadlineMs) || 45000) - (Date.now() - started);
             if (left < 12000) {
               checkVerdict.skipped = 'на починку не осталось времени (' + Math.max(0, Math.round(left / 1000)) + ' с)';
-            } else {
+              break;
+            }
             const repair = o.repair
               || ((extra) => run({
                 ...input,
@@ -1032,7 +1070,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
                    на досыл вставал бы отдельный совет голов). */
                 history: [{ role: 'assistant', content: String(out.reply).slice(-3500) }],
                 providerOrder: out.provider ? [out.provider] : input.providerOrder,
-                noCouncils: true, noCheck: true, allowReframe: false,
+                noCouncils: true, noCheck: true, noDeepWork: true, allowReframe: false,
                 /* Инструменты на досыле выключены: данные уже собраны первым
                    проходом, а второй поиск в сети стоил бы 10–20 секунд на ответ,
                    который и так ждёт человека. */
@@ -1042,6 +1080,8 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             let fixed = null;
             try { fixed = await repair(check.repairPrompt({ text, reply: out.reply, notes: dec.notes })); }
             catch (e) { fixed = null; }
+            spent++;
+            checkVerdict.passes = spent;
             /* Чиним только вперёд: пустой или куцый досыл ответ не улучшает, и
                терять написанное ради него нельзя. */
             if (fixed && fixed.ok && fixed.reply && String(fixed.reply).trim().length >= 40) {
@@ -1049,9 +1089,14 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
               checkVerdict.fixed = true;
               /* Провайдера и модель НЕ подменяем: досыл шёл той же головой, а
                  подпись ответа обязана показывать того, кто ответил человеку. */
+              dec = check.decide({
+                text, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
+                ok: out.ok, spent, budget: repairBudget, env,
+              });
+              if (dec.notes.length) checkVerdict.notes = dec.notes;
             } else {
               checkVerdict.skipped = 'починка не удалась — ответ оставлен как есть';
-            }
+              break;
             }
           }
         } catch (e) {
@@ -1062,6 +1107,24 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
       /* Вердикт уезжает в ответ целиком: finish() собирает объект заново и сам по
          себе это поле не переносит, а без него вход отдавал payload без зацепок. */
       if (checkVerdict) out.check = checkVerdict;
+      if (deepWork.on) {
+        out.deepWork = {
+          mode: deepWork.mode,
+          why: deepWork.why,
+          extended: deepWork.extended,
+          research: deepWork.research,
+        };
+        out.extendedReasoning = deepWork.extended || undefined;
+        if (deepWork.research) {
+          out.research = toolsRes.research || {
+            on: true,
+            why: deepWork.why,
+            queries: deepWork.queries.slice(),
+            sources: (toolsRes.sources || []).length,
+            reads: (toolsRes.webSteps || []).filter((s) => s && s.kind === 'fetch').length,
+          };
+        }
+      }
       /* После починки: в счёт входят основная очередь, советы, чтение
          документа, продолжения и сам досыл починки. */
       out.attempts = Math.max(0, attemptSeq - attemptsAtStart);
@@ -1506,9 +1569,24 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
     const out = { ...hit };
     const ec = ensemble.cfgOf(env);
     const vc = vcouncil.cfgOf(env);
+    /* План глубокой работы пересчитывается здесь по исходному входу: runCouncils
+       живёт вне run(), а расширенный бюджет нужен именно совету. Головы при
+       этом получат noDeepWork ниже и сами исследование не перезапустят. */
+    const councilPlan = input.noDeepWork ? null : planDeepWork({
+      text: input.text,
+      intent: input.intent || classifyTask(input.text, input.images),
+      images: input.images,
+      deep: input.deep === true || !!(depthVerdict && depthVerdict.deep),
+      depth: depthVerdict,
+      webSearch: input.webSearch === true,
+      owner: input.ownerPriority === true,
+      env,
+    });
     /* бесплатный пул живёт на квотах: 5 запросов в минуту на некоторых роутерах,
        поэтому число лишних вызовов на один ответ ограничено явно */
-    const budget = Math.max(0, Number(env.COUNCIL_BUDGET == null ? 6 : env.COUNCIL_BUDGET));
+    const budget = Math.max(0, Number(env.COUNCIL_BUDGET == null
+      ? (councilPlan && councilPlan.extended ? councilPlan.reasoning.councilBudget : 6)
+      : env.COUNCIL_BUDGET));
     let spent = 0;
     /* Общий бюджет ВРЕМЕНИ на весь совет, а не на каждую голову. Раньше у каждой
        волны был свой COUNCIL_MS: медлила одна голова — человек ждал и первую, и
@@ -1517,7 +1595,10 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
        Для текста головы быстрые, для картинки — нет: зрячие провайдеры на
        бесплатных ключах отвечают по 10 секунд, и им нужен отдельный, больший
        бюджет (иначе совет по фото в принципе не успевает собраться). */
-    const bud = councilBudget(env, ec, vc);
+    const bud0 = councilBudget(env, ec, vc);
+    const bud = councilPlan && councilPlan.extended
+      ? { textMs: Math.round(bud0.textMs * 1.5), visionMs: bud0.visionMs }
+      : bud0;
     const wallE = Date.now() + bud.textMs;
     const wallV = Date.now() + bud.visionMs;
     /** Голова = тот же обход, но зафиксированный провайдер и без рекурсии совета. */
@@ -1533,6 +1614,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
          на каждой голове означала бы по одной починке на голос (три досыла вместо
          одного — поймано проверкой G4e) и жгла бы квоту бесплатных ключей впустую. */
       noCheck: true,
+      noDeepWork: true,
       allowReframe: false,
       webSearch: false,
       deadlineMs: Math.max(3500, wall - Date.now()),
@@ -1556,7 +1638,11 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
          задаче (DEPTH_COUNCIL_K): там цена ошибки выше, чем стоимость пары
          лишних запросов. Прежний k ансамбля остаётся полом — меньше него
          совет не собирается никогда. */
-      const wantK = depthVerdict && depthVerdict.councilK > ec.k ? depthVerdict.councilK : ec.k;
+      const wantK = Math.max(
+        ec.k,
+        depthVerdict && depthVerdict.councilK ? depthVerdict.councilK : 0,
+        councilPlan && councilPlan.extended ? councilPlan.reasoning.councilK : 0,
+      );
       const heads = headList(wantK, out.provider, false);
       const headsList = heads.slice();
       if (heads.length < 1) {
@@ -1653,6 +1739,9 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
       deep: hit ? hit.deep : undefined,
       deepPlain: hit ? hit.deepPlain : undefined,
       depthWhy: hit ? hit.depthWhy : undefined,
+      deepWork: hit ? hit.deepWork : undefined,
+      extendedReasoning: hit ? hit.extendedReasoning : undefined,
+      research: hit ? hit.research : undefined,
       check: hit ? hit.check : undefined,
       ensemble: hit ? hit.ensemble : null, ensembleSkip: hit ? (hit.ensembleSkip || '') : '',
       ensembleApplied: hit ? !!hit.ensembleApplied : false,

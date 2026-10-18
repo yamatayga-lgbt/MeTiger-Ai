@@ -49,7 +49,7 @@ export function sweepDeadKeys(): void {
   }
 }
 
-const MAX_MESSAGES_PER_CHAT = 1000
+const MAX_MESSAGES_PER_CHAT = 2000
 const MAX_CHAT_TITLE = 30
 
 function safeChatTitle(value: unknown): string {

@@ -16,7 +16,7 @@
  */
 
 /* Форматы файла — единый источник правды: у инструмента-указания и у постобработки. */
-import { smartSearch, searchBlock, SEARCH_DIRECTIVE } from './search.js';
+import { smartSearch, researchSearch, searchBlock, SEARCH_DIRECTIVE, RESEARCH_DIRECTIVE } from './search.js';
 import { needsWeb } from './webrules.js';
 import { FMT, formatFromText } from './filegen.js';
 import { sharedImggen, IMG_DIRECTIVE, wantsImage, lineOf as imgLineOf } from './imggen.js';
@@ -538,7 +538,7 @@ export const TOOLS = [
        что меняется (курсы, цены, погода, новости, версии, кто сейчас у власти) —
        ищем; про то, что не меняется (определения, код, перевод, счёт) — нет. */
     when: (t) => needsWeb(t).need,
-    async run({ text, env, fetch: fi, force, deep }) {
+    async run({ text, env, fetch: fi, force, deep, research }) {
       /* Запросом идёт очищенный вопрос, а если очистка ничего не оставила (короткое
          «новости», «курс») — сам вопрос: раньше такой запрос молча пропадал, и поиск
          не срабатывал, хотя правило его уже включило. */
@@ -553,17 +553,36 @@ export const TOOLS = [
          модель (строкой ниже), и интерфейс (тем же текстом через gatherTools). */
       let fallbackNote = '';
       try {
-        const full = clean(String(text || '')).slice(0, 220);
-        const sr = await smartSearch({ q: full || q, env, fetch: fi, deep });
-        if (sr && sr.ok && sr.sources.length) return searchBlock(full || q, sr) + '\n\nПравило ответа: ' + SEARCH_DIRECTIVE;
+        const full = clean(String(text || '')).slice(0, 420);
+        const isResearch = !!(research && research.research);
+        /* 0.212: исследование — не «тот же поиск, но deep». У него свои
+           подзапросы из плана глубокой работы, слияние источников и правило
+           ответа с расхождениями/пробелами. Обычный глубокий поиск остаётся
+           одним запросом, но с расширенным профилем чтения. */
+        const sr = isResearch
+          ? await researchSearch({
+              q: full || q,
+              queries: (research.queries && research.queries.length ? research.queries : [full || q]),
+              env, fetch: fi, profile: research.search || 'research',
+            })
+          : await smartSearch({ q: full || q, env, fetch: fi, deep, level: deep ? 'deep' : 'standard' });
+        if (sr && sr.ok && sr.sources.length) {
+          return searchBlock(full || q, sr) + '\n\nПравило ответа: ' + (isResearch ? RESEARCH_DIRECTIVE : SEARCH_DIRECTIVE);
+        }
         if (sr && sr.ok) {
-          fallbackNote = '⚠️ Свежий веб-поиск вернул пустой ответ — ниже Википедия и DuckDuckGo, данные могут быть устаревшими.';
+          fallbackNote = isResearch
+            ? '⚠️ Глубокое исследование вернуло пустой ответ — ниже запасные Википедия и DuckDuckGo, исследование неполное и данные могут быть устаревшими.'
+            : '⚠️ Свежий веб-поиск вернул пустой ответ — ниже Википедия и DuckDuckGo, данные могут быть устаревшими.';
         } else {
           console.log('[smart-search] fail:', sr && sr.why);
-          fallbackNote = '⚠️ Свежий веб-поиск сейчас недоступен (лимит или сбой поисковика) — ответ по Википедии и DuckDuckGo, данные могут быть устаревшими.';
+          fallbackNote = isResearch
+            ? '⚠️ Глубокое исследование сейчас недоступно (лимит или сбой поисковика) — ниже запасная выдача, исследование неполное и данные могут быть устаревшими.'
+            : '⚠️ Свежий веб-поиск сейчас недоступен (лимит или сбой поисковика) — ответ по Википедии и DuckDuckGo, данные могут быть устаревшими.';
         }
       } catch {
-        fallbackNote = '⚠️ Свежий веб-поиск сейчас недоступен (сбой поисковика) — ответ по Википедии и DuckDuckGo, данные могут быть устаревшими.';
+        fallbackNote = research && research.research
+          ? '⚠️ Глубокое исследование сейчас недоступно (сбой поисковика) — ниже запасная выдача, исследование неполное и данные могут быть устаревшими.'
+          : '⚠️ Свежий веб-поиск сейчас недоступен (сбой поисковика) — ответ по Википедии и DuckDuckGo, данные могут быть устаревшими.';
       }
       const out = [];
       const webUrls = [];
@@ -845,7 +864,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
   const opts = o || {};
   const onStep = typeof opts.onStep === 'function' ? opts.onStep : null;
   const force = new Set(opts.force || []);
-  if (opts.deep) force.add('web-search');
+  if (opts.deep || (opts.research && opts.research.research)) force.add('web-search');
   const off = new Set(String((env && env.TOOLS_OFF) || '').split(',').map((s) => s.trim()).filter(Boolean));
   const used = [];
   const parts = [];
@@ -855,6 +874,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
   /* Пометки для человека, которые модель не имеет права проглотить: сейчас это
      «свежий поиск недоступен». Уходят и в ответ API, и в подпись под пузырём. */
   const notes = [];
+  let researchMeta = null;
   const emitStep = (step) => {
     webSteps.push(step);
     if (onStep) { try { onStep(step); } catch { /* ignore */ } }
@@ -871,7 +891,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
     /* `img` — подменяемый слой картинок: тесты и чужие сборки движка обязаны
        видеть в инструменте ровно тот экземпляр, что у движка, а не модульный. */
     let run;
-    try { run = Promise.resolve(t.run({ text, env, fetch: fi, force: force.has(t.id), deep: !!opts.deep, img: opts.img })); }
+    try { run = Promise.resolve(t.run({ text, env, fetch: fi, force: force.has(t.id), deep: !!opts.deep || !!(opts.research && opts.research.research), research: opts.research || null, img: opts.img })); }
     catch (e) { run = Promise.reject(e); }
     run.catch(() => {});
     hits.push({ t, run });
@@ -898,12 +918,21 @@ export async function gatherTools(text, env, fetchImpl, o) {
           const qMatch = /по запросу «([^»]+)»/.exec(data);
           const q = (qMatch && qMatch[1]) || queryOf(text) || clean(String(text || '')).slice(0, 90);
           if (q) {
-            emitStep({ kind: 'search', query: q, results: toolSources.slice(0, 5) });
+            emitStep({ kind: 'search', query: q, results: toolSources.slice(0, opts.research && opts.research.research ? 8 : 5) });
           }
           /* Все прочитанные страницы — шагами «прочитал», как у Perplexity (0.133). */
           const reads = [...data.matchAll(/Выжимка из источника \((https?:\/\/[^)\s]+)\)/g)].map((m) => m[1]);
           const excerptUrls = reads.length ? reads : [(/Источник:\s*(https?:\/\/\S+)/.exec(data) || [])[1] || (toolSources[0] && toolSources[0].url) || ''].filter(Boolean);
-          for (const excerptUrl of excerptUrls.slice(0, 5)) {
+          if (t.id === 'web-search' && opts.research && opts.research.research) {
+            researchMeta = {
+              on: true,
+              why: opts.research.why || '',
+              queries: Array.isArray(opts.research.queries) ? opts.research.queries.slice() : [],
+              sources: toolSources.length,
+              reads: excerptUrls.length,
+            };
+          }
+          for (const excerptUrl of excerptUrls.slice(0, opts.research && opts.research.research ? 8 : 5)) {
             const found = toolSources.find((s) => s.url === excerptUrl);
             emitStep({ kind: 'fetch', url: excerptUrl, title: (found && found.title) || excerptUrl });
           }
@@ -916,7 +945,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
     } catch { /* ошибка инструмента — не ошибка чата */ }
   }
   const sources = srcParts.length ? extractSources(srcParts.join('\n')) : [];
-  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources, webSteps, notes };
+  return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources, webSteps, notes, research: researchMeta };
 }
 
 

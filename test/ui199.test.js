@@ -35,7 +35,7 @@ ok('N1 инструмент кладёт предупреждение перво
   /fallbackNote/.test(tools) && /'⚠️ Свежий веб-поиск/.test(tools))
 
 ok('N2 gatherTools собирает пометки из блока и возвращает их полем notes',
-  /const noteMatch = \/\^⚠️/.test(tools) && /webSteps, notes \}/.test(tools))
+  /const noteMatch = \/\^⚠️/.test(tools) && /webSteps, notes, research: researchMeta \}/.test(tools))
 
 ok('N3 движок отдаёт пометки дальше — в обоих исходах попытки и в finish',
   (chat.match(/toolNotes: toolsRes\.notes \|\| \[\],/g) || []).length === 2

@@ -124,6 +124,10 @@ export interface ChatResult {
   sightedPlain?: boolean
   /** Почему агент решил думать глубже (engine/depth.js) — словами, для подписи ответа. */
   depthWhy?: string
+  /** Глубокая работа 0.212: расширенное рассуждение или исследование. */
+  deepWork?: { mode: string; why: string; extended: boolean; research: boolean }
+  extendedReasoning?: boolean
+  research?: { on: boolean; why: string; queries: string[]; sources: number; reads: number }
   /** Что нашла самопроверка ответа (engine/check.js): чем ответ не соответствует вопросу. */
   checkNotes?: string[]
   /** Недостающее дописано тем же агентом: ответ в пузыре уже починенный. */
@@ -284,7 +288,7 @@ export interface Attachment {
 
 import { looksLikeImage } from './images'
 
-export const ATTACH_MAX = 3
+export const ATTACH_MAX = 6
 export const ATTACH_FILE_BYTES = 4 * 1024 * 1024
 /** Что пускаем в диалог выбора: картинки + читаемые форматы + любой аудиофайл. */
 export const ATTACH_ACCEPT =

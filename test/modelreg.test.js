@@ -438,6 +438,9 @@ console.log('── L · сервисные модели и прогрев пе�
   let jobs = 0;
   const cat3 = await M.warm({}, kv3, (pr) => { jobs++; Promise.resolve(pr).then(() => {}, () => {}); });
   ok('L8 протухший каталог отдаётся сразу и честно помечен', cat3 && cat3.stale === true && cat3.models.length === 1);
+  ok('L8b протухший каталог сразу виден движку через cached() — иначе длинный текст падал в окно 8192',
+    !!M.cached() && M.cached().stale === true && M.ceilings(M.cached(), 'x/y:free', 'openrouter')?.ctx === 1000,
+    JSON.stringify(M.cached() && { stale: M.cached().stale, count: M.cached().count }));
   ok('L9 обновление уехало в waitUntil, а не в ответ человеку', jobs === 1);
   await new Promise((r) => setTimeout(r, 60));
   const after = await M.loadCatalog(kv3, { now: Date.now() });

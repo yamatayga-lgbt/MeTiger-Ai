@@ -320,11 +320,14 @@ console.log('J — вложения из браузера: сортировка,
     { name: 'b.txt', type: 'text/plain', size: 200 },
     { name: 'c.txt', type: 'text/plain', size: 300 },
     { name: 'd.txt', type: 'text/plain', size: 400 },
+    { name: 'e.txt', type: 'text/plain', size: 500 },
+    { name: 'f.txt', type: 'text/plain', size: 600 },
+    { name: 'g.txt', type: 'text/plain', size: 700 },
     { name: 'монстр.pdf', type: 'application/pdf', size: ATTACH_FILE_BYTES + 1 },
     { name: '', type: 'text/plain', size: 10 },
   ];
   const p = pickAttachments(files);
-  ok('J2: берём не больше трёх, и это те, что полегче первых', p.taken.length === ATTACH_MAX && p.taken.map((x) => x.name).join(',') === 'a.txt,b.txt,c.txt', JSON.stringify(p.taken.map((x) => x.name)));
+  ok('J2: берём не больше шести (0.212), и это первые подходящие', p.taken.length === ATTACH_MAX && p.taken.map((x) => x.name).join(',') === 'a.txt,b.txt,c.txt,d.txt,e.txt,f.txt', JSON.stringify(p.taken.map((x) => x.name)));
   ok('J3: тяжёлый файл отклонён ИМЕНЕМ и весом, а не молчанием', p.tooBig.length === 1 && /монстр\.pdf/.test(p.tooBig[0]) && /МБ/.test(p.tooBig[0]), JSON.stringify(p.tooBig));
   ok('J4: лишние по количеству учтены, безымянное не проходит', p.extra === 2, String(p.extra));
   const txt = 'данные,1200\nрасход,800\n';
@@ -1586,7 +1589,7 @@ console.log('── N · плоский интерфейс (0.144: стекло 
 
   ok('N50: решение агента видно человеку словами — событие потока и причина в подписи ответа',
     /* вход решает до движка и объявляет решение потоку раньше текста */
-    /depthJudge\.judge\(\{/.test(entryDeep) && /context\.__send\(\{ kind: 'depth', deep: wantDeep, why: depthWhy/.test(entryDeep)
+    /depthJudge\.judge\(\{/.test(entryDeep) && /context\.__send\(\{\s*kind: 'depth', deep: wantDeep, why: depthWhy/.test(entryDeep)
       /* движок судит сам, когда его зовут не через вход (и уважает явную просьбу) */
       && /depth\.judge\(\{ text, intent, images, env, asked \}\)/.test(engineDeep)
       && /let deep = input\.deep === true/.test(engineDeep)

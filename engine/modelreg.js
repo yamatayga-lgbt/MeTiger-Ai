@@ -37,7 +37,7 @@ export const DEFAULT_TTL_MS = 30 * 60 * 1000;
 const MEMO_MS = 60 * 1000;
 
 /** Разумный потолок на число моделей в байте KV: значение должно оставаться маленьким. */
-import { envKeys } from './providers.js';
+import { envKeys, TABLE } from './providers.js';
 import { mapLimit, netCfg } from './netpool.js';
 import { VERIFIED as CHECKED } from './models-verified.js'
 const MAX_ENTRIES = 900;
@@ -506,6 +506,30 @@ function rowOf(cat, id, providerId) {
   return (cat.byId && cat.byId[id]) || null;
 }
 
+/**
+ * Статические пулы движка для фонового обновления каталога. `/api/models`
+ * передаёт свой curated-список явно, а warm() раньше обновлял KV без него:
+ * пуловые id, которых не показал ни один живой список, выпадали из каталога,
+ * и движок снова терял их окна/потолки до следующего открытия витрины.
+ */
+export function poolCurated() {
+  const out = [];
+  const seen = new Set();
+  for (const cfg of Object.values(TABLE || {})) {
+    const pools = (cfg && cfg.models) || {};
+    for (const tier of ['fast', 'smart']) {
+      for (const id of pools[tier] || []) {
+        if (!seen.has(id)) { seen.add(id); out.push({ id, tier }); }
+        else if (tier === 'smart') {
+          const row = out.find((x) => x.id === id);
+          if (row) row.tier = 'smart';
+        }
+      }
+    }
+  }
+  return out;
+}
+
 const ttlMs = (env) => clamp(num((env && env.MODELS_REFRESH_MS), DEFAULT_TTL_MS), 60000, 24 * 3600 * 1000);
 
 /** Совместимость с тем, что KV и fileKV отдают по-разному (строка/объект). */
@@ -524,9 +548,16 @@ export async function loadCatalog(store, opts = {}) {
     const got = await store.get(CATALOG_KEY);
     cat = index(decode(got && got.value !== undefined ? got.value : got));
   } catch { cat = null; }
-  if (cat && cat.models && cat.models.length && now - Number(cat.updatedAt || 0) < ttlMs(opts.env)) {
-    memo = { at: now, cat };
-    return cat;
+  if (cat && cat.models && cat.models.length) {
+    const fresh = now - Number(cat.updatedAt || 0) < ttlMs(opts.env);
+    const out = fresh ? cat : index(Object.assign({}, cat, { stale: true }));
+    /* 0.212: протухший каталог тоже обязан попадать в memo. warm() возвращал
+       его двери, но движок читает синхронно cached(); при пустом memo он не
+       видел настоящие окна моделей и длинный текст падал в fallback 8192,
+       хотя /api/models честно показывал широкую голову. Старый каталог до
+       фонового обновления лучше, чем никакого. */
+    memo = { at: now, cat: out };
+    return out;
   }
   return cat ? index(Object.assign({}, cat, { stale: true })) : null;
 }
@@ -732,7 +763,7 @@ export async function warm(env, store, waitUntil) {
   let cat = null;
   try { cat = await loadCatalog(store, { env }); } catch (e) { cat = null; }
   if (!cat || cat.stale) {
-    const job = () => maybeRefresh(env, store, {}).catch(() => {});
+    const job = () => maybeRefresh(env, store, { curated: poolCurated() }).catch(() => {});
     if (typeof waitUntil === 'function') waitUntil(Promise.resolve().then(job));
     else Promise.resolve().then(job);
   }

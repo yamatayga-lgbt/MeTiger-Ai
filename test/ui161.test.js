@@ -95,7 +95,7 @@ ok('U161n чем обернулся файл, видно наружу — стр
 ok('U161o выписки по файлу остаются в памяти чата',
   /async function rememberDoc\(chatId, doc\)/.test(memory) && /async function docFor\(chatId\)/.test(memory)
     && /rememberDoc,/.test(memory) && /docFor,/.test(memory)
-    && /docChars: 12000/.test(memory) && /if \(useMem && docReads\.length\)/.test(chatBare));
+    && /docChars: 30000/.test(memory) && /if \(useMem && docReads\.length\)/.test(chatBare));
 ok('U161p выписки достаются только на вопрос про файл (окно не жжём каждый ход)',
   /const ASKS_FILE = \/файл\|документ/.test(chatBare) && /memory\.docFor\(input\.chatId\)/.test(chatBare)
     && /\[Ранее приложенный файл: /.test(chatBare));

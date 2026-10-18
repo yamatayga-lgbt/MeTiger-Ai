@@ -27,6 +27,9 @@ export function netCfg(env) {
     catalog: clampInt(e.NET_CATALOG_THREADS, 1, 8, 4),
     docs: clampInt(e.NET_DOC_THREADS, 1, 6, 3),
     prefetch: clampInt(e.NET_PREFETCH_THREADS, 1, 6, 3),
+    /* Подзапросы глубокого исследования независимы, но каждый — дорогой вызов
+       поисковика. Две нитки ускоряют, не превращая исследование в залп по квоте. */
+    search: clampInt(e.NET_SEARCH_THREADS, 1, 4, 2),
   };
 }
 
@@ -65,7 +68,7 @@ export function netStats(env) {
   const cfg = netCfg(env);
   return {
     ...cfg,
-    line: 'каталог ×' + cfg.catalog + ' · документы ×' + cfg.docs + ' · предчтения ×' + cfg.prefetch,
+    line: 'каталог ×' + cfg.catalog + ' · документы ×' + cfg.docs + ' · предчтения ×' + cfg.prefetch + ' · исследование ×' + cfg.search,
   };
 }
 

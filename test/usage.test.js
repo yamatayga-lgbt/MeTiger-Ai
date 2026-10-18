@@ -476,7 +476,11 @@ console.log('Y — суточный потолок агента (0.202)');
     get: (k) => kv.get(k, 'json'),
     put: (k, v, ttl) => kv.put(k, JSON.stringify(v), { expirationTtl: ttl }),
   });
-  const DAY0 = Date.parse('2026-10-17T10:00:00Z');
+  /* Текущие сутки UTC в 10:00: Y9 ниже читает тот же KV через endpoint,
+     который пользуется настоящим временем. Зашитая дата 2026-10-17 сделала
+     тест одноразовым — на следующий день endpoint честно смотрел другой ключ. */
+  const nowUtc = new Date();
+  const DAY0 = Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), 10, 0, 0);
 
   /* Y1: умолчания. Потолок ниже ёмкости пула (~9 900) нарочно: атомарного счётчика
      у KV нет, два изолята могут прочитать одно число — запас на это и оставлен. */
@@ -533,7 +537,7 @@ console.log('Y — суточный потолок агента (0.202)');
       && e3.allowed === false && e3.blocked === true,
     JSON.stringify({ e1: e1.used, e2: e2.used, e3: e3.used, allowed: e3.allowed }));
   ok('Y5b: отказ знает время сброса и сутки, а не «попробуйте позже»',
-    e3.resetInMs === msToUtcMidnight(DAY0) && e3.day === capDayOf(DAY0) && e3.day === '2026-10-17',
+    e3.resetInMs === msToUtcMidnight(DAY0) && e3.day === capDayOf(DAY0),
     JSON.stringify({ resetInMs: e3.resetInMs, day: e3.day }));
 
   /* Y6: смена суток UTC — запас открывается заново, ключ другой. */

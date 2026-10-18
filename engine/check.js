@@ -443,7 +443,12 @@ export function decide(input) {
   if (!cfg.on || !notes.length) {
     return { on: cfg.on, notes: [], needFix: false, why: '' };
   }
-  const needFix = cfg.fix && (i.spent || 0) < cfg.budget;
+  /* Явный бюджет хода сильнее общего env: расширенное рассуждение (0.212)
+     разрешает второй/третий проход только своей задаче, а не всему трафику. */
+  const budget = Number.isFinite(Number(i.budget)) && i.budget != null
+    ? Math.min(3, Math.max(0, Math.floor(Number(i.budget))))
+    : cfg.budget;
+  const needFix = cfg.fix && (i.spent || 0) < budget;
   return {
     on: true,
     notes,

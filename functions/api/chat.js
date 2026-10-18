@@ -27,6 +27,7 @@ import { TOOL_IDS } from '../../engine/tools.js';
 import { classifyTask } from '../../engine/route.js';
 import { needsWeb } from '../../engine/webrules.js';
 import * as depthJudge from '../../engine/depth.js';
+import { planDeepWork, lineOf as deepWorkLine } from '../../engine/deepwork.js';
 import { stats as skillStats } from '../../engine/skills.js';
 
 export function realClientIp(request, env) {
@@ -114,10 +115,11 @@ const MAX_IMG_BYTES = 4 * 1024 * 1024;
 
 /* Вложения из браузера. Своего хранилища нет — файл приходит base64-ом в теле
    запроса и живёт ровно столько, пока движок его читает. Поэтому потолки жёсткие:
-   3 файла, 4 МБ на файл, 8 МБ на весь запрос. Base64 раздувает тело на ~33%, а
-   Pages Function обрезает запрос раньше, чем мы успеем что-нибудь прочитать, —
+   6 файлов (0.212, было 3), 4 МБ на файл, 8 МБ на весь запрос. Количество
+   подняли вдвое, вес не трогаем: Base64 раздувает тело на ~33%, а Pages
+   Function обрезает запрос раньше, чем мы успеем что-нибудь прочитать, —
    отказ словами здесь дешевле, чем молчаливый огрызок. */
-const ATT_MAX = 3;
+const ATT_MAX = 6;
 const ATT_FILE_BYTES = 4 * 1024 * 1024;
 const ATT_TOTAL_BYTES = 8 * 1024 * 1024;
 
@@ -471,10 +473,39 @@ async function handlePost(context) {
       depthWhy = '';
     }
   }
+  /* 0.212: дверь считает тот же план глубокой работы, что движок, но раньше —
+     ей нужно поднять дедлайн и полосу до запуска. Исследование само по себе
+     глубокий прогон: несколько поисков, чтение страниц и синтез не обязаны
+     укладываться в бюджет болтовни только потому, что судья глубины не
+     увидел в вопросе слова «докажи». */
+  let deepWork = null;
+  try {
+    deepWork = planDeepWork({
+      text,
+      intent: classifyTask(String(text || ''), allImages),
+      images: allImages,
+      deep: wantDeep,
+      depth: depthVerdict,
+      webSearch: !!(body && body.webSearch === true),
+      owner: ownerPriority,
+      env,
+    });
+    if (deepWork && deepWork.research) {
+      wantDeep = true;
+      depthWhy = [depthWhy, deepWork.why].filter(Boolean).join(' · ');
+    }
+  } catch (e) {
+    deepWork = null;
+  }
   /* Поток узнаёт решение раньше текста: клиент поднимает потолки времени под
      глубокий прогон (думать дольше — не значит «связь оборвалась»). */
   if (context && context.__send) {
-    context.__send({ kind: 'depth', deep: wantDeep, why: depthWhy, asked: askedDeep });
+    context.__send({
+      kind: 'depth', deep: wantDeep, why: depthWhy, asked: askedDeep,
+      mode: deepWork ? deepWork.mode : 'standard',
+      research: !!(deepWork && deepWork.research),
+      extended: !!(deepWork && deepWork.extended),
+    });
   }
   /* Потоковый разделитель <think>...</think>: если модель шлёт рассуждения тегом
      внутри обычного content (а не отдельным reasoning_content), перенаправляем
@@ -628,7 +659,8 @@ async function handlePost(context) {
        только у живой темы и только если человек не выбрал модель или полосу сам. */
     tier: body.tier === 'fast' || body.tier === 'smart'
       ? body.tier
-      : (!norm.model && ((composed && composed.voice && composed.voice.mode === 'note') || needsWeb(String(norm.text || text || '')).need)
+      : (!norm.model && ((composed && composed.voice && composed.voice.mode === 'note')
+          || (deepWork && deepWork.on) || needsWeb(String(norm.text || text || '')).need)
           ? 'smart'
           : undefined),
     only: norm.provider,
@@ -642,7 +674,9 @@ async function handlePost(context) {
     topP: norm.topP,
     presencePenalty: norm.presencePenalty,
     frequencyPenalty: norm.frequencyPenalty,
-    reasoningEffort: norm.reasoningEffort || (wantDeep && !askedDeep ? 'high' : undefined),
+    reasoningEffort: deepWork && deepWork.extended && norm.reasoningEffort !== 'low'
+      ? 'high'
+      : (norm.reasoningEffort || (wantDeep && !askedDeep ? 'high' : undefined)),
     showReasoning: wantReasoning,
     deep: wantDeep || undefined,
     depthWhy: depthWhy || undefined,
@@ -672,15 +706,17 @@ async function handlePost(context) {
     webSearch: body && body.webSearch === true ? true : undefined,
     /* Владельческий коридор шире публичного: четыре модели у провайдера и
        до пяти продолжений. Публичные значения движок выберет сам по полосе. */
+    ownerPriority: ownerPriority || undefined,
     modelsPerProvider: ownerPriority ? 4 : undefined,
     maxContinuations: ownerPriority ? 5 : undefined,
     /* Глубокий прогон думает дольше — и теперь это решение агента, а не человека:
        потолок времени поднимается по вердикту судьи. Обычный вопрос, который ждёт
-       ответа секунду, права висеть полторы минуты не получает. Владельцу —
-       75/105 секунд: его запросы не конкурируют с публичным счётчиком. */
+       ответа секунду, права висеть полторы минуты не получает. Исследованию —
+       90 с публично и 120 с владельцу: там последовательно живут несколько
+       поисков, чтение страниц, синтез и самопроверка. */
     deadlineMs: Number(ownerPriority
-      ? (env.OWNER_CHAT_DEADLINE_MS || (wantDeep ? 105000 : 75000))
-      : (env.CHAT_DEADLINE_MS || (wantDeep ? 75000 : 50000))),
+      ? (env.OWNER_CHAT_DEADLINE_MS || (deepWork && deepWork.research ? 120000 : (wantDeep ? 105000 : 75000)))
+      : (env.CHAT_DEADLINE_MS || (deepWork && deepWork.research ? 90000 : (wantDeep ? 75000 : 50000)))),
   });
   /* Тег размышлений не показывается человеку ни в каком виде: ни закрытый посреди
      ответа, ни незакрытый хвостом. В потоке разбор чистит его по ходу (feedDelta),
@@ -776,6 +812,11 @@ async function handlePost(context) {
     /* Почему агент решил думать глубже (engine/depth.js) — словами, а не флагом:
        человек видит причину в подписи ответа и может с ней не согласиться. */
     depthWhy: r.depthWhy || depthWhy || undefined,
+    /* Глубокая работа (0.212): какой дорогой маршрут реально был включён и,
+       для исследования, какими подзапросами/источниками он закончился. */
+    deepWork: r.deepWork || undefined,
+    extendedReasoning: r.extendedReasoning || undefined,
+    research: r.research || undefined,
     /* Самопроверка ответа (engine/check.js): что агент нашёл, сверив ответ с
        вопросом, и дописал ли недостающее. Молчания нет — зацепки видны словами. */
     checkNotes: (r.check && Array.isArray(r.check.notes) && r.check.notes.length) ? r.check.notes : undefined,
@@ -859,7 +900,8 @@ export async function onRequestGet(context) {
     ctx: ctxStats(context.env).line,
     /* сетевые «нитки» независимых работ и бюджеты ответа разных полос */
     network: netStats(context.env),
-    answers: 'fast до 1600 токенов · smart до 4000 · продолжения по обрыву до 3 (владельцу 5)',
+    answers: 'fast до 1600 токенов · smart до 4000 · расширенное рассуждение до 7000, исследование до 7000 (владельцу 9000) · продолжения по обрыву до 3, в глубокой работе и владельцу 5',
+    deepWork: deepWorkLine(context.env),
     /* профиль и адрес памяти: чем/personой храним и что умеем подставлять в промпт */
     profile: (() => {
       const st = createProfile({ env: context.env, store: memoryStore(context.env) }).stats();

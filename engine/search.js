@@ -14,6 +14,7 @@
  * Википедия (api.wikimedia.org) остаётся дополнением в tools.js.
  */
 import { envKeys } from './providers.js';
+import { mapLimit, netCfg } from './netpool.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const CACHE = new Map();             /* запрос → { at, res } на изолят */
@@ -34,9 +35,43 @@ async function fetchT(fi, url, init, ms) {
   finally { clearTimeout(t); }
 }
 
+const clampSearchInt = (v, min, max, dflt) => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt;
+};
+
+/**
+ * Профиль поиска (0.212). Раньше «глубокий» значил только 5 страниц вместо 3:
+ * надпись была шире работы. Теперь у каждого уровня свой полный бюджет —
+ * источники, страницы, выдержки и длина сводки; исследование получает ещё и
+ * несколько подзапросов в `researchSearch` ниже.
+ */
+export function searchProfile(env, levelOrProfile) {
+  const given = levelOrProfile && typeof levelOrProfile === 'object' ? levelOrProfile : {};
+  const level = typeof levelOrProfile === 'string'
+    ? levelOrProfile
+    : String(given.level || 'standard');
+  const base = level === 'research'
+    ? { level, queries: 4, maxSources: 14, pages: 8, passages: 3, passageChars: 700, summaryChars: 6500, readMs: 6500 }
+    : level === 'deep'
+      ? { level, queries: 1, maxSources: 10, pages: 6, passages: 3, passageChars: 560, summaryChars: 4000, readMs: 5000 }
+      : { level: 'standard', queries: 1, maxSources: 8, pages: 3, passages: 2, passageChars: 420, summaryChars: 2500, readMs: 3000 };
+  const e = env || {};
+  return {
+    ...base,
+    queries: clampSearchInt(given.queries ?? e.SEARCH_RESEARCH_QUERIES, 1, 6, base.queries),
+    maxSources: clampSearchInt(given.maxSources ?? e.SEARCH_MAX_SOURCES, 1, 24, base.maxSources),
+    pages: clampSearchInt(given.pages ?? e.SEARCH_READ_PAGES, 0, 12, base.pages),
+    passages: clampSearchInt(given.passages, 1, 5, base.passages),
+    passageChars: clampSearchInt(given.passageChars, 160, 1200, base.passageChars),
+    summaryChars: clampSearchInt(given.summaryChars, 500, 12000, base.summaryChars),
+    readMs: clampSearchInt(given.readMs ?? given.ms, 800, 12000, base.readMs),
+  };
+}
+
 /* ─────────────── 1) Gemini + Google Search ─────────────── */
 
-export async function geminiSearch({ q, env, fetch: fi, ms }) {
+export async function geminiSearch({ q, env, fetch: fi, ms, maxSources }) {
   /* Ключ ПОИСКА отдельно от ключа чата (0.199). На проде 17.10 разговорная
      модель отвечала из той же квоты Gemini, что и google_search: поиск выедал
      её первым и падал в 429 — а вместе с ним «свежесть» всего приложения.
@@ -86,7 +121,7 @@ export async function geminiSearch({ q, env, fetch: fi, ms }) {
         const chunks = (gm.groundingChunks || []).map((x) => x.web).filter(Boolean);
         if (!text || !chunks.length) { last += 'gemini ' + model + ': без источников; '; break; }
         keyTurn++;
-        const sources = await resolveAll(fi, chunks.map((w) => ({ title: clean(w.title), url: w.uri })));
+        const sources = await resolveAll(fi, chunks.map((w) => ({ title: clean(w.title), url: w.uri })), maxSources);
         return { ok: true, engine: 'google', model, summary: text, queries: gm.webSearchQueries || [], sources };
       } catch (e) {
         last = 'gemini ' + model + ': ' + String((e && e.message) || e).slice(0, 60);
@@ -98,8 +133,9 @@ export async function geminiSearch({ q, env, fetch: fi, ms }) {
 
 /* Ссылки Gemini — переадресация vertexaisearch.cloud.google.com/grounding-api-redirect/…;
    человеку нужен настоящий адрес. Читаем Location без перехода (быстро, ~0,2 с). */
-async function resolveAll(fi, list) {
-  const out = await Promise.all(list.slice(0, 8).map(async (s) => {
+async function resolveAll(fi, list, maxSources) {
+  const cap = clampSearchInt(maxSources, 1, 24, 8);
+  const out = await Promise.all(list.slice(0, cap).map(async (s) => {
     if (!/grounding-api-redirect/.test(s.url)) return s;
     try {
       const r = await fetchT(fi, s.url, { method: 'GET', redirect: 'manual', headers: { 'user-agent': UA } }, 2500);
@@ -114,7 +150,7 @@ async function resolveAll(fi, list) {
 
 /* ─────────────── 2) Groq gpt-oss-120b + browser_search (запасной) ─────────────── */
 
-export async function groqSearch({ q, env, fetch: fi, ms }) {
+export async function groqSearch({ q, env, fetch: fi, ms, maxSources }) {
   /* Тот же принцип: browser_search дорог по дневным токенам, ему — свой ключ. */
   const ownG = envKeys(env, 'GROQ_SEARCH');
   const keys = ownG.length ? ownG : envKeys(env, 'GROQ');
@@ -148,7 +184,7 @@ export async function groqSearch({ q, env, fetch: fi, ms }) {
       }
       const summary = String(m.content || '').replace(/【[^】]*】/g, '').trim();
       if (!summary) { last = 'groq: пусто'; continue; }
-      return { ok: true, engine: 'groq', model: 'gpt-oss-120b', summary, queries: [], sources: sources.slice(0, 8) };
+      return { ok: true, engine: 'groq', model: 'gpt-oss-120b', summary, queries: [], sources: sources.slice(0, clampSearchInt(maxSources, 1, 24, 8)) };
     } catch (e) {
       last = 'groq: ' + String((e && e.message) || e).slice(0, 60);
     }
@@ -263,7 +299,7 @@ export async function readPages(fi, sources, q, o) {
       const ct = (r.headers && r.headers.get && r.headers.get('content-type')) || '';
       if (ct && !/html|text/.test(ct)) return null;
       const html = (await r.text()).slice(0, 600000);
-      const passages = bestPassages(pageText(html), q, 2, 420);
+      const passages = bestPassages(pageText(html), q, opts.passages || 2, opts.passageChars || 420);
       const date = dateOf(html);
       return passages.length ? { url: s.url, passages, date } : null;
     } catch { return null; }
@@ -273,37 +309,162 @@ export async function readPages(fi, sources, q, o) {
 
 /* ─────────────── всё вместе ─────────────── */
 
-/**
- * Поиск с чтением. Возвращает { ok, engine, summary, sources:[{title,url}], reads:[{url,passages}] }
- * или { ok:false, why }. Порядок: Gemini → Groq. Кэш 10 минут на изолят.
- */
-export async function smartSearch({ q, env, fetch: fi, deep }) {
-  const e = env || {};
-  if (String(e.SMART_SEARCH || '') === 'off') return { ok: false, why: 'SMART_SEARCH=off' };
-  const key = String(q || '').toLowerCase().trim();
-  if (!key) return { ok: false, why: 'пустой запрос' };
-  const hit = CACHE.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return Object.assign({ cached: true }, hit.res);
-  const f = fi || ((...a) => fetch(...a));
-  let res = await geminiSearch({ q, env: e, fetch: f });
-  const why = [];
-  if (!res.ok) { why.push(res.why); res = await groqSearch({ q, env: e, fetch: f }); }
-  if (!res.ok) { why.push(res.why); return { ok: false, why: why.join('; ') }; }
-  res.reads = await readPages(f, res.sources, q, { pages: deep ? 5 : 3, ms: deep ? 4000 : 3000 });
+function attachDates(res) {
   /* Дата прочитанной страницы приклеивается к источнику: под ответом и в самом
      блоке поиска человек и модель видят, насколько сведения свежие. */
-  for (const s of res.sources) {
+  for (const s of res.sources || []) {
     const r = (res.reads || []).find((x) => x.url === s.url);
     if (r && r.date) s.date = r.date;
   }
+  return res;
+}
+
+async function searchOnce({ q, env, fetch: f, profile }) {
+  let res = await geminiSearch({ q, env, fetch: f, maxSources: profile.maxSources });
+  const why = [];
+  if (!res.ok) {
+    why.push(res.why);
+    res = await groqSearch({ q, env, fetch: f, maxSources: profile.maxSources });
+  }
+  if (!res.ok) { why.push(res.why); return { ok: false, why: why.join('; ') }; }
+  return res;
+}
+
+function cacheKey(prefix, value, profile) {
+  return prefix + ':' + profile.level + ':' + profile.maxSources + '/' + profile.pages + '/' + profile.passages
+    + ':' + String(value || '').toLowerCase().trim();
+}
+
+function remember(key, res) {
   if (CACHE.size > 200) CACHE.clear();
   CACHE.set(key, { at: Date.now(), res });
   return res;
 }
 
+/**
+ * Поиск с чтением. Возвращает { ok, engine, summary, sources:[{title,url}], reads:[{url,passages}] }
+ * или { ok:false, why }. Порядок: Gemini → Groq. Кэш — час на изолят и
+ * ОТДЕЛЬНО на уровень: обычный результат больше не подменяет глубокий.
+ */
+export async function smartSearch({ q, env, fetch: fi, deep, level, profile: givenProfile }) {
+  const e = env || {};
+  if (String(e.SMART_SEARCH || '') === 'off') return { ok: false, why: 'SMART_SEARCH=off' };
+  const profile = searchProfile(e, givenProfile || level || (deep ? 'deep' : 'standard'));
+  const key = cacheKey('one', q, profile);
+  if (!String(q || '').trim()) return { ok: false, why: 'пустой запрос' };
+  const hit = CACHE.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return Object.assign({ cached: true }, hit.res);
+  const f = fi || ((...a) => fetch(...a));
+  const res = await searchOnce({ q, env: e, fetch: f, profile });
+  if (!res.ok) return res;
+  res.reads = await readPages(f, res.sources, q, {
+    pages: profile.pages, ms: profile.readMs,
+    passages: profile.passages, passageChars: profile.passageChars,
+  });
+  res.profile = profile;
+  return remember(key, attachDates(res));
+}
+
+function canonicalUrl(raw) {
+  const s = String(raw || '').trim();
+  try {
+    const u = new URL(s);
+    u.hash = '';
+    for (const k of Array.from(u.searchParams.keys())) {
+      if (/^utm_/i.test(k) || /^(fbclid|gclid|mc_cid|mc_eid)$/i.test(k)) u.searchParams.delete(k);
+    }
+    return u.toString().replace(/\/$/, '');
+  } catch {
+    return s.replace(/#.*$/, '').replace(/\/$/, '');
+  }
+}
+
+function mergeResearchSources(parts, maxSources) {
+  const byUrl = new Map();
+  let seenAt = 0;
+  for (const part of parts) {
+    const sources = (part.res && part.res.sources) || [];
+    sources.forEach((s, rank) => {
+      if (!s || !s.url) return;
+      const key = canonicalUrl(s.url);
+      const prev = byUrl.get(key);
+      const official = /(^|\.)gov(\.|$)|(^|\.)edu(\.|$)|(^|\.)gov\.[a-z]{2}$/i.test(key) ? 2 : 0;
+      const score = Math.max(0, 12 - rank) + official;
+      if (!prev) {
+        byUrl.set(key, { title: s.title || s.url, url: s.url, score, seenAt: seenAt++, queries: new Set([part.query]) });
+      } else {
+        prev.score += score + 5;              /* независимые подзапросы сошлись на одном источнике */
+        prev.queries.add(part.query);
+        if ((!prev.title || prev.title === prev.url) && s.title) prev.title = s.title;
+      }
+    });
+  }
+  return Array.from(byUrl.values())
+    .sort((a, b) => (b.score - a.score) || (a.seenAt - b.seenAt))
+    .slice(0, maxSources)
+    .map(({ title, url }) => ({ title, url }));
+}
+
+/**
+ * Глубокое исследование (0.212): несколько подзапросов → один очищенный список
+ * источников → чтение страниц один раз. Важен именно порядок: если читать
+ * страницы внутри каждого подзапроса, дубли съедят бюджет, а модель получит
+ * четыре пересказа одной страницы вместо широкой картины.
+ */
+export async function researchSearch({ q, queries, env, fetch: fi, profile: givenProfile }) {
+  const e = env || {};
+  if (String(e.SMART_SEARCH || '') === 'off') return { ok: false, why: 'SMART_SEARCH=off' };
+  const profile = searchProfile(e, givenProfile || 'research');
+  const qs = Array.from(new Set((Array.isArray(queries) && queries.length ? queries : [q])
+    .map((x) => clean(x)).filter(Boolean))).slice(0, profile.queries);
+  if (!qs.length) return { ok: false, why: 'пустой запрос' };
+  const key = cacheKey('research', qs.join('\n'), profile);
+  const hit = CACHE.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return Object.assign({ cached: true }, hit.res);
+
+  const f = fi || ((...a) => fetch(...a));
+  const parts = await mapLimit(qs, netCfg(e).search, async (query) => {
+    try { return { query, res: await searchOnce({ q: query, env: e, fetch: f, profile }) }; }
+    catch (err) { return { query, res: { ok: false, why: String((err && err.message) || err) } }; }
+  });
+  const good = parts.filter((p) => p.res && p.res.ok && Array.isArray(p.res.sources) && p.res.sources.length);
+  if (!good.length) {
+    return { ok: false, why: parts.map((p) => p.query + ': ' + (p.res && p.res.why || 'нет источников')).join('; ') };
+  }
+
+  const sources = mergeResearchSources(good, profile.maxSources);
+  const reads = await readPages(f, sources, [q].concat(qs).join('\n'), {
+    pages: profile.pages, ms: profile.readMs,
+    passages: profile.passages, passageChars: profile.passageChars,
+  });
+  const engines = Array.from(new Set(good.map((p) => p.res.engine).filter(Boolean)));
+  const res = {
+    ok: true,
+    research: true,
+    engine: engines.length === 1 ? engines[0] : 'research',
+    engines,
+    queries: qs,
+    summaries: good.map((p) => ({ query: p.query, summary: String(p.res.summary || '') })),
+    gaps: parts.filter((p) => !(p.res && p.res.ok)).map((p) => p.query),
+    summary: good.map((p) => String(p.res.summary || '')).join('\n'),
+    sources,
+    reads,
+    profile,
+  };
+  return remember(key, attachDates(res));
+}
+
 /** Блок для модели: источники пронумерованы так же, как плашки под ответом. */
 export function searchBlock(q, res) {
-  const lines = [`Результаты поиска по запросу «${q}» (поисковик: ${res.engine === 'google' ? 'Google' : 'веб'}):`];
+  const profile = res.profile || {};
+  const lines = [res.research
+    ? `Глубокое исследование по запросу «${q}» (поисковик: ${res.engine === 'google' ? 'Google' : 'несколько поисков'}):`
+    : `Результаты поиска по запросу «${q}» (поисковик: ${res.engine === 'google' ? 'Google' : 'веб'}):`];
+  if (res.research && Array.isArray(res.queries) && res.queries.length) {
+    lines.push('Проверенные подзапросы:');
+    for (const query of res.queries) lines.push('• ' + query);
+    lines.push('');
+  }
   res.sources.forEach((s, i) => {
     const read = (res.reads || []).find((r) => r.url === s.url);
     /* Давний источник помечаем прямо в строке: модель видит пометку там же, где
@@ -316,10 +477,25 @@ export function searchBlock(q, res) {
   lines.push('', 'У источников через «· от» указана дата публикации или обновления, где она есть. '
     + 'Если данные явно старые (больше года) — скажи об этом человеку словами: на какой год они актуальны. '
     + 'У источника с пометкой «ДАВНИЙ» свежесть под вопросом: опирайся на более свежие источники, '
-    + 'а если свежих нет — честно предупреди, что сведения старого года.', '',
-    'Сводка поисковика (опирайся на неё и на выдержки):', res.summary.slice(0, 2500));
-  for (const r of res.reads || []) lines.push(`Выжимка из источника (${r.url}): ${r.passages[0].slice(0, 200)}`);
+    + 'а если свежих нет — честно предупреди, что сведения старого года.');
+
+  if (res.research && Array.isArray(res.summaries) && res.summaries.length) {
+    const total = profile.summaryChars || 6500;
+    const each = Math.max(700, Math.floor(total / res.summaries.length));
+    lines.push('', 'Сводки по подзапросам (сверяй их с выдержками, а не пересказывай по очереди):');
+    for (const x of res.summaries) {
+      lines.push('— ' + x.query + ':', String(x.summary || '').slice(0, each));
+    }
+    if (Array.isArray(res.gaps) && res.gaps.length) {
+      lines.push('', 'Не удалось проверить подзапросы: ' + res.gaps.join('; ') + '. Назови этот пробел человеку, а не заполняй его догадкой.');
+    }
+  } else {
+    lines.push('', 'Сводка поисковика (опирайся на неё и на выдержки):', String(res.summary || '').slice(0, profile.summaryChars || 2500));
+  }
+  for (const r of res.reads || []) lines.push(`Выжимка из источника (${r.url}): ${r.passages[0].slice(0, res.research ? 240 : 200)}`);
   return lines.join('\n');
 }
 
 export const SEARCH_DIRECTIVE = 'Отвечай по результатам поиска. После каждого факта ставь сноску с номером источника в квадратных скобках — [1], [2] — номера строго из списка источников. Не выдумывай того, чего нет в результатах; если данных нет или они расходятся, так и скажи. Сначала прямой ответ одной-двумя фразами, потом детали.';
+
+export const RESEARCH_DIRECTIVE = 'Это глубокое исследование, а не один поиск. Сначала дай короткий вывод, затем доказательства по подвопросам, отдельно — где источники расходятся и что проверить не удалось. После каждого проверяемого факта ставь [номер] строго из списка, даты называй явно. Пересказы одного первоисточника не выдавай за независимые подтверждения; чего в результатах нет, не выдумывай.';

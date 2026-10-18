@@ -115,10 +115,10 @@ console.log('W — файл из браузера доезжает до моде
 {
   await withFetch(async () => {
     const c = stub('');
-    const many = Array.from({ length: 5 }, (_, i) => ({ name: 'ф' + i + '.txt', mime: 'text/plain', size: 6, b64: b64of('x' + i) }));
+    const many = Array.from({ length: 7 }, (_, i) => ({ name: 'ф' + i + '.txt', mime: 'text/plain', size: 6, b64: b64of('x' + i) }));
     await onRequestPost({ request: req({ text: 'сравни', attachments: many }), env: ENV });
     const txt = userText(c);
-    ok('W11: больше трёх файлов — читаем три, лишнее названо', (txt.match(/\[Файл:/g) || []).length === 3 && /файлов 5|лишних/.test(txt), JSON.stringify(txt).slice(0, 140));
+    ok('W11: больше шести файлов (0.212) — читаем шесть, лишнее названо', (txt.match(/\[Файл:/g) || []).length === 6 && /файлов 7|лишних/.test(txt), JSON.stringify(txt).slice(0, 140));
   });
 }
 {
@@ -168,7 +168,7 @@ console.log('W — файл из браузера доезжает до моде
     const g = await onRequestGet({ env: ENV });
     const j = await g.json();
     ok('W18: GET /api/chat показывает лимиты вложений и чем читаем голос',
-      typeof j.attach === 'string' && /до 3 файлов по 4 МБ/.test(j.attach) && /whisper/.test(j.attach), JSON.stringify(j.attach));
+      typeof j.attach === 'string' && /до 6 файлов по 4 МБ/.test(j.attach) && /whisper/.test(j.attach), JSON.stringify(j.attach));
     const off = await onRequestGet({ env: Object.assign({}, ENV, { ATTACH: 'off', STT: 'off' }) });
     const oj = await off.json();
     ok('W19: и выключенное состояние видно той же строкой', /ATTACH=off/.test(oj.attach) && /STT=off/.test(oj.attach), JSON.stringify(oj.attach));

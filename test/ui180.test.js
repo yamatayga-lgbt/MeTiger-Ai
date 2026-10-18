@@ -35,7 +35,7 @@ ok('U180a живой вопрос идёт по умной полосе — ре
     && /'smart'/.test(door))
 
 ok('U180b чужой выбор уважаем: выбрана модель — полосу не поднимаем',
-  /!norm\.model && \(\(composed && composed\.voice && composed\.voice\.mode === 'note'\) \|\| needsWeb/.test(door))
+  /!norm\.model && \(\(composed && composed\.voice && composed\.voice\.mode === 'note'\)[\s\S]{0,120}needsWeb/.test(door))
 
 ok('U180c обрыв связи повторяется молча — но только если человек ничего не читал',
   /const TRANSPORT_BREAK = \/время вышло\|связь оборвалась\|оборвался\|сеть недоступна\//.test(app)

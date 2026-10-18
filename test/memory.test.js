@@ -45,13 +45,13 @@ console.log('A — полная форма записи: что сохранил
 {
   const base = normalize('c1', {
     summary: 'сводка',
-    messages: [{ role: 'хрень', content: 'текст' }, { role: 'assistant', content: 'x'.repeat(25000) }],
+    messages: [{ role: 'хрень', content: 'текст' }, { role: 'assistant', content: 'x'.repeat(40000) }],
     facts: ['факт'],
     lessons: ['урок'],
     attune: { prefs: [{ key: 'k', text: 't', count: 3, ts: 5 }], turns: 7, hits: 2, misses: 4, goals: ['code'] },
   });
   ok('A1: неизвестная роль становится user, а не выдумывается', base.messages[0].role === 'user', base.messages[0].role);
-  ok('A2: длинная реплика обрезается, а не уезжает в хранилище целиком', base.messages[1].content.length === 20000, String(base.messages[1].content.length));
+  ok('A2: длинная реплика обрезается на потолке 32000 (0.212), а не уезжает в хранилище целиком', base.messages[1].content.length === 32000, String(base.messages[1].content.length));
   ok('A3: счётчики подстройки доживают до сохранения (misses не обнуляются)',
     base.attune.turns === 7 && base.attune.hits === 2 && base.attune.misses === 4, JSON.stringify(base.attune).slice(0, 120));
   ok('A4: профиль поправки живёт полной записью', base.attune.prefs.length === 1 && base.attune.prefs[0].count === 3);
