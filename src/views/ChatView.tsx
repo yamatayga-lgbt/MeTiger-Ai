@@ -10,12 +10,11 @@ import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
 import { Guard } from '../components/Guard'
 
-/* Последний черновик поля ввода (0.189): один на приложение, самый свежий.
-   draftOnce гарантирует, что сохранённый текст подставится один раз — при
-   открытии приложения, — а не в каждый чат при переключении. */
+/* Последний черновик поля ввода (0.189, правка 0.218): один на приложение,
+   самый свежий. Подставляется при каждом открытии экрана чата — иначе уход
+   в профиль размонтирует поле, и набор пропадал бы, хотя ключ ещё жив. */
 const DRAFT_KEY = 'mt-draft'
 const DRAFT_MAX = 96000
-const draftOnce: { done: boolean } = { done: false }
 
 import { LimitsRing } from '../components/LimitsRing'
 import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
@@ -674,12 +673,11 @@ export function ChatView({
      ни кнопки «озвучить» у ответа — ответы только текстом. Серверный голос
      (/api/tts, engine/voiceout.js) остался для внешних клиентов API. */
 
-  /* Последний черновик (0.189, решение владельца): набранный в поле текст
-     переживает обновление и перезагрузку приложения. Хранится ровно ОДИН
-     черновик — самый свежий из набранных, без истории по чатам. */
+  /* Последний черновик (0.189 / 0.218): набранный текст переживает обновление,
+     перезагрузку и уход с экрана чата. Хранится ровно ОДИН черновик — самый
+     свежий, без истории по чатам. Читаем при каждом монтировании ChatView:
+     экран чата при уходе в профиль размонтируется целиком. */
   const [value, setValue] = useState(() => {
-    if (draftOnce.done) return ''
-    draftOnce.done = true
     try {
       const saved = localStorage.getItem(DRAFT_KEY)
       return typeof saved === 'string' && saved ? saved.slice(0, DRAFT_MAX) : ''
@@ -1281,7 +1279,7 @@ export function ChatView({
           )}
 
           {typing ? (
-            <div className="msg msg-ai">
+            <div className="msg msg-ai msg-arrive">
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ai-name">MeTiger Ai</div>
                 {Array.isArray(draftImgSteps) && draftImgSteps.length ? (

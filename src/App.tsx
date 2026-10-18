@@ -27,6 +27,7 @@ import { WhatsNewModal } from './components/WhatsNewModal'
 import { IdCard } from './components/IdCard'
 import { useTheme } from './hooks/useTheme'
 import { usePullToRefresh } from './hooks/usePullToRefresh'
+import { useSwipeBack } from './hooks/useSwipeBack'
 import { APP_VERSION } from './lib/version'
 import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
@@ -354,6 +355,16 @@ export default function App() {
     setView(v)
     setMenuOpen(false)
   }, [])
+
+  /* Свайп вправо от левого края на вложенных экранах — тот же путь, что стрелка
+     «назад» (BACK_TO). Пока открыто меню, ящик или палитра — жест молчит. */
+  useSwipeBack(
+    Boolean(BACK_TO[view]) && !menuOpen && !workspaceOpen && !paletteOpen,
+    () => {
+      const to = BACK_TO[view]
+      if (to) navigate(to)
+    },
+  )
 
   /* Стереть ТОЛЬКО переписку на устройстве (0.190, после случая владельца:
        «я думал, что только чаты удалятся, а не профиль») — ключи чатов и две

@@ -2872,7 +2872,7 @@ kbd {
   border-radius: 24px;
   background: var(--bg-elevated);
   box-shadow: var(--shadow-md);
-  transition: border-color var(--t-med), box-shadow var(--t-med);
+  transition: border-color var(--t-med), box-shadow var(--t-med), transform 0.2s var(--ease-out);
 }
 
 /* Ряд 1 — само поле: на всю ширину карточки. */
@@ -3695,7 +3695,20 @@ kbd {
   border-radius: 20px;
   background: var(--bg-elevated);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
-  animation: pickerPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* 0.218: раскрывается от кнопки «+» слева внизу, а не въезжает сбоку. */
+  transform-origin: 28px 100%;
+  animation: attachFromPlus 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes attachFromPlus {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.56);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .attach-menu-item {
@@ -5497,6 +5510,9 @@ button.rows-row:hover {
 }
 .composer:focus-within {
   border-color: var(--accent-border);
+  /* 0.218: клавиатура/фокус — рамка ярче и поле на 3px выше. */
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
 }
 
 /* Кнопки поля ввода — простые круглые кнопки. */
@@ -5960,14 +5976,27 @@ button.rows-row:hover {
 :where(button) svg { transition: transform .35s var(--spring); }
 
 /* Кнопки поля ввода — без анимаций (просьба владельца, 0.184):
-   ни поворота «+», ни покачивания ползунков, ни взлёта стрелки,
-   ни пружинного «вдавливания» — только мгновенный отклик. */
+   ни поворота «+», ни покачивания ползунков, ни взлёта стрелки.
+   Кнопка отправки с 0.218 — исключение: чуть крупнеет с текстом и сжимается. */
 .composer .icon-btn:active:not(:disabled),
-.composer .send-btn:active:not(:disabled),
 .composer .params-btn:active { transform: none; }
 .composer .icon-btn svg,
-.composer .send-btn svg,
 .composer .params-btn svg { transition: none; }
+
+/* 0.218: отправка оживает. Пустое поле — тихая серая (disabled). С текстом —
+   брендовая и чуть крупнее; нажатие коротко сжимает. Без мигания. */
+.composer .send-btn {
+  transform: scale(1);
+  transition: transform 0.2s var(--ease-out), background-color 0.2s var(--ease-out),
+    color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+}
+.composer .send-btn:not(:disabled) {
+  transform: scale(1.08);
+}
+.composer .send-btn:not(:disabled):active {
+  transform: scale(0.92);
+  transition-duration: 0.08s;
+}
 
 /* Тема: солнце/луна крутятся при смене. */
 .side-foot-row .icon-btn:hover svg { transform: rotate(40deg); }
@@ -5984,10 +6013,12 @@ button.rows-row:hover {
 .chat-item .more-btn svg { transition: transform .3s var(--spring); }
 .chat-item:hover .more-btn svg { transform: rotate(90deg); }
 
-/* Сообщения: мягче и чуть дальше снизу; пузырь пользователя — пружиной. */
-.msg { animation: msgIn .42s var(--ease-out) both; }
+/* Сообщения: пузырь пользователя — пружиной. Ответ агента (0.218) — один
+   мягкий подъём 150 мс в момент появления потока, не на каждый кусок и не
+   на всю старую переписку при открытии чата. */
+.msg-ai.msg-arrive { animation: msgArrive 150ms var(--ease-out) both; }
 .msg-user .bubble { animation: bubbleIn .38s var(--spring) both; transform-origin: right bottom; }
-@keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes msgArrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes bubbleIn { from { opacity: 0; transform: scale(.9) translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Плашки источников и сноски — проявляются по очереди. */
@@ -6001,9 +6032,12 @@ button.rows-row:hover {
 .msg-copy-btn:hover svg, .msg-read:hover svg { transform: translateY(-1.5px) scale(1.08); }
 
 @media (prefers-reduced-motion: reduce) {
-  .msg, .msg-user .bubble, .history-group .chat-item, .history-label, .msg-sources > *,
-  .composer .send-btn:not(:disabled) { animation: none !important; }
+  .msg, .msg-ai.msg-arrive, .msg-user .bubble, .history-group .chat-item, .history-label, .msg-sources > *,
+  .composer .send-btn:not(:disabled), .attach-menu { animation: none !important; }
   button svg, button, .composer textarea { transition: none !important; }
+  .composer:focus-within,
+  .composer .send-btn:not(:disabled),
+  .composer .send-btn:not(:disabled):active { transform: none !important; }
 }
 
 /* ── 0.136: «Дела» — видимая, редактируемая память пользователя ─────────────── */

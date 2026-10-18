@@ -59,9 +59,10 @@ ok('R5 запись написана проще: без имён файлов и
   !/src\//.test(notes) && !/engine\//.test(notes) && !/localStorage|fmtPct|VOICE_/.test(notes))
 
 /* ── D. Черновик ─────────────────────────────────────────────────────────── */
-ok('R6 последний черновик поля ввода живёт в mt-draft: подставился один раз при старте, пишется с набором, уходит с отправкой',
+ok('R6 последний черновик поля ввода живёт в mt-draft: подставляется при каждом открытии чата, пишется с набором, уходит с отправкой',
   /const DRAFT_KEY = 'mt-draft'/.test(chat)
-    && /const draftOnce[^]*?draftOnce\.done = true/.test(chat)
+    && /localStorage\.getItem\(DRAFT_KEY\)/.test(chat)
+    && !/draftOnce/.test(chat)
     && /localStorage\.setItem\(DRAFT_KEY, value\.slice\(0, DRAFT_MAX\)\)/.test(chat)
     && /else localStorage\.removeItem\(DRAFT_KEY\)/.test(chat))
 

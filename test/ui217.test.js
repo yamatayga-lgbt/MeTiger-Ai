@@ -25,8 +25,8 @@ const pill = (css.match(/\.topbar-pill \{[\s\S]*?\n\}/) || [''])[0]
 const topbar = (css.match(/\.topbar \{[\s\S]*?\n\}/) || [''])[0]
 
 ok('U217a все источники версии синхронизированы', v.ok, v.why)
-ok('U217b «Что нового» и README знают 0.217',
-  /\*\*0\.217\*\*/.test(readme) && /version: '0\.217'/.test(notes))
+ok('U217b история README знает 0.217',
+  /\*\*0\.217\*\*/.test(readme))
 ok('U217c запись без имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes) && !/topbar-pill|topbar-side/.test(notes))
 ok('U217d кэш оболочки знает текущую версию',
