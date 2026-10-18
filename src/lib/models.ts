@@ -427,7 +427,7 @@ export function canModelThink(
   if (/flash-lite|codestral|devstral|ministral|mistral-large|command-r|longcat|llama-3\.[12]|granite/.test(s)) {
     return false
   }
-  return /(gemini-(?:2\.5|3)|qwen3|qwen-3|qwq|deepseek|gpt-oss|\bo1\b|\bo3\b|\bo4\b|glm-(?:4\.7|5)|mistral-medium|mistral-small-(?:4|26)|magistral|reasoning|thinking|think|r1-|nex-n2\.5-pro|dots-3)/.test(
+  return /(gemini-(?:2\.5|3)|qwen3|qwen-3|qwq|deepseek|gpt-oss|\bo1\b|\bo3\b|\bo4\b|glm-(?:4\.7|5)|mistral-medium|mistral-small-(?:4|26)|magistral|reasoning|thinking|think|r1-|nex-n2\.5-pro|dots-3|mercury-2\.5)/.test(
     s,
   )
 }
@@ -457,6 +457,7 @@ export function vendorCategory(id?: string, vendor?: string, name?: string): str
   if (/llama|\bmeta\b/.test(s)) return 'Meta'
   if (/cohere|command-r|\bnorth\b/.test(s)) return 'Cohere'
   if (/nemotron|nvidia/.test(s)) return 'Nvidia'
+  if (/mercury|inception/.test(s)) return 'Inception'
   const clean = String(vendor || '').split('·')[0].trim()
   return clean || 'Другие'
 }
@@ -510,6 +511,7 @@ export function modelLimitsFor(
   if (src === 'odirouter') return { rpd: 1000, rpm: 15 }
   if (src === 'zai' || /\bglm\b/.test(s)) return { rpd: 1000, rpm: 30 }
   if (src === 'mistral' || /ministral|codestral|devstral|mistral/.test(s)) return { rpd: 1000, rpm: 60 }
+  if (src === 'inception' || /mercury/.test(s)) return { rpd: 1000, rpm: 60 }
   return { rpd: 1000, rpm: 60 }
 }
 
@@ -803,6 +805,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   atria: 'Atria',
   llm7: 'LLM7',
   kilo: 'Kilo',
+  inception: 'Inception',
   pool: 'наши пулы',
 }
 
@@ -940,7 +943,7 @@ export function modelOption(id: string | undefined | null): ModelOption {
     tier: c.tier === 'smart' ? 'smart' : 'fast',
     vision: c.vision === true,
     ctx: c.ctx || 131072,
-    tokPerSec: c.src === 'groq' ? 240 : c.tier === 'smart' ? 105 : 150,
+    tokPerSec: c.src === 'inception' || /mercury/.test(c.id || '') ? 1100 : c.src === 'groq' ? 240 : c.tier === 'smart' ? 105 : 150,
     canThink: think,
     supportsEffort: canModelEffort(c.id, c),
     category: vendorCategory(c.id, c.vendor, c.name),

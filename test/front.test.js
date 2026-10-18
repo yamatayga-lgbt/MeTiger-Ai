@@ -1013,7 +1013,8 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         && detectBrand('qwen/qwen3.5-plus:free') === 'qwen'
         && detectBrand('deepseek-v4-flash') === 'deepseek'
         && detectBrand('codestral-latest') === 'mistral'
-        && detectBrand('openai/gpt-oss-20b') === 'openai');
+        && detectBrand('openai/gpt-oss-20b') === 'openai'
+        && detectBrand('mercury-2.5', 'INCEPTION') === 'inception');
     ok('M28: двухколоночный пикер показывает категории ИИ, контекст (1M Контекст), ток/с и лимит запросов в день и в минуту (250/день · 15/мин)',
       /Google/.test(htmlThink)
         && /Qwen/.test(htmlThink)
@@ -1025,6 +1026,7 @@ console.log('L2 — песочница: Python через Pyodide (второй 
 
     ok('M29: у думающей модели есть переключатель «Думает» и «УСИЛИЕ» (Низкое/Среднее/Высокое), а у не-думающей переключатель «Думает» пропадает',
       canModelThink('gemini-3.6-flash') === true
+        && canModelThink('mercury-2.5') === true
         && canModelThink('codestral-latest') === false
         && /aria-label="Режим Думает"/.test(htmlThink)
         && /УСИЛИЕ/.test(htmlThink)

@@ -202,6 +202,27 @@ export const TABLE = {
       smart: ["gemini-3.5-flash","deepseek-v4-pro","deepseek-v4-flash"],
     },
   },
+
+  /* 0.214. Inception Labs — диффузионная Mercury. OpenAI-совместимый чат,
+     ключ INCEPTION_KEYS. Живой каталог 18.10.2026 отдал mercury-2.5 (260K,
+     tools, ~1100 ток/с) и mercury-2 (128K); mercury-decide — не чат
+     (только /v1/decisions), в пул не берём. Бесплатный ярус: 100 млн токенов
+     на аккаунт, 1000 запросов/мин по доке; живая проба ключом поймала
+     «free tier is at capacity» — это 429 с остыванием, не «ключа нет».
+     Роль: быстрая голова с широким окном (документы vs GigaChat) и запас
+     после Groq, а не первая попытка: глобальная ёмкость бесплатного яруса
+     не должна добавлять 429 к каждому ответу, пока Groq жив. */
+  inception: {
+    label: "Inception",
+    kind: "openai",
+    base: "https://api.inceptionlabs.ai/v1",
+    envPrefix: 'INCEPTION',
+    limit: 1000,
+    models: {
+      fast: ["mercury-2.5","mercury-2"],
+      smart: ["mercury-2.5","mercury-2"],
+    },
+  },
 };
 
 /* Порядок обхода: от самого быстрого/надёжного к запасным. Локальная голова —
@@ -211,8 +232,8 @@ export const ORDER = {
      Тем же правилом ушли NVIDIA и OVHcloud (0.099, «нужна карта») и SambaNova с
      GitHub Models (0.103). Мёртвый провайдер в очереди — это не «на всякий
      случай», а лишняя попытка и лишняя строка в отчёте о том, кто отказал. */
-  fast: ['groq', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'kilo', 'llm7'],
-  smart: ['groq', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'kilo', 'llm7'],
+  fast: ['groq', 'inception', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'kilo', 'llm7'],
+  smart: ['groq', 'inception', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'kilo', 'llm7'],
 };
 
 /* Картинка: зрячие первыми. */

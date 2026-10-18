@@ -242,6 +242,10 @@ export function buildRequest(o) {
       frequencyPenalty != null ? { frequency_penalty: frequencyPenalty } : {},
       o.stream ? { stream: true } : {},
       cfg.id === 'openrouter' ? { models: [model] } : {},
+      /* Mercury 2.5 принимает native reasoning_effort (low/medium/high).
+         Другим моделям Inception (mercury-2) параметр не шлём: 400 сожжёт попытку. */
+      cfg.id === 'inception' && /mercury-2\.5/i.test(model) && o.reasoningEffort
+        ? { reasoning_effort: o.reasoningEffort } : {},
     ),
     parse: (d) => {
       const err = d.error && (d.error.message || d.error.code);

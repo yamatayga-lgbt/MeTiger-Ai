@@ -14,6 +14,7 @@ export type BrandFamily =
   | 'zai'
   | 'nvidia'
   | 'cohere'
+  | 'inception'
   | 'other'
 
 /** Определяет семейство ИИ по id, имени и вендору модели для отрисовки оригинальной иконки. */
@@ -31,6 +32,7 @@ export function detectBrand(id?: string, vendor?: string, name?: string): BrandF
   if (/\bglm\b|\bzai\b|z\.ai|z-ai|zhipu|chatglm/.test(s)) return 'zai'
   if (/nemotron|nvidia/.test(s)) return 'nvidia'
   if (/cohere|command-r|\bnorth\b|\baya\b/.test(s)) return 'cohere'
+  if (/mercury|inception/.test(s)) return 'inception'
   return 'other'
 }
 
@@ -232,6 +234,20 @@ export function ModelIcon({ id, vendor, name, avatar, className = '' }: ModelIco
           <circle cx="9" cy="10" r="3.5" fill="#FFF" />
           <circle cx="16" cy="10" r="2.5" fill="#FFF" fillOpacity="0.8" />
           <rect x="6" y="15" width="12" height="3.5" rx="1.75" fill="#FFF" />
+        </svg>
+      </span>
+    )
+  }
+
+  if (brand === 'inception') {
+    /* Mercury: диффузионные кольца вокруг ядра — не логотип Inception Labs,
+       а узнаваемый знак семьи моделей, в том же духе, что и остальные бренды. */
+    return (
+      <span className={cls} style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1E3A5F 55%, #38BDF8 100%)' }}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.2" stroke="#7DD3FC" strokeWidth="1.4" strokeOpacity="0.85" />
+          <ellipse cx="12" cy="12" rx="8.2" ry="3.2" stroke="#E0F2FE" strokeWidth="1.2" />
+          <circle cx="12" cy="12" r="2.4" fill="#F8FAFC" />
         </svg>
       </span>
     )

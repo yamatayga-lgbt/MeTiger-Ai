@@ -183,6 +183,22 @@ function fromProviderList(m, src, opts = {}) {
     : /vision|multimodal|-vl\b/i.test(lower);
   const priced = isFree(m) || m.access_tier === 'free' || m.access_tier === 'free_tier';
   const ssp = Array.isArray(m.supported_sampling_parameters) ? m.supported_sampling_parameters : [];
+  /* Inception и родственные каталоги называют способности в supported_features
+     («tools», «json_mode»), а чат — в supported_endpoints. Без этого mercury-decide
+     (только /v1/decisions) выглядел бы чатом, а tools у mercury-2.5 — неизвестными. */
+  const feats = Array.isArray(m.supported_features) ? m.supported_features : [];
+  const endpoints = Array.isArray(m.supported_endpoints) ? m.supported_endpoints : [];
+  const chatEndpoint = !endpoints.length || endpoints.some((e) => /chat/i.test(String(e)));
+  const featTools = feats.some((f) => /tools|function/i.test(String(f)));
+  let tools = typeof cap.function_calling === 'boolean' ? cap.function_calling
+    : (typeof cap.tools === 'boolean' ? cap.tools : undefined);
+  if (tools === undefined && feats.length) tools = featTools;
+  let reasoning = typeof cap.reasoning === 'boolean' ? cap.reasoning
+    : (ssp.length ? ssp.some((x) => /reasoning/i.test(String(x))) : undefined);
+  /* Mercury 2.5 — reasoning dLLM: параметр reasoning_effort есть в чате, но в
+     каталоге sampling_parameters его нет (только temperature/stop), и тогда
+     формула выше ставит false. Это не «модель не думает», а дыра каталога. */
+  if (/mercury-2\.5/i.test(lower)) reasoning = true;
   return {
     id: id,
     name: prettyName(m),
@@ -198,10 +214,11 @@ function fromProviderList(m, src, opts = {}) {
     maxOut: num(m.max_completion_tokens ?? m.max_output_tokens ?? m.max_output_length ?? m.completion_tokens_allowed, 4096),
     vision,
     visionKnown: knownMod,
-    tools: typeof cap.function_calling === 'boolean' ? cap.function_calling : (typeof cap.tools === 'boolean' ? cap.tools : undefined),
-    reasoning: typeof cap.reasoning === 'boolean' ? cap.reasoning : (ssp.length ? ssp.some((x) => /reasoning/i.test(String(x))) : undefined),
+    tools,
+    reasoning,
     canExcludeReasoning: ssp.some((x) => /reasoning|thinking/i.test(String(x))) || undefined,
     chat: m.active !== false && !m.deprecation && cap.completion_chat !== false &&
+      chatEndpoint &&
       !(NON_CHAT_HINT.test(lower) || !textOut(m)),
     deprecated: !!m.deprecation,
     replaces: m.deprecation_replacement_model || undefined,
@@ -262,6 +279,10 @@ export const LIST_SOURCES = {
      и gpt в список выбора. Берём оттуда только то, что провайдер сам зовёт free. */
   llm7: { url: 'https://api.llm7.io/v1/models', prefix: 'LLM7', keyless: true },
   kilo: { url: 'https://api.kilo.ai/api/gateway/models', prefix: 'KILO', keyless: true },
+  /* 0.214. Каталог Inception открыт тем же ключом, что и чат. priceUnknown —
+     как у groq: в списке стоят ненулевые цены за токен, а бесплатность — в
+     квоте яруса (100 млн токенов / 1000 RPM), не в нуле прайса. */
+  inception: { url: 'https://api.inceptionlabs.ai/v1/models', prefix: 'INCEPTION', priceUnknown: true },
 };
 
 /** Какие нативные списки вообще можно спросить в этом окружении. */

@@ -106,7 +106,7 @@ function build(cat: ModelCatalog | null): Row[] {
       prov: providerLabel(m.src),
       flags,
       ctx: m.ctx || 131072,
-      tokPerSec: m.src === 'groq' ? 240 : m.tier === 'smart' ? 105 : 150,
+      tokPerSec: m.src === 'inception' || /mercury/.test(m.id || '') ? 1100 : m.src === 'groq' ? 240 : m.tier === 'smart' ? 105 : 150,
       src: m.src,
       failover: (cat.multi?.[m.id] || []).length >= 2 ? (cat.multi?.[m.id] || []).map(providerLabel) : undefined,
       canThink: think,

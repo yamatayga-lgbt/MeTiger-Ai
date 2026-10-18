@@ -501,8 +501,9 @@ console.log('── M · собственные списки провайдер�
      (keyless) — всегда, им ключ не нужен вовсе. */
   ok('M13: без ключа провайдера его список не дёргается, а keyless-источники — дёргается',
     M.TEST.listSources({ GROQ_KEYS: 'k1' }).sort().join() === 'groq,kilo,llm7'
-      && M.TEST.listSources({}).sort().join() === 'kilo,llm7',
-    JSON.stringify(M.TEST.listSources({ GROQ_KEYS: 'k1', OPENROUTER_KEYS: 'o' })));
+      && M.TEST.listSources({}).sort().join() === 'kilo,llm7'
+      && M.TEST.listSources({ INCEPTION_KEYS: 'i1' }).sort().join() === 'inception,kilo,llm7',
+    JSON.stringify(M.TEST.listSources({ GROQ_KEYS: 'k1', OPENROUTER_KEYS: 'o', INCEPTION_KEYS: 'i1' })));
   const cfg = M.TEST.nativeCfg('gemini', { GEMINI_KEYS: 'abc,def' });
   ok('M14: заголовок gemini — x-goog-api-key, а не Bearer', !!cfg && cfg.headers['x-goog-api-key'] === 'abc' && !/abc/.test(cfg.url));
   ok('M15: чужой/безключевой провайдер конфига не даёт', M.TEST.nativeCfg('cloudflare', { CLOUDFLARE_KEYS: 'x' }) === null && M.TEST.nativeCfg('groq', {}) === null);
@@ -510,6 +511,41 @@ console.log('── M · собственные списки провайдер�
   ok('M15b: keyless-источник читается без ключа и без заголовка авторизации',
     !!kl && !('authorization' in kl.headers) && kl.url === 'https://api.kilo.ai/api/gateway/models',
     JSON.stringify(kl && kl.headers));
+
+  /* 0.214. Каталог Inception: чат vs decisions, tools из supported_features,
+     окно 260K у mercury-2.5, reasoning не в sampling_parameters. */
+  const merc = M.TEST.fromProviderList({
+    id: 'mercury-2.5',
+    name: 'Inception: Mercury 2.5',
+    input_modalities: ['text'],
+    output_modalities: ['text'],
+    context_length: 260000,
+    max_output_length: 65536,
+    pricing: { prompt: '0.00000004', completion: '0.00000015' },
+    supported_sampling_parameters: ['temperature', 'stop'],
+    supported_features: ['tools', 'json_mode', 'structured_outputs'],
+    supported_endpoints: ['chat.completions'],
+  }, 'inception', { priceUnknown: true });
+  const decide = M.TEST.fromProviderList({
+    id: 'mercury-decide',
+    name: 'Inception: Mercury Decide',
+    input_modalities: ['text'],
+    output_modalities: ['text'],
+    context_length: 65536,
+    supported_endpoints: ['decisions'],
+    supported_features: [],
+  }, 'inception', { priceUnknown: true });
+  ok('M15c: mercury-2.5 — чат, tools, reasoning, окно 260K',
+    merc.chat === true && merc.tools === true && merc.reasoning === true
+      && merc.ctx === 260000 && merc.maxOut === 65536 && merc.free === true && merc.vision === false,
+    JSON.stringify({ chat: merc.chat, tools: merc.tools, r: merc.reasoning, ctx: merc.ctx, out: merc.maxOut }));
+  ok('M15d: mercury-decide не чат — у него только /v1/decisions',
+    decide.chat === false, JSON.stringify({ chat: decide.chat, id: decide.id }));
+  const incCfg = M.TEST.nativeCfg('inception', { INCEPTION_KEYS: 'sk_test' });
+  ok('M15e: каталог Inception читается ключом на /v1/models',
+    !!incCfg && incCfg.url === 'https://api.inceptionlabs.ai/v1/models'
+      && incCfg.headers.authorization === 'Bearer sk_test',
+    JSON.stringify(incCfg && { url: incCfg.url, auth: !!incCfg.headers.authorization }));
 
   /* сетевой путь: groq спросили, ключ подставили, строки помечены src=groq */
   M.forgetMemo(); M.resetThrottle();

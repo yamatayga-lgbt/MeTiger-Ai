@@ -83,7 +83,7 @@ const req = (headers) => new Request('https://metiger-ai.pages.dev/api/usage', {
     JSON.stringify(open).slice(0, 200))
   ok('U202b без кода наружу не уходит ни один провайдер, ключ или расход',
     !open.providers && !open.totals && !open.failover && !open.precision
-      && !/groq|gemini|openrouter|llm7|kilo|ключ/i.test(JSON.stringify(open)),
+      && !/groq|gemini|openrouter|llm7|kilo|inception|ключ/i.test(JSON.stringify(open)),
     JSON.stringify(open).slice(0, 200))
   ok('U202c заголовок x-mt-owner разрешён в CORS — иначе браузер владельца не дойдёт',
     /x-mt-owner/.test(openRes.headers.get('access-control-allow-headers') || ''))

@@ -11,6 +11,7 @@ OPENROUTER_KEYS=
 MISTRAL_KEYS=
 ZAI_KEYS=
 ODIROUTER_KEYS=
+INCEPTION_KEYS=
 # Своя железка (Ollama / llama.cpp / LM Studio) — факультативно, в конце очереди
 LOCAL_BASE_URL=
 LOCAL_MODELS=

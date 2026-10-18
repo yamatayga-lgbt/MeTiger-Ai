@@ -1262,6 +1262,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
           maxTokens: fitNow.maxOut || maxTokensWanted, temperature: input.temperature, topP: input.topP,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
+          reasoningEffort: effectiveReasoningEffort,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
         let r = await attemptOne(id, model, req, left);
@@ -1277,6 +1278,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             cfg, keyIdx, model, provider: id, stream: !!onDelta, messages: curMessages, system: curSystem, tier, images, maxImages: MAX_IMAGES,
             maxTokens: fitNow.maxOut || maxTokensWanted, temperature: input.temperature, topP: input.topP,
             presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
+            reasoningEffort: effectiveReasoningEffort,
           });
           req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent; req2.lexSource = lexSource; req2.agentGender = genderEff.agent;
           r = await attemptOne(id, model, req2, deadline - Date.now());
@@ -1412,6 +1414,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           system: refit.system,
           tier, images, maxImages: MAX_IMAGES, maxTokens: refit.maxOut || maxTokensWanted, temperature: input.temperature,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
+          reasoningEffort: effectiveReasoningEffort,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
         const r = await attemptOne(id, model, req, left);
@@ -1502,6 +1505,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           system: refit.system,
           tier, images, maxImages: MAX_IMAGES, maxTokens: refit.maxOut || maxTokensWanted, temperature: input.temperature,
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
+          reasoningEffort: effectiveReasoningEffort,
         });
         req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
         const r = await attemptOne(id, model, req, left);

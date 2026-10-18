@@ -90,6 +90,36 @@ console.log('── T · TABLE против живого замера ───'
      Владелец убрал их прямым указанием, и «ну а вдруг пригодится» тут не работает:
      строка в очереди — это живая попытка запроса к чужому платному API. */
   const gone = ['sambanova', 'github', 'cerebras', 'nvidia', 'ovh'];
+  /* 0.214. Inception — не keyless: без ключа его нет в очереди, с ключом —
+     mercury-2.5 в обоих слоях и вторая позиция после Groq. */
+  const Pin = buildTable({ INCEPTION_KEYS: 'sk_test' });
+  ok('T-inception-1: с ключом Inception жив, без ключа — выпадает',
+    providerAlive(Pin, 'inception', {}) && pickKey(Pin, 'inception', {}) === 0
+      && !providerAlive(P, 'inception', {}),
+    'with=' + providerAlive(Pin, 'inception', {}) + ' without=' + providerAlive(P, 'inception', {}));
+  ok('T-inception-2: mercury-2.5 в обоих пулах, mercury-decide в пул не попал',
+    Pin.inception.models.fast.includes('mercury-2.5')
+      && Pin.inception.models.smart.includes('mercury-2.5')
+      && Pin.inception.models.fast.includes('mercury-2')
+      && !Pin.inception.models.fast.includes('mercury-decide')
+      && !Pin.inception.models.smart.includes('mercury-decide'),
+    JSON.stringify(Pin.inception.models));
+  ok('T-inception-3: Inception в очереди сразу после Groq — и в fast, и в smart',
+    ORDER.fast[0] === 'groq' && ORDER.fast[1] === 'inception'
+      && ORDER.smart[0] === 'groq' && ORDER.smart[1] === 'inception',
+    'fast=' + ORDER.fast.slice(0, 3).join(',') + ' smart=' + ORDER.smart.slice(0, 3).join(','));
+  const incReq = (model, effort) => shape.buildRequest({
+    cfg: Pin.inception, keyIdx: 0, model, messages: [{ role: 'user', content: 'привет' }],
+    system: '', maxTokens: 32, reasoningEffort: effort,
+  });
+  const r25 = incReq('mercury-2.5', 'high');
+  const r2 = incReq('mercury-2', 'high');
+  ok('T-inception-4: reasoning_effort уезжает только на mercury-2.5',
+    r25.body.reasoning_effort === 'high' && r2.body.reasoning_effort === undefined
+      && r25.url === 'https://api.inceptionlabs.ai/v1/chat/completions'
+      && r25.headers.authorization === 'Bearer sk_test',
+    JSON.stringify({ m25: r25.body.reasoning_effort, m2: r2.body.reasoning_effort }));
+
   ok('T-new-1c: ушедшие провайдеры не вернулись ни в таблицу, ни в очередь',
     gone.every((id) => !P[id] && !ORDER.fast.includes(id) && !ORDER.smart.includes(id))
       && !Object.keys(TABLE).some((id) => gone.includes(id)),

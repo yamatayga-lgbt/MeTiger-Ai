@@ -319,7 +319,7 @@ console.log('W — дверь GET /api/usage');
         && !('kv' in open) && !('rate' in open),
       JSON.stringify(open).slice(0, 220));
     ok('W1c: в публичном ответе нет ни одного имени провайдера и ни одного ключа',
-      !/groq|gemini|openrouter|llm7|kilo|keys|балл/i.test(JSON.stringify(open)),
+      !/groq|gemini|openrouter|llm7|kilo|inception|keys|балл/i.test(JSON.stringify(open)),
       JSON.stringify(open).slice(0, 220));
     const wrong = await (await usageGet(ctx({ 'x-mt-owner': 'NOT-THE-CODE' }))).json();
     ok('W1d: неверный код не открывает раскладку — падает в публичный ярус',
@@ -344,6 +344,7 @@ console.log('W — дверь GET /api/usage');
   ok('W3b: у пулов-дублёров 0.099 свои ставки в панели, а не чужие',
     data.providers.some((p) => p.id === 'llm7' && p.rpm === 15)
       && data.providers.some((p) => p.id === 'kilo' && p.rpm === 10)
+      && data.providers.some((p) => p.id === 'inception' && p.rpm === 60)
       /* 0.103: SambaNova и GitHub Models убраны из продукта целиком — их не должно
          быть ни в списке провайдеров, ни в счётчиках. */
       && !data.providers.some((p) => ['sambanova', 'github'].includes(p.id)),
