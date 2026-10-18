@@ -380,6 +380,7 @@ async function handlePost(context) {
      читать файл по частям. Примечания и расшифровка голоса остаются здесь. */
   const composed = att ? composeAttach({ has: true, defer: true }, att, words) : null;
   const text = composed ? composed.text : words;
+  const askText = composed ? (composed.askText || text) : words;
   if (!text) return json({ ok: false, error: 'пустой запрос' }, 400);
   const allImages = images.concat((att && att.images) || []);
   if (allImages.length > MAX_IMAGES) allImages.length = MAX_IMAGES;
@@ -463,8 +464,8 @@ async function handlePost(context) {
   if (!askedDeep) {
     try {
       depthVerdict = depthJudge.judge({
-        text, images: allImages, env,
-        intent: classifyTask(String(text || ''), allImages),
+        text: askText, images: allImages, env,
+        intent: classifyTask(String(askText || ''), allImages),
       });
       wantDeep = depthVerdict.deep === true;
       depthWhy = depthVerdict.why || '';
@@ -481,8 +482,8 @@ async function handlePost(context) {
   let deepWork = null;
   try {
     deepWork = planDeepWork({
-      text,
-      intent: classifyTask(String(text || ''), allImages),
+      text: askText,
+      intent: classifyTask(String(askText || ''), allImages),
       images: allImages,
       deep: wantDeep,
       depth: depthVerdict,
@@ -643,6 +644,7 @@ async function handlePost(context) {
     /* нормализованные поля, а не сырые из тела: иначе потолок из env на «system»
        и «text» был бы просто украшением, а provider с путью дошёл бы до выбора */
     text: norm.text || text, history,
+    askText: askText.slice(0, norm.caps.text),
     caseContext: caseContext || undefined,
     chatId: memory ? chatId : undefined,
     origin: memory ? threadId : undefined,
@@ -660,7 +662,7 @@ async function handlePost(context) {
     tier: body.tier === 'fast' || body.tier === 'smart'
       ? body.tier
       : (!norm.model && ((composed && composed.voice && composed.voice.mode === 'note')
-          || (deepWork && deepWork.on) || needsWeb(String(norm.text || text || '')).need)
+          || (deepWork && deepWork.on) || needsWeb(String(askText || '')).need)
           ? 'smart'
           : undefined),
     only: norm.provider,

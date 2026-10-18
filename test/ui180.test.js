@@ -31,7 +31,7 @@ const chain = read('package.json')
 
 ok('U180a живой вопрос идёт по умной полосе — решает та же функция, что включает поиск',
   /import \{ needsWeb \} from '\.\.\/\.\.\/engine\/webrules\.js'/.test(door)
-    && /needsWeb\(String\(norm\.text \|\| text \|\| ''\)\)\.need/.test(door)
+    && /needsWeb\(String\(askText \|\| ''\)\)\.need/.test(door)
     && /'smart'/.test(door))
 
 ok('U180b чужой выбор уважаем: выбрана модель — полосу не поднимаем',

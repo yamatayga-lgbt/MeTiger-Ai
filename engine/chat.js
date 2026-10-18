@@ -292,8 +292,15 @@ export function createEngine(opts) {
           (t) => onDelta({ kind: 'reason', provider: id, model, text: t }),
         )
       : await rawCall(fetchImpl, req, budget);
-    if (res.error === 'timeout' || res.status === 0 && !res.text) {
-      return { ok: false, why: 'timeout', status: res.status };
+    if (res.error === 'timeout' || (res.status === 0 && !res.text)) {
+      /* Не всякий status 0 — таймаут. Лимит подзапросов, обрыв DNS и отказ
+         рантайма раньше все подписывались одним словом, и живая диагностика
+         исследования врала: сеть уже была исчерпана, а выглядело так, будто
+         каждая модель просто «долго думает». */
+      const why = res.error && res.error !== 'timeout'
+        ? 'сеть: ' + String(res.error).slice(0, 120)
+        : 'timeout';
+      return { ok: false, why, status: res.status };
     }
     if (res.status === 429) {
       markKey(id, req.keyIdx, { state: 'cool', until: Date.now() + 60000 });
@@ -382,8 +389,12 @@ export function createEngine(opts) {
     const attemptsAtStart = attemptSeq;
     const deadline = started + Math.max(5000, Number(input.deadlineMs) || 45000);
     const text = String(input.text || '');
+    /* Чистая просьба без служебных примечаний о вложениях и тел файлов. По ней
+       классифицируем и проверяем полноту; полный `text` остаётся материалом
+       для модели и инструментов. */
+    const askText = String(input.askText || text);
     const images = Array.isArray(input.images) ? input.images.slice(0, MAX_IMAGES) : [];
-    let intent = input.intent || classifyTask(text, images);
+    let intent = input.intent || classifyTask(askText, images);
     /* «Думать глубже» (0.109) — просьба человека, а не догадка классификатора.
        Короткий вопрос («докажи, что √2 иррационально», 28 знаков) сам по себе
        классифицируется как болтовня и уходит в fast-очередь, где думающие модели
@@ -407,7 +418,7 @@ export function createEngine(opts) {
     depthVerdict = null;
     if (!deep || !depthWhy) {
       const asked = deep && !depthWhy;
-      depthVerdict = depth.judge({ text, intent, images, env, asked });
+      depthVerdict = depth.judge({ text: askText, intent, images, env, asked });
       deep = depthVerdict.deep === true;
       depthWhy = depthVerdict.why || '';
     }
@@ -418,7 +429,7 @@ export function createEngine(opts) {
        исследовательская задача рекурсивно рождала бы исследования внутри
        каждой проверяющей головы и сжигала квоту вместо качества. */
     const deepWork = planDeepWork({
-      text, intent, images, env,
+      text: askText, intent, images, env,
       deep, depth: depthVerdict,
       webSearch: input.webSearch === true,
       owner: input.ownerPriority === true,
@@ -426,7 +437,11 @@ export function createEngine(opts) {
     });
     if (deepWork.research) {
       deep = true;
-      depthWhy = [depthWhy, deepWork.why].filter(Boolean).join(' · ');
+      /* Дверь уже могла дописать эту же причину для потокового события и
+         передать её сюда в depthWhy. Повтор в подписи выглядит как сбой. */
+      if (!depthWhy || depthWhy.indexOf(deepWork.why) < 0) {
+        depthWhy = [depthWhy, deepWork.why].filter(Boolean).join(' · ');
+      }
     }
     if (deep && (intent === 'fast' || intent === 'creative')) intent = 'reasoning';
     const tier = input.tier || tierFor(intent);
@@ -1047,7 +1062,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           const repairBudget = deepWork.extended ? deepWork.reasoning.repairPasses : check.cfgOf(env).budget;
           let spent = 0;
           let dec = check.decide({
-            text, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
+            text: askText, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
             ok: out.ok, spent, budget: repairBudget, env,
           });
           checkVerdict = { on: dec.on, notes: dec.notes, fixed: false, skipped: '', passes: 0 };
@@ -1063,7 +1078,12 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             const repair = o.repair
               || ((extra) => run({
                 ...input,
-                docs: null,
+                /* Документ досыл обязан видеть: с `docs: null` он чинил ответ
+                   по файлу вслепую и мог заменить верный список из файла
+                   честным для него «нет доступа к вложениям». Повторно звать
+                   модели читать части не надо (`docsMap: false`): маленький
+                   файл влезет целиком, большому хватит локальных выписок. */
+                docsMap: false,
                 text: extra,
                 /* Досыл — не новый ход разговора: те же приёмы, что у продолжения
                    оборванного ответа (иначе память писала бы транскрипт дважды, а
@@ -1078,7 +1098,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
                 deadlineMs: left,
               }));
             let fixed = null;
-            try { fixed = await repair(check.repairPrompt({ text, reply: out.reply, notes: dec.notes })); }
+            try { fixed = await repair(check.repairPrompt({ text: askText, reply: out.reply, notes: dec.notes })); }
             catch (e) { fixed = null; }
             spent++;
             checkVerdict.passes = spent;
@@ -1090,7 +1110,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
               /* Провайдера и модель НЕ подменяем: досыл шёл той же головой, а
                  подпись ответа обязана показывать того, кто ответил человеку. */
               dec = check.decide({
-                text, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
+                text: askText, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
                 ok: out.ok, spent, budget: repairBudget, env,
               });
               if (dec.notes.length) checkVerdict.notes = dec.notes;

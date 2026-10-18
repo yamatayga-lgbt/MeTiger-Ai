@@ -137,13 +137,17 @@ export function compose(media, got, text) {
     if (d.ok) docBlocks.push({ name: d.name, line: d.line, text: d.text, chars: d.chars, ok: true });
   }
   const notes = ((got && got.notes) || []).map((n) => '· ' + n);
+  /* Собственно просьба человека — слова и голос, без служебных примечаний и
+     тел файлов. Ей пользуются классификация, глубина и самопроверка: строка
+     «файлов 7 — читаю первые 6» не второй вопрос, а наша собственная пометка. */
+  const askText = parts.join('\n\n') || 'Посмотри, что в вложении, и скажи по делу.';
   let out = parts.join('\n\n');
   if (blocks.length) out = (out ? out + '\n\n' : '') + blocks.join('\n\n');
   if (notes.length) out = (out ? out + '\n\n' : '') + notes.join('\n');
   if (!out) out = 'Посмотри, что в вложении, и скажи по делу.';
   const images = (got && got.images) || [];
   return {
-    text: out.slice(0, 120000), images, files: blocks.length, notes, docBlocks,
+    text: out.slice(0, 120000), askText: askText.slice(0, 120000), images, files: blocks.length, notes, docBlocks,
     /* Указание по записи и строка о ней — наружу: указание уезжает в системную
        подсказку движка (functions/api/chat.js), строка показывается человеку. */
     directive: (voice && voice.directive) || '',

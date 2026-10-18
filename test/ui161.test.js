@@ -87,8 +87,9 @@ ok('U161k модель на части зовут только когда это
   /input\.docsMap !== false/.test(chatBare) && /docsMap: false,/.test(chat));
 ok('U161l отказ модели на части не теряет файл — ищем по вопросу сами',
   /longdoc\.localPick\(part\.text/.test(chatBare));
-ok('U161m починка и продолжение документа не перечитывают (не новый ход разговора)',
-  (chatBare.match(/docs: null/g) || []).length >= 3);
+ok('U161m продолжение и чтение частей не перечитывают документ; починка видит его без модельных чтений',
+  (chatBare.match(/docs: null/g) || []).length >= 2
+    && (chatBare.match(/docsMap: false/g) || []).length >= 2);
 ok('U161n чем обернулся файл, видно наружу — строку собирает движок',
   /out\.docs = docReads\.map\(/.test(chatBare) && /longdoc\.lineOf\(\{ line: x\.line, kept: x\.parts, total: x\.total \}\)/.test(chatBare));
 

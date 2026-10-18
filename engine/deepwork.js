@@ -16,7 +16,7 @@
  * объяснить человеку: почему агент вдруг стал копать дольше.
  */
 
-import { needsWeb } from './webrules.js';
+import { needsWeb, wantsNoWeb } from './webrules.js';
 
 const EXPLICIT_RESEARCH = /(глубок(?:ое|ий|ого|ом)\s+(?:исследован|поиск|разбор)|deep\s+research|проведи\s+(?:глубокое\s+)?исследован|исследуй\s+(?:тему|вопрос|рынок|это)|изучи\s+(?:тему|вопрос|рынок)|разберись\s+(?:глубоко|в\s+теме|в\s+вопросе)|собери\s+(?:информацию|данные|материал|всё|все)|обзор\s+рынка|исследован\w*\s+конкурентов|сравни\s+источник|проверь\s+по\s+(?:нескольким\s+)?источникам|фактчек|проверь\s+утверждение|правда\s+ли,?\s+что|первоисточник)/i;
 
@@ -49,23 +49,40 @@ function baseTopic(text) {
     .slice(0, 420);
 }
 
+const ASK_START = /^(?:\d{1,2}[.)]\s*)?(?:посчитай|сравни|сопоставь|объясни|опиши|перечисли|проверь|покажи|напиши|сделай|найди|укажи|распиши|предложи|выбери|расскажи|приведи|дай|подбери|составь|переведи|исправь|оцени|назови|придумай|реши|докажи|исследуй|изучи|проанализируй|что|как|где|кто|когда|почему|зачем|какой|какая|какие|какое|сколько|чем|куда|откуда)(?=$|[^а-яёa-z])/i;
+
 function subquestions(text) {
   const raw = String(text || '');
-  const chunks = raw
-    .split(/(?:\?|;|\n)+/)
-    .map((x) => clean(x.replace(/^\d{1,2}[.)]\s*/, '')))
-    .filter((x) => x.length >= 14);
   const out = [];
-  for (const x of chunks) {
-    if (out.indexOf(x) < 0) out.push(x.slice(0, 300));
-    if (out.length >= 4) break;
+  const push = (value) => {
+    const x = clean(String(value || '').replace(/^\d{1,2}[.)]\s*/, '').replace(/^[-*•]\s*/, ''));
+    if (x.length >= 14 && out.indexOf(x) < 0) out.push(x.slice(0, 300));
+  };
+
+  /* Настоящий подвопрос заканчивается знаком вопроса. Хвост после него
+     («Какая погода сегодня? Дай кратко…») — инструкция к тому же вопросу, а не
+     вторая тема: прежняя резка по `?` превращала её в отдельный поисковый
+     запрос и уводила погоду в «глубокое исследование» на 50 секунд. */
+  for (const m of raw.matchAll(/[^?;\n]+\?/g)) {
+    push(m[0].replace(/\?$/, ''));
+    if (out.length >= 4) return out;
+  }
+
+  /* Список задач без вопросительных знаков разбираем только там, где человек
+     сам поставил разделители и каждая часть правда начинается как просьба.
+     Точка с запятой внутри вставленного абзаца темой не становится. */
+  const segments = raw.split(/[;\n]+/).map((x) => clean(x)).filter((x) => x.length >= 14);
+  if (segments.length >= 2) {
+    for (const segment of segments) {
+      if (/^(?:\d{1,2}[.)]|[-*•])\s+/.test(segment) || ASK_START.test(segment)) push(segment);
+      if (out.length >= 4) break;
+    }
   }
   return out;
 }
 
 function questionCount(text) {
-  const marks = (String(text || '').match(/\?/g) || []).length;
-  return Math.max(marks, subquestions(text).length);
+  return (String(text || '').match(/\?/g) || []).length;
 }
 
 function markerCount(text) {
@@ -147,22 +164,40 @@ export function planDeepWork(input = {}) {
     .some((id) => RESEARCH_SKILLS.has(String(id)));
   const markers = markerCount(text);
   const questions = questionCount(text);
+  const parts = subquestions(text).length;
   const depth = input.depth || null;
   const deep = input.deep === true || !!(depth && depth.deep);
   const depthScore = Number(depth && depth.score) || 0;
   const depthHits = new Set((depth && depth.hits) || []);
+  const noWeb = wantsNoWeb(text);
 
-  const complexWeb = web.need && (deep || depthScore >= 2 || questions >= 2 || t.length >= 500 || markers >= 2);
-  const askedWebComplex = input.webSearch === true && (questions >= 2 || t.length >= 350 || markers >= 2);
+  /* Авто-исследование требует двух независимых примет, а не одной длинной
+     реплики. Прежнее ИЛИ уводило в сеть и погоду с инструкцией после вопроса,
+     и вставленный на 30 тысяч знаков материал, где «подзапросами» становились
+     первые абзацы самого материала. Явная просьба и исследовательский навык
+     по-прежнему решают сами; три исследовательских маркера тоже достаточно
+     красноречивы («сравни официальные данные и статистику»). */
+  const multipart = questions >= 2 || parts >= 3;
+  const liveSignals = [
+    multipart,
+    markers >= 2,
+    t.length >= 700,
+    deep && depthScore >= 2,
+  ].filter(Boolean).length;
+  const complexWeb = web.need && (markers >= 3 || liveSignals >= 2);
+  const askedSignals = [multipart, markers >= 2, t.length >= 500].filter(Boolean).length;
+  const askedWebComplex = input.webSearch === true && (markers >= 3 || askedSignals >= 2);
   const research = String(env.DEEP_RESEARCH || '') !== 'off'
     && !images.length
+    && !noWeb
     && (explicitResearch || skillResearch || complexWeb || askedWebComplex);
 
   const seriousDepth = depthScore >= 4 || depthHits.has('stakes') || depthHits.has('proof')
     || depthHits.has('arch') || depthHits.has('debug');
   const longReasoning = ['reasoning', 'math', 'code'].indexOf(String(input.intent || '')) >= 0 && t.length >= 2500;
+  const offlineResearchAsk = explicitResearch && noWeb;
   const extended = String(env.EXTENDED_REASONING || '') !== 'off'
-    && (EXPLICIT_EXTENDED.test(text) || research || (deep && seriousDepth)
+    && (EXPLICIT_EXTENDED.test(text) || research || offlineResearchAsk || (deep && seriousDepth)
       || (deep && depthScore >= 3 && questions >= 3) || longReasoning || (input.deep === true && !depth));
 
   if (!research && !extended) return standardPlan('обычной глубины достаточно');

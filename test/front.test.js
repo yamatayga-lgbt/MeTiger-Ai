@@ -1591,7 +1591,7 @@ console.log('── N · плоский интерфейс (0.144: стекло 
     /* вход решает до движка и объявляет решение потоку раньше текста */
     /depthJudge\.judge\(\{/.test(entryDeep) && /context\.__send\(\{\s*kind: 'depth', deep: wantDeep, why: depthWhy/.test(entryDeep)
       /* движок судит сам, когда его зовут не через вход (и уважает явную просьбу) */
-      && /depth\.judge\(\{ text, intent, images, env, asked \}\)/.test(engineDeep)
+      && /depth\.judge\(\{ text: askText, intent, images, env, asked \}\)/.test(engineDeep)
       && /let deep = input\.deep === true/.test(engineDeep)
       && /out\.depthWhy = depthWhy/.test(engineDeep)
       /* вход уже прислал причину — движок не имеет права переписать её на

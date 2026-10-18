@@ -71,7 +71,7 @@ export function searchProfile(env, levelOrProfile) {
 
 /* ─────────────── 1) Gemini + Google Search ─────────────── */
 
-export async function geminiSearch({ q, env, fetch: fi, ms, maxSources }) {
+export async function geminiSearch({ q, env, fetch: fi, ms, maxSources, resolveSources = true }) {
   /* Ключ ПОИСКА отдельно от ключа чата (0.199). На проде 17.10 разговорная
      модель отвечала из той же квоты Gemini, что и google_search: поиск выедал
      её первым и падал в 429 — а вместе с ним «свежесть» всего приложения.
@@ -121,7 +121,14 @@ export async function geminiSearch({ q, env, fetch: fi, ms, maxSources }) {
         const chunks = (gm.groundingChunks || []).map((x) => x.web).filter(Boolean);
         if (!text || !chunks.length) { last += 'gemini ' + model + ': без источников; '; break; }
         keyTurn++;
-        const sources = await resolveAll(fi, chunks.map((w) => ({ title: clean(w.title), url: w.uri })), maxSources);
+        const rawSources = chunks.map((w) => ({ title: clean(w.title), url: w.uri }));
+        /* Исследование сначала сливает подзапросы и только потом разрешает
+           редиректы у финальных кандидатов. Разрешение внутри каждого
+           подзапроса стоило до 14 fetch на запрос: четыре подзапроса съедали
+           лимит подзапросов Pages ещё до первого вызова модели. */
+        const sources = resolveSources
+          ? await resolveAll(fi, rawSources, maxSources)
+          : rawSources.slice(0, clampSearchInt(maxSources, 1, 24, 8));
         return { ok: true, engine: 'google', model, summary: text, queries: gm.webSearchQueries || [], sources };
       } catch (e) {
         last = 'gemini ' + model + ': ' + String((e && e.message) || e).slice(0, 60);
@@ -319,8 +326,8 @@ function attachDates(res) {
   return res;
 }
 
-async function searchOnce({ q, env, fetch: f, profile }) {
-  let res = await geminiSearch({ q, env, fetch: f, maxSources: profile.maxSources });
+async function searchOnce({ q, env, fetch: f, profile, resolveSources = true }) {
+  let res = await geminiSearch({ q, env, fetch: f, maxSources: profile.maxSources, resolveSources });
   const why = [];
   if (!res.ok) {
     why.push(res.why);
@@ -405,6 +412,26 @@ function mergeResearchSources(parts, maxSources) {
     .map(({ title, url }) => ({ title, url }));
 }
 
+/** Разрешить финальных кандидатов порциями и остановиться на нужном числе
+ * уникальных страниц. Разные grounding-редиректы могут вести на один URL:
+ * порции позволяют добрать следующий кандидат, не оплачивая разрешение всего
+ * сырого пула каждого подзапроса. */
+async function resolveResearchCandidates(fi, candidates, maxSources) {
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < candidates.length && out.length < maxSources; i += 4) {
+    const batch = await resolveAll(fi, candidates.slice(i, i + 4), 4);
+    for (const s of batch) {
+      const key = canonicalUrl(s.url);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+      if (out.length >= maxSources) break;
+    }
+  }
+  return out;
+}
+
 /**
  * Глубокое исследование (0.212): несколько подзапросов → один очищенный список
  * источников → чтение страниц один раз. Важен именно порядок: если читать
@@ -424,7 +451,7 @@ export async function researchSearch({ q, queries, env, fetch: fi, profile: give
 
   const f = fi || ((...a) => fetch(...a));
   const parts = await mapLimit(qs, netCfg(e).search, async (query) => {
-    try { return { query, res: await searchOnce({ q: query, env: e, fetch: f, profile }) }; }
+    try { return { query, res: await searchOnce({ q: query, env: e, fetch: f, profile, resolveSources: false }) }; }
     catch (err) { return { query, res: { ok: false, why: String((err && err.message) || err) } }; }
   });
   const good = parts.filter((p) => p.res && p.res.ok && Array.isArray(p.res.sources) && p.res.sources.length);
@@ -432,7 +459,13 @@ export async function researchSearch({ q, queries, env, fetch: fi, profile: give
     return { ok: false, why: parts.map((p) => p.query + ': ' + (p.res && p.res.why || 'нет источников')).join('; ') };
   }
 
-  const sources = mergeResearchSources(good, profile.maxSources);
+  /* Кандидатов берём с запасом на дубли после разрешения редиректов, но с
+     жёстким сетевым потолком 24: исследование не должно съесть лимит
+     подзапросов до вызова модели. Разрешение идёт порциями и останавливается,
+     как только уникальных источников достаточно. */
+  const candidateCap = Math.min(24, profile.maxSources + 10);
+  const candidates = mergeResearchSources(good, candidateCap);
+  const sources = await resolveResearchCandidates(f, candidates, profile.maxSources);
   const reads = await readPages(f, sources, [q].concat(qs).join('\n'), {
     pages: profile.pages, ms: profile.readMs,
     passages: profile.passages, passageChars: profile.passageChars,

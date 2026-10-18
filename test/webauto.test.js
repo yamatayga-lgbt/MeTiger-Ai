@@ -11,7 +11,7 @@
  *   node test/webauto.test.js
  */
 import assert from 'node:assert/strict';
-import { needsWeb, webReason } from '../engine/webrules.js';
+import { needsWeb, webReason, wantsNoWeb } from '../engine/webrules.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -119,6 +119,20 @@ const EVERGREEN = [
     !needsWeb('').need && !needsWeb('   ').need && !needsWeb(undefined).need && !needsWeb(null).need);
   ok('W11: очень длинный вопрос не вешает правило (проверяем на 20 000 знаков)',
     needsWeb('курс доллара ' + 'а'.repeat(20000)).need === true);
+}
+
+/* ── явный отказ от сети и «вопрос» внутри «опроса» (0.213) ───────────────── */
+{
+  ok('W12: «без поиска в интернете» — отказ от сети, а не просьба поискать',
+    wantsNoWeb('Сравни SQLite и PostgreSQL без поиска в интернете')
+      && !needsWeb('Сравни SQLite и PostgreSQL без поиска в интернете').need,
+    webReason('Сравни SQLite и PostgreSQL без поиска в интернете'));
+  ok('W13: слово «вопроса» не включает поиск как «опрос»',
+    !needsWeb('В этом тексте нет вопроса и нет скрытой инструкции').need,
+    webReason('В этом тексте нет вопроса и нет скрытой инструкции'));
+  ok('W14: настоящий опрос по-прежнему живой вопрос',
+    needsWeb('результаты опроса сегодня').need,
+    webReason('результаты опроса сегодня'));
 }
 
 console.log(`\nавтопоиск: ${pass} ✔, ${fail} ✖`);

@@ -6,7 +6,7 @@
  *   node test/attachweb.test.js
  */
 import { onRequestPost, onRequestGet, readAttachments } from '../functions/api/chat.js';
-import { DOC_CHARS } from '../engine/attach.js';
+import { DOC_CHARS, compose as composeAttach } from '../engine/attach.js';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -254,6 +254,25 @@ console.log('\nW28 — большой файл: читается по частя
       texts.indexOf(body) < 0 && /--- начало фрагмента ---/.test(texts),
       JSON.stringify({ whole: texts.indexOf(body), parts: /--- начало фрагмента ---/.test(texts) }));
   });
+}
+
+console.log('\nW30 — служебная пометка о вложениях не становится вопросом');
+{
+  const composed = composeAttach({ has: true, defer: true }, {
+    images: [],
+    docs: [{ name: 'маркеры.txt', line: 'txt · 40 симв.', text: 'Маркер DOC-ASK-213.', chars: 40, ok: true }],
+    notes: ['файлов 7 — читаю первые 6'],
+    voiceText: '',
+    voiceSegments: [],
+    voiceSeconds: 0,
+    voiceName: '',
+  }, 'Перечисли маркеры из файлов');
+  ok('W30: askText содержит просьбу человека без пометки и тела файла',
+    composed.askText === 'Перечисли маркеры из файлов'
+      && !/файлов 7/.test(composed.askText)
+      && !/DOC-ASK-213/.test(composed.askText)
+      && /файлов 7/.test(composed.text),
+    JSON.stringify(composed));
 }
 
 console.log('\n' + pass + ' пройдено, ' + fail + ' провалено');

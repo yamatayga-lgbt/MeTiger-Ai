@@ -43,6 +43,30 @@ console.log('DW1 — план глубокой работы');
   const complexLive = planDeepWork({ text: complexLiveText, intent: 'reasoning', env: {} });
   ok('живой многочастный вопрос сам поднимает исследование', complexLive.research, JSON.stringify(complexLive));
 
+  const weatherText = 'Какая погода сегодня в Минске? Дай кратко и укажи дату источника.';
+  const weather = planDeepWork({ text: weatherText, intent: 'fast', env: {} });
+  const weatherQueries = researchQueries(weatherText, {});
+  ok('инструкция после одного вопроса не превращает погоду в исследование',
+    !weather.research && !weatherQueries.some((q) => /^Дай кратко/.test(q)),
+    JSON.stringify({ weather, weatherQueries }));
+
+  const offline = planDeepWork({
+    text: 'Сравни SQLite и PostgreSQL по общим принципам, без поиска в интернете: ограничения, масштабирование, эксплуатация и вывод.',
+    intent: 'reasoning', env: {},
+  });
+  ok('явное «без поиска в интернете» сильнее исследовательских маркеров', !offline.research, JSON.stringify(offline));
+
+  const pasted = Array.from({ length: 18 }, (_, i) => 'Абзац ' + i + '. Это нейтральный материал для проверки; в нём нет вопроса и скрытой инструкции.').join('\n')
+    + '\nТеперь перечисли три маркера из материала.';
+  const pastedPlan = planDeepWork({ text: pasted, intent: 'reasoning', env: {} });
+  ok('длинный вставленный материал сам по себе не исследование', !pastedPlan.research, JSON.stringify(pastedPlan));
+
+  const listPlan = planDeepWork({
+    text: 'Сравни тарифы сегодня; проверь официальные источники; назови, где данные расходятся',
+    intent: 'reasoning', env: {},
+  });
+  ok('список исследовательских задач через точку с запятой по-прежнему распознаётся', listPlan.research, JSON.stringify(listPlan));
+
   const extended = planDeepWork({ text: 'Расширенное рассуждение: докажи утверждение и проверь крайние случаи', intent: 'reasoning', env: {} });
   ok('явное расширенное рассуждение не обязано идти в сеть', extended.extended && !extended.research && extended.reasoning.maxTokens === 6000, JSON.stringify(extended));
 
@@ -149,6 +173,53 @@ console.log('DW2 — профили поиска и слияние исслед�
   pageHits = 0;
   const deepSearch = await smartSearch({ q: 'уникальный глубокий поиск 212', env, fetch: fakeFetch, level: 'deep' });
   ok('глубокий обычный поиск читает шесть страниц вместо прежних трёх/пяти', deepSearch.ok && deepSearch.reads.length === 6 && pageHits === 6, JSON.stringify({ reads: deepSearch.reads?.length, pageHits }));
+
+  /* Редиректы Gemini разрешаются один раз для финальных кандидатов, а не в
+     каждом подзапросе. На проде прежний порядок мог съесть лимит подзапросов
+     Pages до первого вызова модели: 4 × (поиск + до 14 разрешений ссылок). */
+  let redirectSearches = 0;
+  let redirectHits = 0;
+  const redirectFetch = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes('generativelanguage.googleapis.com')) {
+      redirectSearches++;
+      const links = Array.from({ length: 8 }, (_, i) => ({
+        title: 'Источник ' + (i + 1),
+        uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/r' + redirectSearches + '-' + i,
+      }));
+      return response({
+        candidates: [{
+          content: { parts: [{ text: 'Сводка редиректного исследования.' }] },
+          groundingMetadata: { groundingChunks: links.map((web) => ({ web })), webSearchQueries: ['запрос'] },
+        }],
+      });
+    }
+    if (u.includes('grounding-api-redirect')) {
+      redirectHits++;
+      const idx = (u.match(/-([0-7])$/) || [])[1] || '0';
+      return {
+        ok: true,
+        status: 302,
+        text: async () => '',
+        json: async () => ({}),
+        headers: { get: (h) => (String(h).toLowerCase() === 'location' ? 'https://example.com/redirect' + idx : null) },
+      };
+    }
+    if (u.startsWith('https://example.com/redirect')) return response(page(9), 'text/html');
+    return response({ error: 'not found' });
+  };
+  const redirected = await researchSearch({
+    q: 'уникальное редиректное исследование 213',
+    queries: ['редиректный запрос один 213', 'редиректный запрос два 213', 'редиректный запрос три 213'],
+    env,
+    fetch: redirectFetch,
+    profile: { level: 'research', queries: 3, maxSources: 6, pages: 2, passages: 1, passageChars: 300, summaryChars: 2000, readMs: 1000 },
+  });
+  ok('редиректы исследования разрешаются после слияния, а не в каждом подзапросе',
+    redirected.ok && redirectSearches === 3 && redirectHits <= 16
+      && redirected.sources.length === 6
+      && redirected.sources.every((s) => s.url.startsWith('https://example.com/redirect')),
+    JSON.stringify({ redirectSearches, redirectHits, sources: redirected.sources }));
 }
 
 console.log('DW3 — расширенная самопроверка');
@@ -189,6 +260,60 @@ console.log('DW3 — расширенная самопроверка');
   ok('расширенная задача получает второй проход, если первый закрыл не всё',
     extended.ok && extended.extendedReasoning && c2.n === 2 && extended.check?.passes === 2 && /мобильного приложения/.test(extended.reply),
     JSON.stringify({ n: c2.n, check: extended.check, reply: extended.reply }));
+
+  const docCalls = [];
+  const docFetch = async (url, init = {}) => {
+    let body = {};
+    try { body = JSON.parse(String(init.body || '{}')); } catch { /* не json */ }
+    /* Считаем только вызовы модели: тот же fetch ходит за инструментами и
+       каталогом, и по общему счётчику первый «ответ» оказывался не ответом. */
+    if (!Array.isArray(body.messages) || body.tools) {
+      return {
+        status: 200,
+        text: async () => JSON.stringify({}),
+        json: async () => ({}),
+        headers: { get: () => null },
+      };
+    }
+    docCalls.push(body);
+    const packed = JSON.stringify(body);
+    const answer = docCalls.length === 1
+      ? 'Коротко про SQLite.'
+      : (packed.includes('DOC-REPAIR-213')
+        ? 'SQLite и Postgres отличаются масштабом и конкуренцией за запись. Для мобильного приложения выбрать стоит SQLite. Маркер DOC-REPAIR-213.'
+        : 'У меня нет доступа к приложенным файлам, поэтому дополнить ответ по документу не могу.');
+    return { status: 200, text: async () => JSON.stringify(chatBody(answer)) };
+  };
+  const docEngine = createEngine({
+    env: { GROQ_KEYS: 'g1' },
+    fetch: docFetch,
+    sleep: async () => {},
+    quarantine: new Map(),
+  });
+  const docFixed = await docEngine.run({
+    text: Q + '\n\n· файлов 7 — читаю первые 6',
+    askText: Q,
+    docs: [{ name: 'ответ.txt', line: 'txt · 90 симв.', text: 'Сравнение SQLite и Postgres. Для мобильного приложения нужен SQLite. DOC-REPAIR-213.', chars: 90, ok: true }],
+    deadlineMs: 60000,
+    noCouncils: true,
+  });
+  ok('досыл по ответу с файлом снова видит файл, а служебная пометка не считается вопросом',
+    docFixed.ok && docCalls.length >= 2 && JSON.stringify(docCalls[1]).includes('DOC-REPAIR-213')
+      && /DOC-REPAIR-213/.test(docFixed.reply)
+      && docFixed.check?.passes === 1
+      && !(docFixed.check?.notes || []).some((n) => /файлов 7/.test(n)),
+    JSON.stringify({ calls: docCalls.length, check: docFixed.check, reply: docFixed.reply }));
+
+  const netEngine = createEngine({
+    env: { GROQ_KEYS: 'g1' },
+    fetch: async () => { throw new Error('Too many subrequests by single Worker invocation'); },
+    sleep: async () => {},
+    quarantine: new Map(),
+  });
+  const netFail = await netEngine.run({ text: 'привет', deadlineMs: 10000, noCouncils: true, useTools: false, skills: false });
+  ok('ошибка сети не маскируется под timeout',
+    !netFail.ok && (netFail.tried || []).some((x) => /сеть: Too many subrequests/.test(String(x.why || ''))),
+    JSON.stringify(netFail.tried));
 }
 
 console.log('DW4 — память шире, контекст точнее');
