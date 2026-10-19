@@ -70,6 +70,7 @@ function Row({
   chevron,
   onClick,
   reserve,
+  wrap,
   style,
 }: {
   icon: ReactNode
@@ -79,6 +80,8 @@ function Row({
   chevron?: boolean
   onClick?: () => void
   reserve?: boolean
+  /** Длинная подпись переносится на вторую строку, а не режется многоточием. */
+  wrap?: boolean
   style?: CSSProperties
 }) {
   const body = (
@@ -95,12 +98,12 @@ function Row({
     </>
   )
   if (!onClick) {
-    return <div className={`rows-row${soon ? ' is-soon' : ''}`} style={style}>{body}</div>
+    return <div className={`rows-row${soon ? ' is-soon' : ''}${wrap ? ' is-wrap' : ''}`} style={style}>{body}</div>
   }
   return (
     <button
       type="button"
-      className="rows-row tappable"
+      className={`rows-row tappable${wrap ? ' is-wrap' : ''}`}
       style={style}
       onClick={() => {
         haptic('light')
@@ -121,6 +124,7 @@ function UsageLimitsRow({ onOpen }: { onOpen: () => void }) {
       icon={<BarChart3 size={20} />}
       label="Использование и лимиты"
       value={pct == null ? undefined : fmtPct(pct)}
+      wrap
       chevron
       onClick={onOpen}
       reserve={pct != null}

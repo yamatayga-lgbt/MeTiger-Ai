@@ -4597,6 +4597,25 @@ button.rows-row:hover {
   white-space: nowrap;
 }
 
+/* 0.224: длинная подпись в строке со значением («Использование и лимиты»)
+   переносится на вторую строку, а не режется многоточием. Значение справа
+   при этом остаётся целым: раньше обе половины сжимались одновременно, и на
+   390 px нельзя было прочитать ни название, ни цифру запаса. */
+.rows-row.is-wrap {
+  align-items: flex-start;
+}
+.rows-row.is-wrap .rows-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
+  padding-top: 2px;
+}
+.rows-row.is-wrap .rows-val,
+.rows-row.is-wrap .rows-chev {
+  margin-top: 1px;
+}
+
 .rows-val {
   /* 0.224: было `0 1 auto` с потолком 46 % — на 390 px строка профиля показывала
      «Использование и ли…» и «98,…» одновременно: сжимались ОБЕ половины, и
