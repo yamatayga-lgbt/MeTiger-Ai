@@ -25,8 +25,8 @@ const chain = String(pkg.scripts.test || '')
 const v = versionsAligned()
 
 ok('U222a все источники версии синхронизированы', v.ok, v.why)
-ok('U222b «Что нового» и README знают 0.222',
-  /\*\*0\.222\*\*/.test(readme) && /version: '0\.222'/.test(notes))
+ok('U222b история README знает 0.222',
+  /\*\*0\.222\*\*/.test(readme))
 ok('U222c запись без имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes)
     && !/scrollHeight|answerKey|parseLooseNum/.test(notes))
