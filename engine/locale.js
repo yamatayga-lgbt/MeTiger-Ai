@@ -43,10 +43,25 @@ export function wantsTable(text) {
 }
 
 /**
+ * Сегодняшняя дата по Минску, ДД.ММ.ГГГГ. Модели не знают календарь —
+ * без этой строки «сегодня» превращается в 2025 год (замер vs GigaChat, n1).
+ */
+export function todayRu(now, tz) {
+  const iso = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz || 'Europe/Minsk',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now instanceof Date ? now : new Date());
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+/**
  * Короткая добавка в system: числа, даты, таблица. Пусто, если вопрос
  * не по-русски и не про сравнение — английский код не засоряем.
  */
-export function hint(text) {
+export function hint(text, now) {
   const t = String(text || '');
   const ru = CYR.test(t);
   const table = wantsTable(t);
@@ -56,6 +71,7 @@ export function hint(text) {
     bits.push(
       'Пиши естественным русским, без кальки с английского и без канцелярита. '
       + 'Числа для человека — с пробелом тысяч и запятой («1 234,50»), даты — ДД.ММ.ГГГГ. '
+      + 'Сегодня ' + todayRu(now) + '. '
       + 'Не путай Беларусь и Россию, Минск и Москву, BYN и RUB.',
     );
   }

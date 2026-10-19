@@ -181,6 +181,18 @@ ok('T16: в слое 18 инструментов (0.185: + график) — с�
 const dateRes = await gatherTools('какая сегодня дата', { TZ_NAME: 'Europe/Minsk' }, fakeFetch({}));
 ok('T17: дата — свой инструмент, с ISO и номером недели',
   dateRes.used.join() === 'date' && /номер недели \d+/.test(dateRes.block) && /\d{4}-\d{2}-\d{2}/.test(dateRes.block), dateRes.block);
+{
+  const todayish = await gatherTools('Сложи 1 250 000 и 3 750,50. В ответе только сумма по-человечески и сегодняшняя дата.', { TZ_NAME: 'Europe/Minsk' }, fakeFetch({}));
+  ok('T17b: «сегодняшняя дата» будит date — \\w не ловит кириллицу',
+    todayish.used.includes('date'), todayish.used.join());
+  ok('T17c: «сложи 1 250 000 и 3 750,50» считает калькулятор, 1253750.5',
+    todayish.used.includes('calc') && /1253750/.test(todayish.block), todayish.block);
+}
+{
+  const tab = await gatherTools('Посчитай сумму.\nтовар\tшт\tцена\nХлеб\t10\t1,20\nМолоко\t4\t2,50\nСыр\t2\t12,00', {}, fakeFetch({}));
+  ok('T17d: таблица шт×цена — сумма 46, а не пустой calc',
+    tab.used.includes('calc') && /46/.test(tab.block), tab.block);
+}
 ok('T18: «который час» больше не тянет дату (инструменты не дублируют друг друга)',
   (await gatherTools('который час', {}, fakeFetch({}))).used.join() === 'time', 'time');
 ok('T19: номер недели по ISO: 2021-01-01 = 53-я неделя 2020 года',

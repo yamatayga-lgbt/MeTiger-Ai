@@ -55,8 +55,18 @@ export const TWO_NUMBERS = /\d+[^\n]{0,80}\d+/;
 export function answerKey(text) {
   const s = String(text || '').replace(/\*/g, '').replace(/`/g, '');
   if (!s.trim()) return '';
-  const tail = (s.match(/(?:ответ|итог|вывод|answer|result)\s*[:\-—]?\s*([^\n]+)/i) || [])[1]
-    || s.trim().split('\n').filter(Boolean).pop() || '';
+  /* «Итог» в шапке markdown-таблицы — не ответ. Без цифры в хвосте ищем
+     строку «сумма»/«итого», иначе последнюю строку с числом.
+     Иначе автор → «значение», groq → 15.33, и человеку пишут «спорное». */
+  let tail = '';
+  const named = s.match(/(?:ответ|итого|вывод|answer|result|сумма(?:\s+\w+)*)\s*[:\-—|]?\s*([^\n]+)/i);
+  if (named && named[1] && /\d/.test(named[1]) && !/^\s*\|?\s*значение\b/i.test(named[1])) {
+    tail = named[1];
+  }
+  if (!tail) {
+    const lines = s.trim().split('\n').filter(Boolean);
+    tail = [...lines].reverse().find((ln) => /\d/.test(ln)) || lines.pop() || '';
+  }
   const nums = tail.replace(/[\s\u00a0](?=\d)/g, '').replace(/(\d),(\d{3}\b)/g, '$1$2').replace(/(\d)\.(\d{3}\b)/g, '$1$2')
     .match(/-?\d+(?:[.,]\d+)?/g);
   if (nums && nums.length) return 'n:' + normNum(nums[nums.length - 1]);
@@ -162,6 +172,9 @@ export function shouldPoll(goal, opts) {
      ответа, головы пишут разными словами, совет «расходится» (замер: 13,7 с вместо 2)
      и «большинство» подменяет ответ автора почти случайным текстом. Голосуем на
      математике и там, где у задачи явная примета единственного ответа. */
+  /* Сумма И среднее, таблица итогов — несколько цифр, большинству нечего
+     выбирать. Иначе 46,00 верные, а человеку «головы не сошлись». */
+  if (/сумм\w*.{0,80}средн|средн.{0,80}сумм|таблиц[аеуы].{0,20}итог/i.test(t)) return false;
   if (intent === 'math' || LOGIC_MARKS.test(t)) return true;
   /* fast-вердикт роутера — не приговор: смотрим на структуру задачи */
   return (intent === 'fast' || intent === '') && TWO_NUMBERS.test(t) && WORD_PROBLEM.test(t);

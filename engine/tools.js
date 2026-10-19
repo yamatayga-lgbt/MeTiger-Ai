@@ -281,6 +281,45 @@ const fmtNum = (n) => {
   return String(r);
 };
 
+/** «1 250 000» и «3 750,50» — одно число, не три. Хвост «50.» — точка предложения. */
+function parseLooseNum(s) {
+  let t = String(s || '').replace(/[\s\u00a0]/g, '').replace(',', '.');
+  t = t.replace(/[^0-9.\-].*$/, '').replace(/\.$/, '');
+  if (!/^-?\d+(?:\.\d+)?$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** «Сложи 1 250 000 и 3 750,50» — в калькуляторе нет знака «и». */
+function addTwoRu(text) {
+  const m = /(?:сложи|сложить|прибав[а-яё]*)\s+([\d\s\u00a0]+(?:[.,]\d+)?)\s+и\s+([\d\s\u00a0]+(?:[.,]\d+)?)/i.exec(String(text || ''));
+  if (!m) return null;
+  const a = parseLooseNum(m[1]);
+  const b = parseLooseNum(m[2]);
+  if (a == null || b == null) return null;
+  return { expr: `${a} + ${b}`, val: a + b };
+}
+
+/**
+ * Таблица «товар / шт / цена»: сумма шт×цена по строкам.
+ * Иначе «посчитай сумму» срабатывает, а посчитать нечего — calc возвращает null.
+ */
+function sumQtyPrice(text) {
+  const lines = String(text || '').split(/\n/);
+  let total = 0;
+  let n = 0;
+  for (const line of lines) {
+    const cells = line.split(/\t|\s*\|\s*/).map((c) => c.trim()).filter(Boolean);
+    const nums = cells.map(parseLooseNum).filter((x) => x != null);
+    if (nums.length >= 2) {
+      total += nums[0] * nums[nums.length - 1];
+      n++;
+    }
+  }
+  if (n < 2) return null;
+  return { expr: 'сумма шт×цена', val: total };
+}
+
 /* ============================== дата/время ============================== */
 
 const WEEKDAY = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
@@ -359,16 +398,23 @@ export const TOOLS = [
     title: 'Калькулятор',
     when: (t) => /посчитай|сколько будет|вычисли|калькулятор/i.test(t)
       || /\d\s*[-+*/^%(]\s*[\d(]/.test(t)
-      || /(?:sqrt|cbrt|abs|round|floor|ceil|log|ln|log2|exp|sin|cos|tan|min|max|mod|fact|gcd|lcm|c|perm|fib)\s*\(/i.test(t),
+      || /(?:sqrt|cbrt|abs|round|floor|ceil|log|ln|log2|exp|sin|cos|tan|min|max|mod|fact|gcd|lcm|c|perm|fib)\s*\(/i.test(t)
+      || /(?:сложи|сложить|прибав[а-яё]*)\s+[\d\s\u00a0]+(?:[.,]\d+)?\s+и\s+[\d\s\u00a0]+(?:[.,]\d+)?/i.test(t),
     async run({ text }) {
       /* Выражение — либо с цифры (2+2, 12*sqrt(16)), либо с имени функции
          (sqrt(16)+2). Мусорные слова отсеет строгий парсер evalExpr. */
-      const m = /(?:\d[\d\s.,;a-zA-Z]*\s*[-+*/^%(]\s*[-+*/^%()\s\d.,;a-zA-Z]{1,80}|[a-zA-Z]{1,6}\s*\([^)\n]{1,80}\)(?:\s*[-+*/^%]\s*[-+*/^%()\s\d.,;a-zA-Z]{1,80})?)/.exec(String(text || ''));
+      const raw = String(text || '');
+      const m = /(?:\d[\d\s.,;a-zA-Z]*\s*[-+*/^%(]\s*[-+*/^%()\s\d.,;a-zA-Z]{1,80}|[a-zA-Z]{1,6}\s*\([^)\n]{1,80}\)(?:\s*[-+*/^%]\s*[-+*/^%()\s\d.,;a-zA-Z]{1,80})?)/.exec(raw);
       const expr = m ? m[0].replace(/\s*=\s*$/, '') : null;
-      if (!expr) return null;
-      const val = evalExpr(expr);
-      if (val === null) return null;
-      return `${expr.trim()} = ${fmtNum(val)}`;
+      if (expr) {
+        const val = evalExpr(expr);
+        if (val !== null) return `${expr.trim()} = ${fmtNum(val)}`;
+      }
+      const add = addTwoRu(raw);
+      if (add) return `${add.expr} = ${fmtNum(add.val)}`;
+      const tab = sumQtyPrice(raw);
+      if (tab) return `${tab.expr} = ${fmtNum(tab.val)}`;
+      return null;
     },
   },
   {
@@ -710,7 +756,7 @@ export const TOOLS = [
     title: 'Дата',
     /* У донора date — просто «сегодняшняя дата по Минску». Добавили номер недели:
        по нему люди планируют чаще, чем по дате, и считать его руками модель не умеет. */
-    when: (t) => /какое\s+(сегодня\s+)?число|какая\s+(сегодня\s+)?дата|какой\s+(сегодня\s+)?(день|число)|день\s+недели|номер\s+недели|какая\s+неделя|сегодняшн\w+\s+дата|what\s+date/i.test(t),
+    when: (t) => /какое\s+(сегодня\s+)?число|какая\s+(сегодня\s+)?дата|какой\s+(сегодня\s+)?(день|число)|день\s+недели|номер\s+недели|какая\s+неделя|сегодняшн[а-яё]*\s*дат|текущ[а-яё]*\s+дат|what\s+date|today'?s\s+date/i.test(t),
     async run({ env }) {
       const tz = (env && env.TZ_NAME) || 'Europe/Minsk';
       const now = new Date();
