@@ -31,11 +31,11 @@ const chain = read('package.json')
 
 ok('U180a живой вопрос идёт по умной полосе — решает та же функция, что включает поиск',
   /import \{ needsWeb \} from '\.\.\/\.\.\/engine\/webrules\.js'/.test(door)
-    && /needsWeb\(String\(askText \|\| ''\)\)\.need/.test(door)
+    && /needsWeb\(String\(askText \|\| ''\)\s*,\s*\{[^}]*doc:/.test(door)
     && /'smart'/.test(door))
 
 ok('U180b чужой выбор уважаем: выбрана модель — полосу не поднимаем',
-  /!norm\.model && \(\(composed && composed\.voice && composed\.voice\.mode === 'note'\)[\s\S]{0,120}needsWeb/.test(door))
+  /!norm\.model && \(\(composed && composed\.voice && composed\.voice\.mode === 'note'\)[\s\S]{0,400}needsWeb/.test(door))
 
 ok('U180c обрыв связи повторяется молча — но только если человек ничего не читал',
   /const TRANSPORT_BREAK = \/время вышло\|связь оборвалась\|оборвался\|сеть недоступна\//.test(app)

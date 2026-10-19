@@ -41,7 +41,7 @@ ok('S133d директива про сноски', /\[1\]/.test(SEARCH_DIRECTIVE
       && /обязательно указывай, на какую дату/.test(src)
       && /предпочитай официальные источники и назови, на какую дату данные/.test(src));
   ok('S180f живой вопрос отвечает умная полоса, а не крошечная модель',
-    /needsWeb\(String\(askText \|\| ''\)\)\.need/.test(
+    /needsWeb\(String\(askText \|\| ''\)\s*,\s*\{[^}]*doc:/.test(
       await import('node:fs').then((m) => m.readFileSync(new URL('../functions/api/chat.js', import.meta.url), 'utf8'))
     ));
 }

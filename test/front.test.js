@@ -1184,11 +1184,14 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         onSend() {},
       }),
     );
-    ok('M34: блок «Explored N reads» сворачивается по умолчанию и построчно показывает значок глаза + «Read <файл>»',
-      /Explored 3 reads/.test(htmlExplored)
+    /* 0.224: шаги подготовки ответа — по-русски. Было «Explored 3 reads»,
+       «Read <файл>», «Couldn't read <файл>» — английский счётчик и глаголы
+       посреди русской переписки. */
+    ok('M34: блок «Прочитал N файлов» сворачивается по умолчанию и построчно показывает значок глаза + «Прочитал <файл>»',
+      /Прочитал 3 файла/.test(htmlExplored)
         && /class="msg-explored"(?!\s*open)/.test(htmlExplored)
-        && /Read <span class="explored-step-name" title="models\.ts">models\.ts<\/span>/.test(htmlExplored)
-        && /Couldn&#x27;t read <span class="explored-step-name" title="битый\.docx">битый\.docx<\/span>/.test(htmlExplored)
+        && /Прочитал <span class="explored-step-name" title="models\.ts">models\.ts<\/span>/.test(htmlExplored)
+        && /Не прочитал <span class="explored-step-name" title="битый\.docx">битый\.docx<\/span>/.test(htmlExplored)
         && /explored-step is-failed/.test(htmlExplored)
         && /показаны первые 3 из 5 файлов/.test(htmlExplored));
 
@@ -1207,10 +1210,10 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         onSend() {},
       }),
     );
-    ok('M35: строка «Write <файл> · N lines» рендерится над ответом рядом с остальными шагами подготовки',
+    ok('M35: строка «Создал <файл> · N строк» рендерится над ответом рядом с остальными шагами подготовки',
       /class="msg-write-files"/.test(htmlWrite)
-        && /Write <span class="write-file-name">Смета на ремонт\.docx<\/span>/.test(htmlWrite)
-        && /<span class="write-file-lines">42 lines<\/span>/.test(htmlWrite)
+        && /Создал <span class="write-file-name">Смета на ремонт\.docx<\/span>/.test(htmlWrite)
+        && /<span class="write-file-lines">42 строки<\/span>/.test(htmlWrite)
         && htmlWrite.indexOf('msg-write-files') < htmlWrite.indexOf('class="bubble"'));
 
     /* Стоп-кнопка и «Enter не всегда отправляет» — новая пара функций: случайно

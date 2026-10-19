@@ -133,6 +133,24 @@ export function UsageView() {
   const capOn = !!(data?.cap && data.cap.on)
   const capPct = capOn && data?.cap?.pct != null ? data.cap.pct : null
   const pct = reservePct(data)
+  /* 0.224: остаток в сообщениях. «98,7 %» — это доля от неизвестного целого;
+     человеку нужен ответ «сколько ещё», поэтому рядом стоит округлённое вниз
+     число сообщений (его считает сервер, engine/daycap.js). */
+  const capLeft = capOn && data?.cap?.left != null && Number.isFinite(Number(data.cap.left))
+    ? Math.max(0, Number(data.cap.left))
+    : null
+  const capLow = !!(data?.cap && data.cap.low)
+  /* 0.224: время сброса — по часам устройства, а не только по UTC. Аудитория не
+     одна (Беларусь, Россия, дальше), и «в 00:00 UTC» каждый пересчитывает сам.
+     UTC остаётся в подписи: по нему считаются квоты провайдеров. */
+  const resetLocal = (() => {
+    if (!data || !data.resetInMs) return ''
+    try {
+      return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(Date.now() + Number(data.resetInMs)))
+    } catch {
+      return ''
+    }
+  })()
   /* Абсолютных чисел потолка в публичном ответе нет (это и есть закрытие двери),
      поэтому недостающие поля — NaN, а не нули: «осталось 0 из 0» было бы враньём,
      а poolLine на нечисле честно говорит только процент. */
@@ -192,9 +210,15 @@ export function UsageView() {
               {poolNote(pool)}
               {' · '}
               {poolLine(pool)}
+              {capLeft != null ? ` · осталось примерно ${capLeft} ${plural(capLeft, 'сообщение', 'сообщения', 'сообщений')}` : ''}
               {data ? ` · сброс через ${fmtDuration(data.resetInMs)}` : ''}
               {data?.cap && data.cap.on === false ? ' · суточный потолок выключен' : ''}
             </div>
+            {capLow ? (
+              <div className="usage-pool-low">
+                запас ниже 20 % — сегодня ответы идут без совета голов и без исследования: так он дотянет до сброса, а не кончится у всех разом
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -227,7 +251,9 @@ export function UsageView() {
         <div className="usage-card">
           <div className="usage-cap">До сброса</div>
           <div className="usage-num">{data ? fmtDuration(data.resetInMs) : '—'}</div>
-          <div className="usage-sub">в 00:00 UTC, по ней считаются квоты</div>
+          <div className="usage-sub">
+            {resetLocal ? `в ${resetLocal} по вашему времени · 00:00 UTC` : 'в 00:00 UTC, по ней считаются квоты'}
+          </div>
         </div>
         )}
         {!pub ? (

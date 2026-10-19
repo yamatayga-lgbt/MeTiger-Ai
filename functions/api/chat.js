@@ -19,6 +19,7 @@ import * as genderLayer from '../../engine/gender.js';
 import * as personaStyle from '../../engine/personastyle.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import { createDayCap, msToUtcMidnight } from '../../engine/daycap.js';
+import { createIpCap, IP_CACHE, ipCfg } from '../../engine/ipcap.js';
 import { isOwnerCode } from '../../engine/reports.js';
 import { netStats } from '../../engine/netpool.js';
 import { createBrave } from '../../engine/brave.js';
@@ -350,6 +351,29 @@ async function handlePost(context) {
     }, 503);
   }
 
+  /* Вторая дверь (0.224) — суточный потолок на ОДИН адрес. Общий запас стоит
+     выше и защищает сервис целиком; этот — от одного скрипта, который в ритме
+     частотного лимита (30/мин) выжигает весь запас за пять часов. Две ступени:
+     мягкая убирает дорогие шаги (совет голов, исследование), жёсткая закрывает
+     адрес до полуночи UTC. Владелец обе проходит по коду. */
+  const ipCap = createIpCap({
+    env, store: limitsStore(env),
+    ip: realClientIp(request, env),
+    base: IP_CACHE,
+    log: (lvl, msg) => { try { console.log('[ipcap]', lvl, String(msg || '').slice(0, 160)); } catch (e) { /* молча */ } },
+  });
+  const ipNow = ownerPriority ? Object.assign(ipCap.state(), { allowed: true, owner: true }) : await ipCap.check();
+  if (!ipNow.allowed) {
+    const ms = ipNow.resetInMs || msToUtcMidnight(Date.now());
+    return json({
+      ok: false,
+      error: 'потолок одного адреса на сегодня исчерпан — ' + ipNow.hardMax + ' попыток к моделям за сутки. '
+        + 'Это не блокировка человека, а защита общего запаса: без неё один скрипт выключает бесплатного '
+        + 'агента всем до полуночи. Адрес отдохнёт и продолжит в 00:00 UTC, через ' + humanLeft(ms) + '.',
+      cap: { blocked: true, scope: 'address', day: ipNow.day, resetInMs: ms, on: true },
+    }, 429);
+  }
+
   /* Картинки: ровно столько, сколько принимает движок (две), и с потолком веса.
      Бесплатный провайдер обрезает тело запроса раньше, чем мы успеем спросить,
      а_pages function упирается в лимит запроса — лучше отказать словами сразу. */
@@ -491,6 +515,15 @@ async function handlePost(context) {
       owner: ownerPriority,
       env,
     });
+    /* Мягкая ступень потолка адреса (0.224): исследование — самый дорогой режим
+       (несколько поисков и чтение страниц). На перегретом адресе оно сжимается до
+       обычного глубокого поиска, а причина уходит в подпись ответа. */
+    if (ipNow.soft && deepWork && deepWork.research) {
+      deepWork = Object.assign({}, deepWork, {
+        research: false,
+        why: [deepWork.why, 'с адреса много запросов — исследование сокращено'].filter(Boolean).join(' · '),
+      });
+    }
     if (deepWork && deepWork.research) {
       wantDeep = true;
       depthWhy = [depthWhy, deepWork.why].filter(Boolean).join(' · ');
@@ -662,7 +695,10 @@ async function handlePost(context) {
     tier: body.tier === 'fast' || body.tier === 'smart'
       ? body.tier
       : (!norm.model && ((composed && composed.voice && composed.voice.mode === 'note')
-          || (deepWork && deepWork.on) || needsWeb(String(askText || '')).need)
+          || (deepWork && deepWork.on)
+          /* 0.224: с приложенным документом порог поиска выше (engine/webrules.js) —
+             вопрос по файлу не поднимает полосу до smart ради поиска, которого не будет. */
+          || needsWeb(String(askText || ''), { doc: !!(composed && composed.docBlocks && composed.docBlocks.length) }).need)
           ? 'smart'
           : undefined),
     only: norm.provider,
@@ -670,7 +706,10 @@ async function handlePost(context) {
        режиме выключены: «взято большинство» переписало бы ответ той самой модели,
        которую человек и просил. */
     model: norm.model || undefined,
-    noCouncils: !!norm.model,
+    /* Мягкая ступень потолка адреса (0.224): совет голов — самый дорогой шаг
+       (2–3 попытки вместо одной), на перегретом адресе он не созывается. Обычный
+       разговор этого не замечает: совет и так не нужен на каждом вопросе. */
+    noCouncils: !!norm.model || !!ipNow.soft,
     temperature: norm.temperature,
     maxTokens: norm.maxTokens,
     topP: norm.topP,
@@ -710,7 +749,7 @@ async function handlePost(context) {
        до пяти продолжений. Публичные значения движок выберет сам по полосе. */
     ownerPriority: ownerPriority || undefined,
     modelsPerProvider: ownerPriority ? 4 : undefined,
-    maxContinuations: ownerPriority ? 5 : undefined,
+    maxContinuations: ownerPriority ? 5 : (ipNow.soft ? 1 : undefined),
     /* Глубокий прогон думает дольше — и теперь это решение агента, а не человека:
        потолок времени поднимается по вердикту судьи. Обычный вопрос, который ждёт
        ответа секунду, права висеть полторы минуты не получает. Исследованию —
@@ -756,6 +795,8 @@ async function handlePost(context) {
     /* Суточный запас списывается тем же фоном (engine/daycap.js): в KV уходит
        факт попыток, а не заранее откусанный кусок. Ответ хранилище не ждёт. */
     ownerPriority ? Promise.resolve(null) : cap.take(capBill).then(() => cap.flush()).catch(() => null),
+    /* Потолок адреса (0.224) — тем же фоном: человек не ждёт записи в KV. */
+    ownerPriority ? Promise.resolve(null) : ipCap.take(capBill).then(() => ipCap.flush()).catch(() => null),
   ]).then(() => null);
   if (context.waitUntil) { try { context.waitUntil(after()); } catch (e) { await after(); } } else { await after(); }
 
@@ -830,7 +871,13 @@ async function handlePost(context) {
     tools: r.tools || [],
     /* Оговорки инструментов для человека: «свежий поиск недоступен, ответ по
        Википедии». Не прячем в логи: человек должен видеть, на чём стоит ответ. */
-    toolNotes: (r.toolNotes && r.toolNotes.length) ? r.toolNotes : undefined,
+    toolNotes: (() => {
+      const own = (r.toolNotes && r.toolNotes.length) ? r.toolNotes.slice() : [];
+      /* Мягкая ступень потолка адреса (0.224) — видимой строкой, а не тишиной:
+         человек должен знать, почему сегодня нет совета голов, а не гадать. */
+      if (ipNow.soft) own.push('сегодня с этого адреса много запросов — совет голов и исследование не созываются, ответы обычные');
+      return own.length ? own : undefined;
+    })(),
     /* Проверенные ссылки из поиска, вики, новостей или прочитанной страницы — кликабельно под ответом. */
     sources: r.sources && r.sources.length ? r.sources : undefined,
     /* Сколько контекста заняла эта реплика и в какое окно она влезла (0.170) —

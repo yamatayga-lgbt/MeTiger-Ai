@@ -180,7 +180,9 @@ console.log('H — то, что видит фронт');
     env: { ...EN3, RATE_LIMIT: '0' },
   });
   const j = await res.json();
-  ok('H1: /api/chat отдаёт строку сходимости', /сошлись 2\/3|разошлись 2\/3/.test(j.ensemble), JSON.stringify(j.ensemble));
+  /* 0.224: совет пишет словами («сошлись 2 из 3») и не показывает служебные
+     имена провайдеров — они ничего не говорят человеку. */
+  ok('H1: /api/chat отдаёт строку сходимости', /сошлись 2 из 3|разошлись 2 из 3/.test(j.ensemble), JSON.stringify(j.ensemble));
   ok('H2: и пометку, что взято большинство', /взято большинство/.test(j.ensemble), String(j.ensemble));
   const f2 = fake(() => reply('Привет'));
   globalThis.fetch = f2;

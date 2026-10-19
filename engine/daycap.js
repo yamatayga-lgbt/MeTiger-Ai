@@ -32,6 +32,32 @@ const num = (v, def, min) => {
   return Number.isFinite(n) && n >= min ? n : def;
 };
 
+/**
+ * Сколько попыток к провайдерам стоит одно сообщение (0.224).
+ *
+ * Замер на живом проде 19.10.2026: за ~25–30 сообщений общий запас прошёл
+ * 98,7 % → 98,1 %, то есть ≈54 попытки — 2–2,7 на сообщение (совет голов,
+ * запасная голова, поиск). Двойка здесь — осторожная оценка: она показывает
+ * остаток МЕНЬШЕ, чем он есть, а не больше.
+ */
+export const ATTEMPTS_PER_MESSAGE = 2;
+
+/**
+ * Остаток запаса в сообщениях, округлённый ВНИЗ до десятков.
+ * Процент человеку ничего не говорит («98,7 %» — это сколько?), а «≈ 3 800
+ * сообщений» говорит. Округление вниз и вниз до десятков — чтобы цифра не
+ * выглядела точнее, чем она есть: счёт в KV складывается из изолятов.
+ */
+export function messagesLeft(remaining, per) {
+  const r = Math.max(0, Math.floor(Number(remaining) || 0));
+  const p = Math.max(1, Number(per) || ATTEMPTS_PER_MESSAGE);
+  const n = Math.floor(r / p);
+  if (n >= 1000) return Math.floor(n / 100) * 100;
+  if (n >= 100) return Math.floor(n / 50) * 50;
+  if (n >= 10) return Math.floor(n / 10) * 10;
+  return n;
+}
+
 /** Сутки UTC — те же, по которым считаются квоты провайдеров. */
 export function capDayOf(t) {
   return new Date(Number(t) || Date.now()).toISOString().slice(0, 10);

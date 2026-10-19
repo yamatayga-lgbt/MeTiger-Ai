@@ -17,7 +17,7 @@
 
 /* Форматы файла — единый источник правды: у инструмента-указания и у постобработки. */
 import { smartSearch, researchSearch, searchBlock, SEARCH_DIRECTIVE, RESEARCH_DIRECTIVE } from './search.js';
-import { needsWeb } from './webrules.js';
+import { needsWeb, wantsNoWeb, askedToSearch } from './webrules.js';
 import { FMT, formatFromText } from './filegen.js';
 import { sharedImggen, IMG_DIRECTIVE, wantsImage, lineOf as imgLineOf } from './imggen.js';
 
@@ -608,7 +608,9 @@ export const TOOLS = [
        этому вопросу интернет. Правило и его цена описаны там же; коротко: про то,
        что меняется (курсы, цены, погода, новости, версии, кто сейчас у власти) —
        ищем; про то, что не меняется (определения, код, перевод, счёт) — нет. */
-    when: (t) => needsWeb(t).need,
+    /* `ctx.doc` (0.224): в этом ходе есть приложенный документ — порог поиска
+       выше, иначе агент ищет в сети ответ, который уже лежит в файле. */
+    when: (t, env, ctx) => needsWeb(t, { doc: !!(ctx && ctx.doc) }).need,
     async run({ text, env, fetch: fi, force, deep, research }) {
       /* Запросом идёт очищенный вопрос, а если очистка ничего не оставила (короткое
          «новости», «курс») — сам вопрос: раньше такой запрос молча пропадал, и поиск
@@ -929,12 +931,24 @@ const API_SOURCE_TOOLS = new Set(['currency', 'weather']);
 /**
  * Собрать данные всех сработавших инструментов.
  * Возвращает { used: string[], block: string, directive: string, sources: {title,url}[], webSteps: object[] }.
+ *
+ * `opts.hasDocs` (0.224) — в этом ходе есть прочитанный документ. Флаг доходит до
+ * правила поиска (engine/webrules.js): с файлом порог выше, и «сколько стоит»
+ * из договора больше не тянет за собой восемь посторонних ссылок.
  */
 export async function gatherTools(text, env, fetchImpl, o) {
   const fi = fetchImpl || ((...a) => fetch(...a));
   const opts = o || {};
   const onStep = typeof opts.onStep === 'function' ? opts.onStep : null;
   const force = new Set(opts.force || []);
+  /* 0.224: навык «свежий поиск» не спорит ни с файлом, ни с просьбой «без
+     интернета». Раньше форсированный инструмент обходил правило очков: вопрос
+     по приложенному договору получал поиск и восемь посторонних ссылок, хотя
+     ответ лежал в файле. Явная просьба поискать и глубокий прогон ниже
+     возвращают инструмент — человек знает, чего хочет. */
+  if (force.has('web-search') && (wantsNoWeb(text) || (opts.hasDocs && !askedToSearch(text)))) {
+    force.delete('web-search');
+  }
   if (opts.deep || (opts.research && opts.research.research)) force.add('web-search');
   const off = new Set(String((env && env.TOOLS_OFF) || '').split(',').map((s) => s.trim()).filter(Boolean));
   const used = [];
@@ -957,7 +971,9 @@ export async function gatherTools(text, env, fetchImpl, o) {
   for (const t of TOOLS) {
     if (off.has(t.id)) continue;
     let hit = force.has(t.id);
-    if (!hit) { try { hit = !!t.when(String(text || ''), env); } catch { hit = false; } }
+    if (!hit) {
+      try { hit = !!t.when(String(text || ''), env, { doc: !!opts.hasDocs }); } catch { hit = false; }
+    }
     if (!hit) continue;
     /* `img` — подменяемый слой картинок: тесты и чужие сборки движка обязаны
        видеть в инструменте ровно тот экземпляр, что у движка, а не модульный. */

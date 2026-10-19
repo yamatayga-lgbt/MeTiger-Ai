@@ -101,6 +101,10 @@ export interface UsageSnapshot {
 export interface UsageCap {
   on: boolean
   pct?: number | null
+  /** Остаток в сообщениях, вниз до десятков (0.224). Понятнее процента. */
+  left?: number | null
+  /** Запас ниже 20 % — панель говорит об этом словами, а не цветом кольца. */
+  low?: boolean
   used?: number
   max?: number
   remaining?: number | null

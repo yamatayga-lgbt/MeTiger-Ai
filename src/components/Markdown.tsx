@@ -102,7 +102,12 @@ export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sou
              потому что дети этого элемента нужны лишь как запасной текст. */
           mathlite(props: { node?: { properties?: Record<string, unknown> } }) {
             const p = (props.node && props.node.properties) || {}
-            return <Formula latex={String(p.latex || '')} block={String(p.block) === 'true'} />
+            /* 0.224: длинная строчная формула становится выключной. Иначе она
+               рвётся посреди выражения (перенос внутри `inline-flex` разрешён), и
+               «= 234 000 + 175 500» уезжает на отдельную строку. Выключная же
+               стоит одной строкой и прокручивается (см. .math-fx.is-block). */
+            const tex = String(p.latex || '')
+            return <Formula latex={tex} block={String(p.block) === 'true' || tex.length > 64} />
           },
           img({ src, alt }: { src?: string; alt?: string }) {
             // eslint-disable-next-line jsx-a11y/alt-text

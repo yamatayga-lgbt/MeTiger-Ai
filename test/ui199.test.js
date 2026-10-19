@@ -42,7 +42,10 @@ ok('N3 движок отдаёт пометки дальше — в обоих �
     && /toolNotes: hit \? \(hit\.toolNotes \|\| \[\]\) : \[\],/.test(chat))
 
 ok('N4 дверь /api/chat отдаёт toolNotes в JSON',
-  /toolNotes: \(r\.toolNotes && r\.toolNotes\.length\) \? r\.toolNotes : undefined/.test(door))
+  /* 0.224: поле стало блоком — к оговоркам инструментов добавилась строка
+     мягкой ступени потолка адреса; принцип прежний, r.toolNotes отдаётся наружу. */
+  /toolNotes: \(\(\) => \{/.test(door) && /\(r\.toolNotes && r\.toolNotes\.length\)/.test(door)
+    && /if \(ipNow\.soft\) own\.push/.test(door))
 
 ok('N5 тип ответа и сообщения чата знает toolNotes',
   /toolNotes\?: string\[\]/.test(api) && /toolNotes\?: string\[\]/.test(mock))

@@ -18,7 +18,7 @@
 import { buildTable } from '../../engine/providers.js';
 import { createUsage, poolOf } from '../../engine/usage.js';
 import { limitsInfo } from '../../engine/limits.js';
-import { createDayCap } from '../../engine/daycap.js';
+import { createDayCap, messagesLeft } from '../../engine/daycap.js';
 import { isOwnerCode } from '../../engine/reports.js';
 import { memoryStore, limitsStore } from './chat.js';
 
@@ -150,6 +150,11 @@ export async function onRequestGet(context) {
   const capOut = {
     on: capPeek.on,
     pct: capPct,
+    /* Остаток в сообщениях (0.224) — понятнее процента: «≈ 3 800 сообщений»
+       вместо «98,7 %». Считается вниз и до десятков: счёт складывается из
+       изолятов, точная цифра выглядела бы честнее, чем есть. */
+    left: capPeek.on ? messagesLeft(capPeek.remaining) : null,
+    low: capPct != null && capPct < 20,
     used: capPeek.used,
     max: capPeek.max,
     remaining: capPeek.remaining,
@@ -176,7 +181,17 @@ export async function onRequestGet(context) {
       /* То же поле `pool`, что читают кольцо и панель: без кода в нём один
          процент, чтобы экран не разбирал два разных ответа двумя ветками. */
       pool: { pct: capPeek.on ? capPct : pool.pct },
-      cap: { on: capPeek.on, pct: capPct, blocked: !!capPeek.blocked, resetInMs: capPeek.resetInMs },
+      /* 0.224: к проценту добавлен остаток в сообщениях и признак «запас ниже
+         20 %» — человеку нужен ответ «сколько ещё», а не доля от неизвестного
+         целого. Имён провайдеров, ключей и расхода здесь по-прежнему нет. */
+      cap: {
+        on: capPeek.on,
+        pct: capPct,
+        left: capPeek.on ? messagesLeft(capPeek.remaining) : null,
+        low: capPct != null && capPct < 20,
+        blocked: !!capPeek.blocked,
+        resetInMs: capPeek.resetInMs,
+      },
       note: 'полная раскладка по провайдерам — только у владельца (заголовок x-mt-owner)',
     });
   }

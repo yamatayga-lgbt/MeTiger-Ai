@@ -709,7 +709,9 @@ export function forgetThread(threadId: string): void {
  */
 export type AdviceTone = 'ok' | 'warn' | 'quiet'
 
-const OK_LINE = /сошлись\s+\d+\/\d+|подтверждаю|confirmed/i
+/* 0.224: строки совета теперь пишутся словами («сошлись 3 из 3»), но старые
+   сообщения в истории устройства хранят прежний вид «3/3» — принимаем оба. */
+const OK_LINE = /сошлись\s+\d+\s*(?:\/|из)\s*\d+|подтверждаю|confirmed/i
 const WARN_LINE = /не сошлись|разошлись|overruled|взято большинство|большинство/i
 
 export function adviceLine(r: ChatResult): { text: string; tone: AdviceTone } | null {
@@ -734,6 +736,11 @@ export interface PersonaPayload {
 
 export const TOOL_RU: Record<string, string> = {
   'web-search': 'веб-поиск',
+  /* 0.224: три строки, которых не хватало. Без них наружу уходили служебные
+     имена — человек читал «использовал imggen» вместо «использовал рисование». */
+  imggen: 'рисование',
+  stt: 'распознавание речи',
+  tts: 'озвучка',
   news: 'новости',
   wikipedia: 'вики',
   url: 'страница',
@@ -749,6 +756,23 @@ export const TOOL_RU: Record<string, string> = {
   'image-search': 'поиск картинок',
   chart: 'график',
   filegen: 'файл',
+}
+
+/**
+ * Русское число с существительным: «1 файл», «2 файла», «5 файлов» (0.224).
+ *
+ * Появилось вместе с переводом шагов подготовки ответа: «1 lines» и «Explored 1
+ * read» — это английский счётчик, случайно выученный русским интерфейсом.
+ * Правило обычное: 11–14 — всегда «файлов», иначе смотрим последнюю цифру.
+ */
+export function pluralRu(n: number, one: string, few: string, many: string): string {
+  const abs = Math.abs(Number(n) || 0)
+  const t = abs % 100
+  const d = t % 10
+  if (t >= 11 && t <= 14) return `${n} ${many}`
+  if (d === 1) return `${n} ${one}`
+  if (d >= 2 && d <= 4) return `${n} ${few}`
+  return `${n} ${many}`
 }
 
 /** Сколько весят файлы по-человечески: байты не округляем до «0 КБ». */

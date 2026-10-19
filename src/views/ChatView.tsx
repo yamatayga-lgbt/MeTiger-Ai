@@ -22,7 +22,7 @@ import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
    виден как есть (pre-wrap), так что пустого места не бывает. */
 const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
-import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, pluralRu, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 import { enterKeySends } from '../lib/platform'
@@ -313,7 +313,7 @@ function ExploredReadsBlock({
         <ChevronDown size={14} className="explored-chev" />
         <EyeGlyph />
         <span className="explored-title">
-          Explored {n} read{n === 1 ? '' : 's'}
+          Прочитал {pluralRu(n, 'файл', 'файла', 'файлов')}
         </span>
       </summary>
       <div className="explored-steps">
@@ -321,7 +321,7 @@ function ExploredReadsBlock({
           <div key={idx} className={`explored-step${r.ok ? '' : ' is-failed'}`}>
             <EyeGlyph className="explored-step-icon" />
             <span className="explored-step-label">
-              {r.ok ? 'Read ' : "Couldn't read "}
+              {r.ok ? 'Прочитал ' : 'Не прочитал '}
               <span className="explored-step-name" title={r.name}>
                 {r.name}
               </span>
@@ -369,11 +369,11 @@ function WriteFilesBlock({ files }: { files: { name: string; lines?: number }[] 
         <div key={idx} className="write-file-row">
           <WriteFileGlyph />
           <span className="write-file-label">
-            Write <span className="write-file-name">{f.name}</span>
+            Создал <span className="write-file-name">{f.name}</span>
           </span>
           {typeof f.lines === 'number' ? (
             <span className="write-file-lines">
-              {f.lines} line{f.lines === 1 ? '' : 's'}
+              {pluralRu(f.lines, 'строка', 'строки', 'строк')}
             </span>
           ) : null}
         </div>

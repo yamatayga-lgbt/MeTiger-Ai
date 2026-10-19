@@ -43,7 +43,7 @@ ok('U168e правило в движке: счёт очков, порог два
   /export function needsWeb/.test(webrules) && /score >= 2|score < 2/.test(webrules)
     && /данные меняются/.test(webrules) && /не меняется/.test(webrules));
 ok('U168f инструмент веб-поиска включается правилом, а не списком слов',
-  /when: \(t\) => needsWeb\(t\)\.need/.test(tools) && /import { needsWeb } from '\.\/webrules\.js'/.test(tools));
+  /when: \(t, env, ctx\) => needsWeb\(t, \{ doc:/.test(tools) && /import \{ needsWeb/.test(tools) && /from '\.\/webrules\.js'/.test(tools));
 ok('U168g короткий запрос («новости», «курс») не теряется: очищенный вопрос, а иначе сам вопрос',
   /const q = queryOf\(text\) \|\| clean\(String\(text \|\| ''\)\)\.slice\(0, 120\)/.test(tools));
 ok('U168h кириллические границы в правилах не ловушка: \\b на кириллице в JS не работает',

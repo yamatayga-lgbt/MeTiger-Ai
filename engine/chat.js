@@ -511,6 +511,9 @@ export function createEngine(opts) {
           deep: wantWeb || deepWork.research,
           research: deepWork,
           img: imggen,
+          /* 0.224: приложенный документ поднимает порог веб-поиска — ответ,
+             который уже лежит в файле, искать в сети незачем. */
+          hasDocs: Array.isArray(input.docs) && input.docs.length > 0,
           onStep: onDelta ? (step) => onDelta({ kind: 'web', step }) : undefined,
         });
     /* Картинок человек просит — по формулировке или по block-у в ответе. Флаг

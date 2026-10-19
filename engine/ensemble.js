@@ -264,8 +264,10 @@ export function decide({ authorReply, result }) {
     if (agreedAgainst) {
       return { reply: result.winner.reply, applied: true, status: 'overruled', agreed: true, votes: result.votes, total: result.total };
     }
+    /* 0.224: без имён провайдеров — человеку нужен сам раскол («А) 46, Б) 47»),
+       а не список служебных ключей, который к тому же попадал прямо в ответ. */
     const shown = (result.votes || []).slice(0, 3).map((v, i) =>
-      String.fromCharCode(1040 + i) + ') ' + v.providers.join(',') + ' → ' + v.key.replace(/^n:/, '').replace(/^w:/, '')).join(', ');
+      String.fromCharCode(1040 + i) + ') ' + v.key.replace(/^n:/, '').replace(/^w:/, '')).join(', ');
     return {
       reply: authorReply + '\n\n⚖️ Головы не сошлись (' + shown + ') — число спорное, я не выбираю наугад.',
       applied: true, status: 'split', agreed: false, votes: result.votes, total: result.total, retry: true,
@@ -281,12 +283,19 @@ export function decide({ authorReply, result }) {
   };
 }
 
-/** Строка для API/человека: сходимость и голоса — наблюдаемость важнее красоты. */
+/**
+ * Строка для API/человека: сходимость и голоса — наблюдаемость важнее красоты.
+ *
+ * 0.224: служебных имён провайдеров здесь больше нет. Живой снимок прода:
+ * «сошлись 3/3 (author,inception,zai)» — человеку это не говорит ничего, а
+ * продукт выглядит отладочной сборкой. Строка отвечает на один вопрос: сошлись
+ * головы или нет. Кто именно голосовал — остаётся в `d.votes` для отладки.
+ */
 export function lineOf(d) {
   if (!d || d.status === 'skip') return d && d.why ? 'пропущено: ' + d.why : '';
   const top = d.votes && d.votes[0] ? d.votes[0].n : 0;
-  const heads = ((d.votes && d.votes[0] && d.votes[0].providers) || []).join(',');
-  return (d.agreed ? 'сошлись ' : 'разошлись ') + top + '/' + (d.total || 0) + (heads ? ' (' + heads + ')' : '');
+  const total = d.total || 0;
+  return (d.agreed ? 'сошлись ' : 'разошлись ') + top + ' из ' + total;
 }
 
 function emit(onEvent, text) {

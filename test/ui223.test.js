@@ -21,8 +21,10 @@ const chain = String(pkg.scripts.test || '')
 const v = versionsAligned()
 
 ok('U223a все источники версии синхронизированы', v.ok, v.why)
-ok('U223b «Что нового» и README знают 0.223',
-  /\*\*0\.223\*\*/.test(readme) && /version: '0\.223'/.test(notes))
+ok('U223b история README знает 0.223',
+  /* «Что нового» держит только текущую версию (правило проекта), поэтому
+     строку ищем в истории README — она остаётся навсегда. */
+  /\*\*0\.223\*\*/.test(readme))
 ok('U223c запись без имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes)
     && !/88\/120|fair-use/.test(notes))
