@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Замер vs GigaChat — победа не объявляется</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+      background: #0b0c10;
+      color: #e8e8ea;
+      line-height: 1.45;
+      padding: 20px 16px 48px;
+    }
+    h1 { font-size: 22px; line-height: 1.25; margin: 0 0 8px; }
+    h2 { font-size: 17px; margin: 28px 0 10px; }
+    p, li { font-size: 15px; }
+    .stamp {
+      display: inline-block;
+      background: #3a2410;
+      color: #ffcc80;
+      border: 1px solid #8a5a20;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .lead { color: #b4b6be; margin: 12px 0 20px; }
+    .scores {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 16px 0 8px;
+    }
+    .card {
+      background: #16171d;
+      border: 1px solid #2a2c34;
+      border-radius: 16px;
+      padding: 14px 14px 12px;
+    }
+    .card .k { font-size: 12px; color: #8a8f98; }
+    .card .v { font-size: 28px; font-weight: 700; margin-top: 4px; }
+    .card.mt .v { color: #7aa2ff; }
+    .card.gc .v { color: #9aa0a8; }
+    .note { font-size: 13px; color: #8a8f98; }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #2a2c34; vertical-align: top; }
+    th { color: #8a8f98; font-weight: 600; }
+    .ok { color: #7dcea0; font-weight: 700; }
+    .mid { color: #f0c36d; font-weight: 700; }
+    .na { color: #6d717a; }
+    .task {
+      background: #16171d;
+      border: 1px solid #2a2c34;
+      border-radius: 16px;
+      padding: 14px;
+      margin: 12px 0;
+    }
+    .task h3 { margin: 0 0 6px; font-size: 16px; }
+    .q {
+      color: #c9cbd3;
+      font-size: 14px;
+      margin: 0 0 10px;
+      white-space: pre-wrap;
+    }
+    .ans {
+      background: #101117;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+    .meta { font-size: 12px; color: #8a8f98; margin: 8px 0 0; }
+    .warn {
+      background: #2a1c12;
+      border: 1px solid #6a3c18;
+      color: #ffcc80;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    .next {
+      background: #121826;
+      border: 1px solid #2a3a62;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <p class="stamp">победа не объявляется</p>
+  <h1>MeTiger vs GigaChat</h1>
+  <p class="lead">Слепой замер 19.10.2026. Вопросы заморожены до ответов. Сторону GigaChat вживую не сняли: нужен Сбер ID и российский IP.</p>
+
+  <div class="scores">
+    <div class="card mt">
+      <div class="k">Живые задачи MeTiger</div>
+      <div class="v">14 / 16</div>
+    </div>
+    <div class="card gc">
+      <div class="k">Живые задачи GigaChat</div>
+      <div class="v">нет</div>
+    </div>
+    <div class="card mt">
+      <div class="k">12 осей продукта</div>
+      <div class="v">88</div>
+    </div>
+    <div class="card gc">
+      <div class="k">GigaChat, открытые факты</div>
+      <div class="v">74</div>
+    </div>
+  </div>
+  <p class="note">Оси 88:74 — профиль продукта, не титул. Без живых ответов GigaChat пункт очереди не закрыт.</p>
+
+  <div class="warn">
+    Дыры MeTiger в этом прогоне: дата «сегодня» уехала в 09.06.2025; на сумме 46,00 совет голов написал «число спорное».
+  </div>
+
+  <h2>Живые задачи</h2>
+
+  <div class="task">
+    <h3>1. Числа и даты · <span class="mid">1/2</span></h3>
+    <p class="q">Сложи 1 250 000 и 3 750,50. В ответе только сумма по-человечески и сегодняшняя дата.</p>
+    <div class="ans">1 253 750,50
+09.06.2025</div>
+    <p class="meta">groq · qwen3.8-27b · 3 с · сумма верна, дата выдумана (нужно 19.10.2026)</p>
+  </div>
+
+  <div class="task">
+    <h3>2. Таблица тарифов РБ · <span class="ok">2/2</span></h3>
+    <p class="q">Сравни A1, МТС и life:) в Беларуси: безлимитный интернет на телефон. Только таблица.</p>
+    <div class="ans">| Оператор | Цена в месяц (BYN) | Что входит |
+| A1 | 11,99 – 16,99 | Неограниченный трафик |
+| MTS | 41,90 | Неограниченный трафик |
+| life:) | 9,90 | Неограниченный трафик |</div>
+    <p class="meta">groq · gpt-oss-20b · 12 с · три оператора РБ, не МТС РФ</p>
+  </div>
+
+  <div class="task">
+    <h3>3. Курс без страны · <span class="ok">2/2</span></h3>
+    <p class="q">Какой сейчас официальный курс доллара?</p>
+    <div class="ans">Сегодня (19.10.2026) официальный курс доллара США по данным Нацбанка РБ составляет 3,0098 BYN за 1 USD.</div>
+    <p class="meta">не выдал ЦБ РФ как единственный официальный</p>
+  </div>
+
+  <div class="task">
+    <h3>4. Курс Нацбанка РБ · <span class="ok">2/2</span></h3>
+    <p class="q">Курс доллара Нацбанка Беларуси на сегодня. Число и дата.</p>
+    <div class="ans">3,0098 BYN
+19.10.2026</div>
+    <p class="meta">inception · mercury-2.5 · совпало с api.nbrb.by (3,0098 на 19.10.2026)</p>
+  </div>
+
+  <div class="task">
+    <h3>5. Гомель, не Москва · <span class="ok">2/2</span></h3>
+    <p class="q">Где в Гомеле обменять водительское удостоверение на новое и какие документы нужны?</p>
+    <div class="ans">МРЭО ГАИ на ул. Федюнинского, 9.
+Паспорт, старые права, медсправка, чек через ЕРИП.</div>
+    <p class="meta">gemini-3.5-flash · не госуслуги РФ</p>
+  </div>
+
+  <div class="task">
+    <h3>6. ЕРИП · <span class="ok">2/2</span></h3>
+    <p class="q">Как с телефона оплатить квартиру через ЕРИП? Короткие шаги.</p>
+    <div class="ans">Приложение банка РБ → Платежи → ЕРИП → коммуналка → город → лицевой счёт → оплатить.</div>
+    <p class="meta">gemini-3.5-flash</p>
+  </div>
+
+  <div class="task">
+    <h3>7. Таблица из данных · <span class="mid">1/2</span></h3>
+    <p class="q">Хлеб 10×1,20 · Молоко 4×2,50 · Сыр 2×12,00 — сумма и среднее таблицей.</p>
+    <div class="ans">Сумма выручки 46,00
+Средняя цена за 1 шт 2,875
+«Головы не сошлись… число спорное»</div>
+    <p class="meta">deepseek-v4-flash · сумма верна, человеку показали спор</p>
+  </div>
+
+  <div class="task">
+    <h3>8. Лишний отказ · <span class="ok">2/2</span></h3>
+    <p class="q">Назови три спокойных минуса GigaChat как сервиса. Без оскорблений.</p>
+    <div class="ans">Ответил тремя минусами (память, качество, графики). Не отказал.</div>
+    <p class="meta">groq · 3 с</p>
+  </div>
+
+  <h2>12 осей — коротко</h2>
+  <table>
+    <thead><tr><th>Ось</th><th>MeTiger</th><th>GigaChat</th></tr></thead>
+    <tbody>
+      <tr><td>Контекст</td><td>4</td><td>7</td></tr>
+      <tr><td>Сила модели</td><td>6</td><td>7</td></tr>
+      <tr><td>Скорость</td><td>7</td><td>8</td></tr>
+      <tr><td>Поиск</td><td>8</td><td>7</td></tr>
+      <tr><td>Файлы</td><td>7</td><td>7</td></tr>
+      <tr><td>Код на месте</td><td>9</td><td>4</td></tr>
+      <tr><td>Память</td><td>8</td><td>7</td></tr>
+      <tr><td>Приватность</td><td>8</td><td>3</td></tr>
+      <tr><td>Мало отказов</td><td>8</td><td>3</td></tr>
+      <tr><td>Голос</td><td>7</td><td>9</td></tr>
+      <tr><td>Мобильный UX</td><td>7</td><td>8</td></tr>
+      <tr><td>Бесплатность</td><td>9</td><td>4</td></tr>
+      <tr><td><b>Сумма</b></td><td><b>88</b></td><td><b>74</b></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Что нужно от вас</h2>
+  <div class="next">
+    Если GigaChat на телефоне открывается — вставьте те же 8 вопросов и пришлите ответы или скрины. Тогда досчитаем колонку и только по факту решим, закрывать ли пункт очереди.
+    <br><br>
+    Пока можно чинить дыры: сегодняшняя дата и «головы не сошлись» на простой сумме.
+  </div>
+</body>
+</html>
