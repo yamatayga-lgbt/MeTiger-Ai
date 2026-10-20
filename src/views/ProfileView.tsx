@@ -19,6 +19,7 @@
 import {
   AtSign,
   BarChart3,
+  Bell,
   Bug,
   ChevronDown,
   Inbox,
@@ -38,6 +39,7 @@ import { ReportSheet } from '../components/ReportSheet'
 import { loadReports, ownerEnabled } from '../lib/report'
 import { claimId, idProblemLocal, idShown, myId, waitText, type MyDevice } from '../lib/devid'
 import { haptic } from '../lib/haptic'
+import { disablePush, enablePush, pushState, testPush, type PushState } from '../lib/push'
 import type { ThemePref } from '../hooks/useTheme'
 
 import { displayName, initials, type Person } from '../lib/user'
@@ -59,6 +61,101 @@ interface ProfileViewProps {
   onDevice?: (d: MyDevice | null) => void
   /** Владелец определяется кодом на устройстве; у него же ID #Dev и «Админ». */
   owner?: boolean
+}
+
+/**
+ * Строка «Уведомления» (0.225).
+ *
+ * Одно нажатие включает или выключает. Текст справа говорит состояние словами:
+ * «включены», «выключены», «запрещены в браузере», «не поддерживается». Отдельной
+ * кнопки «Проверить» нет в самом списке — она появляется только когда включено,
+ * иначе человек проверял бы то, чего нет.
+ */
+function PushRow() {
+  const [state, setState] = useState<PushState>('off')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    void pushState().then((s) => {
+      if (alive) setState(s)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const label =
+    state === 'on'
+      ? 'включены'
+      : state === 'blocked'
+        ? 'запрещены в браузере'
+        : state === 'unsupported'
+          ? 'не поддерживается'
+          : 'выключены'
+  const dead = state === 'unsupported' || state === 'blocked' || state === 'unconfigured'
+
+  const toggle = async () => {
+    if (busy || dead) return
+    haptic('light')
+    setBusy(true)
+    setNote('')
+    if (state === 'on') {
+      await disablePush()
+      setState('off')
+    } else {
+      const r = await enablePush()
+      if (r.ok) {
+        setState('on')
+      } else {
+        setNote(r.error || 'не получилось')
+        setState(await pushState())
+      }
+    }
+    setBusy(false)
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`rows-row tappable${dead ? ' is-soon' : ''}`}
+        aria-label="Уведомления"
+        aria-pressed={state === 'on'}
+        onClick={toggle}
+      >
+        <span className="rows-ic" aria-hidden="true">
+          <Bell size={20} />
+        </span>
+        <span className="rows-name">Уведомления</span>
+        <span className={`rows-val${state === 'on' ? ' is-reserve' : ''}`}>
+          {busy ? 'включаю…' : label}
+        </span>
+      </button>
+      {state === 'on' ? (
+        <button
+          type="button"
+          className="rows-row tappable"
+          onClick={async () => {
+            haptic('light')
+            const r = await testPush()
+            setNote(r.ok ? 'проверка отправлена — сверните приложение' : r.error || 'не получилось')
+          }}
+        >
+          <span className="rows-ic" aria-hidden="true">
+            <Bell size={20} />
+          </span>
+          <span className="rows-name">Проверить уведомление</span>
+        </button>
+      ) : null}
+      {note ? (
+        <div className="rows-row is-plain">
+          <span className="rows-hint">{note}</span>
+        </div>
+      ) : null}
+    </>
+  )
 }
 
 /** Строка списка: иконка, подпись, справа — значение, «Скоро» или шеврон. */
@@ -375,6 +472,8 @@ export function ProfileView({ user, notify, onNavigate, themePref, onThemePref, 
           </div>
         ) : null}
 
+
+        <PushRow />
         <button
           type="button"
           className="rows-row tappable"

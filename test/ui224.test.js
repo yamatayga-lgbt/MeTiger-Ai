@@ -37,8 +37,10 @@ const chain = String(pkg.scripts.test || '')
 const v = versionsAligned()
 
 ok('U224a все источники версии синхронизированы', v.ok, v.why)
-ok('U224b «Что нового» и README знают 0.224',
-  /\*\*0\.224\*\*/.test(readme) && /version: '0\.224'/.test(notes))
+ok('U224b история README знает 0.224',
+  /* «Что нового» держит только текущую версию — правило проекта: в 0.225 запись
+     сменилась, а строка истории в README остаётся навсегда. */
+  /\*\*0\.224\*\*/.test(readme))
 ok('U224c запись без имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes)
     && !/ipcap|webrules|max-width/.test(notes))

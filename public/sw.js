@@ -8,7 +8,7 @@
 // (scripts/stamp-sw.mjs, запускается из `npm run build`) из версии в
 // package.json — так у всех установленных иконок старая оболочка быстро
 // сменяется новой, и об этом не нужно вспоминать руками при публикации.
-const CACHE_VERSION = 'v0224'
+const CACHE_VERSION = 'v0225'
 const CACHE_NAME = `metiger-shell-${CACHE_VERSION}`
 const SHELL_URLS = ['./', './index.html', './favicon.png', './favicon.svg', './manifest.webmanifest', './offline.html']
 
@@ -95,5 +95,47 @@ self.addEventListener('fetch', (event) => {
         }
         return caches.match(req).then((cached) => cached || caches.match('./index.html'))
       })
+  )
+})
+
+/* ── уведомления (0.225) ──────────────────────────────────────────────────────
+ *
+ * Приходят, когда ответ досчитался без человека: вкладка свёрнута, приложение
+ * ушло в фон или его выгрузила система. Служба push-сервиса поднимает воркер
+ * даже с закрытым приложением — в этом и смысл.
+ *
+ * Текст готовит сервер (engine/pushstore.js): заголовок «ответ готов», тело —
+ * первая строка ответа без разметки. Здесь только показ и переход в чат.
+ */
+self.addEventListener('push', (event) => {
+  let data = {}
+  try { data = event.data ? event.data.json() : {} } catch (e) { data = { body: String((event.data && event.data.text && event.data.text()) || '') } }
+  const title = String((data && data.title) || 'MeTiger Ai — ответ готов')
+  const body = String((data && data.body) || 'Загляните в чат').slice(0, 180)
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      /* Метка одна на ответ: новое уведомление заменяет прежнее, а не копится
+         стопкой в шторке — человек ждёт один ответ, а не десять. */
+      tag: 'mt-answer',
+      renotify: true,
+      data: { url: './' + (data && data.chatId ? '?chat=' + encodeURIComponent(data.chatId) : '') },
+    }).catch(() => {})
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = (event.notification && event.notification.data && event.notification.data.url) || './'
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      /* Уже открытое окно — в фокус, без второго экземпляра приложения. */
+      for (const client of list) {
+        if (client.url && client.url.indexOf(self.location.origin) === 0 && 'focus' in client) return client.focus()
+      }
+      return self.clients.openWindow ? self.clients.openWindow(target) : null
+    }).catch(() => null)
   )
 })

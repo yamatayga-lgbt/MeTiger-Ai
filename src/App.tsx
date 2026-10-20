@@ -45,6 +45,7 @@ import {
 } from './lib/persist'
 import { deleteMedia, mediaIdsOfMessage } from './lib/chatMedia'
 import { haptic } from './lib/haptic'
+import { notifyIfHidden, pushLocalOn, syncPush } from './lib/push'
 import { lazyView } from './lib/chunkReload'
 import { usePWAUpdate } from './hooks/usePWAUpdate'
 import { idAsked, markIdAsked, pingDevice, type MyDevice } from './lib/devid'
@@ -335,6 +336,28 @@ export default function App() {
     abortRef.current?.abort()
   }, [])
 
+  /* 0.225: после перезапуска браузер мог пересоздать подписку на push — приводим
+     её в порядок молча, без второго вопроса про разрешение. */
+  useEffect(() => {
+    void syncPush()
+  }, [])
+
+  /* 0.225: уведомление ведёт в конкретный чат (`?chat=…`). Если такого чата на
+     этом устройстве нет — просто открываем приложение и убираем параметр из
+     адреса, чтобы он не всплывал при следующем запуске. */
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      const id = url.searchParams.get('chat')
+      if (!id) return
+      if (chats.some((c) => c.id === id)) setActiveChatId(id)
+      url.searchParams.delete('chat')
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash)
+    } catch {
+      /* адрес без параметров — не повод падать */
+    }
+  }, [chats.length])
+
   /* Открыли «Что нового» — считаем версию прочитанной (точка гаснет). */
   useEffect(() => {
     if (view !== 'whatsnew' || newsSeen === APP_VERSION) return
@@ -521,6 +544,9 @@ export default function App() {
             const r = await sendChat(text, history, {
               signal: ac.signal,
               threadId: chatId,
+              /* 0.225: если человек свернёт приложение, ответ досчитается и придёт
+                 уведомлением. Флаг ставим только когда уведомления включены. */
+              notify: pushLocalOn(),
               ...(images && images.length ? { images } : {}),
               ...(attachments && attachments.length ? { attachments } : {}),
               ...(model ? { model } : {}),
@@ -608,6 +634,9 @@ export default function App() {
             : import.meta.env.DEV
               ? generateReply(text) + '\n\n_демо-ответ: /api/chat не ответил (' + (r.error || 'нет связи') + ')_'
               : '⚠️ ' + (r.error || 'сервис не отвечает') + '. Это не ответ агента — движок сейчас недоступен.'
+        /* 0.225: вкладка жива, но её не видно — сервер об этом не знает, а клиент
+           знает. Уведомление уходит только в этом случае: если человек смотрит на
+           экран, будить его нечем и незачем. */
         const advice = r.ok ? adviceLine(r) : null
         const meta = r.ok || r.partial
           ? {
@@ -656,6 +685,10 @@ export default function App() {
         setDraftReasoning(null)
         setDraftWebSteps([])
         setDraftImgSteps([])
+        /* 0.225: ответ готов, а приложение свёрнуто — единственный случай, когда
+           уведомление шлёт клиент: сервер видит живое соединение и не знает, что
+           человек смотрит в другую сторону. */
+        notifyIfHidden(chatId, reply)
         /* поток мог оборваться в самом конце: текст на экране, хвоста нет — это
            не причина звать ответ неудачным, но сказать про него надо */
         if (r.ok && r.streamError) setToast('хвост ответа не дописан: ' + r.streamError)

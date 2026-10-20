@@ -20,6 +20,7 @@ import * as personaStyle from '../../engine/personastyle.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import { createDayCap, msToUtcMidnight } from '../../engine/daycap.js';
 import { createIpCap, IP_CACHE, ipCfg } from '../../engine/ipcap.js';
+import { notifyAnswer, pause, PUSH_GRACE_MS } from '../../engine/pushstore.js';
 import { isOwnerCode } from '../../engine/reports.js';
 import { netStats } from '../../engine/netpool.js';
 import { createBrave } from '../../engine/brave.js';
@@ -979,25 +980,65 @@ export async function onRequestPost(context) {
   const accept = String((hdr && hdr.get && hdr.get('accept')) || '');
   if (accept.indexOf('text/event-stream') < 0) return handlePost(context);
 
+  /* Кто просил разбудить и кого именно — читаем из копии тела, пока его не забрал
+     handlePost. Уведомление нужно ровно в одном случае: человек ушёл, а ответ
+     досчитался. Решает это не клиент (его уже нет), а факт оборванного потока. */
+  let notifyUser = '';
+  let notifyOn = false;
+  let notifyChat = '';
+  try {
+    const copy = await context.request.clone().json();
+    notifyUser = sanitizeUserId(copy && copy.userId);
+    notifyOn = !!(copy && (copy.notify === true || copy.notify === 1));
+    notifyChat = String((copy && copy.chatId) || '').slice(0, 80);
+  } catch (e) { /* тело не JSON — значит и уведомлять некого */ }
+
   const enc = new TextEncoder();
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
   let closed = false;
+  let clientGone = false;
+  /* Оборванный поток — единственный честный признак «человек ушёл»: страница
+     закрылась, приложение выгрузили, телефон уснул. Запись в закрытый поток
+     бросает, а `closed` отклоняется — ловим оба. */
+  writer.closed.catch(() => { clientGone = true; closed = true; });
   const send = (obj) => {
     if (closed) return;
-    try { writer.write(enc.encode('data: ' + JSON.stringify(obj) + '\n\n')); } catch (e) { closed = true; }
+    try { writer.write(enc.encode('data: ' + JSON.stringify(obj) + '\n\n')); } catch (e) { closed = true; clientGone = true; }
   };
   /* Поток обязан закрываться в любом случае: висячий ответ держит соединение и
      выглядит для браузера как «думает», хотя движок уже умер. */
+  let finalPayload = null;
   const job = handlePost(Object.assign({}, context, { __send: send }))
     .then(async (res) => {
       let payload = null;
       try { payload = await res.json(); } catch (e) { payload = { ok: false, error: 'сервер вернул не JSON' }; }
+      finalPayload = payload;
       send({ kind: 'final', status: res.status, payload });
     })
     .catch((e) => { send({ kind: 'error', error: String((e && e.message) || e) }); })
     .finally(() => { closed = true; try { writer.close(); } catch (e) { /* уже закрыт */ } });
+  /* 0.225: работа больше не умирает вместе с соединением. Раньше оборванный поток
+     отменял весь ответ, и человек, свернувший приложение, терял его целиком.
+     Теперь Cloudflare даёт досчитать до 30 секунд после отключения — этого хватает
+     обычному ответу; исследование может и не успеть, и об этом сказано в подписи. */
+  if (context.waitUntil) { try { context.waitUntil(job); } catch (e) { /* без waitUntil ответ всё равно уедет */ } }
   void job;
+  /* Уведомление шлём ПОСЛЕ того, как стало известно, что делать: человек ушёл
+     (clientGone) и ответ досчитался. Пауза — чтобы не будить того, кто вернулся
+     и уже смотрит на текст. */
+  void job.then(async () => {
+    if (!clientGone || !notifyOn || !notifyUser) return;
+    try {
+      await pause(PUSH_GRACE_MS);
+      const ok = !(finalPayload && finalPayload.ok === false);
+      await notifyAnswer(context.env, notifyUser, {
+        ok,
+        reply: (finalPayload && finalPayload.reply) || (finalPayload && finalPayload.error) || '',
+        chatId: notifyChat,
+      });
+    } catch (e) { /* уведомление — удобство, а не условие ответа */ }
+  });
   return new Response(readable, {
     headers: Object.assign({}, CORS, {
       'content-type': 'text/event-stream; charset=utf-8',
