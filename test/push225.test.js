@@ -32,8 +32,10 @@ const chain = String(pkg.scripts.test || '')
 const v = versionsAligned()
 
 ok('U225a все источники версии синхронизированы', v.ok, v.why)
-ok('U225b история README и «Что нового» знают 0.225',
-  /\*\*0\.225\*\*/.test(readme) && /version: '0\.225'/.test(notes))
+ok('U225b история README знает 0.225',
+  /* «Что нового» держит только текущую версию — в 0.226 запись сменилась,
+     а строка истории в README остаётся. */
+  /\*\*0\.225\*\*/.test(readme))
 ok('U225c в записи нет имён файлов и жаргона',
   !/src\//.test(notes) && !/engine\//.test(notes) && !/VAPID|aes128gcm|waitUntil/.test(notes))
 ok('U225d кэш оболочки знает текущую версию',

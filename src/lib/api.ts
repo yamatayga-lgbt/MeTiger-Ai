@@ -499,6 +499,24 @@ export async function fetchCounters(): Promise<{ ok: boolean; line: string; erro
   return { ok: false, line: 'сервер не отдал список моделей', error: 'нет связи с /api/models' }
 }
 
+/**
+ * Почему «сеть недоступна» — словами (0.226).
+ *
+ * Глухое «сеть недоступна» одинаково описывает две разные беды: у человека нет
+ * связи и провайдер режет адрес при живом интернете. Лечатся они по-разному, а
+ * человек видел одно и то же и шёл перезагружать роутер.
+ *
+ * Поэтому в текст попадает то, что видно без инструментов разработчика: есть ли
+ * связь вообще (navigator.onLine), на какой адрес шёл запрос и что проверить.
+ * Начало строки не меняется — по нему работают повтор и распознавание обрыва.
+ */
+export function netError(): string {
+  const online = typeof navigator === 'undefined' ? true : navigator.onLine !== false
+  const host = typeof location === 'undefined' ? '' : String(location.host || '')
+  if (!online) return 'сеть недоступна — устройство без интернета, проверьте связь'
+  return 'сеть недоступна — интернет есть, но адрес' + (host ? ' ' + host : '') + ' не открывается'
+}
+
 export async function sendChat(
   text: string,
   history: ChatTurn[] = [],
@@ -679,7 +697,7 @@ export async function sendChat(
     return {
       ok: false,
       reply: '',
-      error: stopped ? 'остановлено' : aborted ? 'время вышло' : 'сеть недоступна',
+      error: stopped ? 'остановлено' : aborted ? 'время вышло' : netError(),
       stopped: stopped || undefined,
     }
   } finally {
