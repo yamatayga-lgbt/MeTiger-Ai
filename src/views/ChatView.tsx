@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, ChevronDown, Copy, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
+import { ArrowUp, Check, Copy, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
@@ -22,8 +22,9 @@ import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
    виден как есть (pre-wrap), так что пустого места не бывает. */
 const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
-import { ATTACH_ACCEPT, ATTACH_MAX, TOOL_RU, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, pluralRu, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, pluralRu, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
+import { AgentTrace } from '../components/AgentTrace'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 import { enterKeySends } from '../lib/platform'
 
@@ -151,191 +152,9 @@ const BARS = 14
    короче — не рвёт диктовку. */
 const VOICE_LOUD = 0.18
 const VOICE_AUTO_MS = 7000
-function BrainGlyph({ className = 'reason-brain-icon' }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
-      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
-      <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
-      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
-      <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
-      <path d="M19.938 10.5a4 4 0 0 1 .585.396" />
-      <path d="M6 18a4 4 0 0 1-1.967-.516" />
-      <path d="M19.967 17.484A4 4 0 0 1 18 18" />
-    </svg>
-  )
-}
 
-function TerminalGlyph() {
-  return (
-    <svg
-      className="tool-term-icon"
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="4" width="18" height="16" rx="3" />
-      <path d="m7 9 3 3-3 3" />
-      <path d="M13 15h4" />
-    </svg>
-  )
-}
 
-/** Форматирует текст мыслей: инлайн-код в `обратных кавычках` и стрелки -> → */
-function renderReasonTokens(raw: string) {
-  const normalized = raw.replace(/\s->\s/g, ' → ')
-  const parts = normalized.split(/(`[^`\n]+`)/g)
-  return parts.map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-      return (
-        <code key={i} className="reason-inline-code">
-          {part.slice(1, -1)}
-        </code>
-      )
-    }
-    return part
-  })
-}
-
-function ReasoningViewport({ text, live = false }: { text: string; live?: boolean }) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!live) return
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [text, live])
-
-  return (
-    <div className="msg-reason-thread">
-      <div
-        ref={scrollRef}
-        className={`msg-reason-text${live ? ' is-live-scroll' : ''}`}
-      >
-        {renderReasonTokens(text)}
-      </div>
-    </div>
-  )
-}
-
-function CollapsedThought({ reasoning, sec }: { reasoning: string; sec?: number }) {
-  const duration = Math.max(1, sec || Math.max(1, Math.round(reasoning.length / 180)))
-  /* Подпись по-русски: интерфейс наш, и «Thought for 4 seconds» в нём было
-     заимствованием у референса, а не решением. */
-  const label = `Думал ${duration} с`
-  return (
-    <details className="msg-reason">
-      <summary title="думал вслух" aria-label={`думал вслух · ${label}`}>
-        <BrainGlyph />
-        <span className="reason-summary-label">{label}</span>
-        <span className="sr-only">думал вслух</span>
-      </summary>
-      <ReasoningViewport text={reasoning} />
-    </details>
-  )
-}
-
-function ToolUsedBadge({ tools, ms }: { tools: string[]; ms?: number }) {
-  if (!tools.length) return null
-  const toolMs = ms ? Math.max(80, Math.min(950, Math.round(ms * 0.18))) : 147
-  return (
-    <details className="msg-tool-used">
-      <summary>
-        <TerminalGlyph />
-        <span className="tool-used-label">использовал {tools.map((t) => TOOL_RU[t] || t).join(', ')}</span>
-        <span className="tool-used-check" aria-hidden="true">✓</span>
-        <span className="tool-used-ms">{toolMs} мс</span>
-        <ChevronDown size={13} className="tool-used-chev" />
-      </summary>
-      <div className="msg-tool-details">
-        Инструменты агента: {tools.join(' · ')}
-      </div>
-    </details>
-  )
-}
-
-/** Открытый глаз — значок «прочитано», как у шагов чтения файлов в агентских интерфейсах. */
-function EyeGlyph({ className = 'explored-icon' }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M1.4 12S5.2 5 12 5s10.6 7 10.6 7-3.8 7-10.6 7S1.4 12 1.4 12Z" />
-      <circle cx="12" cy="12" r="3.1" />
-    </svg>
-  )
-}
-
-/**
- * «Explored N reads» — свёрнутый по умолчанию список файлов, которые агент
- * прочитал из вложений к сообщению (имя + формат/объём, или причина отказа).
- * Живёт НАД ответом, рядом с «Thought for N seconds» и «used <tool>»: это тоже
- * шаг подготовки ответа, а не примечание под ним.
- */
-function ExploredReadsBlock({
-  reads,
-  notes,
-}: {
-  reads: { name: string; ok: boolean; line: string }[]
-  notes?: string[]
-}) {
-  if (!reads.length) return null
-  const n = reads.length
-  return (
-    <details className="msg-explored">
-      <summary className="explored-head">
-        <ChevronDown size={14} className="explored-chev" />
-        <EyeGlyph />
-        <span className="explored-title">
-          Прочитал {pluralRu(n, 'файл', 'файла', 'файлов')}
-        </span>
-      </summary>
-      <div className="explored-steps">
-        {reads.map((r, idx) => (
-          <div key={idx} className={`explored-step${r.ok ? '' : ' is-failed'}`}>
-            <EyeGlyph className="explored-step-icon" />
-            <span className="explored-step-label">
-              {r.ok ? 'Прочитал ' : 'Не прочитал '}
-              <span className="explored-step-name" title={r.name}>
-                {r.name}
-              </span>
-              {r.line ? <span className="explored-step-meta"> · {r.line}</span> : null}
-            </span>
-          </div>
-        ))}
-        {notes && notes.length ? <div className="explored-notes">{notes.join(' · ')}</div> : null}
-      </div>
-    </details>
-  )
-}
-
-/** Карандаш поверх листа — значок «написал файл», парный к EyeGlyph «прочитал». */
+/** Карандаш поверх листа — значок «создал файл», парный к «прочитал» в ленте шагов. */
 function WriteFileGlyph() {
   return (
     <svg
@@ -357,9 +176,10 @@ function WriteFileGlyph() {
 }
 
 /**
- * «Write <файл> · N lines» — строка над ответом на каждый файл, который агент
- * оформил через filegen (docx/xlsx/csv/txt/md/html). Живёт в том же ряду шагов
- * подготовки ответа, что ExploredReadsBlock, ToolUsedBadge и WebSearchBlock.
+ * «Создал <файл> · N строк» — строка над ответом на каждый файл, который агент
+ * оформил через filegen (docx/xlsx/csv/txt/md/html). Это результат работы, а не
+ * шаг подготовки, поэтому лентой шагов (0.229) он не прячется — файл должен
+ * быть на виду.
  */
 function WriteFilesBlock({ files }: { files: { name: string; lines?: number }[] }) {
   if (!files.length) return null
@@ -382,166 +202,6 @@ function WriteFilesBlock({ files }: { files: { name: string; lines?: number }[] 
   )
 }
 
-function SearchMagnifierGlyph({ className = 'web-search-icon' }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="7.5" />
-      <path d="m20 20-3.8-3.8" />
-    </svg>
-  )
-}
-
-function GlobeWireframeGlyph() {
-  return (
-    <svg
-      className="web-step-icon"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <ellipse cx="12" cy="12" rx="4" ry="9" />
-      <path d="M3.6 9h16.8" />
-      <path d="M3.6 15h16.8" />
-    </svg>
-  )
-}
-
-function FetchedPageGlyph() {
-  return (
-    <svg
-      className="web-step-icon"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M11 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5" />
-      <path d="M3 9h18" />
-      <circle cx="6.5" cy="6.5" r="0.85" fill="currentColor" stroke="none" />
-      <circle cx="9.5" cy="6.5" r="0.85" fill="currentColor" stroke="none" />
-      <circle cx="17.2" cy="17.2" r="2.8" />
-      <path d="m19.4 19.4 2.1 2.1" />
-    </svg>
-  )
-}
-
-/**
- * «Drawing the image · channel 2 of 3» (0.177) — честный прогресс рисования.
- *
- * Картинка рисуется десятками секунд, и раньше человек всё это время видел только
- * готовый текст ответа и мог решить, что картинки не будет. Теперь видно: заказ
- * принят, какой канал сейчас работает и что мы не застряли, а перебираем дальше.
- * Провайдеров по именам не показываем — это служебное (правило «в пузыре нет
- * модели и провайдера»), видно только «канал N из M». Блок живёт лишь во время
- * запроса: в готовом ответе место картинке, а не каналу.
- */
-function ImageProgressBlock({ steps, live = false }: { steps: ImageStep[]; live?: boolean }) {
-  if (!steps.length) return null
-  const total = steps.reduce((m, x) => Math.max(m, x.total || 0), 0) || 1
-  let name = ''
-  for (let i = steps.length - 1; i >= 0; i--) if (steps[i].name) { name = steps[i].name || ''; break }
-  /* «Editing» — только по заказу на правку (шаг start). У шагов каналов поле
-     `edits` означает «умеет править», и путать их нельзя: обычный рисунок
-     показывался бы правкой. */
-  const edit = steps.some((x) => x.state === 'start' && x.edit)
-  /* Канал показываем один раз, по последнему слову о нём: «канал 1 — рисовал» и
-     следом «канал 1 — не ответил» читались бы как два разных канала. */
-  const byIndex = new Map<string, ImageStep>()
-  for (const x of steps) {
-    if (x.state === 'start') continue
-    const key = String(x.index || byIndex.size + 1)
-    const prev = byIndex.get(key)
-    byIndex.set(key, prev ? { ...prev, ...x } : x)
-  }
-  const rows = [...byIndex.values()].sort((a, b) => (a.index || 0) - (b.index || 0))
-  const failed = rows.filter((x) => x.state === 'failed')
-  let trying: ImageStep | null = null
-  for (let i = rows.length - 1; i >= 0; i--) if (rows[i].state === 'trying') { trying = rows[i]; break }
-  const title = trying
-    ? (edit ? 'Editing the image' : 'Drawing the image')
-    : failed.length
-      ? 'Image channel failed — trying the next one'
-      : 'Drawing the image'
-  return (
-    <details className="msg-img-prog" open>
-      <summary className="img-prog-head">
-        <BrushGlyph className={live ? 'img-prog-icon is-pulsing' : 'img-prog-icon'} />
-        <span className={live ? 'img-prog-title is-shimmer' : 'img-prog-title'}>
-          {title}
-          {name ? ` · ${name}` : ''}
-        </span>
-      </summary>
-      <div className="img-prog-steps">
-        {rows
-          .map((x, idx) => (
-            <div key={`i-${idx}`} className={x.state === 'failed' ? 'img-prog-row is-failed' : 'img-prog-row'}>
-              {x.state === 'failed' ? (
-                <>
-                  <span className="img-prog-mark">✕</span>
-                  <span className="img-prog-label">
-                    Channel {x.index || idx + 1} of {x.total || total} didn&apos;t answer — trying the next
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="img-prog-mark is-working">•</span>
-                  <span className="img-prog-label">
-                    Channel {x.index || idx + 1} of {x.total || total} is drawing
-                  </span>
-                </>
-              )}
-            </div>
-          ))}
-      </div>
-    </details>
-  )
-}
-
-/** Кисточка: значок рисования (та же линия, что у остальных инструментов). */
-function BrushGlyph({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M9.5 14.5 4 20" />
-      <path d="M13 3.5 20.5 11l-6.6 6.6a3 3 0 0 1-4.2 0l-3.3-3.3a3 3 0 0 1 0-4.2Z" />
-      <path d="M7.6 11.4 12.6 16.4" />
-    </svg>
-  )
-}
-
 /**
  * Служебные блоки (```img```, ```file```) во время письма человеку не показываем.
  *
@@ -559,66 +219,6 @@ function hideServiceBlocks(text: string): string {
     .trim()
 }
 
-function WebSearchBlock({ steps, live = false }: { steps: WebStep[]; live?: boolean }) {
-  if (!steps.length) return null
-  return (
-    <details className="msg-web-search" open>
-      <summary className="web-search-head">
-        <ChevronDown size={14} className="web-search-chev" />
-        <SearchMagnifierGlyph className={live ? 'web-search-icon is-pulsing' : 'web-search-icon'} />
-        <span className={live ? 'web-search-title is-shimmer' : 'web-search-title'}>
-          Searching the web
-        </span>
-      </summary>
-      <div className="web-search-steps">
-        {steps.map((st, idx) =>
-          st.kind === 'search' ? (
-            <details key={`s-${idx}`} className="web-step web-step-search">
-              <summary className="web-step-row">
-                <GlobeWireframeGlyph />
-                <span className="web-step-label">
-                  Searched for &quot;{st.query || ''}&quot;
-                </span>
-                <ChevronDown size={13} className="web-step-chev" />
-              </summary>
-              {Array.isArray(st.results) && st.results.length ? (
-                <div className="web-step-results">
-                  {st.results.map((r, ri) => (
-                    <a
-                      key={ri}
-                      className="web-step-res-link"
-                      href={r.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {r.title || r.url}
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-            </details>
-          ) : (
-            <div key={`f-${idx}`} className="web-step web-step-fetch">
-              <FetchedPageGlyph />
-              <span className="web-step-label">
-                Fetched{' '}
-                <a
-                  href={st.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="web-fetched-url"
-                  title={st.title || st.url}
-                >
-                  {st.url}
-                </a>
-              </span>
-            </div>
-          ),
-        )}
-      </div>
-    </details>
-  )
-}
 
 interface ChatViewProps {
   user: Person
@@ -740,6 +340,10 @@ export function ChatView({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const threadScrollRef = useRef<HTMLDivElement>(null)
   const empty = messages.length === 0
+  /* 0.229: пока идёт запрос — над пишущимся ответом живёт одна лента шагов.
+     Раньше это были три независимых блока (картинка, поиск, мысли), и каждый
+     показывался по своему условию; теперь условие одно. */
+  const traceLive = typing
 
   /* Автоскролл вниз при новых сообщениях (0.199).
      Было: «был ли я внизу» считалось ПОСЛЕ того, как сообщение уже раздуло ленту,
@@ -1193,17 +797,18 @@ export function ChatView({
               <div key={m.id} className="msg msg-ai">
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="ai-name">MeTiger Ai</div>
-                  {/* Мысли модели и вызванные инструменты идут СВЕРХУ ответа и автоматически
-                      сворачиваются в «Thought for N seconds», как только ответ готов. */}
-                  {m.reasoning ? (
-                    <CollapsedThought reasoning={m.reasoning} sec={m.thinkingSec} />
-                  ) : null}
-                  {Array.isArray(m.reads) && m.reads.length ? (
-                    <ExploredReadsBlock reads={m.reads} notes={m.readNotes} />
-                  ) : null}
-                  {Array.isArray(m.tools) && m.tools.length ? (
-                    <ToolUsedBadge tools={m.tools} ms={m.ms} />
-                  ) : null}
+                  {/* 0.229: весь ход работы — одной лентой: мысли, прочитанные
+                      файлы, поиск, инструменты. У готового ответа главное — ответ,
+                      поэтому лента свёрнута в одну строку. */}
+                  <AgentTrace
+                    reasoning={m.reasoning || ''}
+                    thinkingSec={m.thinkingSec}
+                    webSteps={Array.isArray(m.webSteps) ? m.webSteps : []}
+                    reads={Array.isArray(m.reads) ? m.reads : []}
+                    readNotes={Array.isArray(m.readNotes) ? m.readNotes : []}
+                    tools={Array.isArray(m.tools) ? m.tools : []}
+                    ms={m.ms}
+                  />
                   {/* Оговорка инструмента — видимой строкой, а не в логах: если
                       свежий поиск лёг и ответ собран по Википедии, человек должен
                       знать это до того, как поверит фактам. */}
@@ -1211,9 +816,6 @@ export function ChatView({
                     <div className="msg-tool-note" role="note">
                       <span aria-hidden="true">⚠️</span> {m.toolNotes.join(' · ')}
                     </div>
-                  ) : null}
-                  {Array.isArray(m.webSteps) && m.webSteps.length ? (
-                    <WebSearchBlock steps={m.webSteps} />
                   ) : null}
                   {Array.isArray(m.files) && m.files.length ? <WriteFilesBlock files={m.files} /> : null}
                   <div className="bubble">
@@ -1295,42 +897,23 @@ export function ChatView({
             <div className="msg msg-ai msg-arrive">
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="ai-name">MeTiger Ai</div>
-                {Array.isArray(draftImgSteps) && draftImgSteps.length ? (
-                  <ImageProgressBlock steps={draftImgSteps} live />
-                ) : null}
-                {Array.isArray(draftWebSteps) && draftWebSteps.length ? (
-                  <WebSearchBlock steps={draftWebSteps} live={!draft} />
-                ) : null}
-                {draft && draftReasoning ? (
-                  /* Как только модель закончила думать и начала писать ответ (draft),
-                     блок мыслей в реальном времени автоматически сворачивается в
-                     «Thought for N seconds» над пишущимся ответом. */
-                  <CollapsedThought reasoning={draftReasoning} sec={draftThinkingSec} />
-                ) : draftReasoning !== null && !draft ? (
-                  /* Пока ответ ещё не начался — показываем живой поток мыслей со значком
-                     «Мозг», анимацией слова «Thinking...», вертикальной линией и
-                     полупрозрачным текстом сверху вниз. */
-                  <div className="msg-reason msg-reason-live" aria-live="polite" aria-label="Модель думает вслух">
-                    <div className="thinking-live-head">
-                      <BrainGlyph className="reason-brain-icon is-pulsing" />
-                      <span className="thinking-word">Думаю…</span>
-                    </div>
-                    {draftReasoning ? (
-                      <ReasoningViewport text={draftReasoning} live />
-                    ) : null}
-                  </div>
+                {/* 0.229: живая лента — те же шаги, что у готового ответа, только
+                    раскрытая и с таймером. Как только пошёл текст ответа, панель
+                    сворачивается сама (см. AgentTrace). */}
+                {traceLive ? (
+                  <AgentTrace
+                    live={!draft}
+                    reasoning={draftReasoning || ''}
+                    thinkingSec={draftThinkingSec}
+                    webSteps={Array.isArray(draftWebSteps) ? draftWebSteps : []}
+                    imgSteps={Array.isArray(draftImgSteps) ? draftImgSteps : []}
+                  />
                 ) : null}
                 {draft ? (
                   /* Текст ответа пишется сверху вниз с плавным проявлением и белой точкой внизу */
                   <div className="msg-text msg-draft" aria-live="polite" aria-label="Ответ пишется">
                     {hideServiceBlocks(draft)}
                     <span className="draft-caret" aria-hidden="true" />
-                  </div>
-                ) : draftReasoning === null ? (
-                  <div className="typing" aria-label="Печатает">
-                    <span />
-                    <span />
-                    <span />
                   </div>
                 ) : null}
                 <div className="stream-dot-row" aria-hidden="true">

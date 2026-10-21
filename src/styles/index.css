@@ -294,19 +294,6 @@ a {
   }
 }
 
-@keyframes dotPulse {
-  0%,
-  60%,
-  100% {
-    opacity: 0.25;
-    transform: translateY(0);
-  }
-  30% {
-    opacity: 1;
-    transform: translateY(-3px);
-  }
-}
-
 @keyframes shimmer {
   to {
     background-position: 200% center;
@@ -1681,158 +1668,437 @@ kbd {
   border: 0;
 }
 
-.msg-reason {
-  margin: 4px 0 8px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 13.5px;
-  line-height: 1.55;
+/* ---------- Ход работы агента (0.229) ----------
+
+   Одна лента вместо пяти блоков: «Думал N с · 3 шага» и под ней след —
+   что агент искал, что прочитал, что нарисовал. Живая панель раскрыта и
+   дописывает шаги на глазах; как только пошёл текст ответа — сворачивается
+   сама в одну строку. Развернул человек — остаётся развёрнутой.
+
+   Высота раскрытия анимируется через grid-template-rows 0fr → 1fr: это
+   единственный способ плавно развернуть блок без замера высоты в JS. */
+
+.trace {
+  margin: 6px 0 10px;
+  max-width: 100%;
 }
 
-.msg-reason summary {
-  display: inline-flex;
+.trace-head {
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 3px 0;
-  cursor: pointer;
-  color: color-mix(in srgb, var(--text) 68%, transparent);
+  gap: 8px;
+  width: 100%;
+  padding: 6px 4px 7px 2px;
+  border-radius: var(--r-md);
+  color: color-mix(in srgb, var(--text) 74%, transparent);
   font-size: 14px;
-  font-weight: 450;
-  list-style: none;
-  user-select: none;
-  transition: color 0.15s ease;
+  text-align: left;
+  transition: color var(--t-fast), background-color var(--t-fast);
 }
 
-.msg-reason summary:hover {
+.trace-head:hover {
   color: var(--text);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
 }
 
-.msg-reason summary::-webkit-details-marker {
-  display: none;
+/* Орб слева: в работе — вращающаяся дуга, после — спокойный значок мозга. */
+.trace-orb {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--text) 70%, transparent);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
-.reason-brain-icon {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  color: color-mix(in srgb, var(--text) 72%, transparent);
+.trace-orb.is-live {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 32%, transparent);
+  animation: traceOrbPulse 2.1s ease-out infinite;
 }
 
-.reason-brain-icon.is-pulsing {
-  animation: brainBreath 2s ease-in-out infinite;
+@keyframes traceOrbPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 30%, transparent); }
+  70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--brand) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 0%, transparent); }
 }
 
-@keyframes brainBreath {
-  0%, 100% {
-    opacity: 0.72;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
+.trace-spin {
+  animation: traceSpin 1.1s linear infinite;
 }
 
-.thinking-live-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  padding: 3px 0;
+@keyframes traceSpin {
+  to { transform: rotate(360deg); }
 }
 
-/* Слово «Thinking...» с бегущим бликом света слева направо */
-.thinking-word {
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+.trace-head-label {
+  font-weight: 520;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+}
+
+/* Пока идёт работа — по слову бежит блик, как по «Думаю…» раньше. */
+.trace-head-label.is-shimmer {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--text) 38%, transparent) 0%,
-    color-mix(in srgb, var(--text) 96%, transparent) 48%,
-    color-mix(in srgb, var(--text) 38%, transparent) 100%
+    color-mix(in srgb, var(--text) 46%, transparent) 0%,
+    var(--text) 46%,
+    color-mix(in srgb, var(--text) 46%, transparent) 100%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: thinkingShimmer 1.75s linear infinite;
+  animation: traceShimmer 1.9s linear infinite;
 }
 
-@keyframes thinkingShimmer {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -120% 0;
-  }
+@keyframes traceShimmer {
+  0% { background-position: 110% 0; }
+  100% { background-position: -110% 0; }
 }
 
-/* Вертикальная линия под иконкой мозга слева и полупрозрачный поток мыслей справа */
-.msg-reason-thread {
-  margin-top: 6px;
-  margin-left: 7px;
-  padding-left: 16px;
-  border-left: 1.5px solid color-mix(in srgb, var(--text) 14%, transparent);
+.trace-head-meta {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.msg-reason-text {
-  font-family: var(--font-mono);
+.trace-chev {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-3);
+  transition: transform var(--t-spring);
+}
+
+.trace.is-open .trace-chev {
+  transform: rotate(180deg);
+}
+
+/* Тонкая линия «идёт работа» по низу заголовка: бегущий свет, а не спиннер. */
+.trace-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.5px;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.trace-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--brand) 85%, transparent) 50%,
+    transparent 100%
+  );
+  animation: traceBarRun 1.6s ease-in-out infinite;
+}
+
+@keyframes traceBarRun {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.trace-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-spring);
+}
+
+.trace.is-open .trace-body {
+  grid-template-rows: 1fr;
+}
+
+.trace-body-inner {
+  overflow: hidden;
+}
+
+/* След шагов: вертикальная линия слева — та же, что у мыслей, чтобы это
+   читалось как одна работа, а не как список разного. */
+.trace-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 4px 0 2px 10px;
+  padding: 2px 0 2px 14px;
+  border-left: 1.5px solid color-mix(in srgb, var(--text) 13%, transparent);
+}
+
+.trace-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
   font-size: 13px;
-  line-height: 1.68;
-  letter-spacing: 0.01em;
-  color: color-mix(in srgb, var(--text) 56%, transparent);
+  line-height: 1.35;
+  /* Каждый новый шаг входит мягко — иначе на экране дёргается список. */
+  animation: traceRowIn var(--t-med) both;
+}
+
+@keyframes traceRowIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.trace-step.is-expandable {
+  display: block;
+  padding: 0;
+}
+
+.trace-step-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+  list-style: none;
+  cursor: pointer;
+}
+
+/* Метка состояния и значок шага стоят парой и не разъезжаются при переносе. */
+.trace-step-lead {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  padding-top: 1px;
+}
+
+/* Название и примечание — своей колонкой: примечание всегда под названием,
+   на любом экране. */
+.trace-step-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.trace-step-summary::-webkit-details-marker {
+  display: none;
+}
+
+.trace-step.is-expandable[open] .trace-step-chev {
+  transform: rotate(180deg);
+}
+
+.trace-step-chev {
+  flex: none;
+  /* К низу иконки, а не к верху: у двухстрочного названия стрелка на месте. */
+  margin-top: 3px;
+  color: var(--text-3);
+  transition: transform var(--t-fast);
+}
+
+/* Метка состояния: галочка / дуга / тревога. Зелёная только у сделанного. */
+.trace-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.trace-mark.is-done {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.trace-mark.is-running {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+}
+
+.trace-mark.is-failed {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.trace-step-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-3);
+}
+
+.trace-step-label {
+  min-width: 0;
+  /* Две строки, а не многоточие на первом же слове: на 320 px «Искал в
+     интернете «…»» обрубался до «Искал в интернете «Rea…»» и запрос не читался. */
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.trace-step-note {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-step-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 6px 38px;
+}
+
+.trace-step-item,
+.trace-step-link {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-step-link {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--blue) 34%, transparent);
+  text-underline-offset: 2px;
+}
+
+.trace-step-link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Сами мысли: моноширинно, тише ответа, с затуханием по краям — верх и низ
+   уходят в прозрачность, чтобы текст «плыл», а не обрывался линейкой. */
+.trace-think {
+  position: relative;
+  max-height: 216px;
+  margin: 2px 0 2px 10px;
+  padding: 8px 0 10px 14px;
+  border-left: 1.5px dashed color-mix(in srgb, var(--text) 12%, transparent);
+  overflow-y: auto;
+  color: color-mix(in srgb, var(--text) 58%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.66;
+  letter-spacing: 0.005em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 230px;
-  overflow-y: auto;
-  padding: 6px 0 10px;
   scrollbar-width: none;
-  /* Мягкая прозрачность сверху и снизу, чтобы поток мыслей плавно проявлялся и уходил */
   -webkit-mask-image: linear-gradient(
     180deg,
     transparent 0%,
-    rgba(0, 0, 0, 0.84) 11%,
-    #000 24%,
-    #000 76%,
-    rgba(0, 0, 0, 0.8) 89%,
+    rgba(0, 0, 0, 0.55) 7%,
+    #000 18%,
+    #000 82%,
+    rgba(0, 0, 0, 0.55) 93%,
     transparent 100%
   );
   mask-image: linear-gradient(
     180deg,
     transparent 0%,
-    rgba(0, 0, 0, 0.84) 11%,
-    #000 24%,
-    #000 76%,
-    rgba(0, 0, 0, 0.8) 89%,
+    rgba(0, 0, 0, 0.55) 7%,
+    #000 18%,
+    #000 82%,
+    rgba(0, 0, 0, 0.55) 93%,
     transparent 100%
   );
 }
 
-.msg-reason-text::-webkit-scrollbar {
+.trace-think::-webkit-scrollbar {
   display: none;
 }
 
-.reason-inline-code {
+/* Пока текст приходит кусками — последний кусок входит мягко. */
+.trace-think.is-live .trace-think-text {
+  animation: traceTextIn 260ms ease both;
+}
+
+@keyframes traceTextIn {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+/* Точка на хвосте мысли: видно, что она ещё пишется. */
+.trace-caret {
   display: inline-block;
-  padding: 1px 7px;
-  margin: 0 2px;
+  width: 5px;
+  height: 5px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand) 80%, transparent);
+  vertical-align: 1px;
+  animation: traceCaret 1.1s ease-in-out infinite;
+}
+
+@keyframes traceCaret {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.trace-code {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 1px;
   border-radius: 5px;
   background: color-mix(in srgb, var(--text) 8%, transparent);
-  color: color-mix(in srgb, var(--text) 72%, transparent);
-  font-family: var(--font-mono);
-  font-size: 12.5px;
+  color: color-mix(in srgb, var(--text) 76%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.trace-notes {
+  margin: 2px 0 6px 38px;
+  color: var(--text-3);
+  font-size: 12px;
   line-height: 1.45;
 }
 
-.msg-reason-live {
-  font-style: normal;
+/* Ответ, который пишется: низ строки мягко гаснет — текст «доезжает», а не
+   щёлкает обрезанным краем. Верх не трогаем: там начало ответа, его читают. */
+.msg-draft {
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 calc(100% - 1.6em), rgba(0, 0, 0, 0.55) 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 calc(100% - 1.6em), rgba(0, 0, 0, 0.55) 100%);
 }
 
-/* ── Строка использованного инструмента (used web-search ✓ 308ms ⌄) ── */
-.msg-tool-used {
-  margin: 2px 0 8px;
+/* Уважение к «меньше движения»: ни блика, ни бегущей линии, ни вращения. */
+@media (prefers-reduced-motion: reduce) {
+  .trace-orb.is-live,
+  .trace-head-label.is-shimmer,
+  .trace-bar::after,
+  .trace-spin,
+  .trace-caret,
+  .trace-step,
+  .trace-think.is-live .trace-think-text {
+    animation: none;
+  }
+  .trace-body,
+  .trace-chev {
+    transition: none;
+  }
 }
 
 /* Оговорка инструмента (0.199): «свежий поиск недоступен — ответ по Википедии».
@@ -1850,198 +2116,9 @@ kbd {
   color: color-mix(in srgb, var(--text) 62%, transparent);
 }
 
-.msg-tool-used summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  font-size: 13.5px;
-  color: color-mix(in srgb, var(--text) 58%, transparent);
-}
-
-.msg-tool-used summary::-webkit-details-marker {
-  display: none;
-}
-
-.tool-term-icon {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 62%, transparent);
-}
-
-.tool-used-check {
-  color: #22c55e;
-  font-weight: 700;
-  font-size: 13px;
-}
-
-.tool-used-ms {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text) 46%, transparent);
-}
-
-.tool-used-chev {
-  color: color-mix(in srgb, var(--text) 44%, transparent);
-  transition: transform 0.18s ease;
-}
-
-.msg-tool-used[open] .tool-used-chev {
-  transform: rotate(180deg);
-}
-
-.msg-tool-details {
-  margin-left: 7px;
-  padding: 4px 0 4px 16px;
-  border-left: 1.5px solid color-mix(in srgb, var(--text) 12%, transparent);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text) 50%, transparent);
-}
-
-/* ── Блок «Searching the web» (Лупа + Searched for + Fetched) ── */
-.msg-web-search {
-  margin: 4px 0 10px;
-}
-
-.web-search-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  font-size: 14px;
-  color: color-mix(in srgb, var(--text) 62%, transparent);
-}
-
-.web-search-head::-webkit-details-marker {
-  display: none;
-}
-
-.web-search-chev {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 48%, transparent);
-  transition: transform 0.18s ease;
-}
-
-.msg-web-search:not([open]) .web-search-chev {
-  transform: rotate(-90deg);
-}
-
-.web-search-icon {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 64%, transparent);
-}
-
-.web-search-icon.is-pulsing {
-  animation: brainBreath 1.8s ease-in-out infinite;
-}
-
-.web-search-title.is-shimmer {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--text) 42%, transparent) 0%,
-    color-mix(in srgb, var(--text) 95%, transparent) 48%,
-    color-mix(in srgb, var(--text) 42%, transparent) 100%
-  );
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: thinkingShimmer 1.75s linear infinite;
-}
-
-.web-search-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  margin-top: 6px;
-  padding-left: 22px;
-}
-
-/* «Drawing the image · channel 2 of 3» (0.177): честный прогресс рисования.
-   Строки появляются по мере перебора каналов, поэтому отказ одного канала не
-   выглядит как «зависло» — рядом с ним сразу встаёт попытка следующего. */
-.msg-img-prog {
-  margin: 2px 0 8px;
-}
-
-.img-prog-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  font-size: 14px;
-  color: color-mix(in srgb, var(--text) 62%, transparent);
-}
-
-.img-prog-head::-webkit-details-marker {
-  display: none;
-}
-
-.img-prog-icon {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 64%, transparent);
-}
-
-.img-prog-icon.is-pulsing {
-  animation: brainBreath 1.8s ease-in-out infinite;
-}
-
-.img-prog-title.is-shimmer {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--text) 42%, transparent) 0%,
-    color-mix(in srgb, var(--text) 95%, transparent) 48%,
-    color-mix(in srgb, var(--text) 42%, transparent) 100%
-  );
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: thinkingShimmer 1.75s linear infinite;
-}
-
-.img-prog-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-  padding-left: 24px;
-}
-
-.img-prog-row {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: color-mix(in srgb, var(--text) 58%, transparent);
-}
-
-.img-prog-row.is-failed {
-  color: color-mix(in srgb, var(--text) 44%, transparent);
-}
-
-.img-prog-mark {
-  flex-shrink: 0;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.img-prog-mark.is-working {
-  animation: brainBreath 1.4s ease-in-out infinite;
-}
-
-/* «Write <файл> · N lines» — строка на каждый файл, который агент оформил
-   filegen'ом, над ответом рядом с used <tool> / Searching the web / Explored reads. */
+/* «Создал <файл> · N строк» — строка на каждый файл, который агент оформил
+   filegen'ом. Это результат, а не шаг подготовки: потому он не внутри ленты
+   шагов (0.229), а отдельной строкой над ответом. */
 .msg-write-files {
   display: flex;
   flex-direction: column;
@@ -2082,169 +2159,6 @@ kbd {
   font-family: var(--font-mono);
   font-size: 12px;
   color: color-mix(in srgb, var(--text) 46%, transparent);
-}
-
-/* «Explored N reads» — список прочитанных вложений над ответом, свёрнут по
-   умолчанию (как used <tool>): это шаг подготовки, а не часть самого ответа. */
-.msg-explored {
-  margin: 2px 0 8px;
-}
-
-.explored-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.explored-head::-webkit-details-marker {
-  display: none;
-}
-
-.explored-chev {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 48%, transparent);
-  transition: transform 0.18s ease;
-}
-
-.msg-explored:not([open]) .explored-chev {
-  transform: rotate(-90deg);
-}
-
-.explored-icon {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 64%, transparent);
-}
-
-.explored-title {
-  font-size: 13.5px;
-  color: color-mix(in srgb, var(--text) 78%, transparent);
-}
-
-.explored-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-  padding-left: 22px;
-}
-
-.explored-step {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  font-size: 13.5px;
-  line-height: 1.4;
-  color: color-mix(in srgb, var(--text) 80%, transparent);
-}
-
-.explored-step.is-failed {
-  color: color-mix(in srgb, var(--text) 52%, transparent);
-}
-
-.explored-step-icon {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 55%, transparent);
-}
-
-.explored-step-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.explored-step-name {
-  font-family: var(--font-mono);
-}
-
-.explored-step-meta {
-  color: color-mix(in srgb, var(--text) 46%, transparent);
-}
-
-.explored-notes {
-  margin-top: 2px;
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text) 46%, transparent);
-}
-
-.web-step {
-  min-width: 0;
-}
-
-.web-step-row,
-.web-step-fetch {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  font-size: 13.5px;
-  line-height: 1.4;
-  color: color-mix(in srgb, var(--text) 60%, transparent);
-}
-
-.web-step-row {
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.web-step-row::-webkit-details-marker {
-  display: none;
-}
-
-.web-step-icon {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 62%, transparent);
-}
-
-.web-step-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.web-step-chev {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text) 45%, transparent);
-  transition: transform 0.18s ease;
-}
-
-.web-step-search[open] .web-step-chev {
-  transform: rotate(180deg);
-}
-
-.web-step-results {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 5px 0 3px 25px;
-  padding-left: 10px;
-  border-left: 1.5px solid color-mix(in srgb, var(--text) 12%, transparent);
-}
-
-.web-step-res-link {
-  font-size: 12.5px;
-  color: #3b82f6;
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.web-step-res-link:hover,
-.web-fetched-url:hover {
-  text-decoration: underline;
-}
-
-.web-fetched-url {
-  color: #3b82f6;
-  text-decoration: none;
 }
 
 .reason-toggle,
@@ -2590,32 +2504,9 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .draft-caret,
-  .thinking-word,
-  .stream-dot,
-  .reason-brain-icon.is-pulsing {
+  .stream-dot {
     animation: none;
   }
-}
-
-.typing {
-  display: inline-flex;
-  gap: 4px;
-  padding: 6px 2px;
-}
-
-.typing span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-3);
-  animation: dotPulse 1.1s infinite;
-}
-
-.typing span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-.typing span:nth-child(3) {
-  animation-delay: 0.3s;
 }
 
 /* composer — обычный (не sticky) блок сразу после .thread-scroll: см.

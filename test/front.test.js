@@ -711,126 +711,21 @@ console.log('L2 — песочница: Python через Pyodide (второй 
     const api = readFileSync('src/lib/api.ts', 'utf8');
     const chat = readFileSync('src/views/ChatView.tsx', 'utf8');
     const app = readFileSync('src/App.tsx', 'utf8');
-    ok('M12: черновик дошёл до экрана: App просит его и отдаёт в ChatView, а ChatView показывает текст вместо трёх точек',
-      /onDraft: \(t\) => [\s\S]{0,200}setDraft\(t\)/.test(app) && /draft=\{draft\}/.test(app)
-        && /draft \? \(/.test(chat) && /msg-draft/.test(chat));
-    ok('M13: оборванный хвост не прячется — streamError показывается человеку',
-      /streamError\?: string/.test(api) && /r\.streamError/.test(app));
-    ok('M14: движок трогает поток только у автора — совет, память и заголовки просят одним ответом',
-      !/stream: true/.test(readFileSync('engine/chat.js', 'utf8').replace(/stream: !!onDelta[^\n]*/g, '')),
-      readFileSync('engine/chat.js', 'utf8').match(/stream:[^\n]*/g));
-  }
-}
-
-/* ──────────────────────────────────────────────────────────────────────────
-   M2 · «думать вслух». Рассуждения идут тем же потоком, но другим каналом,
-   и фронт обязан держать их раздельно: иначе текст модели попадёт в ответ.
-   ────────────────────────────────────────────────────────────────────────── */
-{
-  const enc = new TextEncoder();
-  const sseRows = (rows) => new Response(new ReadableStream({
-    start(c) { for (const x of rows) c.enqueue(enc.encode(x)); c.close(); },
-  }), { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } });
-  const ev = (o) => 'data: ' + JSON.stringify(o) + '\n\n';
-  const reason = (t) => ev({ kind: 'draft', channel: 'reasoning', provider: 'groq', text: t });
-  const answer = (t) => ev({ kind: 'draft', provider: 'groq', text: t });
-  const drop = () => ev({ kind: 'drop', provider: 'groq' });
-  const fin = (payload) => ev({ kind: 'final', status: 200, payload });
-  const saved = globalThis.fetch;
-  const seen = [];
-  try {
-    globalThis.fetch = async (url, init) => {
-      seen.push(init && init.body);
-      return sseRows([
-        reason('Думаю '), reason('вслух'), answer('От'), answer('вет'),
-        fin({ ok: true, reply: 'Ответ', reasoning: 'Думаю вслух', model: 'groq/x' }),
-      ]);
-    };
-    const gotA = [], gotR = [];
-    const r = await sendChat('текст', [], { onDraft: (t) => gotA.push(t), onReasoning: (t) => gotR.push(t) });
-    ok('M15: рассуждения копятся отдельно от ответа и не пересекаются с ним',
-      gotA.join('|') === 'От|Ответ' && gotR.join('|') === 'Думаю |Думаю вслух',
-      JSON.stringify({ gotA, gotR }));
-    ok('M16: просьба о рассуждениях ушла в теле запроса, ответ собран как обычно',
-      JSON.parse(seen[0]).showReasoning === true && r.ok === true && r.reply === 'Ответ' && r.reasoning === 'Думаю вслух',
-      seen[0]);
-  } finally { globalThis.fetch = saved; seen.length = 0 }
-
-  {
-    const saved2 = globalThis.fetch;
-    try {
-      globalThis.fetch = async (url, init) => {
-        seen.push(init && init.body);
-        return sseRows([reason('не то'), answer('не то'), drop(), reason('то'), answer('ок'),
-          fin({ ok: true, reply: 'ок', reasoning: 'то', model: 'x/y' })]);
-      };
-      const gotA = [], gotR = [];
-      const r = await sendChat('текст', [], { onDraft: (t) => gotA.push(t), onReasoning: (t) => gotR.push(t) });
-      ok('M17: сброс попытки чистит ОБА канала — обрывки прошлой головы не остаются на экране',
-        gotA[1] === null && gotR[1] === null && gotR.join('|') === 'не то||то',
-        JSON.stringify({ gotA, gotR }));
-      ok('M18: ответ при этом обычный (провал головы не виден человеку как ошибка)',
-        r.ok === true && r.reply === 'ок', JSON.stringify(r).slice(0, 120));
-    } finally { globalThis.fetch = saved2 }
-  }
-
-  {
-    /* отдельный вызов: без onReasoning в теле не должно быть ни ключа, ни следа —
-       иначе прежние клиенты (бот, curl) начали бы получать то, чего не просили */
-    const saved3 = globalThis.fetch;
-    const body = [];
-    try {
-      globalThis.fetch = async (url, init) => {
-        body.push(init && init.body);
-        return new Response(JSON.stringify({ ok: true, reply: 'ок' }),
-          { status: 200, headers: { 'content-type': 'application/json' } });
-      };
-      await sendChat('текст', [], { onDraft: () => {} });
-      ok('M19: без onReasoning сервер про рассуждения не спрашивается (тело прежнее)',
-        body.length === 1 && !/showReasoning/.test(body[0]), body[0]);
-    } finally { globalThis.fetch = saved3 }
-  }
-
-  {
-    /* Кнопка «Остановить» снаружи дёргает opts.signal — а не внутренний 75-секундный
-       таймер sendChat. Оба падают одним и тем же AbortError, но для человека это
-       разные вещи: «я сам остановил» и «сервис не ответил вовремя». */
-    const saved5 = globalThis.fetch;
-    try {
-      globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
-        init.signal.addEventListener('abort', () => {
-          const e = new Error('aborted'); e.name = 'AbortError'; reject(e);
-        });
-      });
-      const userAc = new AbortController();
-      const pending = sendChat('привет', [], { signal: userAc.signal });
-      userAc.abort();
-      const r = await pending;
-      ok('M19b: человек сам остановил запрос — r.stopped === true, ошибка не похожа на таймаут/сеть',
-        r.ok === false && r.stopped === true && r.error === 'остановлено', JSON.stringify(r));
-    } finally { globalThis.fetch = saved5 }
-
-    const saved6 = globalThis.fetch;
-    try {
-      globalThis.fetch = async () => { const e = new Error('x'); e.name = 'AbortError'; throw e; };
-      const r = await sendChat('привет', [], {});
-      ok('M19c: тот же AbortError, но БЕЗ внешнего сигнала (свой таймаут) — это «время вышло», а не «остановлено»',
-        r.ok === false && !r.stopped && r.error === 'время вышло', JSON.stringify(r));
-    } finally { globalThis.fetch = saved6 }
-  }
-
-  {
-    const api = readFileSync('src/lib/api.ts', 'utf8');
-    const chat = readFileSync('src/views/ChatView.tsx', 'utf8');
-    const app = readFileSync('src/App.tsx', 'utf8');
+    const trace = readFileSync('src/components/AgentTrace.tsx', 'utf8');
+    const cssSrc = readFileSync('src/styles/index.css', 'utf8');
     ok('M20: живой канал рассуждений доехал до экрана и выглядит не как ответ',
-      chat.includes('msg-reason-live') && chat.includes('aria-label="Модель думает вслух"')
-        && api.includes("ev.channel === 'reasoning'"));
+      chat.includes('AgentTrace') && chat.includes("reasoning={draftReasoning || ''}")
+        && api.includes("ev.channel === 'reasoning'")
+        /* Пока ответ не начался — в ленте «Думает…», а не пустое место. */
+        && trace.includes("'Думает…'"));
     ok('M21: «думает вслух» — постоянная функция, включена всегда (без тумблера и без пикера моделей — это Агент, а не выбор чужих моделей)',
       app.includes('const reasoningOn = true') && app.includes("const model = ''") && app.includes('canModelThink(model)')
         && !chat.includes('reason-toggle') && !chat.includes('model-chip') && !chat.includes('ModelPicker'));
-    ok('M22: сказанное под ответом свёрнуто, а не вывалено в пузырь (рассуждения — не текст ответа)',
-      chat.includes('<details className="msg-reason">') && chat.includes('думал вслух')
+    ok('M22: сказанное про себя свёрнуто в ленту хода работы, а не вывалено в пузырь (рассуждения — не текст ответа)',
+      /* Мысли живут в отдельном блоке ленты и рендерятся, только когда лента
+         раскрыта: свернул — текста в разметке нет вовсе. */
+      trace.includes('trace-think') && trace.includes('{hasThink && open ?')
+        && cssSrc.includes('mask-image: linear-gradient')
         && app.includes('slice(0, 4000)'));
   }
 
@@ -975,6 +870,7 @@ console.log('L2 — песочница: Python через Pyodide (второй 
       }),
     );
     const cssSrc = readFileSync('src/styles/index.css', 'utf8');
+    const trace = readFileSync('src/components/AgentTrace.tsx', 'utf8');
     /* 0.228: из проверки ушло условие про прокрутку списка моделей — правила
        прокрутки жили в стилях окна выбора, которого в приложении нет. */
     ok('M31: шапка — две боковые колонки равной ширины, название чата по центру',
@@ -1037,15 +933,18 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         onSend() {},
       }),
     );
-    ok('M32: живой блок мыслей со значком Мозг, анимацией «Думаю…», инлайн-кодом и авто-сворачиванием в «Думал 4 с» + использованный инструмент — по-русски',
-      /class="reason-brain-icon is-pulsing"/.test(htmlLiveThink)
-        && /<span class="thinking-word">Думаю…<\/span>/.test(htmlLiveThink)
-        && /<code class="reason-inline-code">rollback<\/code>/.test(htmlLiveThink)
+    /* 0.229: одна лента вместо пяти блоков. Живая — раскрыта и с «Думает…»,
+       готовая — свёрнута в строку «Думал 4 с · N шагов». */
+    ok('M32: лента хода работы — «Думает…» с инлайн-кодом во время работы и свёрнутая «Думал 4 с» с шагом инструмента после',
+      /class="trace is-live is-open"/.test(htmlLiveThink)
+        && /trace-head-label is-shimmer">Думает…</.test(htmlLiveThink)
+        && /<code class="trace-code">rollback<\/code>/.test(htmlLiveThink)
         && /class="stream-dot"/.test(htmlLiveThink)
         && /Думал 4 с/.test(htmlAutoCollapsed)
-        && /использовал веб-поиск/.test(htmlAutoCollapsed)
-        && /tool-used-ms">\d+ мс/.test(htmlAutoCollapsed)
-        && cssSrc.includes('@keyframes thinkingShimmer')
+        && /Инструмент: веб-поиск/.test(htmlAutoCollapsed)
+        && /class="trace-head-meta">1 шаг</.test(htmlAutoCollapsed)
+        && !/class="trace is-live/.test(htmlAutoCollapsed)
+        && cssSrc.includes('@keyframes traceShimmer')
         && cssSrc.includes('mask-image: linear-gradient'));
 
     const htmlWebSteps = renderToStaticMarkup(
@@ -1067,12 +966,16 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         onSend() {},
       }),
     );
-    ok('M33: блок «Searching the web» рендерит лупу, глобус «Searched for "..."» и окно браузера «Fetched https://...»',
-      /Searching the web/.test(htmlWebSteps)
-        && /Searched for &quot;site:github\.com\/yamatayga-lgbt&quot;/.test(htmlWebSteps)
-        && /Searched for &quot;&quot;metiger-ai\.pages\.dev&quot; GitHub&quot;/.test(htmlWebSteps)
-        && /Fetched <a[^>]*href="https:\/\/github\.com\/yamatayga-lgbt\/MeTiger-Ai"[^>]*class="web-fetched-url"/.test(htmlWebSteps)
-        && /class="web-search-icon"/.test(htmlWebSteps));
+    /* 0.229: шаги поиска — по-русски и в прошедшем времени, потому что работа
+       уже сделана. Английские «Searching the web / Searched for / Fetched»
+       жили здесь с 0.177 и были заимствованием, а не решением. */
+    ok('M33: шаги поиска в ленте — «Искал в интернете «…»» и «Открыл <сайт>», со ссылками на находки и без английских строк',
+      /Искал в интернете «site:github\.com\/yamatayga-lgbt»/.test(htmlWebSteps)
+        && /Искал в интернете «&quot;metiger-ai\.pages\.dev&quot; GitHub»/.test(htmlWebSteps)
+        && /Открыл github\.com/.test(htmlWebSteps)
+        && /<a href="https:\/\/github\.com\/yamatayga-lgbt\/MeTiger-Ai"[^>]*class="trace-step-link">MeTiger-Ai<\/a>/.test(htmlWebSteps)
+        && /Инструмент: калькулятор/.test(htmlWebSteps)
+        && !/Searching the web|Searched for|Fetched/.test(htmlWebSteps));
 
     const htmlExplored = renderToStaticMarkup(
       React.createElement(ChatView, {
@@ -1092,16 +995,18 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         onSend() {},
       }),
     );
-    /* 0.224: шаги подготовки ответа — по-русски. Было «Explored 3 reads»,
-       «Read <файл>», «Couldn't read <файл>» — английский счётчик и глаголы
-       посреди русской переписки. */
-    ok('M34: блок «Прочитал N файлов» сворачивается по умолчанию и построчно показывает значок глаза + «Прочитал <файл>»',
-      /Прочитал 3 файла/.test(htmlExplored)
-        && /class="msg-explored"(?!\s*open)/.test(htmlExplored)
-        && /Прочитал <span class="explored-step-name" title="models\.ts">models\.ts<\/span>/.test(htmlExplored)
-        && /Не прочитал <span class="explored-step-name" title="битый\.docx">битый\.docx<\/span>/.test(htmlExplored)
-        && /explored-step is-failed/.test(htmlExplored)
-        && /показаны первые 3 из 5 файлов/.test(htmlExplored));
+    /* 0.224: шаги подготовки ответа — по-русски. 0.229: они же — строками ленты,
+       без отдельного «Прочитал N файлов», чтобы не было двух счётчиков одного. */
+    ok('M34: чтение файлов — строками «Прочитал <файл>» / «Не прочитал <файл>» с причиной, заметка — внутри раскрытой ленты',
+      /Прочитал models\.ts/.test(htmlExplored)
+        && /ts · 4200 симв\./.test(htmlExplored)
+        && /Не прочитал битый\.docx/.test(htmlExplored)
+        && /trace-mark is-failed/.test(htmlExplored)
+        && /trace-head-meta">3 шага</.test(htmlExplored)
+        /* Заметка о том, что показаны не все файлы, не вываливается в свёрнутую
+           ленту — она ждёт внутри, вместе с остальным ходом работы. */
+        && !/показаны первые 3 из 5 файлов/.test(htmlExplored)
+        && /readNotes\.length && open/.test(trace));
 
     const htmlWrite = renderToStaticMarkup(
       React.createElement(ChatView, {

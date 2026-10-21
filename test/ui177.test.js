@@ -33,6 +33,7 @@ const engineChat = read('engine/chat.js')
 const door = read('functions/api/chat.js')
 const api = read('src/lib/api.ts')
 const view = read('src/views/ChatView.tsx')
+const trace = read('src/components/AgentTrace.tsx')
 const app = read('src/App.tsx')
 const css = read('src/styles/index.css')
 
@@ -79,22 +80,25 @@ ok('U177h прогресс рисования уезжает в поток те�
     && /context\.__send\(\{ kind: 'image', step: ev\.step \}\)/.test(door)
     && /ev\.img \|\| ev\.step/.test(api))
 
-ok('U177i человек видит «рисую… канал N из M», и это только во время работы',
-  /ImageProgressBlock/.test(view) && /draftImgSteps/.test(view)
+ok('U177i человек видит, что агент рисует, — и только во время работы (0.229: одной строкой ленты)',
+  /AgentTrace/.test(view) && /draftImgSteps/.test(view) && /imgSteps=\{/.test(view)
     /* Прогресс живёт в черновике и не попадает в готовое сообщение: */
-    && !/ImageProgressBlock steps=\{m\./.test(view)
-    && /Channel \{x\.index \|\| idx \+ 1\} of \{x\.total \|\| total\}/.test(view))
+    && !/imgSteps=\{m\./.test(view)
+    /* Строка рисования собирается в AgentTrace: «Рисую «имя»» на ходу. */
+    && /kind: 'draw'/.test(trace) && /'Рисую'/.test(trace) && /'Нарисовал'/.test(trace))
 
-ok('U177j имя провайдера наружу не протекает — в прогрессе только номер канала',
-  !/\{x\.channel\}/.test(bare(view)) && !/x\.channel/.test(bare(view))
-    && !/gemini|odirouter|workersai|pollinations/i.test(bare(view)))
+ok('U177j имя провайдера наружу не протекает — ни в прогрессе, ни в ленте',
+  !/\{x\.channel\}/.test(bare(trace)) && !/x\.channel/.test(bare(trace))
+    && !/gemini|odirouter|workersai|pollinations/i.test(bare(trace))
+    /* Счётчик каналов «Channel 2 of 3» — английская служебная строка, её тоже нет. */
+    && !/Channel \{/.test(bare(trace)))
 
-ok('U177k заказ и правка не путаются: «Editing» — по просьбе человека, а не по каналу',
-  /x\.state === 'start' && x\.edit/.test(view))
+ok('U177k заказ и правка не путаются: правка — по просьбе человека, а не по каналу',
+  /x\.state === 'start' && x\.edit/.test(bare(trace)))
 
-ok('U177l стили прогресса — переменными темы, без новых единиц экрана',
-  /\.img-prog-head \{/.test(css) && /\.img-prog-row \{/.test(css) && /\.img-prog-steps \{/.test(css)
-    && /var\(--text\)/.test(css.slice(css.indexOf('.img-prog-head'))) && !/100dvh/.test(bare(css)))
+ok('U177l лента шагов нарисована переменными темы, без новых единиц экрана',
+  /\.trace-head \{/.test(css) && /\.trace-think \{/.test(css) && /\.trace-step \{/.test(css)
+    && /var\(--text\)/.test(css.slice(css.indexOf('.trace-head'))) && !/100dvh/.test(bare(css)))
 
 ok('U177m тесты подключены к прогону, а прежние сторожа живы',
   /node test\/imgstream\.test\.js/.test(String(pkg.scripts.test))

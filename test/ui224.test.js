@@ -30,6 +30,7 @@ const pkg = JSON.parse(read('package.json'))
 const sw = read('public/sw.js')
 const css = read('src/styles/index.css')
 const chatView = read('src/views/ChatView.tsx')
+const traceView = read('src/components/AgentTrace.tsx')
 const api = read('src/lib/api.ts')
 const usage = read('functions/api/usage.js')
 const chatFn = read('functions/api/chat.js')
@@ -136,7 +137,8 @@ ok('U224j совет голов без служебных имён и без «3
 
 ok('U224k шаги подготовки ответа по-русски, служебные имена инструментов переведены',
   !/Explored \{n\}|'Read '|"Couldn't read "|Write <span/.test(chatView)
-    && /Прочитал \{pluralRu\(n, 'файл', 'файла', 'файлов'\)\}/.test(chatView)
+    /* 0.229: чтение файлов переехало в ленту шагов — проверяем там, где оно живёт. */
+    && /r\.ok \? 'Прочитал' : 'Не прочитал'/.test(traceView)
     && /Создал <span className="write-file-name">/.test(chatView)
     && /imggen: 'рисование'/.test(api))
 
