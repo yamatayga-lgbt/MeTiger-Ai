@@ -86,14 +86,26 @@ function PushRow() {
     }
   }, [])
 
+  /* 0.227: справа — короткое слово. «запрещены в браузере» занимало 122 px и
+     на 320 px выдавливало из строки само название («…» вместо «Уведомления»).
+     Почему включить нельзя, объясняет отдельная строка ниже — там места хватает
+     на целую фразу, и человек понимает, что делать, а не только что «нельзя». */
   const label =
     state === 'on'
       ? 'включены'
       : state === 'blocked'
-        ? 'запрещены в браузере'
+        ? 'запрещены'
         : state === 'unsupported'
-          ? 'не поддерживается'
+          ? 'нельзя'
           : 'выключены'
+  const why =
+    state === 'blocked'
+      ? 'Уведомления запрещены в браузере для этого сайта. Разрешите их в настройках сайта — и строка включится.'
+      : state === 'unsupported'
+        ? 'Этот браузер не умеет показывать уведомления с сайта. На iPhone добавьте приложение на главный экран — тогда сможет.'
+        : state === 'unconfigured'
+          ? 'Уведомления пока не настроены на сервере — включить их отсюда нельзя.'
+          : ''
   const dead = state === 'unsupported' || state === 'blocked' || state === 'unconfigured'
 
   const toggle = async () => {
@@ -148,6 +160,11 @@ function PushRow() {
           </span>
           <span className="rows-name">Проверить уведомление</span>
         </button>
+      ) : null}
+      {why ? (
+        <div className="rows-row is-plain">
+          <span className="rows-hint">{why}</span>
+        </div>
       ) : null}
       {note ? (
         <div className="rows-row is-plain">

@@ -110,7 +110,10 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
       <div className="rows-card">
         {/* Короткая строка (просьба владельца из 0.113): только номер и кнопка —
             без длинного пояснения под названием. */}
-        <div className="rows-row" onPointerDown={tapVersion}>
+        {/* 0.227: на 320 px «Версия» сжималась до 18 px и читалась как «В е..».
+            Строка со значением и кнопкой теперь переносит подпись целиком
+            (is-wrap) — как «Использование и лимиты» в профиле с 0.224. */}
+        <div className="rows-row is-wrap is-stack" onPointerDown={tapVersion}>
           <span className="rows-ic" aria-hidden="true">
             <Info size={20} />
           </span>
@@ -186,7 +189,9 @@ export function InfoView({ notify, onNavigate }: InfoViewProps) {
         {/* Кнопка перечитывания — круглая с иконкой, а не с подписью: на 393px
             подпись «Обновить» выдавливала из строки своё название (замер: у
             «Моделей» оставалось 32px и она обрезалась в «Мод…»). */}
-        <div className="rows-row">
+        {/* 0.227: «моделей доступно: 84» — длинная строка значения, и на 320 px
+            она вылезала за карточку. Строка переносит хвост вниз, как «Версия». */}
+        <div className="rows-row is-wrap is-stack">
           <span className="rows-ic" aria-hidden="true">
             <Cpu size={20} />
           </span>

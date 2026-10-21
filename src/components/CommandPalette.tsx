@@ -74,7 +74,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
           <input
             ref={inputRef}
             value={query}
-            placeholder="Введите команду или раздел…"
+            placeholder="Команда или раздел…"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
