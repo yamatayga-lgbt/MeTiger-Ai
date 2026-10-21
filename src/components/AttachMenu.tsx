@@ -1,6 +1,8 @@
 /**
- * Меню «+» в композере: Камера / Фото / Файлы / Плагины — как у референсов.
- * Работают все, кроме «Плагинов» (заготовка, помечена «скоро»).
+ * Меню «+» в композере: Камера / Фото / Файлы. Только то, что работает.
+ * 0.228: «Плагины — скоро» убраны. Заготовка висела с первых версий; обещание,
+ * которого никто не собирается выполнять, — это не план, а шум. Найдётся дело —
+ * вернём пункт вместе с делом.
  *
  * «Файлы» не открывают системный диалог сразу, а раскрывают второй экран того
  * же окна: что человек уже прикладывал раньше (из src/lib/attachHistory, этот
@@ -17,7 +19,7 @@
  * стили) — тоже.
  */
 import { useEffect, useState } from 'react'
-import { Camera, ChevronLeft, FileText, Image as ImageIcon, Paperclip, Puzzle, Upload } from 'lucide-react'
+import { Camera, ChevronLeft, FileText, Image as ImageIcon, Paperclip, Upload } from 'lucide-react'
 import { fileHref, fileSize } from '../lib/api'
 import { listHistory, type HistoryItem } from '../lib/attachHistory'
 import { haptic } from '../lib/haptic'
@@ -121,14 +123,10 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, on
         <span className="attach-menu-icon"><Paperclip size={18} /></span>
         Файлы
       </button>
-      <button type="button" className="attach-menu-item is-soon" role="menuitem" disabled aria-disabled="true" title="Скоро">
-        <span className="attach-menu-icon"><Puzzle size={18} /></span>
-        Плагины
-        <span className="attach-menu-soon">скоро</span>
-      </button>
+
       {/* Ни выбора голоса, ни переключателей: глубину решает engine/depth.js,
           голос ввода и озвучки убраны из меню совсем (0.188 — по решению владельца).
-          Меню — только действия: камера, фото, файлы и заготовка плагинов. */}
+          Меню — только действия: камера, фото, файлы. */}
     </div>
   )
 }

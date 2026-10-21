@@ -24,7 +24,6 @@
 /** Слои, внутри которых смахивание вниз не обновляет страницу. */
 export const PAGE_GESTURE_OVERLAYS = [
   '.params-popover',
-  '.model-panel',
   '.model-backdrop',
   '.attach-menu',
   '.chat-menu',

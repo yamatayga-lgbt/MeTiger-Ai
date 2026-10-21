@@ -194,21 +194,17 @@ console.log('H — вложения: что уходит в движок и чт
 
 }
 
-console.log('I — окно выбора модели: витрина, пулы и живой каталог');
+console.log('I — каталог моделей: общий кэш и то, что видит человек в поле ввода');
+/* 0.228: проверки I4–I8, I10, I12–I15 ушли вместе с окном выбора модели:
+   витрину моделей убрали из приложения ещё в 0.151 («это Агент, а не каталог»),
+   а проверки остались и держали мёртвый компонент живым. Здесь остались только
+   те, что проверяют ЖИВОЕ: общий кэш каталога и поле ввода без витрины. */
 if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(join(process.cwd(), 'node_modules', 'react-dom'))) {
-  ok('I0: react недоступен — проверка окна пропущена', false, 'npm i');
+  ok('I0: react недоступен — проверка пропущена', false, 'npm i');
 } else {
-  /* Три входа одним бандлом: эсбабилд выносит общий src/lib/models в шаренный
-     чанк, поэтому кэш каталога у пикера и у ChatView один и тот же — как в
-     настоящем приложении. Отдельные бандлы имели бы два разных кэша и проверка
-     ничего не проверяла бы. */
-  /* Один вход, три экспорта. Раздельные бандлы дали бы каждый СВОЮ копию
-     src/lib/models (проверено: esbuild не шарит состояние между точками входа),
-     и тест грел бы кэш, которого компонент не видит. */
   const entry = join(dir, 'picker-entry.tsx');
   writeFileSync(entry, [
     "export { ChatView } from '../../../src/views/ChatView'",
-    "export { ModelPicker } from '../../../src/components/ModelPicker'",
     "export * as models from '../../../src/lib/models'",
     '',
   ].join('\n'), 'utf8');
@@ -219,7 +215,7 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   ], { stdio: 'inherit' });
   const bundle = await import(outPicker);
   const models = bundle.models;
-  const { ModelPicker, ChatView } = bundle;
+  const { ChatView } = bundle;
   const React = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
 
@@ -237,74 +233,21 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   globalThis.fetch = async () => new Response(JSON.stringify(CATALOG), { status: 200, headers: { 'content-type': 'application/json' } });
   await models.loadCatalog();
   ok('I1: каталог принят и лежит в общем кэше', (models.catalogCache() || {}).models.length === 4, JSON.stringify((models.catalogCache() || {}).count));
-  ok('I2: чип показывает имя каталожной модели, а не «Авто»', (() => { const o = models.modelOption('wide/model-b'); return o.id === 'wide/model-b' && o.name === 'Wide Model' && o.tier === 'smart' && o.vision === true; })(), JSON.stringify(models.modelOption('wide/model-b')));
+  ok('I2: выбранная модель узнаётся каталогом и говорит свой уровень', (() => { const o = models.modelOption('wide/model-b'); return o.id === 'wide/model-b' && o.name === 'Wide Model' && o.tier === 'smart' && o.vision === true; })(), JSON.stringify(models.modelOption('wide/model-b')));
   ok('I3: выбор из каталога переживает перезагрузку (иначе форма сбрасывала бы модель)',
     models.isModelId('tiny/model-a') === true && models.isModelId('совсем-не-модель!!!') === false);
 
-  const html = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'wide/model-b', onPick() {} }));
-  ok('I4: группы видны — витрина, пулы движка, каталог провайдеров',
-    /Витрина/.test(html) && /Пулы движка · 2/.test(html) && /Каталог провайдеров · 2/.test(html), (html.match(/model-section-title">[^<]*/g) || []).join('|'));
-  ok('I5: каталожная модель в разметке, с потолками вместо выдуманного описания',
-    /Wide Model/.test(html) && /контекст 195К · ответ до 31К/.test(html), (html.match(/контекст [^<]*/) || ['нет'])[0]);
-  ok('I6: выбрана ровно одна строка — та, что человек уже выбрал',
-    (html.match(/aria-selected="true"/g) || []).length === 1 && /model-row is-selected/.test(html));
-  ok('I7: поиск и кнопка обновления на месте, счётчик честный',
-    /model-search/.test(html) && /поиск по \d+ моделям/.test(html) && /обновить/.test(html), (html.match(/placeholder="[^"]*"/) || [''])[0]);
-  ok('I8: подвал говорит, откуда данные', /обновлено \d\d:\d\d/.test(html) && /живых у провайдеров: 4/.test(html), (html.match(/<div class="model-panel-foot">[^<]*/) || [''])[0]);
   const chip = renderToStaticMarkup(React.createElement(ChatView, {
     user: { first_name: 'Тигр' }, messages: [{ id: 'x', role: 'assistant', text: 'привет' }], typing: false, onSend() {},
   }));
   ok('I9: в окне ввода нет витрины чужих моделей — это Агент, остался только значок параметров',
     !/model-chip/.test(chip) && /class="params-btn/.test(chip) && /MeTiger Ai/.test(chip));
 
-  /* нет сети — список не обязан исчезать: остаются витрина и обычный выбор */
+  /* нет сети — кэш не обязан исчезать: выбор человека не сбрасывается */
   globalThis.fetch = async () => { throw new Error('сети нет'); };
   await models.refreshCatalog();
-  const offline = renderToStaticMarkup(React.createElement(ModelPicker, { model: '', onPick() {} }));
-  ok('I10: без каталога панель остаётся рабочей (витрина целая), а не пустой дырой',
-    /Витрина/.test(offline) && /каталог недоступен/.test(offline) && /Gemini 2\.5 Flash/.test(offline), (offline.match(/каталог недоступен[^<]*/) || [''])[0]);
   ok('I11: неизвестный id по-прежнему значит Авто — молчаливый обход сохранён',
     models.modelOption('voobshe-ne-model').id === '', JSON.stringify(models.modelOption('voobshe-ne-model')).slice(0, 60));
-  /* Собственные списки провайдеров: строка обязана говорить, ЧЬЯ она модель,
-     и не должна врать про цену (у groq/mistral в списке цены нет). */
-  const BIG = {
-    ok: true, cached: true, stale: false, updatedAt: Date.now(),
-    count: 124, catalogCount: 124, read: { groq: true, gemini: true },
-    pools: [{ provider: 'groq', label: 'Groq', count: 3 }],
-    models: [
-      { id: 'openai/gpt-oss-120b', name: 'Gpt Oss 120b', vendor: 'OPENAI', tier: 'smart', curated: false, src: 'groq', ctx: 131072, maxOut: 65536, vision: false, priceKnown: false, tools: true, reasoning: true, brave: { ok: 4, refused: 1, total: 5, score: 0.8, provider: 'groq' } },
-      ...Array.from({ length: 123 }, (_, i) => ({ id: 'big/model-' + i + ':free', name: 'Big Model ' + i, vendor: 'BIG', tier: 'fast', curated: false, src: 'xkiro', ctx: 8192, maxOut: 1024, vision: false, priceKnown: true })),
-    ],
-  };
-  globalThis.fetch = async () => new Response(JSON.stringify(BIG), { status: 200, headers: { 'content-type': 'application/json' } });
-  await models.refreshCatalog();
-  const bigHtml = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'openai/gpt-oss-120b', onPick: () => {} }));
-  ok('I12: строка подписана провайдером и потолками, а цена помечена непроверенной',
-    /Groq/.test(bigHtml) && /контекст 128К · ответ до 64К/.test(bigHtml) && /цена не проверена/.test(bigHtml),
-    (bigHtml.match(/Gpt Oss 120b[\s\S]{0,220}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
-  ok('I13: инструменты и рассуждение видны значками в описании',
-    /инструменты · рассуждает/.test(bigHtml.replace(/<\/span>/g, '')) || (/инструменты/.test(bigHtml) && /рассуждает/.test(bigHtml)), 'чипы');
-  /* Числа не хардкодим: витрина (SHOWCASE в src/lib/models.ts) доливается в список
-     живьём, и жёсткая проверка «140 и ещё 4» ломалась бы каждый раз, когда кто-то
-     добавил одну модель в список — без всякой поломки в пикере. */
-  const shownN = (bigHtml.match(/role="option"/g) || []).length;
-  const moreN = Number((bigHtml.match(/показаны не все \(ещё (\d+)\)/) || [])[1]);
-  const outM = join(dir, 'models.mjs');
-  execFileSync(bin, ['src/lib/models.ts', '--format=esm', '--bundle', '--outfile=' + outM, '--loader:.png=dataurl', '--loader:.webp=dataurl', '--log-level=error'], { stdio: 'inherit' });
-  const { MODELS: VITRINA } = await import(outM);
-  const catalogN = BIG.models.length + VITRINA.filter((s) => !BIG.models.some((m) => m.id === s.id)).length;
-  ok('I14: длинный список обрезан по группам, и человек об этом предупреждён',
-    shownN > 100 && moreN >= 1 && shownN + moreN === catalogN + 1,
-    shownN + ' строк показано, ещё ' + moreN + ' · моделей ' + catalogN + ' (+1 опция «Авто»)');
-  /* Выбранная строка обязана переживать срез: иначе «моя модель не видна» —
-     ровно та жалоба, из-за которой всё это и делалось. */
-  const deepHtml = renderToStaticMarkup(React.createElement(ModelPicker, { model: 'big/model-122:free', onPick: () => {} }));
-  ok('I14a: рейтинг смелых показан человеку словами, а не цифрой',
-    /везёт без отказа 4\/5/.test(bigHtml.replace(/<[^>]+>/g, ' ')) || /цена не проверена · везёт без отказа/.test(bigHtml),
-    (bigHtml.match(/Gpt Oss 120b[\s\S]{0,320}/) || [''])[0].replace(/<[^>]+>/g, ' ').slice(0, 150));
-  ok('I15: выбранная модель не теряется за срезом',
-    /Big Model 122/.test(deepHtml) && (deepHtml.match(/aria-selected="true"/g) || []).length === 1,
-    (deepHtml.match(/aria-selected="true"/g) || []).length + ' выбранных');
   globalThis.fetch = real;
 }
 
@@ -957,10 +900,11 @@ console.log('L2 — песочница: Python через Pyodide (второй 
 
     const out5 = join(dir, 'picker-pro.mjs');
     const entry5 = join(dir, 'picker-pro-entry.tsx');
+    /* 0.228: из входа ушли ModelPicker и ModelIcon — окна выбора модели в
+       приложении нет с 0.151, и держать ради мёртвого компонента проверки
+       значило бы охранять пустую комнату. */
     writeFileSync(entry5, [
-      "export { ModelPicker } from '../../../src/components/ModelPicker'",
       "export { ParamsPopover } from '../../../src/components/ParamsPopover'",
-      "export { ModelIcon, detectBrand } from '../../../src/components/ModelIcon'",
       "export { Topbar } from '../../../src/components/Topbar'",
       "export { canModelThink, DEFAULT_GEN_PARAMS, isGenParams, isDefaultGenParams, withGenParamDefaults } from '../../../src/lib/models'",
       '',
@@ -969,7 +913,7 @@ console.log('L2 — песочница: Python через Pyodide (второй 
       entry5, '--bundle', '--platform=node', '--format=esm',
       '--packages=external', '--loader:.png=dataurl', '--loader:.webp=dataurl', '--outfile=' + out5, '--log-level=error',
     ], { stdio: 'inherit' });
-    const { ModelPicker: MP5, ParamsPopover, Topbar, detectBrand, canModelThink, DEFAULT_GEN_PARAMS, isGenParams, isDefaultGenParams, withGenParamDefaults } = await import(out5);
+    const { ParamsPopover, Topbar, canModelThink, DEFAULT_GEN_PARAMS, isGenParams, isDefaultGenParams, withGenParamDefaults } = await import(out5);
 
     ok('M29z: старое сохранённое состояние (до 0.070, без penalty-полей) всё ещё валидно и достраивается нулями',
       isGenParams({ temperature: 1, maxTokens: 0, topP: 0.95 })
@@ -981,58 +925,21 @@ console.log('L2 — песочница: Python через Pyodide (второй 
         && isDefaultGenParams({ ...DEFAULT_GEN_PARAMS, presencePenalty: 0.5 }) === false,
       'ok')
 
-    const htmlThink = renderToStaticMarkup(
-      React.createElement(MP5, {
-        model: 'gemini-3.6-flash',
-        reasoningOn: true,
-        effort: 'medium',
-        onPick() {},
-      }),
-    );
-    const htmlNoThink = renderToStaticMarkup(
-      React.createElement(MP5, {
-        model: 'codestral-latest',
-        reasoningOn: true,
-        effort: 'medium',
-        onPick() {},
-      }),
-    );
-
     const logoSrc = readFileSync('src/components/Logo.tsx', 'utf8');
     const favSvg = readFileSync('public/favicon.svg', 'utf8');
-    ok('M26: везде вместо старой буквы «M» стоит аватарка тигра (LogoMark, favicon и строка «Авто» в карточке модели движка)',
+    ok('M26: везде вместо старой буквы «M» стоит аватарка тигра (LogoMark и favicon)',
       logoSrc.includes('agent-avatar.webp')
         && !logoSrc.includes('M8.5 23V9.8')
         && !favSvg.includes('M8.5 23V9.8')
-        && existsSync('public/favicon.png')
-        && /class="m-av[^"]*"[^>]*><img[^>]*class="m-av-img"/.test(htmlThink));
+        && existsSync('public/favicon.png'));
 
-    ok('M27: оригинальные бренд-иконки определяются по семейству ИИ (Google, Qwen, DeepSeek, Mistral, OpenAI, MeTiger)',
-      detectBrand('') === 'metiger'
-        && detectBrand('gemini-2.5-flash') === 'google'
-        && detectBrand('qwen/qwen3.5-plus:free') === 'qwen'
-        && detectBrand('deepseek-v4-flash') === 'deepseek'
-        && detectBrand('codestral-latest') === 'mistral'
-        && detectBrand('openai/gpt-oss-20b') === 'openai'
-        && detectBrand('mercury-2.5', 'INCEPTION') === 'inception');
-    ok('M28: двухколоночный пикер показывает категории ИИ, контекст (1M Контекст), ток/с и лимит запросов в день и в минуту (250/день · 15/мин)',
-      /Google/.test(htmlThink)
-        && /Qwen/.test(htmlThink)
-        && /Mistral/.test(htmlThink)
-        && /OpenAI/.test(htmlThink)
-        && /1M Контекст/.test(htmlThink)
-        && /ток\/с/.test(htmlThink)
-        && /250\/день · 15\/мин/.test(htmlThink));
+    /* M27 (бренд-иконки) и M28 (двухколоночное окно выбора) удалены в 0.228:
+       проверять нечего — ни иконок моделей, ни окна в приложении нет. */
 
-    ok('M29: у думающей модели есть переключатель «Думает» и «УСИЛИЕ» (Низкое/Среднее/Высокое), а у не-думающей переключатель «Думает» пропадает',
+    ok('M29: «умеет ли модель думать» решает одна функция — по ней работает выбор усилия',
       canModelThink('gemini-3.6-flash') === true
         && canModelThink('mercury-2.5') === true
-        && canModelThink('codestral-latest') === false
-        && /aria-label="Режим Думает"/.test(htmlThink)
-        && /УСИЛИЕ/.test(htmlThink)
-        && /Низкое/.test(htmlThink) && /Среднее/.test(htmlThink) && /Высокое/.test(htmlThink)
-        && !/aria-label="Режим Думает"/.test(htmlNoThink)
-        && !/УСИЛИЕ/.test(htmlNoThink));
+        && canModelThink('codestral-latest') === false);
 
     const htmlParams = renderToStaticMarkup(
       React.createElement(ParamsPopover, {
@@ -1068,15 +975,16 @@ console.log('L2 — песочница: Python через Pyodide (второй 
       }),
     );
     const cssSrc = readFileSync('src/styles/index.css', 'utf8');
-    ok('M31: список моделей в пикере прокручивается (grid-template-rows: minmax(0, 1fr))',
+    /* 0.228: из проверки ушло условие про прокрутку списка моделей — правила
+       прокрутки жили в стилях окна выбора, которого в приложении нет. */
+    ok('M31: шапка — две боковые колонки равной ширины, название чата по центру',
       /class="topbar-side topbar-left"/.test(htmlTopbar)
         && /class="topbar-side topbar-right"/.test(htmlTopbar)
         /* Колонки шапки были зашиты числом (44px 1fr 44px). С 0.179 справа стоят
            кольцо лимитов и папка, поэтому ширина боковых колонок — переменная:
            капсула с названием чата остаётся посередине (проверяет U179s). */
         && /--topbar-side:\s*\d+px/.test(cssSrc)
-        && cssSrc.includes('grid-template-columns: var(--topbar-side) 1fr var(--topbar-side)')
-        && cssSrc.includes('grid-template-rows: minmax(0, 1fr)'));
+        && cssSrc.includes('grid-template-columns: var(--topbar-side) 1fr var(--topbar-side)'));
     ok('M31b: вместо апселла подписки («Подключить» как у ChatGPT) — капсула по центру показывает НАЗВАНИЕ ЧАТА, и НЕ открывает настройки по клику (это была ошибка 0.073, убрано)',
       /class="topbar-pill"[^>]*title="Новый чат"/.test(htmlTopbar)
         && /<span>Новый чат<\/span>/.test(htmlTopbar)
@@ -1330,7 +1238,8 @@ console.log('── N · плоский интерфейс (0.144: стекло 
     !/backdrop-filter:/.test(bareCss));
 
   ok('N4: обвязка — непрозрачные панели: шапка, сайдбар, попапы, меню, палитра, тост, ящик, карточки',
-    ['topbar', 'sidebar', 'chat-menu', 'model-panel', 'params-popover', 'attach-menu', 'palette', 'toast', 'workspace-drawer', 'settings-card', 'usage-card', 'profile-card']
+    /* 0.228: 'model-panel' убран — панели выбора модели в приложении нет. */
+    ['topbar', 'sidebar', 'chat-menu', 'params-popover', 'attach-menu', 'palette', 'toast', 'workspace-drawer', 'settings-card', 'usage-card', 'profile-card']
       .every((n) => flatArea.includes('.' + n)) && /background-color: var\(--bg-elevated\)/.test(flatArea),
     flatArea.slice(0, 80));
 
@@ -1432,8 +1341,7 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       && !/failover\.sample/.test(usageView)
       && !/Отказ провайдера не оставляет без ответа/.test(usageView)
       && !/Как это считается/.test(usageView)
-      && /failover,/.test(readFileSync('functions/api/usage.js', 'utf8'))
-      && !/model-failover/.test(readFileSync('src/components/ModelPicker.tsx', 'utf8')));
+      && /failover,/.test(readFileSync('functions/api/usage.js', 'utf8')));
 
 
   /* ── 0.104: голосовой ввод — два слоя, новая полоса, честные отказы ──
@@ -1581,8 +1489,8 @@ console.log('── N · плоский интерфейс (0.144: стекло 
       && (deepMenu.match(/role="menuitemcheckbox"/g) || []).length
         === (/aria-checked=\{talk\}/.test(deepMenu) ? 1 : 0)
       && !/aria-checked=\{(deep|depth|reason)/.test(deepMenu)
-      /* «Плагины» остались заготовкой: меню не опустело целиком */
-      && /attach-menu-item is-soon/.test(deepMenu)
+      /* 0.228: заготовки «Плагины — скоро» больше нет (пустое обещание убрано),
+         меню при этом живое: камера, фото, файлы на месте. */
       && /Камера/.test(deepMenu) && /Фото/.test(deepMenu) && /Файлы/.test(deepMenu),
       'в меню найдено: ' + JSON.stringify((deepMenu.match(/attach-deep|onDeep|Размышлять глубже/g) || []).slice(0, 3)));
 
@@ -1764,9 +1672,9 @@ console.log('── N · плоский интерфейс (0.144: стекло 
         && !/attach-menu-voice/.test(menu) && !/attach-voice-btn/.test(menu)
         && !/onVoice/.test(menu) && !/aria-label="Голос"/.test(menu)
         && !/menuitemradio/.test(menu)
-        /* а само меню живо: камера, фото, файлы и заготовка плагинов на месте */
+        /* а само меню живо: камера, фото, файлы на месте */
         && /Камера/.test(menu) && /Фото/.test(menu) && /Файлы/.test(menu)
-        && /attach-menu-item is-soon/.test(menu),
+        && !/Плагин/.test(menu),
       'в меню найдено: ' + JSON.stringify((menu.match(/Жен|Муж|attach-voice-btn|onVoice/g) || []).slice(0, 4)));
 
     ok('N70: мёртвый код озвучки убран из App, ChatView и стилей — ничего не осталось',

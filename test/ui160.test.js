@@ -38,11 +38,13 @@ ok('U160a все источники версии синхронизирован�
     && lock.version === currentVersion
     && lock.packages?.['']?.version === currentVersion));
 
+/* 0.228: из списка убран '.model-panel' — слоя с таким именем в приложении больше
+   нет (панель выбора модели удалена в 0.151). Тень панели .model-backdrop жива:
+   её использует меню «+» и шторка параметров. */
 ok('U160b список слоёв, внутри которых страничный жест молчит, включает шторку параметров и её тень',
   /export const PAGE_GESTURE_OVERLAYS/.test(page)
     && /'\.params-popover'/.test(page)
     && /'\.model-backdrop'/.test(page)
-    && /'\.model-panel'/.test(page)
     && /'\.palette'/.test(page)
     && /'\.workspace-drawer'/.test(page));
 ok('U160c началось внутри слоя — значит это жест слоя, а не страницы',

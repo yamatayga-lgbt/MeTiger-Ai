@@ -3127,62 +3127,6 @@ kbd {
 }
 
 /* ---------- Выбор модели и панель ввода (как на референсах) ---------- */
-.model-bar {
-  display: flex;
-  align-items: center;
-  padding: 0 2px;
-}
-
-.model-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  max-width: 100%;
-  flex-shrink: 1;
-  padding: 6px 10px 6px 7px;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  background: transparent;
-  font-size: 13.5px;
-  font-weight: 620;
-  color: var(--text);
-  transition: background-color var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
-}
-
-.model-chip:hover,
-.model-chip.is-open {
-  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.model-chip:active {
-  transform: scale(0.98);
-}
-
-.model-chip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-chip-mode {
-  flex: none;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-3);
-}
-
-.model-chip-caret {
-  flex: none;
-  opacity: 0.65;
-  transition: transform var(--t-fast);
-}
-
-.model-chip.is-open .model-chip-caret {
-  transform: rotate(180deg);
-}
 
 /* Кнопка параметров справа от выбора модели */
 .params-btn {
@@ -3221,43 +3165,6 @@ kbd {
   box-shadow: 0 0 0 2px var(--bg-elevated);
 }
 
-.m-av {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  overflow: hidden;
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
-  user-select: none;
-}
-
-.m-av-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.m-av-row {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  font-size: 10px;
-}
-
-.m-av-detail {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-}
-
 .model-backdrop {
   position: fixed;
   inset: 0;
@@ -3265,26 +3172,6 @@ kbd {
 }
 
 /* Двухколоночная панель выбора модели (как на скринах) */
-.model-panel {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 10px);
-  z-index: 50;
-  width: min(560px, 100%);
-  height: min(58vh, 430px);
-  max-height: calc(100svh - 150px); /* svh: dvh на нескроллящейся странице Chrome не пересчитывает (0.148) */
-  margin-left: auto;
-  margin-right: auto;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-strong);
-  border-radius: 18px;
-  background: var(--bg-elevated);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
-  overflow: hidden;
-  animation: pickerPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
 
 @keyframes pickerPop {
   from {
@@ -3297,393 +3184,12 @@ kbd {
   }
 }
 
-.model-split-body {
-  flex: 1 1 0%;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 1.08fr 0.92fr;
-  grid-template-rows: minmax(0, 1fr);
-  overflow: hidden;
-}
-
-.model-col-list {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border-right: 1px solid var(--border);
-}
-
-.model-search-wrap {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 10px 6px;
-}
-
-.model-list-scroll {
-  flex: 1 1 0%;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-  overscroll-behavior: contain;
-  padding: 2px 6px 10px;
-}
-
-.model-col-detail {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
-  overscroll-behavior: contain;
-  background: color-mix(in srgb, var(--bg) 35%, var(--bg-elevated));
-}
-
-.model-detail-head {
-  padding: 14px 14px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.model-detail-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.model-detail-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-detail-desc {
-  margin: 8px 0 10px;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--text-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.model-detail-stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.model-stat-context {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-
-.model-stat-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface-2) 65%, transparent);
-  font-size: 11px;
-  font-weight: 560;
-  color: var(--text-2);
-}
-
-.model-detail-opts {
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.model-opts-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.model-think-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 0;
-}
-
-.model-think-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 560;
-  color: var(--text);
-}
-
-.model-think-ic {
-  color: var(--text-3);
-}
-
 /* Переключатель «Думает» в стиле iOS / скринов (зелёный) */
-.ios-switch {
-  position: relative;
-  width: 44px;
-  height: 25px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid var(--border);
-  padding: 2px;
-  cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
-  flex-shrink: 0;
-}
-
-.ios-switch.is-on {
-  background: #10b981;
-  border-color: #10b981;
-}
-
-.ios-switch-thumb {
-  display: block;
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-  transform: translateX(0);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ios-switch.is-on .ios-switch-thumb {
-  transform: translateX(19px);
-}
-
-.model-effort-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 4px;
-  animation: fadeUp 0.16s ease both;
-}
-
-.model-effort-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.model-effort-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 10px;
-  font-size: 13.5px;
-  font-weight: 540;
-  color: var(--text-2);
-  text-align: left;
-  transition: background-color var(--t-fast), color var(--t-fast);
-}
-
-.model-effort-btn:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.model-effort-btn.is-active {
-  background: color-mix(in srgb, var(--surface-2) 95%, transparent);
-  color: var(--text);
-  font-weight: 620;
-}
-
-.model-effort-check {
-  color: #10b981;
-  flex-shrink: 0;
-}
-
-.model-direct-note {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-3);
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-}
-
-.model-refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text-3);
-  font-size: 10px;
-  font-weight: 600;
-  padding: 6px 8px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.model-refresh-txt {
-  display: none;
-}
-
-.model-refresh:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.model-refresh .is-spin {
-  animation: mt-spin 0.9s linear infinite;
-}
 
 @keyframes mt-spin {
   to {
     transform: rotate(360deg);
   }
-}
-
-.model-search {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 7px 11px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg-inset, rgba(255, 255, 255, 0.04));
-  color: var(--text);
-  font-size: 13px;
-  outline: none;
-  transition: border-color var(--t-fast);
-}
-
-.model-search:focus {
-  border-color: var(--accent, #f59e0b);
-}
-
-.model-empty {
-  padding: 16px 10px;
-  font-size: 12.5px;
-  color: var(--text-3);
-  text-align: center;
-}
-
-.model-panel-foot {
-  padding: 6px 12px;
-  border-top: 1px solid var(--border);
-  font-size: 10px;
-  color: var(--text-3);
-  text-align: center;
-  background: var(--bg-elevated);
-}
-
-.model-section-title {
-  padding: 6px 10px 2px;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  opacity: 0.7;
-}
-
-.model-vendor-title {
-  padding: 8px 10px 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-
-.model-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 9px;
-  border-radius: 10px;
-  text-align: left;
-  transition: background-color var(--t-fast);
-}
-
-.model-row:hover {
-  background: var(--surface-hover);
-}
-
-.model-row.is-selected {
-  background: color-mix(in srgb, var(--surface-2) 95%, transparent);
-}
-
-.model-row-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.model-row-name {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 13.5px;
-  font-weight: 580;
-  color: var(--text);
-  min-width: 0;
-}
-
-.model-row-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vision-ic {
-  flex: none;
-  color: var(--accent);
-  opacity: 0.85;
-}
-
-.model-row-desc {
-  display: none;
-}
-
-.model-row-flags {
-  color: var(--accent);
-  opacity: 0.8;
-  font-variant-numeric: tabular-nums;
-}
-
-.model-row-state {
-  flex: none;
-  font-size: 12px;
-  color: var(--text-3);
-  margin-left: 2px;
-}
-
-.model-check {
-  flex: none;
-  color: #10b981;
 }
 
 /* ---------- Меню «+»: Камера / Фото / Файлы / Плагины / Размышлять глубже ---------- */
@@ -3756,15 +3262,6 @@ kbd {
   transform: scale(0.98);
 }
 
-.attach-menu-item.is-soon {
-  color: var(--text-3);
-  cursor: default;
-}
-
-.attach-menu-item.is-soon:hover {
-  background: none;
-}
-
 .attach-menu-icon {
   display: inline-flex;
   align-items: center;
@@ -3774,23 +3271,6 @@ kbd {
   border-radius: 50%;
   background: var(--surface-2);
   color: var(--text);
-  flex-shrink: 0;
-}
-
-.attach-menu-item.is-soon .attach-menu-icon {
-  color: var(--text-3);
-}
-
-.attach-menu-soon {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  background: var(--surface-2);
-  padding: 2px 7px;
-  border-radius: 999px;
   flex-shrink: 0;
 }
 
@@ -4082,18 +3562,6 @@ kbd {
   font-size: 11.5px;
   line-height: 1.35;
   color: var(--text-3);
-}
-
-@media (max-width: 520px) {
-  .model-split-body {
-    grid-template-columns: 1.05fr 0.95fr;
-  }
-  .model-detail-head {
-    padding: 12px 10px 10px;
-  }
-  .model-detail-opts {
-    padding: 10px;
-  }
 }
 
 /* Обводка при клике в поле ввода убрана по просьбе владельца: кольцо из --accent-soft
@@ -5614,7 +5082,6 @@ button.rows-row:hover {
 .topbar,
 .sidebar,
 .chat-menu,
-.model-panel,
 .params-popover,
 .attach-menu,
 .palette,
@@ -5633,7 +5100,6 @@ button.rows-row:hover {
    а не прозрачностью. */
 .sidebar,
 .chat-menu,
-.model-panel,
 .params-popover,
 .attach-menu,
 .palette,
@@ -5940,22 +5406,6 @@ button.rows-row:hover {
 }
 
 /* Плашка подхвата в выборе модели: «эту модель ответят и вторым провайдером». */
-.model-failover {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: var(--r-full);
-  border: 1px solid var(--glass-brd);
-  background-color: var(--ok-soft);
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.model-failover-ic {
-  color: var(--ok);
-}
 /* ---------- Окошко «Что нового» после обновления (0.102) ----------
 
    Появляется само, когда версия на устройстве сменилась. Затемнение мягче, чем
@@ -6093,7 +5543,10 @@ button.rows-row:hover {
    не увеличивал страницу сам при фокусе на поле ввода, на сенсорных экранах поля
    ввода не мельче 16px — именно этот порог Safari считает «читаемым». */
 @media (pointer: coarse) {
-  input, textarea, select, .composer textarea { font-size: 16px !important; }
+input,
+textarea,
+select,
+.composer textarea { font-size: 16px !important; }
 }
 
 /* 0.133: сноски [n] в тексте ответа — маленький чип-ссылка на источник. */
@@ -6118,11 +5571,18 @@ button.rows-row:hover {
 .composer textarea { transition: height .18s var(--ease-out); }
 
 /* Кнопки: отклик на нажатие — мягкое «вдавливание» и пружинный возврат. */
-:where(button, .icon-btn, .chat-select, .more-btn, a.cite) {
+:where(button,
+.icon-btn,
+.chat-select,
+.more-btn,
+a.cite) {
   transition: transform .28s var(--spring), background-color .2s var(--ease-out),
     color .2s var(--ease-out), opacity .2s var(--ease-out), box-shadow .25s var(--ease-out);
 }
-.icon-btn:active:not(:disabled), .send-btn:active:not(:disabled), .params-btn:active, .more-btn:active { transform: scale(.9); }
+.icon-btn:active:not(:disabled),
+.send-btn:active:not(:disabled),
+.params-btn:active,
+.more-btn:active { transform: scale(.9); }
 .chat-select:active { transform: scale(.985); }
 :where(button) svg { transition: transform .35s var(--spring); }
 
@@ -6877,8 +6337,6 @@ button,
 .side-history,
 .ws-body,
 .thread-scroll,
-.model-list-scroll,
-.model-col-detail,
 .attach-files-list {
   -webkit-overflow-scrolling: touch;
 }
@@ -6915,62 +6373,12 @@ button,
   margin-left: 4px;
 }
 
-  50% { opacity: 0.35; }
-}
 .attach-menu-item.is-on {
   color: var(--accent);
 }
 /* Полоска заполнения контекста живёт СТРОКОЙ НАД полем ввода, а не внутри «пилюли»:
    внутри неё текст ломался на две строки и поджимал кнопки (снимок с прода 0.170).
    Поэтому — без переносов, мелко и вправо, где глазу ничего не стоит. */
-.context-usage-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  white-space: nowrap;
-  font-size: 10.5px;
-  line-height: 1.2;
-  color: var(--text-3);
-  margin: 0 8px 6px;
-}
-
-.context-usage-nums {
-  color: var(--text-3);
-  opacity: 0.75;
-}
-
-.context-usage-bar-container {
-  width: 56px;
-  height: 4px;
-  background-color: var(--border, rgba(255, 255, 255, 0.1));
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.context-usage-bar {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease, background-color 0.3s ease;
-}
-
-.context-usage-text {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.context-usage-warning {
-  color: var(--amber) !important;
-  font-weight: 600;
-}
-
-.context-usage-alert {
-  font-size: 10.5px;
-  color: var(--danger);
-  margin-left: 2px;
-  animation: pulse 2s infinite;
-}
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
