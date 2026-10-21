@@ -103,7 +103,8 @@ ok('U229l движение уважает «меньше движения»: а�
 /* ── шаги названы по-русски и по-человечески ─────────────────────────── */
 
 ok('U229m шаги — как в агентских интерфейсах, но по-русски: ищу / открыл / прочитал / рисую / инструмент',
-  /Ищу в интернете «\$\{w\.query/.test(trace) && /Искал в интернете «\$\{w\.query/.test(trace)
+  /Ищу в интернете «\$\{shortQuery\(w\.query\)\}»/.test(trace)
+    && /Искал в интернете «\$\{shortQuery\(w\.query\)\}»/.test(trace)
     && /Открываю \$\{hostOf/.test(trace) && /Открыл \$\{hostOf/.test(trace)
     && /'Прочитал' : 'Не прочитал'/.test(trace)
     && /'Рисую'/.test(trace) && /'Нарисовал'/.test(trace) && /'Правлю'/.test(trace)
@@ -171,6 +172,11 @@ ok('U229x секунды не сбрасываются, когда пошёл о
   /const t = window\.setInterval\(\(\) => setTickSec/.test(trace)
     && !/if \(!live\) return\s*\n\s*const t = window\.setInterval/.test(trace)
     && /Math\.max\(Math\.max\(0, Math\.round\(thinkingSec \|\| 0\)\), tickSec\)/.test(trace))
+
+ok('U229y длинный вопрос не растягивает шаг поиска на простыню, а заголовок-эхо не дублирует адрес',
+  /function shortQuery/.test(trace) && /t\.length > 64/.test(trace)
+    && /shortQuery\(w\.query\)/.test(trace)
+    && /w\.title !== hostOf\(w\.url\)/.test(trace))
 
 ok('U229v проверка подключена к общему прогону', /node test\/ui229\.test\.js/.test(chain))
 

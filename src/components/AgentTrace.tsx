@@ -76,6 +76,17 @@ interface Step {
   items?: { text: string; href?: string }[]
 }
 
+/**
+ * Запрос в шаге поиска. Движок часто берёт весь вопрос человеком как есть —
+ * выходила строка на три экрана: «Искал в интернете «Поищи в интернете, что
+ * нового в React 20, и коротко перескажи тремя пунктами»». Две строки в ленте
+ * достаточно: подробности всё равно раскрываются ниже списком находок.
+ */
+function shortQuery(raw?: string): string {
+  const t = String(raw || '').replace(/\s+/g, ' ').trim()
+  return t.length > 64 ? t.slice(0, 63).trimEnd() + '…' : t
+}
+
 /** Хост без www — в шаге «Открыл сайт» длинный адрес только мешает. */
 function hostOf(url?: string): string {
   const raw = String(url || '')
@@ -369,7 +380,7 @@ function buildSteps({
       out.push({
         id: `s${i}`,
         kind: 'search',
-        label: last ? `Ищу в интернете «${w.query || ''}»` : `Искал в интернете «${w.query || ''}»`,
+        label: last ? `Ищу в интернете «${shortQuery(w.query)}»` : `Искал в интернете «${shortQuery(w.query)}»`,
         status: last ? 'running' : 'done',
         items: Array.isArray(w.results)
           ? w.results.slice(0, 6).map((r) => ({ text: r.title || r.url || '', href: r.url }))
@@ -380,7 +391,9 @@ function buildSteps({
         id: `f${i}`,
         kind: 'open',
         label: last ? `Открываю ${hostOf(w.url)}` : `Открыл ${hostOf(w.url)}`,
-        note: w.title && w.title !== w.url ? w.title : undefined,
+        /* Заголовок, повторяющий сам адрес («medium.com» под «Открыл medium.com»),
+           не примечание, а эхо: не показываем. */
+        note: w.title && w.title !== w.url && w.title !== hostOf(w.url) ? w.title : undefined,
         status: last ? 'running' : 'done',
       })
     }
