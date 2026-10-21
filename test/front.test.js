@@ -691,6 +691,26 @@ console.log('L2 — песочница: Python через Pyodide (второй 
   }
 
   {
+    /* 0.229: шаги поиска, которые человек видел в живой ленте, должны дожить до
+       готового ответа. Финальный кадр движка их не несёт — на проде после правки
+       от поиска оставался один «Инструмент: веб-поиск», и выглядело это так,
+       будто ничего не искали. Накопленное возвращает клиент. */
+    const saved = globalThis.fetch;
+    try {
+      const webEv = (step) => 'data: ' + JSON.stringify({ kind: 'web', step }) + '\n\n';
+      globalThis.fetch = async () => sseRes([
+        webEv({ kind: 'search', query: 'react 20', results: [{ title: 'A', url: 'https://a.test' }] }),
+        webEv({ kind: 'fetch', url: 'https://a.test', title: 'A' }),
+        draftEv('ответ'), finalEv({ ok: true, reply: 'ответ', model: 'x/y' }),
+      ]);
+      const r = await sendChat('текст', [], { onDraft: () => {} });
+      ok('M45: шаги поиска доживают до готового ответа, а не остаются только в живой ленте',
+        Array.isArray(r.webSteps) && r.webSteps.length === 2 && r.webSteps[1].kind === 'fetch',
+        JSON.stringify(r.webSteps));
+    } finally { globalThis.fetch = saved }
+  }
+
+  {
     /* без заголовка accept запрос обязан быть байт-в-байт прежним: его шлют бот,
        смоуки и curl — им поток не нужен */
     const saved = globalThis.fetch;

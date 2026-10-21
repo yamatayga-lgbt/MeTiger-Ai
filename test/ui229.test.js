@@ -163,6 +163,15 @@ ok('U229s стили ленты — переменными темы, без но
       .every((k) => new RegExp('@keyframes ' + k + ' \\{').test(css)))
 }
 
+ok('U229w шаги, которые человек видел в работе, остаются в готовом ответе',
+  /final\.webSteps = webSteps/.test(read('src/lib/api.ts'))
+    && /webSteps=\{Array\.isArray\(m\.webSteps\)/.test(view))
+
+ok('U229x секунды не сбрасываются, когда пошёл ответ (иначе «Думал 1 с» после долгого поиска)',
+  /const t = window\.setInterval\(\(\) => setTickSec/.test(trace)
+    && !/if \(!live\) return\s*\n\s*const t = window\.setInterval/.test(trace)
+    && /Math\.max\(Math\.max\(0, Math\.round\(thinkingSec \|\| 0\)\), tickSec\)/.test(trace))
+
 ok('U229v проверка подключена к общему прогону', /node test\/ui229\.test\.js/.test(chain))
 
 console.log('\n✔ 0.229: видно, как агент думает — проверки пройдены')

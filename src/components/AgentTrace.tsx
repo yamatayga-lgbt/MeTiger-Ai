@@ -101,18 +101,19 @@ export function AgentTrace({
   const steps = buildSteps({ webSteps, imgSteps, reads, tools, live })
 
   /* Секунды: у готового сообщения их дал движок, у живого — считаем сами.
-     Таймер тикает только пока идёт работа: после ответа он замирает. */
+     Тикаем ВСЁ время, пока лента на экране: пошёл текст ответа — лента
+     сворачивается, но работа продолжается. Иначе через двадцать секунд поиска
+     в заголовке стояло бы «Думал 1 с» — честное на вид враньё (поймано на
+     проде 21 окт). */
   const [tickSec, setTickSec] = useState(0)
   useEffect(() => {
-    if (!live) return
     const t = window.setInterval(() => setTickSec((s) => s + 1), 1000)
     return () => window.clearInterval(t)
-  }, [live])
-  const measured = live ? Math.max(tickSec, 1) : Math.max(0, Math.round(thinkingSec || 0))
+  }, [])
   const fallbackSec = Math.max(1, Math.round((reasoning || '').length / 180))
-  const secs = measured || fallbackSec
+  const secs = Math.max(Math.max(0, Math.round(thinkingSec || 0)), tickSec) || fallbackSec
   const totalMs = Math.max(0, Number(ms) || 0)
-  const workedSec = Math.max(1, Math.round(totalMs / 1000))
+  const workedSec = Math.max(Math.round(totalMs / 1000), tickSec) || 1
 
   const hasThink = Boolean(reasoning.trim())
   const hasAny = hasThink || steps.length > 0
