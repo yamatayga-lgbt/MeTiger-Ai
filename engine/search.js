@@ -240,11 +240,30 @@ export function dateOf(html) {
   if (!d) d = raw(/"dateModified"\s*:\s*"([^"]+)"/i);
   if (!d) {
     const txt = pageText(h).slice(0, 3000);
-    const m = /(?:обновлено|опубликовано|дата)[^0-9]{0,25}(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/i.exec(txt);
+    const m = /(?:обновлено|опубликовано|дата|published|posted|updated|released)[^0-9]{0,25}(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/i.exec(txt);
     if (m) {
       const dd = Number(m[1]);
       const mm = Number(m[2]);
       if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) return m[3] + '-' + String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+    }
+    /* Метки с датой внутри текста: «Published on 12 October 2026». */
+    const en = /(?:published|posted|updated|released)[^\n]{0,40}?(20\d{2})-?(\d{2})-?(\d{2})\b/i.exec(txt);
+    if (en) {
+      const cand = saneDate(en[1] + '-' + en[2] + '-' + en[3]);
+      if (cand) return cand;
+    }
+  }
+  if (!d) {
+    /* Последняя ступень (0.231): дата из заголовка статьи. У nodejs.org день
+       релиза стоит только в заголовке — «2026-10-21-version-26121…» — и мета-тега
+       с датой нет вовсе, поэтому свежесть у источника пропадала. Берём первую
+       ISO-дату в начале текста: у статьи это дата публикации, у списка — верхняя
+       запись, и ошибка в день не важнее, чем полное отсутствие свежести. */
+    const early = pageText(h).slice(0, 4000);
+    const iso = /(20\d{2})-(\d{2})-(\d{2})/.exec(early);
+    if (iso) {
+      const cand = saneDate(iso[1] + '-' + iso[2] + '-' + iso[3]);
+      if (cand) return cand;
     }
   }
   return d;

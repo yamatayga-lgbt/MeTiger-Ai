@@ -148,6 +148,19 @@ console.log('\nS163 — свежесть источников');
   ok('S180d модели сказано, что делать с пометкой «ДАВНИЙ»', /ДАВНИЙ» свежесть под вопросом/.test(oldBlock));
 }
 
+/* ── 0.231: дата из заголовка статьи, когда мета-тегов нет ── */
+{
+  const { dateOf } = await import('../engine/search.js');
+  const html = '<html><body><h1>Node.js 26.12.1 (Current)</h1>'
+    + '<p>2026-10-21, Version 26.12.1 (Current) — заметка о выпуске.</p>'
+    + '<p>Текст заметки про выпуск.</p></body></html>';
+  ok('S231e: без мета-тега дата берётся из начала текста статьи',
+    dateOf(html) === '2026-10-21', JSON.stringify(dateOf(html)));
+  ok('S231f: выдуманные и несуществующие даты по-прежнему не берутся',
+    dateOf('<html><body><p>без даты</p></body></html>') === ''
+      && dateOf('<html><head><meta property="article:published_time" content="1880-01-01"></head></html>') === '');
+}
+
 /* ── 0.231: дата у источников, которые не читались ради выдержек ── */
 {
   const { probeDates } = await import('../engine/search.js');
