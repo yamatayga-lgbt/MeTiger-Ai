@@ -25,7 +25,7 @@
  */
 
 import {
-  JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_FAMILY, JB_MATCH, JB_MARK, JB_SIZES,
+  JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_STEP2, JB_FAMILY, JB_MATCH, JB_MARK, JB_SIZES,
 } from './jailbreak.data.js';
 
 export const JB_MODES = ['refusal', 'always', 'off'];
@@ -61,6 +61,7 @@ export function block(env, info) {
   if (!cfg.on || o.danger) return '';
   if (cfg.mode === 'refusal' && !o.escalated) return '';
   const parts = [JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT];
+  if (Number(o.step) >= 2) parts.push(JB_STEP2);
   const fam = JB_FAMILY[familyOf(o.model)];
   if (fam) parts.push(fam);
   return '\n\n' + parts.join('\n');
@@ -89,4 +90,4 @@ export function stats(env) {
   };
 }
 
-export { JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_MARK, JB_FAMILY, JB_MATCH, JB_SIZES };
+export { JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_STEP2, JB_MARK, JB_FAMILY, JB_MATCH, JB_SIZES };

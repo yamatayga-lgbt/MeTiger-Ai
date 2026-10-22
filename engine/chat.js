@@ -635,7 +635,17 @@ export function createEngine(opts) {
        JAILBREAK=1 включает его в каждом запросе, чтобы можно было померить, помогает ли
        он без повтора; JAILBREAK=0 выключает совсем. На опасные темы его нет ни в одном
        режиме. */
-    if (isDefaultSys) {
+    if (isDefaultSys && input.escalation) {
+      const escSys = freedom.escalationBlock(env, {
+        reframed: true,
+        split: !!input.escalation.split,
+        step: Number(input.escalation.step) || 2,
+        adult: !!input.escalation.adult || adultAsk,
+        model: input.escalation.model || '',
+        danger: freedom.isHardDanger(askText),
+      });
+      if (escSys) system = system + escSys;
+    } else if (isDefaultSys) {
       const jb = jbBlock(env, { danger: freedom.isHardDanger(text) });
       if (jb) system = system + jb;
     }
@@ -1137,6 +1147,13 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
               checkVerdict.skipped = 'на починку не осталось времени (' + Math.max(0, Math.round(left / 1000)) + ' с)';
               break;
             }
+            const evasionRepair = !!(dec.evasion && allowReframe);
+            if (evasionRepair && brave && out.provider && out.model) {
+              brave.mark(out.provider, out.model, false);
+            }
+            const repairOrder = evasionRepair
+              ? (out.provider ? [out.provider] : []).concat(order.filter((p) => p !== out.provider))
+              : (out.provider ? [out.provider] : input.providerOrder);
             const repair = o.repair
               || ((extra) => run({
                 ...input,
@@ -1146,13 +1163,22 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
                    модели читать части не надо (`docsMap: false`): маленький
                    файл влезет целиком, большому хватит локальных выписок. */
                 docsMap: false,
-                text: extra,
+                text: evasionRepair
+                  ? extra + freedom.reframeMark(env, { model: out.model, danger: false })
+                  : extra,
                 /* Досыл — не новый ход разговора: те же приёмы, что у продолжения
                    оборванного ответа (иначе память писала бы транскрипт дважды, а
-                   на досыл вставал бы отдельный совет голов). */
-                history: [{ role: 'assistant', content: String(out.reply).slice(-3500) }],
-                providerOrder: out.provider ? [out.provider] : input.providerOrder,
-                noCouncils: true, noCheck: true, noDeepWork: true, allowReframe: false,
+                   на досыл вставал бы отдельный совет голов). При починке отказа
+                   не кладём отказной черновик в role:assistant — иначе модель по
+                   инерции повторяет собственный отказ. */
+                history: evasionRepair
+                  ? pristine.history
+                  : [{ role: 'assistant', content: String(out.reply).slice(-3500) }],
+                providerOrder: repairOrder,
+                escalation: evasionRepair
+                  ? { step: 2, split: true, adult: adultAsk, model: out.model }
+                  : undefined,
+                noCouncils: true, noCheck: true, noDeepWork: true, allowReframe: evasionRepair,
                 /* Инструменты на досыле выключены: данные уже собраны первым
                    проходом, а второй поиск в сети стоил бы 10–20 секунд на ответ,
                    который и так ждёт человека. */
@@ -1160,7 +1186,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
                 deadlineMs: left,
               }));
             let fixed = null;
-            try { fixed = await repair(check.repairPrompt({ text: askText, reply: out.reply, notes: dec.notes })); }
+            try { fixed = await repair(check.repairPrompt({ text: askText, reply: out.reply, notes: dec.notes, evasion: evasionRepair })); }
             catch (e) { fixed = null; }
             spent++;
             checkVerdict.passes = spent;
@@ -1169,7 +1195,9 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
                ПЕРЕПИСАННЫЙ ответ: «Уточнение: …» вместо ответа (так случилось в
                проде 0.230) — приписка, а не правка, и человек её уже не ждал. */
             const take = fixed && fixed.ok && fixed.reply
-              ? check.repairTake(out.reply, fixed.reply)
+              ? (evasionRepair
+                ? check.repairTake(out.reply, fixed.reply, { text: askText, evasion: true })
+                : check.repairTake(out.reply, fixed.reply))
               : { reply: '', why: 'починка не удалась — ответ оставлен как есть' };
             if (take.reply) {
               out.reply = cleanCitations(take.reply, srcCount);
@@ -1317,13 +1345,14 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
            готовую подгонку, работы нет; у головы окно меньше — режем заново из
            pristine, и человеку достаётся правда именно про эту попытку, а не
            заметка от той модели, которая в итоге не ответила. */
+        const creativeHere = CREATIVE_ASK_RE.test(String(text || ''));
         const fitNow = useReframe
           ? fitContext({
-            system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
+            system: pristine.system + freedom.escalationBlock(env, { reframed: true, step: 1, adult: adultAsk, model, danger: !allowReframe }),
             history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
             text: toolsRes.block
-              ? freedom.reframePrompt(text) + '\n\n' + toolsRes.block
-              : freedom.reframePrompt(text) + freedom.reframeMark(env, { model, danger: !allowReframe }),
+              ? freedom.reframePrompt(text, { creative: creativeHere, intent }) + '\n\n' + toolsRes.block
+              : freedom.reframePrompt(text, { creative: creativeHere, intent }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
           })
           : fitFor(id, model);
         const curMessages = fitNow.history.concat([{ role: 'user', content: fitNow.text }]);
@@ -1471,13 +1500,16 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         const left = deadline - Date.now();
         if (!(keyIdx >= 0 && await pace(id, left))) continue;
         lastCallAt[id] = Date.now();
-        /* Та же подгонка, что и в очереди: окно этой головы, история из pristine. */
+        /* Та же подгонка, что и в очереди: окно этой головы, история из pristine.
+           0.236: на второй ступени отказодавильни включаем step=2 (JB_STEP2) и
+           SPLIT_SYSTEM («ответ в два приёма»), чтобы не повторять впустую ту же
+           подсказку, на которой очередь уже сорвалась в отказ. */
         const refit = fitContext({
-          system: pristine.system + freedom.escalationBlock(env, { reframed: true, adult: adultAsk, model, danger: !allowReframe }),
+          system: pristine.system + freedom.escalationBlock(env, { reframed: true, split: true, step: 2, adult: adultAsk, model, danger: !allowReframe }),
           history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
           text: toolsRes.block
-            ? freedom.reframePrompt(text, { creative: creativeAsk }) + '\n\n' + toolsRes.block
-            : freedom.reframePrompt(text, { creative: creativeAsk }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
+            ? freedom.reframePrompt(text, { creative: creativeAsk, intent }) + '\n\n' + toolsRes.block
+            : freedom.reframePrompt(text, { creative: creativeAsk, intent }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
         });
         const curMessages = refit.history.concat([{ role: 'user', content: refit.text }]);
         const req = buildRequest({
