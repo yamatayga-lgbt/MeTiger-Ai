@@ -172,7 +172,12 @@ console.log('DW2 — профили поиска и слияние исслед�
 
   pageHits = 0;
   const deepSearch = await smartSearch({ q: 'уникальный глубокий поиск 212', env, fetch: fakeFetch, level: 'deep' });
-  ok('глубокий обычный поиск читает шесть страниц вместо прежних трёх/пяти', deepSearch.ok && deepSearch.reads.length === 6 && pageHits === 6, JSON.stringify({ reads: deepSearch.reads?.length, pageHits }));
+  /* 0.231: шесть страниц читаются ради выдержек, остальные добираются лёгким
+     запросом только за датой — иначе у них не было свежести вовсе. */
+  ok('глубокий обычный поиск читает шесть страниц, а даты добирает у остальных',
+    deepSearch.ok && deepSearch.reads.length === 6 && pageHits === 8
+      && deepSearch.sources.every((s) => s.date),
+    JSON.stringify({ reads: deepSearch.reads?.length, pageHits, dates: deepSearch.sources.map((s) => s.date) }));
 
   /* Редиректы Gemini разрешаются один раз для финальных кандидатов, а не в
      каждом подзапросе. На проде прежний порядок мог съесть лимит подзапросов

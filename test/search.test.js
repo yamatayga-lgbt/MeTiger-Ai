@@ -148,6 +148,25 @@ console.log('\nS163 — свежесть источников');
   ok('S180d модели сказано, что делать с пометкой «ДАВНИЙ»', /ДАВНИЙ» свежесть под вопросом/.test(oldBlock));
 }
 
+/* ── 0.231: дата у источников, которые не читались ради выдержек ── */
+{
+  const { probeDates } = await import('../engine/search.js');
+  const calls = [];
+  const fake = async (url) => {
+    calls.push(url);
+    if (String(url).includes('slow')) throw new Error('timeout');
+    return new Response('<html><head><meta property="article:published_time" content="2020-03-01"></head><body><p>x</p></body></html>', { status: 200 });
+  };
+  const src = [{ url: 'https://a.by/x' }, { url: 'https://b.by/y', date: '2026-09-09' }, { url: 'https://slow.by/z' }];
+  const t0 = Date.now();
+  await probeDates(fake, src, 800);
+  const ms = Date.now() - t0;
+  ok('S231d: дата догоняется у источников без чтения, уже известная не перепрашивается, сбой не роняет поиск',
+    src[0].date === '2020-03-01' && src[1].date === '2026-09-09' && src[2].date === undefined
+      && calls.length === 2 && !calls.includes('https://b.by/y') && ms < 1500,
+    JSON.stringify({ src, calls, ms }));
+}
+
 /* ── 0.231: сноски, дата из адреса, возраст словами ── */
 {
   const { cleanCitations, dateFromUrl } = await import('../engine/search.js');

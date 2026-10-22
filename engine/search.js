@@ -330,6 +330,29 @@ export function cleanCitations(reply, count) {
     .replace(/[ \t]+$/gm, '');
 }
 
+/**
+ * Даты источников, которые не попали в чтение (0.231).
+ *
+ * Читаются только первые `pages` страниц — ради выдержек. У остальных даты не
+ * было вовсе, и статья 2020 года шла в ответе как свежая: пометить её было
+ * нечем. Здесь догоняем дату лёгким запросом (без выдержек, короткий таймаут,
+ * всё параллельно) — только ради строки «от 2020-03-01 · 6 лет назад».
+ */
+export async function probeDates(fi, sources, ms) {
+  const need = (sources || []).filter((s) => s && s.url && !s.date).slice(0, 8);
+  if (!need.length) return sources;
+  await Promise.all(need.map(async (s) => {
+    try {
+      const r = await fetchT(fi, s.url, { headers: { 'user-agent': UA, accept: 'text/html' } }, ms || 1800);
+      if (!r || !r.ok) return;
+      const html = (await r.text()).slice(0, 120000);
+      const d = dateOf(html) || dateFromUrl(s.url);
+      if (d) s.date = d;
+    } catch { /* нет даты — источник остаётся без даты, как и был */ }
+  }));
+  return sources;
+}
+
 /** Строка даты в безопасный вид: только разумные годы, иначе пусто. */
 function saneDate(s) {
   const t = String(s || '').trim();
@@ -449,7 +472,9 @@ export async function smartSearch({ q, env, fetch: fi, deep, level, profile: giv
     passages: profile.passages, passageChars: profile.passageChars,
   });
   res.profile = profile;
-  return remember(key, attachDates(res));
+  attachDates(res);
+  await probeDates(f, res.sources, 1800);
+  return remember(key, res);
 }
 
 function canonicalUrl(raw) {
@@ -564,7 +589,9 @@ export async function researchSearch({ q, queries, env, fetch: fi, profile: give
     reads,
     profile,
   };
-  return remember(key, attachDates(res));
+  attachDates(res);
+  await probeDates(f, res.sources, 1800);
+  return remember(key, res);
 }
 
 /** Возраст источника словами: «6 лет назад», «8 месяцев назад», «3 недели назад». */
