@@ -30,7 +30,7 @@ import { runnable, engineLabel } from '../lib/sandbox'
    не трогает по устройству дерева — `\\frac{a}{b}` в примере кода остаётся кодом.
    ============================================================ */
 
-import { linkCitations } from '../lib/cite'
+import { remarkCitations } from '../lib/cite'
 interface Props {
   text: string
   /** Передать вывод исполненного кода обратно в чат (кнопка в CodeRunner). */
@@ -47,15 +47,17 @@ interface Props {
    Сравнение идёт по тексту и функции вывода; функцию вызывающая сторона держит
    стабильной (useCallback), иначе memo бесполезен. */
 export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sources }: Props) {
-  const text = linkCitations(rawText, sources)
   /* Формулы уходят из текста ДО разбора: на месте каждой остаётся метка, а сам LaTeX
      лежит в `hidden.items` и попадает в дерево как есть — ни разбор Markdown, ни его
-     экранирование в него больше не вмешиваются (см. protectMath). */
-  const hidden = protectMath(text)
+     экранирование в него больше не вмешиваются (см. protectMath).
+     Сноски же, наоборот, расставляются ПОСЛЕ разбора — плагином дерева: правка
+     строки экранировала скобки `\[1\]`, а разбор формул принимал их за выключную
+     формулу и рисовал цифру отдельной строкой по центру (0.230). */
+  const hidden = protectMath(rawText)
   return (
     <div className="msg-text">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMathLite(hidden.items)]}
+        remarkPlugins={[remarkCitations(sources), remarkGfm, remarkMathLite(hidden.items)]}
         components={{
           /* Блок кода: та же карточка, что была раньше — язык, бейдж
              «песочница»/«demo», и сама песочница, если язык исполняемый. */

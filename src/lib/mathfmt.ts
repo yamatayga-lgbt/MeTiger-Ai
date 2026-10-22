@@ -537,7 +537,17 @@ export function findMath(text: string): MathSpan | null {
     if (ch === '\\' && (s[i + 1] === '[' || s[i + 1] === '(')) {
       const close = s[i + 1] === '[' ? '\\]' : '\\)'
       const end = s.indexOf(close, i + 2)
-      if (end > i + 2) return { before: s.slice(0, i), start: i, end: end + 2, body: s.slice(i + 2, end), block: s[i + 1] === '[' }
+      if (end > i + 2) {
+        const body = s.slice(i + 2, end)
+        /* `\[1\]` — это не формула, а экранированная сноска. Так её когда-то
+           писал подстановщик ссылок (0.133), и цифра источника рисовалась
+           отдельной строкой по центру между абзацами ответа (поймано 0.229).
+           Формула из одного-двух чисел без единого признака математики не
+           бывает, так что пропуск безопасен. */
+        if (!isFootnoteLike(body)) {
+          return { before: s.slice(0, i), start: i, end: end + 2, body, block: s[i + 1] === '[' }
+        }
+      }
       continue
     }
     if (ch === '$') {
@@ -552,6 +562,11 @@ export function findMath(text: string): MathSpan | null {
     }
   }
   return null
+}
+
+/** `1`, `12` — номер источника, а не математика. */
+function isFootnoteLike(body: string): boolean {
+  return /^\s*\d{1,2}\s*$/.test(body)
 }
 
 /** `$…$`: без пробела сразу после открывающего и перед закрывающим, и не «$5». */

@@ -5442,12 +5442,16 @@ select,
 
 /* 0.133: сноски [n] в тексте ответа — маленький чип-ссылка на источник. */
 .msg-text a.cite {
-  display: inline-block; min-width: 1.35em; padding: 0 .35em; margin: 0 .1em;
+  display: inline-block; min-width: 1.35em; padding: 0 .35em; margin: 0 .08em;
   font-size: .72em; line-height: 1.45; vertical-align: super; text-align: center;
   border-radius: 999px; text-decoration: none; font-weight: 600;
   background: color-mix(in srgb, var(--accent, #f59e0b) 18%, transparent);
   color: var(--accent, #f59e0b);
 }
+/* Сноски подряд — одна связка «1 2», а не два разных чипа с зазором.
+   И точку после сноски не отрывает от неё (0.230: «1 2 .» читалось как
+   отдельные знаки). */
+.msg-text a.cite + a.cite { margin-left: -.04em; }
 .msg-text a.cite:hover { background: color-mix(in srgb, var(--accent, #f59e0b) 32%, transparent); }
 
 /* ── 0.135: плавность и микро-анимации ─────────────────────────────────────────

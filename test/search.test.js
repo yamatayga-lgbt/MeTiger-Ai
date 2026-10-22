@@ -5,7 +5,7 @@ import { extractSources } from '../engine/tools.js';
 import { execFileSync } from 'node:child_process';
 const citeOut = '/tmp/cite-test.mjs';
 execFileSync('node_modules/.bin/esbuild', ['src/lib/cite.ts', '--format=esm', '--outfile=' + citeOut, '--log-level=error']);
-const { linkCitations } = await import(citeOut);
+const { remarkCitations } = await import(citeOut);
 
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('  ✔ ' + n); } else { fail++; console.log('  ✖ ' + n + (x ? ' — ' + x : '')); } };
@@ -55,9 +55,35 @@ ok('S133f кэш', r3.ok && c3.length === 0);
 const r4 = await smartSearch({ q: 'x', env: { SMART_SEARCH: 'off' }, fetch: fakeFetch([]) });
 ok('S133g выключатель', !r4.ok);
 
-const S = [{ url: 'https://a.by' }, { url: 'https://b.by' }];
-ok('S133h сноски → ссылки', linkCitations('Факт [1], ещё [2][1].', S) === 'Факт [\\[1\\]](https://a.by), ещё [\\[2\\]](https://b.by)[\\[1\\]](https://a.by).', linkCitations('Факт [1], ещё [2][1].', S));
-ok('S133i код и чужие номера не трогаем', linkCitations('`a[1]` и [5] и [x](y)', S) === '`a[1]` и [5] и [x](y)');
+const S = [{ url: 'https://a.by', title: 'A' }, { url: 'https://b.by' }];
+/* Дерево собирается вручную: важно, что получается на выходе плагина, а не
+   строка, которую он правит (строка больше не правится вовсе — 0.230). */
+const treeOf = (text) => ({ type: 'root', children: [{ type: 'paragraph', children: [{ type: 'text', value: text }] }] });
+const plugged = (text, src) => {
+  const tree = treeOf(text);
+  remarkCitations(src)()(tree);
+  return tree.children[0].children;
+};
+const linksOf = (nodes) => nodes.filter((n) => n.type === 'link').map((n) => n.url);
+const textOf = (nodes) => nodes.map((n) => (n.type === 'text' ? n.value : '[' + n.children[0].value.replace(/[\[\]]/g, '') + ']')).join('');
+{
+  const nodes = plugged('Факт [1], ещё [2][1].', S);
+  ok('S133h сноски → ссылки', linksOf(nodes).join() === 'https://a.by,https://b.by,https://a.by'
+    && nodes[0].value === 'Факт ' && textOf(nodes) === 'Факт [1], ещё [2][1].', JSON.stringify(nodes));
+  /* Код приходит в дереве отдельным узлом (remark разбирает его раньше нас) —
+     внутрь него не заходим, `[1]` там остаётся кодом. */
+  const withCode = { type: 'root', children: [{ type: 'paragraph', children: [{ type: 'inlineCode', value: 'a[1]' }, { type: 'text', value: ' и [5]' }] }] };
+  remarkCitations(S)()(withCode);
+  ok('S133i чужие номера и код не трогаем',
+    withCode.children[0].children[0].type === 'inlineCode'
+      && withCode.children[0].children[1].type === 'text'
+      && plugged('a[1]', [])[0].type === 'text'
+      && plugged('a[1]', [{ url: 'mailto:x@y.z' }])[0].type === 'text');
+  /* Сноска внутри готовой ссылки — часть её подписи, а не отдельная ссылка. */
+  const inLink = { type: 'root', children: [{ type: 'paragraph', children: [{ type: 'link', url: 'https://z.by', children: [{ type: 'text', value: 'см. [1]' }] }] }] };
+  remarkCitations(S)()(inLink);
+  ok('S133i2 сноска внутри чужой ссылки остаётся подписью', inLink.children[0].children[0].children[0].type === 'text');
+}
 
 /* ── 0.163: даты источников ──────────────────────────────────────────────────── */
 console.log('\nS163 — свежесть источников');
