@@ -25,8 +25,12 @@ export const MIN_INTERVAL = {
    предварительно сжимает, а движок резервирует место в окне на каждую. */
 export const MAX_IMAGES = 4;
 
-/* Потолок ожидания одного провайдера: быстрый не должен ждать медленного. */
+/* Потолок ожидания одного провайдера: быстрый не должен ждать медленного.
+   FIRST_BYTE_TIMEOUT (0.234) — сколько ждём первого живого куска в потоке: если
+   шлюз завис в тишине (gemma-4-31b-it и super-vl висели по 25 с до 0 байт), уходим
+   к следующей голове сразу, а начавший писать поток доживает полный TIMEOUT. */
 export const TIMEOUT = { fast: 25000, smart: 60000 };
+export const FIRST_BYTE_TIMEOUT = { fast: 10000, smart: 18000 };
 
 /* Пулы моделей сверяются с ЖИВЫМ api провайдера, а не с памятью: id уезжают в
    400/404 молча, и тогда половина очереди — мёртвые строки, которые только
@@ -44,7 +48,7 @@ export const TABLE = {
     limit: 250,
     models: {
       fast: ["gemini-2.5-flash","gemini-3.5-flash","gemini-3.6-flash","gemini-3.1-flash-lite","gemini-flash-lite-latest","gemma-4-26b-a4b-it"],
-      smart: ["gemini-3.5-flash","gemma-4-31b-it"],
+      smart: ["gemini-3.5-flash","gemini-2.5-flash","gemini-3.6-flash"],
     },
   },
   groq: {
@@ -86,9 +90,10 @@ export const TABLE = {
     base: "https://openrouter.ai/api/v1",
     envPrefix: 'OPENROUTER',
     limit: 50,
+    poolFromCatalog: true,
     models: {
-      fast: ["nex-agi/nex-n2.5-mini:free","inclusionai/ling-3.0-flash-vl:free","liquid/lfm-2.5-2.6b:free","qwen/qwen3.8-27b:free","dots-studio/dots-3-note-preview:free","cohere/north-mini-code:free","nex-agi/nex-n2.5-pro:free","inclusionai/ling-3.0-flash-sante:free","inclusionai/ling-3.0-flash-fin:free","poolside/laguna-xs-2.1:free","nvidia/nemotron-3.5-lightning:free","openrouter/free"],
-      smart: ["nvidia/nemotron-3-ultra-550b-a55b:free","nvidia/nemotron-3-super-120b-a12b:free","nex-agi/nex-n2.5-pro:free","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free","dots-studio/dots-3-note-preview:free","google/gemma-4-31b-it:free","z-ai/glm-5.2:free","poolside/laguna-s-2.1:free","openrouter/free"],
+      fast: ["recursive/flint-v1.0:free","openrouter/free","poolside/laguna-s-2.1:free","cohere/north-mini-code:free","google/gemma-4-26b-a4b-it:free","nvidia/nemotron-3.5-lightning:free"],
+      smart: ["nvidia/nemotron-3-ultra-550b-a55b:free","openrouter/free","poolside/laguna-s-2.1:free","recursive/flint-v1.0:free","cohere/north-mini-code:free","dots-studio/dots-3-note-preview:free"],
     },
   },
   cloudflare: {
@@ -158,7 +163,7 @@ export const TABLE = {
     poolFromCatalog: true,
     models: {
       fast: ["codestral-latest", "gpt-oss:20b", "nemotron-3-nano:30b"],
-      smart: ["GLM-5.3-Flash", "gemma4:31b", "minimax-m3"],
+      smart: ["codestral-latest", "nemotron-3-nano:30b", "gpt-oss:20b", "minimax-m3"],
     },
   },
 
@@ -175,7 +180,7 @@ export const TABLE = {
     limit: 1000,
     poolFromCatalog: true,
     models: {
-      fast: ["inclusionai/ling-3.1-flash"],
+      fast: ["kilo-auto/free"],
       smart: ["kilo-auto/free", "poolside/laguna-s-2.1:free", "nvidia/nemotron-3-ultra-550b-a55b:free"],
     },
   },
@@ -231,9 +236,12 @@ export const ORDER = {
   /* Cerebras убран целиком (0.094): провайдер стал платным, а продукт бесплатный.
      Тем же правилом ушли NVIDIA и OVHcloud (0.099, «нужна карта») и SambaNova с
      GitHub Models (0.103). Мёртвый провайдер в очереди — это не «на всякий
-     случай», а лишняя попытка и лишняя строка в отчёте о том, кто отказал. */
-  fast: ['groq', 'inception', 'cloudflare', 'gemini', 'zai', 'openrouter', 'mistral', 'xkiro', 'atria', 'sharellm', 'odirouter', 'kilo', 'llm7'],
-  smart: ['groq', 'inception', 'zai', 'cloudflare', 'openrouter', 'gemini', 'mistral', 'xkiro', 'atria', 'odirouter', 'sharellm', 'kilo', 'llm7'],
+     случай», а лишняя попытка и лишняя строка в отчёте о том, кто отказал.
+     0.234: живой прогон прода (22.10.2026) переставил за Groq и Inception самых
+     быстрых живых (Gemini 0,55 с, Mistral 0,65 с, OpenRouter 1,0 с), а капризные
+     cloudflare/sharellm увёл в хвост, чтобы холодный изолят не терял секунды. */
+  fast: ['groq', 'inception', 'gemini', 'mistral', 'openrouter', 'zai', 'odirouter', 'cloudflare', 'xkiro', 'atria', 'sharellm', 'kilo', 'llm7'],
+  smart: ['groq', 'inception', 'mistral', 'gemini', 'openrouter', 'zai', 'odirouter', 'cloudflare', 'xkiro', 'atria', 'sharellm', 'kilo', 'llm7'],
 };
 
 /* Картинка: зрячие первыми. */

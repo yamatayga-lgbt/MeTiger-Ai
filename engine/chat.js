@@ -11,7 +11,7 @@
  */
 
 import {
-  buildTable, providerAlive, pickKey, orderFor, ORDER, MIN_INTERVAL, TIMEOUT, MAX_IMAGES,
+  buildTable, providerAlive, pickKey, orderFor, ORDER, MIN_INTERVAL, TIMEOUT, FIRST_BYTE_TIMEOUT, MAX_IMAGES,
 } from './providers.js';
 import { classifyTask, tierFor, modelsFor, isVision, isReasoning, isSightedReasoning, visionFirst, preferHeads } from './route.js';
 import { preferUncensored } from './brave.js';
@@ -271,6 +271,13 @@ export function createEngine(opts) {
     return true;
   }
 
+  const DEAD_MODEL_RE = /model[_\s-]*not[_\s-]*found|unknown model|unavailable for free|currently unavailable|does not exist|auto_router_disabled|no longer available/i;
+  function coolDeadModel(id, model, ms) {
+    const nKeys = Math.max(1, (P[id] && P[id].keys && P[id].keys.length) || 1);
+    const dur = Math.max(60000, Number(ms) || 1800000);
+    for (let ki = 0; ki < nKeys; ki++) mcool.cool(id, model, ki, dur);
+  }
+
   /**
    * Одна попытка: конкретный провайдер + конкретная модель.
    * Возвращает { ok, reply, reasoning, provider, model, finish } или { ok:false, why }.
@@ -280,6 +287,7 @@ export function createEngine(opts) {
     attemptSeq++;
     usageTrack.attempt(id, model);
     const budget = Math.min(TIMEOUT[req.tier] || 30000, deadlineLeft);
+    const firstByteBudget = Math.min(budget, Number(env.FIRST_BYTE_MS) || FIRST_BYTE_TIMEOUT[req.tier] || budget);
     /* Поток имеет смысл только там, где мы умеем его читать (req.sse) и есть кому его
        нести. Провайдер, проигнорировавший stream:true, вернёт json — streamCall это
        видит и ведёт себя как rawCall, то есть ничего не ломается. */
@@ -292,9 +300,13 @@ export function createEngine(opts) {
           /* рассуждения идут тем же потоком событий, но другим видом: кому их показывать,
              решает дверь (фронт просит `showReasoning`), а не движок */
           (t) => onDelta({ kind: 'reason', provider: id, model, text: t }),
+          firstByteBudget,
         )
       : await rawCall(fetchImpl, req, budget);
     if (res.error === 'timeout' || (res.status === 0 && !res.text)) {
+      /* 0.234: модель, которая провисела до таймаута и не прислала ни буквы,
+         отодвигается в хвост пула на 3 минуты, чтобы следующий вопрос не ждал её снова. */
+      if (res.error === 'timeout') mcool.cool(id, model, req.keyIdx || 0, 180000);
       /* Не всякий status 0 — таймаут. Лимит подзапросов, обрыв DNS и отказ
          рантайма раньше все подписывались одним словом, и живая диагностика
          исследования врала: сеть уже была исчерпана, а выглядело так, будто
@@ -316,6 +328,14 @@ export function createEngine(opts) {
       return { ok: false, why: 'rate-limit', status: 429 };
     }
     if (res.status === 401 || res.status === 403) {
+      /* 0.234: на безключевом шлюзе (kilo, llm7 без ключа) 401 на конкретной модели
+         означает «именно эта модель закрыта ключом», а не смерть всего шлюза:
+         соседние модели того же дома (kilo-auto/free, codestral-latest) отвечают без ключа. */
+      if (P[id] && P[id].noAuth) {
+        coolDeadModel(id, model, 1800000);
+        note(id, 'dead');
+        return { ok: false, why: 'модель просит ключ у безключевого шлюза', status: res.status };
+      }
       markKey(id, req.keyIdx, { state: 'invalid' });
       /* Один мёртвый ключ из нескольких — не повод сажать в карантин весь провайдер
          (0.129: с ротацией ключей мёртвый третий ключ Groq выключал два живых). Ключ
@@ -338,6 +358,9 @@ export function createEngine(opts) {
       return { ok: false, why: 'квота/баланс', status: res.status };
     }
     if (res.status >= 400 || (!res.data && !res.parsed)) {
+      if (res.status === 404 || DEAD_MODEL_RE.test(String(res.text || res.error || ''))) {
+        coolDeadModel(id, model, 1800000);
+      }
       return { ok: false, why: 'http ' + res.status + ' ' + String(res.text || res.error || '').slice(0, 120), status: res.status };
     }
     const parsed = res.parsed || req.parse(res.data);
@@ -552,9 +575,12 @@ export function createEngine(opts) {
     /* Рассуждение на английском для точности русского ответа: когда включён режим
        «Думает» (showReasoning), просим модель сначала кратко продумать ход решения
        на английском внутри <think>...</think>, а затем дать точный ответ на языке человека. */
+    /* 0.234: на коротком разговорном fast-вопросе без глубокого режима снижаем
+       дефолтный medium до low — первая русская строка появляется в 2–3 раза быстрее,
+       а на коде, математике, аналитике и явном high глубина рассуждений прежняя. */
     const effectiveReasoningEffort = deepWork.extended && input.reasoningEffort !== 'low'
       ? 'high'
-      : input.reasoningEffort;
+      : (intent === 'fast' && !deep && input.reasoningEffort === 'medium' ? 'low' : input.reasoningEffort);
     const thinkEffortHint = effectiveReasoningEffort === 'low'
       ? 'Keep the <think> block brief (1–3 sentences).'
       : effectiveReasoningEffort === 'high'

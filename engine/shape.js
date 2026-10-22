@@ -322,9 +322,17 @@ export async function rawCall(impl, req, timeoutMs) {
  *   · битую строку не считаем провайдерской ошибкой: режем её и идём дальше, но
  *     количество `bad` отдаём — по нему видно, что формат у провайдера свой.
  */
-export async function streamCall(impl, req, timeoutMs, onDelta, onReasoning) {
+export async function streamCall(impl, req, timeoutMs, onDelta, onReasoning, firstByteMs) {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), Math.max(2000, timeoutMs || 30000));
+  const totalMs = Math.max(2000, timeoutMs || 30000);
+  const timer = setTimeout(() => ac.abort(), totalMs);
+  let gotFirst = false;
+  const fbMs = Number(firstByteMs) > 0 ? Math.max(1500, Math.min(totalMs, Number(firstByteMs))) : 0;
+  let firstTimer = fbMs && fbMs < totalMs ? setTimeout(() => { if (!gotFirst) ac.abort(); }, fbMs) : 0;
+  const clearFirst = () => {
+    gotFirst = true;
+    if (firstTimer) { clearTimeout(firstTimer); firstTimer = 0; }
+  };
   let res = null;
   try {
     res = await impl(req.url, {
@@ -334,6 +342,7 @@ export async function streamCall(impl, req, timeoutMs, onDelta, onReasoning) {
       signal: ac.signal,
     });
   } catch (e) {
+    clearFirst();
     clearTimeout(timer);
     return { status: 0, text: '', data: null, error: String((e && e.name === 'AbortError') ? 'timeout' : (e && e.message) || e) };
   }
@@ -342,6 +351,7 @@ export async function streamCall(impl, req, timeoutMs, onDelta, onReasoning) {
   const isSse = /event-stream/i.test(ct) && typeof req.sse === 'function';
   if (status >= 400 || !isSse || !res.body || !res.body.getReader) {
     /* Не поток (или ошибка целиком) — прежний путь, без веток в вызывающем коде. */
+    clearFirst();
     let text = '';
     try { text = await res.text(); } catch (e) { text = '' }
     clearTimeout(timer);
@@ -363,11 +373,13 @@ export async function streamCall(impl, req, timeoutMs, onDelta, onReasoning) {
       const got = req.sse(d) || {};
       if (got.error) err = String(got.error);
       if (got.reasoning) {
+        clearFirst();
         reason += got.reasoning;
         if (onReasoning) { try { onReasoning(got.reasoning); } catch (e) { /* наблюдатель упал — поток не его вина */ } }
       }
       if (got.finish) finish = got.finish;
       if (got.text) {
+        clearFirst();
         reply += got.text;
         chunks++;
         if (onDelta) { try { onDelta(got.text); } catch (e) { /*Consumer упал — поток не его вина */ } }
@@ -391,6 +403,7 @@ export async function streamCall(impl, req, timeoutMs, onDelta, onReasoning) {
     aborted = !!(e && e.name === 'AbortError');
     if (!reply && !err) err = aborted ? 'timeout' : 'поток оборвался: ' + String((e && e.message) || e);
   } finally {
+    clearFirst();
     clearTimeout(timer);
     try { if (reader.cancel && !aborted) await reader.cancel().catch(() => {}); } catch (e) { /* уже закрыт */ }
     try { reader.releaseLock(); } catch (e) { /* не у всех есть */ }
