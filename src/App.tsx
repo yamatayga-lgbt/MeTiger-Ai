@@ -33,7 +33,7 @@ import { noteFor } from './lib/release-notes'
 import { generateReply, type ChatMessage } from './lib/mock'
 import { readGender, genderForRequest } from './lib/gender'
 import { readPersona, personaForRequest } from './lib/persona'
-import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, type Attachment, type WebStep, type ImageStep, type ChatResult } from './lib/api'
+import { sendChat, forgetThread, sourceLine, adviceLine, attachLine, notesLine, makeReqId, pickupChatAnswer, holdWakeLock, joinContinuation, type Attachment, type WebStep, type ImageStep, type ChatResult } from './lib/api'
 import {
   hydrateChatMedia,
   loadActiveChatId,
@@ -336,6 +336,75 @@ export default function App() {
     abortRef.current?.abort()
   }, [])
 
+  /* 0.233: пока пишется ответ, не даём экрану телефона погаснуть и порвать поток. */
+  useEffect(() => {
+    if (!typing) return
+    return holdWakeLock()
+  }, [typing])
+
+  /* 0.233: билет незавершённого запроса переживает перезагрузку вкладки на телефоне
+     (например, когда iOS выгрузила фоновый Safari, а человек нажал на push-уведомление).
+     Вернувшись, проверяем ящик готовых ответов на сервере и докладываем ответ в чат. */
+  useEffect(() => {
+    if (typing) return
+    const checkOrphan = async () => {
+      let raw: string | null = null
+      try { raw = localStorage.getItem('mt-inflight') } catch { raw = null }
+      if (!raw) return
+      let ticket: { reqId?: string; chatId?: string; ts?: number } | null = null
+      try { ticket = JSON.parse(raw) } catch { ticket = null }
+      if (!ticket?.reqId || !ticket?.chatId || Date.now() - Number(ticket.ts || 0) > 300_000) {
+        try { localStorage.removeItem('mt-inflight') } catch { /* noop */ }
+        return
+      }
+      const r = await pickupChatAnswer(ticket.reqId, { waitsMs: [0, 1200] })
+      if (!r || !r.ok || !r.reply) return
+      try { localStorage.removeItem('mt-inflight') } catch { /* noop */ }
+      const advice = adviceLine(r)
+      setChats((prev) =>
+        prev.map((c) => {
+          if (c.id !== ticket!.chatId) return c
+          const last = c.messages[c.messages.length - 1]
+          if (last && last.role === 'assistant' && !last.failed) return c
+          const kept = last && last.failed ? c.messages.slice(0, -1) : c.messages
+          return {
+            ...c,
+            messages: [
+              ...kept,
+              {
+                id: nextId(),
+                role: 'assistant',
+                text: r.reply,
+                ts: Date.now(),
+                src: sourceLine(r),
+                advice: advice?.text || '',
+                adviceTone: advice?.tone,
+                files: r.files && r.files.length ? r.files : undefined,
+                skills: r.skills && r.skills.length ? r.skills : undefined,
+                tools: r.tools && r.tools.length ? r.tools : undefined,
+                toolNotes: r.toolNotes && r.toolNotes.length ? r.toolNotes : undefined,
+                ms: r.ms,
+                attach: attachLine(r) || undefined,
+                reads: Array.isArray(r.attachments) && r.attachments.length ? r.attachments : undefined,
+                readNotes: Array.isArray(r.attachNotes) && r.attachNotes.length ? r.attachNotes : undefined,
+                notes: notesLine(r) || undefined,
+                reasoning: r.reasoning ? String(r.reasoning).slice(0, 4000) : undefined,
+                sources: Array.isArray(r.sources) && r.sources.length ? r.sources.slice(0, 8) : undefined,
+                webSteps: Array.isArray(r.webSteps) && r.webSteps.length ? r.webSteps : undefined,
+              },
+            ],
+            updatedAt: Date.now(),
+          }
+        }),
+      )
+      setToast('Ответ дождался в чате')
+    }
+    void checkOrphan()
+    const onVis = () => { if (document.visibilityState === 'visible') void checkOrphan() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [typing])
+
   /* 0.225: после перезапуска браузер мог пересоздать подписку на push — приводим
      её в порядок молча, без второго вопроса про разрешение. */
   useEffect(() => {
@@ -481,32 +550,33 @@ export default function App() {
   useEffect(() => {}, [activeChatId])
 
   const sendMessage = useCallback(
-    (text: string, images?: string[], attachments?: Attachment[]) => {
+    (text: string, images?: string[], attachments?: Attachment[], baseMessages?: ChatMessage[]) => {
       const chatId = activeChatId
-      const current = chats.find((c) => c.id === chatId)
+      const found = chats.find((c) => c.id === chatId)
+      const current = baseMessages && found ? { ...found, messages: baseMessages } : found
       /* Бесконечная память (0.195): уходим в запрос всей историей чата —
          окно модели уместит нужное, не влезающее дверь сожмёт в выжимку. */
       const history = (current?.messages ?? []).map((m) => ({ role: m.role, text: m.text }))
       setChats((prev) =>
-        prev.map((c) =>
-          c.id === chatId
-            ? {
-                ...c,
-                title: c.messages.length === 0 && c.title === NEW_CHAT_TITLE ? titleFromText(text || (attachments && attachments[0] ? attachments[0].name : '')) : c.title,
-                messages: [...c.messages, {
-                  id: nextId(),
-                  role: 'user',
-                  text,
-                  ts: Date.now(),
-                  ...(images && images.length ? { images } : {}),
-                  /* имена и вес — чтобы чат после перезагрузки показывал, что файл
-                     отправляли; содержимое нужно только на сам запрос */
-                  ...(attachments && attachments.length ? { docs: attachments.map((f) => ({ name: f.name, size: f.size })) } : {}),
-                }],
-                updatedAt: Date.now(),
-              }
-            : c,
-        ),
+        prev.map((c) => {
+          if (c.id !== chatId) return c
+          const head = baseMessages ?? c.messages
+          return {
+            ...c,
+            title: head.length === 0 && c.title === NEW_CHAT_TITLE ? titleFromText(text || (attachments && attachments[0] ? attachments[0].name : '')) : c.title,
+            messages: [...head, {
+              id: nextId(),
+              role: 'user',
+              text,
+              ts: Date.now(),
+              ...(images && images.length ? { images } : {}),
+              /* имена и вес — чтобы чат после перезагрузки показывал, что файл
+                 отправляли; содержимое нужно только на сам запрос */
+              ...(attachments && attachments.length ? { docs: attachments.map((f) => ({ name: f.name, size: f.size })) } : {}),
+            }],
+            updatedAt: Date.now(),
+          }
+        }),
       )
       const allowThink = reasoningOn && canModelThink(model)
       const startedAt = Date.now()
@@ -523,6 +593,8 @@ export default function App() {
       setDraftImgSteps([])
       const ac = new AbortController()
       abortRef.current = ac
+      const reqId = makeReqId()
+      try { localStorage.setItem('mt-inflight', JSON.stringify({ reqId, chatId, ts: Date.now() })) } catch { /* noop */ }
       
       /* Повтор при обрыве связи (0.180).
          Прежний повтор ловил только ИСКЛЮЧЕНИЯ, а обрыв приходит ответом
@@ -540,9 +612,14 @@ export default function App() {
       const retrySendChat = async (maxRetries: number = 3, delay: number = 1000): Promise<ChatResult> => {
         let lastError: unknown
         for (let attempt = 0; attempt < maxRetries; attempt++) {
+          const attemptReqId = attempt === 0 ? reqId : makeReqId()
+          if (attempt > 0) {
+            try { localStorage.setItem('mt-inflight', JSON.stringify({ reqId: attemptReqId, chatId, ts: Date.now() })) } catch { /* noop */ }
+          }
           try {
             const r = await sendChat(text, history, {
               signal: ac.signal,
+              reqId: attemptReqId,
               threadId: chatId,
               /* 0.225: если человек свернёт приложение, ответ досчитается и придёт
                  уведомлением. Флаг ставим только когда уведомления включены. */
@@ -596,6 +673,7 @@ export default function App() {
       
       void (async () => {
         const r = await retrySendChat()
+        try { localStorage.removeItem('mt-inflight') } catch { /* noop */ }
         if (r.ok) {
           recordModelTelemetry(
             model || r.model,
@@ -666,9 +744,9 @@ export default function App() {
               /* проверенные ссылки из поиска/вики/новостей — кликабельны под ответом */
               sources: r.ok && Array.isArray(r.sources) && r.sources.length ? r.sources.slice(0, 8) : undefined,
               /* шаги веб-поиска (Searched for / Fetched) для блока Searching the web */
-              webSteps: r.ok && Array.isArray(r.webSteps) && r.webSteps.length ? r.webSteps : undefined,
+              webSteps: (r.ok || r.partial) && Array.isArray(r.webSteps) && r.webSteps.length ? r.webSteps : undefined,
             }
-          : ({} as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet' })
+          : ({ failed: !import.meta.env.DEV } as { src?: string; advice?: string; adviceTone?: 'ok' | 'warn' | 'quiet'; failed?: boolean })
         setChats((prev) =>
           prev.map((c) =>
             c.id === chatId
@@ -695,6 +773,95 @@ export default function App() {
       })()
     },
     [activeChatId, chats, model, reasoningOn, effort, genParams],
+  )
+
+  /* 0.233: дописать оборванный на полслове ответ одним касанием с телефона —
+     без копирования текста и без дублирования уже написанного пузыря. */
+  const continueMessage = useCallback(
+    (msgId: string) => {
+      if (typing) return
+      const chatId = activeChatId
+      const current = chats.find((c) => c.id === chatId)
+      const idx = current ? current.messages.findIndex((m) => m.id === msgId) : -1
+      if (!current || idx < 0) return
+      const target = current.messages[idx]
+      if (target.role !== 'assistant' || !target.text) return
+      const history = current.messages.slice(0, idx + 1).map((m) => ({ role: m.role, text: m.text }))
+      const tailHint = target.text.slice(-120)
+      const prompt = 'Продолжи предыдущий ответ ровно с того места, где он оборвался, без повтора уже написанного и без вступлений. Оборвалось на словах: «' + tailHint + '»'
+      setTyping(true)
+      setDraft('')
+      setDraftReasoning(null)
+      setDraftWebSteps([])
+      setDraftImgSteps([])
+      const ac = new AbortController()
+      abortRef.current = ac
+      const reqId = makeReqId()
+      void (async () => {
+        const r = await sendChat(prompt, history, {
+          signal: ac.signal,
+          reqId,
+          threadId: chatId,
+          notify: pushLocalOn(),
+          gender: genderForRequest(readGender()),
+          persona: personaForRequest(readPersona()),
+          onDraft: (t) => setDraft(t),
+          temperature: genParams.temperature,
+          topP: genParams.topP,
+          presencePenalty: genParams.presencePenalty,
+          frequencyPenalty: genParams.frequencyPenalty,
+        })
+        if (abortRef.current === ac) abortRef.current = null
+        setTyping(false)
+        setDraft(null)
+        setDraftReasoning(null)
+        setDraftWebSteps([])
+        setDraftImgSteps([])
+        if (r.stopped) {
+          setToast('Остановлено')
+          return
+        }
+        if ((r.ok || r.partial) && r.reply) {
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === chatId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m) =>
+                      m.id === msgId
+                        ? {
+                            ...m,
+                            text: joinContinuation(m.text, r.reply),
+                            warn: r.partial ? '⚠️ Ответ неполный: ' + (r.error || 'хвост не пришёл') : undefined,
+                          }
+                        : m,
+                    ),
+                    updatedAt: Date.now(),
+                  }
+                : c,
+            ),
+          )
+        } else {
+          setToast(r.error || 'Не удалось дописать — попробуйте ещё раз')
+        }
+      })()
+    },
+    [activeChatId, chats, typing, genParams],
+  )
+
+  /* 0.233: повторить неудавшийся запрос с телефона одним касанием — вместе со снимками. */
+  const retryMessage = useCallback(
+    (msgId: string) => {
+      if (typing) return
+      const current = chats.find((c) => c.id === activeChatId)
+      const idx = current ? current.messages.findIndex((m) => m.id === msgId) : -1
+      if (!current || idx <= 0) return
+      const prevUser = current.messages[idx - 1]
+      if (!prevUser || prevUser.role !== 'user') return
+      const base = current.messages.slice(0, idx - 1)
+      sendMessage(prevUser.text, prevUser.images, undefined, base)
+    },
+    [activeChatId, chats, typing, sendMessage],
   )
   // ⌘K — палитра, ⌘N — новый чат, Esc — закрыть оверлеи
   useEffect(() => {
@@ -793,6 +960,8 @@ export default function App() {
                 draftImgSteps={draftImgSteps}
                 onSend={sendMessage}
                 onStop={stopGeneration}
+                onContinue={continueMessage}
+                onRetry={retryMessage}
                 genParams={genParams}
                 onGenParamsChange={setGenParams}
                 onOpenLimits={() => navigate('usage')}

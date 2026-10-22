@@ -20,6 +20,7 @@ import * as personaStyle from '../../engine/personastyle.js';
 import { cfgOf as limitsCfg, createQuarantine, createRateLimiter, limitsInfo } from '../../engine/limits.js';
 import { createDayCap, msToUtcMidnight } from '../../engine/daycap.js';
 import { createIpCap, IP_CACHE, ipCfg } from '../../engine/ipcap.js';
+import { kvKey } from '../../engine/kvkey.js';
 import { notifyAnswer, pause, PUSH_GRACE_MS } from '../../engine/pushstore.js';
 import { isOwnerCode } from '../../engine/reports.js';
 import { netStats } from '../../engine/netpool.js';
@@ -112,6 +113,51 @@ import { createStt } from '../../engine/voicein.js';
    Без этой карты каждый запрос заново стучится в закрытую дверь и отдаёт под
    это время совета — те самые секунды, которые человек ждёт ответа. */
 const QUARANTINE = new Map();
+
+/* 0.233: ящик готовых ответов для оборвавшихся телефонных потоков.
+   Когда человек свернул браузер или сеть моргнула между Wi-Fi и LTE, поток SSE
+   закрывается, но сервер досчитывает ответ через waitUntil (0.225). Раньше готовый
+   ответ уходил только в короткую строчку push-уведомления и пропадал — открыв чат,
+   человек видел пустоту или ошибку сети. Теперь готовый payload ждёт 5 минут по
+   билету reqId (привязанному к userId): в памяти изолята бесплатно, и в KV только
+   при реальном обрыве потока (обычный живой чат не тратит ни одной записи KV). */
+const ANSWER_BOX = new Map();
+const ANSWER_TTL_MS = 5 * 60 * 1000;
+const REQ_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
+async function saveFinishedAnswer(env, reqId, userId, status, payload) {
+  if (!REQ_ID_RE.test(String(reqId || '')) || !userId || !payload || typeof payload !== 'object') return;
+  const now = Date.now();
+  for (const [k, v] of ANSWER_BOX) {
+    if (!v || now - Number(v.ts || 0) > ANSWER_TTL_MS || ANSWER_BOX.size > 64) ANSWER_BOX.delete(k);
+  }
+  const rec = { userId, status: Number(status) || 200, payload, ts: now };
+  ANSWER_BOX.set(reqId, rec);
+  const st = limitsStore(env);
+  if (st) {
+    try { await st.put(kvKey('ans', reqId), rec, 300); } catch (e) { /* локальный ящик остаётся */ }
+  }
+}
+
+async function readFinishedAnswer(env, reqId) {
+  const mem = ANSWER_BOX.get(reqId);
+  if (mem && Date.now() - Number(mem.ts || 0) <= ANSWER_TTL_MS) return mem;
+  if (mem) ANSWER_BOX.delete(reqId);
+  const st = limitsStore(env);
+  if (!st) return null;
+  const saved = await st.get(kvKey('ans', reqId));
+  if (!saved || typeof saved !== 'object') return null;
+  if (Date.now() - Number(saved.ts || 0) > ANSWER_TTL_MS) return null;
+  return saved;
+}
+
+async function dropFinishedAnswer(env, reqId) {
+  ANSWER_BOX.delete(reqId);
+  const st = limitsStore(env);
+  if (st) {
+    try { await st.delete(kvKey('ans', reqId)); } catch (e) { /* истечёт по TTL */ }
+  }
+}
 
 const MAX_IMG_BYTES = 4 * 1024 * 1024;
 
@@ -933,6 +979,23 @@ async function handlePost(context) {
 }
 
 export async function onRequestGet(context) {
+  /* 0.233: дотягивание готового ответа по билету reqId после обрыва потока на телефоне.
+     Обычная диагностика GET /api/chat без параметра reqId работает ровно как прежде. */
+  let reqUrl = null;
+  try { reqUrl = context && context.request && context.request.url ? new URL(context.request.url) : null; } catch (e) { reqUrl = null; }
+  if (reqUrl && reqUrl.searchParams.has('reqId')) {
+    const reqId = String(reqUrl.searchParams.get('reqId') || '').trim();
+    const userId = sanitizeUserId(reqUrl.searchParams.get('userId') || '');
+    if (!REQ_ID_RE.test(reqId) || !userId) {
+      return json({ ok: false, error: 'нужны корректные reqId и userId' }, 400);
+    }
+    const rec = await readFinishedAnswer(context.env, reqId);
+    if (!rec) return json({ ok: true, found: false });
+    if (rec.userId !== userId) return json({ ok: false, error: 'чужой билет ответа' }, 403);
+    await dropFinishedAnswer(context.env, reqId);
+    return json({ ok: true, found: true, status: rec.status || 200, payload: rec.payload });
+  }
+
   const engine = createEngine({ env: context.env, fetch: (u, i) => fetch(u, i), quarantine: QUARANTINE });
   /* Отметки «этот картиночный источник отвечал» лежат в общем хранилище: без этого
      ожидания диагностика честно, но бесполезно говорила «не проверен» о pollinations,
@@ -993,11 +1056,14 @@ export async function onRequestPost(context) {
   let notifyUser = '';
   let notifyOn = false;
   let notifyChat = '';
+  let reqId = '';
   try {
     const copy = await context.request.clone().json();
     notifyUser = sanitizeUserId(copy && copy.userId);
     notifyOn = !!(copy && (copy.notify === true || copy.notify === 1));
     notifyChat = String((copy && copy.chatId) || '').slice(0, 80);
+    const rawId = String((copy && copy.reqId) || '').trim();
+    if (REQ_ID_RE.test(rawId)) reqId = rawId;
   } catch (e) { /* тело не JSON — значит и уведомлять некого */ }
 
   const enc = new TextEncoder();
@@ -1011,33 +1077,43 @@ export async function onRequestPost(context) {
   writer.closed.catch(() => { clientGone = true; closed = true; });
   const send = (obj) => {
     if (closed) return;
-    try { writer.write(enc.encode('data: ' + JSON.stringify(obj) + '\n\n')); } catch (e) { closed = true; clientGone = true; }
+    try {
+      writer.write(enc.encode('data: ' + JSON.stringify(obj) + '\n\n')).catch(() => { closed = true; clientGone = true; });
+    } catch (e) { closed = true; clientGone = true; }
   };
   /* Поток обязан закрываться в любом случае: висячий ответ держит соединение и
      выглядит для браузера как «думает», хотя движок уже умер. */
   let finalPayload = null;
+  let finalStatus = 200;
   const job = handlePost(Object.assign({}, context, { __send: send }))
     .then(async (res) => {
+      finalStatus = res.status;
       let payload = null;
       try { payload = await res.json(); } catch (e) { payload = { ok: false, error: 'сервер вернул не JSON' }; }
       finalPayload = payload;
       send({ kind: 'final', status: res.status, payload });
     })
     .catch((e) => { send({ kind: 'error', error: String((e && e.message) || e) }); })
-    .finally(() => { closed = true; try { writer.close(); } catch (e) { /* уже закрыт */ } });
+    .finally(() => { closed = true; try { writer.close().catch(() => {}); } catch (e) { /* уже закрыт */ } });
   /* 0.225: работа больше не умирает вместе с соединением. Раньше оборванный поток
      отменял весь ответ, и человек, свернувший приложение, терял его целиком.
      Теперь Cloudflare даёт досчитать до 30 секунд после отключения — этого хватает
      обычному ответу; исследование может и не успеть, и об этом сказано в подписи. */
   if (context.waitUntil) { try { context.waitUntil(job); } catch (e) { /* без waitUntil ответ всё равно уедет */ } }
   void job;
-  /* Уведомление шлём ПОСЛЕ того, как стало известно, что делать: человек ушёл
-     (clientGone) и ответ досчитался. Пауза — чтобы не будить того, кто вернулся
-     и уже смотрит на текст. */
-  void job.then(async () => {
+  /* 0.233 + 0.225: если поток оборвался до финала, сначала откладываем готовый ответ
+     в ящик по reqId (чтобы вернувшийся с телефона забрал весь ответ целиком даже без
+     подписки на push), а затем — если просили push — шлём уведомление после паузы. */
+  const followUp = job.then(async () => {
+    if (clientGone && reqId && notifyUser && finalPayload && finalPayload.ok) {
+      await saveFinishedAnswer(context.env, reqId, notifyUser, finalStatus, finalPayload);
+    }
     if (!clientGone || !notifyOn || !notifyUser) return;
     try {
       await pause(PUSH_GRACE_MS);
+      /* Если человек уже вернулся в приложение и забрал ответ из ящика за время паузы —
+         не будим лишним уведомлением. */
+      if (reqId && !(await readFinishedAnswer(context.env, reqId))) return;
       const ok = !(finalPayload && finalPayload.ok === false);
       await notifyAnswer(context.env, notifyUser, {
         ok,
@@ -1046,6 +1122,8 @@ export async function onRequestPost(context) {
       });
     } catch (e) { /* уведомление — удобство, а не условие ответа */ }
   });
+  if (context.waitUntil) { try { context.waitUntil(followUp); } catch (e) { /* noop */ } }
+  void followUp;
   return new Response(readable, {
     headers: Object.assign({}, CORS, {
       'content-type': 'text/event-stream; charset=utf-8',

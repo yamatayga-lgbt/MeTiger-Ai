@@ -192,6 +192,7 @@ export function parseSse(buf: string): { events: SseEvent[]; rest: string } {
 export interface PartialDraft {
   text: string
   reasoning: string
+  webSteps?: WebStep[]
 }
 
 async function readDraftStream(
@@ -214,19 +215,12 @@ async function readDraftStream(
   let buf = ''
   let draft: string | null = null
   const imgSteps: ImageStep[] = []
-  let final: Partial<ChatResult> | null = null
+  const emptyFinal = (): Partial<ChatResult> | null => null
+  let final = emptyFinal()
   let reason: string | null = null
   const webSteps: WebStep[] = []
-  for (;;) {
-    const r = await rd.read()
-    if (r.done) break
-    buf += dec.decode(r.value, { stream: true })
-    const got = parseSse(buf)
-    buf = got.rest
-    /* «Живой» — только по разобранному событию: байты без содержания (обрывок
-       события, служебная строка) не доказывают, что ответ ещё пишется. */
-    if (got.events.length && onAlive) onAlive()
-    for (const ev of got.events) {
+  const consumeEvents = (events: SseEvent[]) => {
+    for (const ev of events) {
       if (ev.kind === 'depth') {
         /* Не текст и не «живо» в смысле ответа: это решение агента думать дольше.
            Потолок времени поднимает вызывающий (см. onDepthEvent). */
@@ -261,6 +255,46 @@ async function readDraftStream(
       }
     }
   }
+  const attachWebStepsIfMissing = () => {
+    const fin = final as Partial<ChatResult> | null
+    if (fin && webSteps.length && !(Array.isArray(fin.webSteps) && fin.webSteps.length)) {
+      fin.webSteps = webSteps
+    }
+  }
+  const saveOut = () => {
+    if (!final && out) {
+      out.text = draft || ''
+      out.reasoning = reason || ''
+      out.webSteps = webSteps.slice()
+    }
+  }
+  for (;;) {
+    let r: ReadableStreamReadResult<Uint8Array>
+    try {
+      r = await rd.read()
+    } catch (err) {
+      /* 0.233: на телефоне смена Wi-Fi ↔ LTE или сворачивание браузера рвёт сокет
+         исключением внутри rd.read(). Хвост в буфере и уже набранный черновик нельзя
+         терять: дочитываем целые строки и сохраняем partial до проброса ошибки. */
+      if (buf.trim()) {
+        const tail = parseSse(buf + '\n\n')
+        if (tail.events.length && onAlive) onAlive()
+        consumeEvents(tail.events)
+      }
+      attachWebStepsIfMissing()
+      saveOut()
+      if (final) return final
+      throw err
+    }
+    if (r.done) break
+    buf += dec.decode(r.value, { stream: true })
+    const got = parseSse(buf)
+    buf = got.rest
+    /* «Живой» — только по разобранному событию: байты без содержания (обрывок
+       события, служебная строка) не доказывают, что ответ ещё пишется. */
+    if (got.events.length && onAlive) onAlive()
+    consumeEvents(got.events)
+  }
   /* Финальный кадр приходит от движка без шагов поиска, а человек их только что
      видел в ленте. Если не перенести их в ответ, в готовом сообщении от работы
      остаётся один «Инструмент: веб-поиск» — и выглядит это так, будто ничего не
@@ -270,10 +304,7 @@ async function readDraftStream(
   }
   /* Поток кончился без финала. Выбрасывать накопленное нельзя: человек это уже
      читал на экране, и потерять написанное из-за обрыва связи — худшее из решений. */
-  if (!final && out) {
-    out.text = draft || ''
-    out.reasoning = reason || ''
-  }
+  saveOut()
   return final
 }
 
@@ -524,11 +555,142 @@ export function netError(): string {
   return 'сеть недоступна — интернет есть, но адрес' + (host ? ' ' + host : '') + ' не открывается'
 }
 
+/** 0.233: одноразовый билет запроса (8..64 знака [A-Za-z0-9_-]) для дотягивания
+    готового ответа, если поток на телефоне оборвался во время генерации. */
+export function makeReqId(): string {
+  const rand = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6)
+  return 'rq_' + Date.now().toString(36) + '_' + rand
+}
+
+/** 0.233: удержание экрана телефона включённым, пока пишется ответ. На телефонах
+    автоблокировка гасит экран через 30 секунд и рвёт живой SSE-поток прямо на глазах
+    человека. Если браузер не поддерживает Wake Lock или включено энергосбережение —
+    тихо отступаем без ошибок. */
+export function holdWakeLock(): () => void {
+  let active = true
+  let sentinel: { release?: () => Promise<void> } | null = null
+  const acquire = async () => {
+    if (!active || sentinel) return
+    try {
+      const wl = typeof navigator !== 'undefined' ? (navigator as unknown as { wakeLock?: { request: (t: 'screen') => Promise<{ release?: () => Promise<void> }> } }).wakeLock : undefined
+      if (!wl || typeof wl.request !== 'function') return
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      const s = await wl.request('screen')
+      if (!active) { void s?.release?.().catch(() => {}); return }
+      sentinel = s
+    } catch {
+      /* батарея / старый WebView — не повод шуметь */
+    }
+  }
+  const onVis = () => {
+    if (!active) return
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      sentinel = null
+      void acquire()
+    }
+  }
+  void acquire()
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', onVis)
+  }
+  return () => {
+    active = false
+    if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+      document.removeEventListener('visibilitychange', onVis)
+    }
+    const cur = sentinel
+    sentinel = null
+    void cur?.release?.().catch(() => {})
+  }
+}
+
+/** Аккуратная склейка оборванного ответа с дописанным хвостом: без двойного пробела,
+    без слипания слов и без дублирования последних слов начала, если модель повторила
+    хвост для связности. */
+export function joinContinuation(head: string, tail: string): string {
+  const a = String(head || '')
+  let b = String(tail || '').replace(/^\s*(?:\.{3}|…)\s*/, '')
+  if (!a.trim()) return b
+  if (!b.trim()) return a
+  const maxOverlap = Math.min(80, a.length, b.length)
+  for (let len = maxOverlap; len >= 6; len--) {
+    if (a.slice(-len).toLowerCase() === b.slice(0, len).toLowerCase()) {
+      b = b.slice(len)
+      break
+    }
+  }
+  if (!b) return a
+  const needSpace = !/[\s\n(-]$/.test(a) && !/^[\s\n.,!?;:)\]}]/.test(b)
+  return needSpace ? a + ' ' + b : a + b
+}
+
+function waitForegroundOrOnline(maxMs: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+    if (!hidden && !offline) { resolve(); return }
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      clearTimeout(t)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onCheck)
+      if (typeof window !== 'undefined') window.removeEventListener('online', onCheck)
+      resolve()
+    }
+    const onCheck = () => {
+      const h = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+      const o = typeof navigator !== 'undefined' && navigator.onLine === false
+      if (!h && !o) finish()
+    }
+    const t = setTimeout(finish, Math.max(0, maxMs))
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onCheck)
+    if (typeof window !== 'undefined') window.addEventListener('online', onCheck)
+    if (signal) signal.addEventListener('abort', finish, { once: true })
+  })
+}
+
+/** 0.233: забрать ответ, который сервер досчитал в waitUntil после обрыва SSE-потока. */
+export async function pickupChatAnswer(
+  reqId: string,
+  opts: { signal?: AbortSignal; waitsMs?: number[] } = {},
+): Promise<ChatResult | null> {
+  if (!reqId || !/^[A-Za-z0-9_-]{8,64}$/.test(reqId)) return null
+  if (opts.signal?.aborted) return null
+  await waitForegroundOrOnline(15_000, opts.signal)
+  const waits = opts.waitsMs || [600, 1500, 2800]
+  const uid = currentUserId()
+  for (let i = 0; i < waits.length; i++) {
+    if (opts.signal?.aborted) return null
+    if (waits[i] > 0) {
+      await new Promise<void>((r) => {
+        const t = setTimeout(r, waits[i])
+        opts.signal?.addEventListener('abort', () => { clearTimeout(t); r() }, { once: true })
+      })
+    }
+    if (opts.signal?.aborted) return null
+    try {
+      const url = `${ENDPOINT}?reqId=${encodeURIComponent(reqId)}&userId=${encodeURIComponent(uid)}`
+      const res = await fetch(url, { method: 'GET', headers: { 'cache-control': 'no-cache' }, signal: opts.signal })
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; found?: boolean; payload?: Partial<ChatResult> } | null
+      if (data && data.found && data.payload && data.payload.ok) {
+        return { ok: true, reply: data.payload.reply || '', ...data.payload }
+      }
+      if (res.status === 400 || res.status === 403) return null
+    } catch {
+      /* сеть ещё поднимается после выхода из фона — следующая пауза проверит снова */
+    }
+  }
+  return null
+}
+
 export async function sendChat(
   text: string,
   history: ChatTurn[] = [],
   opts: {
     signal?: AbortSignal
+    /** 0.233: билет запроса для дотягивания готового ответа при обрыве потока на телефоне. */
+    reqId?: string
     images?: string[]
     attachments?: Attachment[]
     model?: string
@@ -626,6 +788,7 @@ export async function sendChat(
     arm(Math.min(SILENCE_MS, ceilingMs - (Date.now() - startedAt)))
   }
   if (opts.signal) opts.signal.addEventListener('abort', () => ac.abort(), { once: true })
+  const partial: PartialDraft = { text: '', reasoning: '', webSteps: [] }
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
@@ -664,15 +827,22 @@ export async function sendChat(
         /* 0.225: «разбуди, когда будет готово» — только если уведомления включены */
         notify: opts.notify ? true : undefined,
         chatId: opts.threadId || undefined,
+        /* 0.233: билет запроса — только когда его явно выдало приложение */
+        ...(opts.reqId ? { reqId: opts.reqId } : {}),
       }),
     })
     let data: Partial<ChatResult> | null
     if ((opts.onDraft || opts.onReasoning) && (res.headers.get('content-type') || '').indexOf('text/event-stream') >= 0) {
       // Поток: куски идут в onDraft, финальное событие несёт ровно тот payload, который
       // сервер вернул бы обычным POST. Демонстрационный путь сюда не заходит.
-      const partial: PartialDraft = { text: '', reasoning: '' }
       const fin = (await readDraftStream(res, opts.onDraft, opts.onReasoning, opts.onWebSteps, opts.onImageSteps, onAlive, partial, onDepthEvent)) as Partial<ChatResult> | null
       if (!fin) {
+        /* 0.233: поток закрылся до финала (смена сети, сворачивание экрана). Прежде чем
+           признавать обрыв, проверяем, не досчитал ли сервер ответ в waitUntil по билету. */
+        if (opts.reqId && !(opts.signal && opts.signal.aborted)) {
+          const picked = await pickupChatAnswer(opts.reqId, { signal: opts.signal })
+          if (picked) return picked
+        }
         // сервер закрыл поток, так и не досказав финал: это отдельный отказ, а не
         // «сервер ответил 200» — иначе человек читает про статус там, где пропущен хвост.
         // Текст, который уже был на экране, остаётся ответом: он настоящий, его
@@ -681,6 +851,7 @@ export async function sendChat(
           ok: false,
           reply: partial.text,
           reasoning: partial.reasoning || undefined,
+          webSteps: partial.webSteps && partial.webSteps.length ? partial.webSteps : undefined,
           partial: !!partial.text,
           error: alive
             ? 'связь оборвалась на середине ответа — повторите запрос'
@@ -701,6 +872,22 @@ export async function sendChat(
        таймаут здесь же сверху и явная остановка человеком (opts.signal, дошёл снаружи
        из App.tsx) — это не «сеть сломалась» и не повод показывать ошибку движка. */
     const stopped = aborted && !!(opts.signal && opts.signal.aborted)
+    if (!stopped && opts.reqId) {
+      const picked = await pickupChatAnswer(opts.reqId, { signal: opts.signal })
+      if (picked) return picked
+    }
+    if (!stopped && partial.text) {
+      return {
+        ok: false,
+        reply: partial.text,
+        reasoning: partial.reasoning || undefined,
+        webSteps: partial.webSteps && partial.webSteps.length ? partial.webSteps : undefined,
+        partial: true,
+        error: aborted
+          ? 'время вышло — ответ показан до места обрыва'
+          : 'связь оборвалась на середине ответа — повторите запрос',
+      }
+    }
     return {
       ok: false,
       reply: '',

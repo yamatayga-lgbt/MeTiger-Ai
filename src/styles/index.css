@@ -4552,13 +4552,40 @@ button.rows-row:hover {
 }
 .msg-warn {
   margin-top: 6px;
-  padding: 5px 9px;
+  padding: 6px 10px;
   border-left: 2px solid #d98b2b;
   background: rgba(217, 139, 43, 0.08);
   border-radius: 0 8px 8px 0;
   font-size: 12.5px;
   line-height: 1.35;
   color: var(--text-2, #5a6270);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.msg-recover-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+}
+.msg-recover-btn {
+  appearance: none;
+  border: 1px solid var(--border, rgba(128, 128, 140, 0.28));
+  background: var(--surface-2, rgba(128, 128, 140, 0.1));
+  color: var(--text-1, inherit);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.msg-recover-btn:hover,
+.msg-recover-btn:active {
+  background: rgba(217, 139, 43, 0.16);
+  border-color: rgba(217, 139, 43, 0.45);
 }
 .msg-files-row {
   display: flex;

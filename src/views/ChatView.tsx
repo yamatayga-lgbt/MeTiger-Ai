@@ -241,6 +241,9 @@ interface ChatViewProps {
   /** Остановить запрос, который уже ушёл (например, отправили по ошибке). Пока его
       нет — кнопка остановки не показывается, форма ведёт себя как раньше. */
   onStop?: () => void
+  /** 0.233: дописать ответ с места обрыва и повторить упавший запрос одним касанием. */
+  onContinue?: (msgId: string) => void
+  onRetry?: (msgId: string) => void
   /** Параметры генерации (temperature, top_p) */
   genParams?: GenParams
   onGenParamsChange?: (next: GenParams) => void
@@ -262,6 +265,8 @@ export function ChatView({
   draftImgSteps = [],
   onSend,
   onStop,
+  onContinue,
+  onRetry,
   genParams = DEFAULT_GEN_PARAMS,
   onGenParamsChange,
   onOpenLimits,
@@ -844,8 +849,37 @@ export function ChatView({
                       станет искать картинку. */}
                   {m.fileError ? <div className="msg-warn">{m.fileError}</div> : null}
                   {/* Поток оборвался: ответ есть, хвоста нет — говорим об этом снизу,
-                      а не выбрасываем написанное (0.111). */}
+                      а не выбрасываем написанное (0.111). В 0.233 рядом кнопка дописать
+                      ровно с места обрыва одним касанием на телефоне. */}
                   {m.warn ? <div className="msg-warn">{m.warn}</div> : null}
+                  {m.warn && !typing && onContinue ? (
+                    <div className="msg-recover-row">
+                      <button
+                        type="button"
+                        className="msg-recover-btn"
+                        onClick={() => {
+                          haptic('light')
+                          onContinue(m.id)
+                        }}
+                      >
+                        Дописать с места обрыва
+                      </button>
+                    </div>
+                  ) : null}
+                  {m.failed && !typing && onRetry ? (
+                    <div className="msg-recover-row">
+                      <button
+                        type="button"
+                        className="msg-recover-btn"
+                        onClick={() => {
+                          haptic('light')
+                          onRetry(m.id)
+                        }}
+                      >
+                        Повторить запрос
+                      </button>
+                    </div>
+                  ) : null}
                   {/* Что агент прочитал из приложенного — чтобы «он же не видел мой
                       файл» не превращалось в спор. Новые ответы показывают это выше,
                       блоком «Explored N reads»; эта строка — обратная совместимость
