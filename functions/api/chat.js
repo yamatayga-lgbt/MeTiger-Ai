@@ -408,6 +408,9 @@ async function handlePost(context) {
   const askText = composed ? (composed.askText || text) : words;
   if (!text) return json({ ok: false, error: 'пустой запрос' }, 400);
   const allImages = images.concat((att && att.images) || []);
+  /* С фото времени на ответ больше: после отказа зрячих голов вступает лестница
+     ступеней (0.232) — см. deadlineMs ниже. */
+  const hasImages = allImages.length > 0;
   if (allImages.length > MAX_IMAGES) allImages.length = MAX_IMAGES;
 
   const ip = realClientIp(request, env);
@@ -756,9 +759,13 @@ async function handlePost(context) {
        ответа секунду, права висеть полторы минуты не получает. Исследованию —
        90 с публично и 120 с владельцу: там последовательно живут несколько
        поисков, чтение страниц, синтез и самопроверка. */
+    /* 0.232: с присланным фото времени больше. Лестница после отказа — до девяти
+       проходов «голова × ступень», и на прежних 50 секундах она обрывалась на
+       третьей: человек получал честное «все отказались», хотя движок ещё не
+       дошёл до ступеней, которые у этих голов отказов не вызывают. */
     deadlineMs: Number(ownerPriority
-      ? (env.OWNER_CHAT_DEADLINE_MS || (deepWork && deepWork.research ? 120000 : (wantDeep ? 105000 : 75000)))
-      : (env.CHAT_DEADLINE_MS || (deepWork && deepWork.research ? 90000 : (wantDeep ? 75000 : 50000)))),
+      ? (env.OWNER_CHAT_DEADLINE_MS || (deepWork && deepWork.research ? 120000 : (wantDeep ? 105000 : (hasImages ? 95000 : 75000))))
+      : (env.CHAT_DEADLINE_MS || (deepWork && deepWork.research ? 90000 : (wantDeep ? 78000 : (hasImages ? 75000 : 50000))))),
   });
   /* Тег размышлений не показывается человеку ни в каком виде: ни закрытый посреди
      ответа, ни незакрытый хвостом. В потоке разбор чистит его по ходу (feedDelta),

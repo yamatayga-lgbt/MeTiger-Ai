@@ -651,6 +651,30 @@ export function createEngine(opts) {
        сырую настройку: подпись обязана совпадать с тем, как агент говорил. */
     const genderEff = gender.effective(input, env);
     const genderVal = genderEff.agent;
+    /* 0.232: жёсткая граница по фото — до первой попытки и без единого вызова
+       модели. Лестница ниже снимает ЛОЖНЫЕ отказы; опознание человека по
+       интимному снимку и сексуальный контекст с несовершеннолетними — не
+       ложный отказ, а настоящий запрет: ни одна ступень его не снимает. */
+    const visionStop = images.length ? vision.hardStop(askText) : '';
+    if (visionStop) {
+      const st = vision.classifyVisionTask(askText);
+      const hit = {
+        reply: vision.hardStopReply(visionStop), reasoning: '',
+        provider: 'engine', model: 'vision-stop', intent, tier: '',
+        tools: [], sources: [], toolNotes: [],
+        photoRefused: true, photoStage: 'hardstop:' + visionStop, photoMode: st.mode,
+      };
+      /* Ответ собираем здесь же: withMeta трогает значения, объявленные ниже по
+         функции, и ранний выход через неё падал бы на ещё не готовом контексте. */
+      return {
+        ok: true, reply: hit.reply, reasoning: '', provider: 'engine', model: 'vision-stop',
+        finish: '', continuations: 0, attempts: 0,
+        tools: [], toolNotes: [], sources: [],
+        photoRefused: true, photoStage: hit.photoStage, photoMode: hit.photoMode,
+        gender: genderVal, userGender: genderEff.user,
+        intent, tier: '', ms: Date.now() - started, tried: [], error: '',
+      };
+    }
 
     /* Память чата: прошлое доезжает до модели, а не живёт в браузере, и по реакции
        на прошлый ответ собирается настройка на человека. Головы совета память не
@@ -887,7 +911,7 @@ const photoFallbackReply = (q, imgs) => {
     safety: 'для вопроса о риске укажи, какая именно деталь или опасность интересует',
     general: 'спроси по конкретной детали — объект, текст, цвет, фон, положение или качество кадра',
   };
-  return 'Честно о фото: я переспросил все зрячие модели по очереди, включая повтор с усиленной рамкой, холодный фактологический разбор, проход по одной детали и проход по визуальным якорям, — и каждая отказалась описывать именно это изображение, сославшись на политику своего сервиса. Это их запрет, не приложения: здесь отказа по содержанию фото нет, но заставить чужую модель смотреть я не могу.'
+  return 'Честно о фото: я переспросил все зрячие модели по очереди — обычный ответ, холодный фактологический разбор, проход по одной детали, проход по визуальным якорям, профессиональный разбор по области вопроса и механический перечень видимого — и каждая отказалась описывать именно это изображение, сославшись на политику своего сервиса. Это их запрет, не приложения: здесь отказа по содержанию фото нет, но заставить чужую модель смотреть я не могу.'
     + (facts ? '\n\n' + facts + ' Содержимое по этим техническим фактам я не выдумываю.' : '')
     + '\n\nКак получить разбор: (1) спроси по конкретной детали — ' + (routeTips[visionTask.mode] || routeTips.general) + '; (2) пришли кадр, обрезанный на нужном месте; (3) опиши фото словами в сообщении — по описанию отвечу подробно и прямо.'
     + '\n\nИ по делу о рисках с откровенными фото в целом: чужие интимные снимки не пересылай без согласия человека в кадре (это и вред, и во многих странах статья), свои держи не в общей галерее — утечки случаются чаще из облаков и пересылок, чем из взломов; метаданные снимка (EXIF) могут хранить место и время съёмки.';
@@ -1489,8 +1513,28 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
       };
       (softSeen || []).forEach(addRescueCand);
       tried.forEach((t) => addRescueCand({ id: t.provider, model: t.model }));
+      /* 0.232: добираем зрячие головы, которые в этом ходе ещё не отвечали.
+         Раньше лестница ходила только по тем, кто уже отказал, — а следующий
+         провайдер с зрячей моделью так и стоял нетронутым. Отказ одной головы
+         ничего не говорит о другой: у них разные фильтры и разные пороги. */
+      for (const pid of order) {
+        if (rescueCands.length >= 4) break;
+        const cfg = P[pid];
+        if (!cfg || !providerAlive(P, pid, health)) continue;
+        const list = visionFirst(modelsFor(cfg, tier, intent, images, env, deep) || [], images);
+        for (const m of list) {
+          if (rescueCands.length >= 4) break;
+          if (!isVision(m)) continue;
+          addRescueCand({ id: pid, model: m });
+        }
+      }
 
-      const passes = vision.visionPasses(text);
+      /* Взрослый вопрос получает отдельную ступень — прямой разбор без
+         эвфемизмов (0.232). Только взрослый и только когда жёсткая граница выше
+         не сработала: несовершеннолетние, опознание и распространение в этот
+         список не попадают никогда. */
+      const stageList = vision.VISION_STAGES.concat(adultAsk ? ['adult'] : []);
+      const passes = stageList.map((stage) => vision.visionPass(stage, text));
       const passByStage = Object.fromEntries(passes.map((p) => [p.stage, p]));
       const rescueAttempts = [];
       const addAttempt = (cand, stage) => {
@@ -1499,12 +1543,22 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
         if (rescueAttempts.some((a) => a.key === key)) return;
         rescueAttempts.push({ key, cand, pass: passByStage[stage] });
       };
-      addAttempt(rescueCands[0], 'neutral');
-      addAttempt(rescueCands[1] || rescueCands[0], 'detail');
-      addAttempt(rescueCands[0], 'anchors');
-      addAttempt(rescueCands[1], 'anchors');
+      /* 0.232: ступеней пять, и каждая идёт по ДВУМ разным головам, если они
+         есть: у моделей разные пороги, и отказ одной ровно ничего не говорит об
+         отказе другой. Порядок — от самой «безобидной» формулировки к
+         механическому перечню: перечень видимого почти не вызывают отказов даже
+         у самых осторожных голов. Потолок попыток растёт с числом кадров: на
+         серии один кадр может быть чистым, а другой нет, и сдаваться после
+         шести отказов на серии рано. */
+      /* Сначала все ступени на первой голове — иначе при потолке в шесть
+         попыток до механического перечня дело не дойдёт вовсе, а он-то и
+         срабатывает чаще всего. Потом самые сильные ступени на второй голове. */
+      for (const stage of stageList) addAttempt(rescueCands[0], stage);
+      for (const stage of ['checklist', 'adult', 'professional', 'anchors']) addAttempt(rescueCands[1], stage);
+      for (const stage of ['checklist', 'neutral']) addAttempt(rescueCands[2], stage);
+      const ladderCap = Math.min(9, 6 + Math.max(0, images.length - 2));
 
-      for (const attempt of rescueAttempts.slice(0, 4)) {
+      for (const attempt of rescueAttempts.slice(0, ladderCap)) {
         if ((deadline - Date.now()) < 2500) break;
         const { id, model, cfg } = attempt.cand;
         const pass = attempt.pass;
