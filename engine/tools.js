@@ -88,12 +88,33 @@ export function unwrapSearchUrl(href) {
  * новости `(дата; https://…)`, карточку страницы `Страница: … / URL: …` и
  * википедию `Заголовок: … / Источник: …`. Дубли по адресу убираются.
  */
-export function extractSources(block) {
+/**
+ * Хвостовая пунктуация адреса: «(url)» и «url,» — обёртка строки, а «React_(software)» —
+ * часть адреса. Скобку снимаем только непарную (0.231: из-за неё полтора года
+ * ссылки на Википедию обрезались до «…/React_(software»).
+ */
+function trimUrl(raw) {
+  let u = String(raw || '').trim();
+  for (;;) {
+    const last = u.slice(-1);
+    if (!/[)\].,;'"]/.test(last)) break;
+    if (last === ')') {
+      const open = (u.match(/\(/g) || []).length;
+      const close = (u.match(/\)/g) || []).length;
+      if (close <= open) break;
+    }
+    u = u.slice(0, -1);
+  }
+  return u;
+}
+
+export function extractSources(block, limit) {
   const lines = String(block || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  const cap = Math.max(1, Number(limit) || 8);
   const out = [];
   const seen = new Set();
   const add = (title, rawUrl, date) => {
-    const url = unwrapSearchUrl(String(rawUrl || '').replace(/[),.;]+$/, '').trim());
+    const url = unwrapSearchUrl(trimUrl(rawUrl));
     if (!/^https?:\/\//i.test(url) || /creativecommons\.org\/licenses/i.test(url)) return;
     if (seen.has(url)) return;
     seen.add(url);
@@ -115,17 +136,23 @@ export function extractSources(block) {
       prevTitle = '';
       continue;
     }
-    const urls = [...line.matchAll(/https?:\/\/[^\s<>"')\];]+/gi)].map((m) => m[0]);
+    const urls = [...line.matchAll(/https?:\/\/[^\s<>"'\]]+/gi)].map((m) => m[0]);
     if (!urls.length) {
       const colonIdx = line.indexOf(':');
       if (colonIdx > 0 && colonIdx < 80) prevTitle = line.slice(0, colonIdx);
       continue;
     }
-    const url = urls[urls.length - 1];
-    const head = line
-      .replace(/^\d+\)\s*/, '')
-      .replace(/\s*\([^()]*https?:\/\/[^()]*\)\s*$/i, '')
-      .replace(/https?:\/\/\S+/gi, '')
+    const url = trimUrl(urls[urls.length - 1]);
+    /* Заголовок — всё до адреса. Строка блока поиска выглядит так:
+       «1) React (software) — Wikipedia (url · от 2020-03-01 · 6 лет назад · ДАВНИЙ…)»,
+       поэтому после вырезания адреса снимаем скобку со служебным хвостом, иначе
+       заголовком становился хвост «· от …» или голый домен. */
+    let head = line.replace(/^\d+\)\s*/, '').replace(/https?:\/\/\S+/gi, '');
+    head = head
+      .replace(/\(\s*·[\s\S]*$/, '')
+      .replace(/\(\s*\)\s*$/, '')
+      .replace(/\s*\(\s*$/, '')
+      .replace(/\s*[·—–-]+\s*$/, '')
       .trim();
     const iDash = head.indexOf(' — ');
     const iCol = head.indexOf(': ');
@@ -136,7 +163,7 @@ export function extractSources(block) {
     const dm = /·\s*от\s*(\d{4}-\d{2}-\d{2})/.exec(line);
     add(title || prevTitle, url, dm ? dm[1] : '');
     prevTitle = '';
-    if (out.length >= 8) break;
+    if (out.length >= cap) break;
   }
   return out;
 }
@@ -954,7 +981,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
   const used = [];
   const parts = [];
   const directives = [];
-  const srcParts = [];
+  const srcParts = [];   /* { id, data } — порядок для плашек важен, см. ниже */
   const webSteps = [];
   /* Пометки для человека, которые модель не имеет права проглотить: сейчас это
      «свежий поиск недоступен». Уходят и в ответ API, и в подпись под пузырём. */
@@ -991,7 +1018,7 @@ export async function gatherTools(text, env, fetchImpl, o) {
       if (noteMatch) notes.push(noteMatch[1].trim());
       used.push(t.id);
       if (SOURCE_TOOLS.has(t.id) || API_SOURCE_TOOLS.has(t.id)) {
-        srcParts.push(data);
+        srcParts.push({ id: t.id, data });
         if (SOURCE_TOOLS.has(t.id)) {
         const toolSources = extractSources(data);
         if (t.id === 'url') {
@@ -1031,7 +1058,15 @@ export async function gatherTools(text, env, fetchImpl, o) {
         t.kind === 'directive' ? `【${t.title}】\n${data}` : `[Инструмент: ${t.title}]\n${data}`);
     } catch { /* ошибка инструмента — не ошибка чата */ }
   }
-  const sources = srcParts.length ? extractSources(srcParts.join('\n')) : [];
+  /* Плашки под ответом идут в том же порядке, что нумерация блока поиска.
+     Википедия и разбор ссылки стоят в TOOLS раньше веб-поиска, и раньше плашкой
+     №1 становилась Википедия — а модель, ставя «[1]», имела в виду первый
+     результат поиска. Теперь пронумерованный источник всегда первый (0.231). */
+  const ordered = srcParts.slice().sort((a, b) => {
+    const rank = (x) => (x.id === 'web-search' ? 0 : x.id === 'news' ? 1 : 2);
+    return rank(a) - rank(b);
+  });
+  const sources = ordered.length ? extractSources(ordered.map((x) => x.data).join('\n'), 16) : [];
   return { used, block: parts.join('\n\n'), directive: directives.join('\n\n'), sources, webSteps, notes, research: researchMeta };
 }
 

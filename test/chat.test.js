@@ -508,12 +508,22 @@ console.log('G4 — самопроверка ответа: агент сверя
   const f4 = fakeFetch(() => ({ body: chat('Коротко про одно.') }));
   let repairs = 0;
   const e4 = createEngine({ env: ENV, fetch: f4, sleep: async () => {}, quarantine: new Map(),
-    repair: async (extra) => { repairs++; return { ok: true, reply: 'Дописанный ответ: сравниваем SQLite и Postgres, отличия в масштабе, для мобильного приложения берём SQLite.', provider: 'groq', model: 'm', extra } } });
+    repair: async (extra) => { repairs++; return { ok: true, reply: 'Коротко про одно: сравниваем SQLite и Postgres — отличия в масштабе, для мобильного приложения берём SQLite.', provider: 'groq', model: 'm', extra } } });
   const r4 = await e4.run({ text: Q });
   ok('G4e: найденную зацепку агент чинит РОВНО одним досылом — и в ответе недостающее',
-    r4.ok === true && /Дописанный ответ/.test(r4.reply) && r4.check && r4.check.fixed === true
+    r4.ok === true && /SQLite/.test(r4.reply) && r4.check && r4.check.fixed === true
       && repairs === 1,
     JSON.stringify({ repairs, check: r4.check, reply: r4.reply.slice(0, 40) }));
+
+  /* 0.231: голова вернула «Уточнение: …» вместо ответа — человек не должен
+     потерять уже прочитанный ответ. */
+  const e4b = createEngine({ env: ENV, fetch: fakeFetch(() => ({ body: chat('Коротко про одно.') })), sleep: async () => {}, quarantine: new Map(),
+    repair: async () => ({ ok: true, reply: 'Уточнение: на самом деле для мобильного приложения подходит SQLite.', provider: 'groq', model: 'm' }) });
+  const r4b = await e4b.run({ text: Q });
+  ok('G4e2: приписка «Уточнение: …» не заменяет ответ — текст остался прежним, причина названа',
+    r4b.ok === true && /Коротко про одно/.test(r4b.reply)
+      && r4b.check && r4b.check.fixed === false && /уточнени/i.test(r4b.check.skipped || ''),
+    JSON.stringify({ reply: r4b.reply, check: r4b.check }));
 
   ok('G4h: досыл несёт вопрос, собственный ответ и зацепки — голова чинит своё, а не пишет заново',
     repairs === 1, 'счётчик досылов: ' + repairs);

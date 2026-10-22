@@ -15,6 +15,7 @@
 import {
   askedPoints, cfgOf, coveredShare, decide, findIssues, isRefusalAnswer,
   keywords, lineOf, looksCut, numberShare, promisedButEmpty, repairPrompt,
+  repairTake, stripService, overlapShare, freshnessIssue, sourceCountIssue,
   toolNumbers, MIN_QUESTIONS,
 } from '../engine/check.js';
 
@@ -176,11 +177,12 @@ console.log('П — самопроверка: агент сверяет отве
     decide({ text: q, reply: '', ok: false, env: {} }).notes.length === 0
       && findIssues({ text: q, reply: '', ok: false }).notes.length === 0);
 
-  ok('П23: текст досыла несёт вопрос, собственный ответ и зацепки — и просит дописать, а не переписать',
+  ok('П23: текст досыла несёт вопрос, собственный ответ и зацепки — и просит переписать ответ целиком',
     (() => {
       const p = repairPrompt({ text: q, reply: short, notes: ['спрошено 3, отвечено на 1'] });
       return p.indexOf(q) >= 0 && p.indexOf(short) >= 0 && p.indexOf('спрошено 3') >= 0
-        && /только недостающее/.test(p) && /без повтора/.test(p);
+        && /Перепиши ответ ЦЕЛИКОМ/.test(p) && /Не пиши отдельным абзацем/.test(p)
+        && !/только недостающее/.test(p);
     })(),
     repairPrompt({ text: q, reply: short, notes: ['x'] }).slice(0, 60));
 
@@ -196,7 +198,7 @@ console.log('П — самопроверка: агент сверяет отве
   });
   ok('П25: подпись под ответом читается и отличается для починенного и непочиненного',
     lineOf({ notes: d.notes, fixed: false }).indexOf(' · самопроверка: ') === 0
-      && /дописано/.test(lineOf({ notes: d.notes, fixed: true }))
+      && /исправлено/.test(lineOf({ notes: d.notes, fixed: true }))
       && lineOf({ notes: [] }) === '' && lineOf(null) === ''
       && !/undefined|null/.test(lineOf({ notes: d.notes })),
     lineOf({ notes: d.notes }));
@@ -206,6 +208,43 @@ console.log('П — самопроверка: агент сверяет отве
       text: 'Посчитай налог? Объясни вычет? Покажи пример? Перечисли ставки? Опиши порядок?',
       reply: 'Налог считается по ставке.', ok: true, env: {},
     }).notes.length <= 3);
+}
+
+/* ── правка на месте вместо приписки (0.231) ── */
+{
+  const was = 'React 19 вышел в декабре 2024 года. Главное — Actions, Server Components и новый компилятор.';
+  const full = 'React 19 вышел 5 декабря 2024 года. Главное — Actions, Server Components и компилятор React Compiler.';
+  const tail = 'Уточнение: на самом деле React 19 вышел 5 декабря 2024 года.';
+  ok('C231a: приписка «Уточнение: …» не подменяет ответ целиком — человек уже прочитал ответ',
+    repairTake(was, tail).reply === '' && /уточнени/i.test(repairTake(was, tail).why), JSON.stringify(repairTake(was, tail)));
+  ok('C231b: переписанный ответ принимается и заменяет прежний',
+    repairTake(was, full).reply === full && /5 декабря 2024/.test(repairTake(was, full).reply), JSON.stringify(repairTake(was, full)));
+  ok('C231c: служебный зачин и хвост-приписка снимаются с полного ответа',
+    stripService('Вот исправленный ответ:\n\n' + full + '\n\nУточнение: цифры сверены с источником.')
+      === full
+      && stripService('**Правка:** ' + full) === full);
+  ok('C231d: пустая и куцая починка не принимается', repairTake(was, '').reply === '' && repairTake(was, 'Ок.').reply === '');
+  ok('C231e: чужой текст не принимается за починку', repairTake(was, 'Погода в Минске завтра будет облачной, временами дождь, около двенадцати градусов тепла.').reply === '');
+  ok('C231f: доля общих слов считает связь ответов, а не их длину', overlapShare('кот спит на окне', 'кот спит на тёплом окне') > 0.6);
+}
+
+/* ── свежесть и число источников (0.231) ── */
+{
+  const NOW = Date.UTC(2026, 9, 22);
+  const oldSrc = [{ url: 'https://a.example/x', date: '2020-03-01' }];
+  const newSrc = [{ url: 'https://b.example/y', date: '2026-09-09' }];
+  ok('C231g: статья 2020 года подана как свежая — зацепка с годом',
+    /2020/.test(freshnessIssue('Это последняя версия, она вышла недавно.', oldSrc, NOW)));
+  ok('C231h: год источника назван — зацепки нет',
+    freshnessIssue('Последняя версия — из статьи 2020 года, свежее данных нет.', oldSrc, NOW) === '');
+  ok('C231i: свежие источники не цепляются', freshnessIssue('Это последняя версия продукта.', newSrc, NOW) === '');
+  ok('C231j: без дат и без заявления о свежести слой молчит',
+    freshnessIssue('Это последняя версия продукта.', [{ url: 'https://x' }], NOW) === ''
+      && freshnessIssue('Расскажи про историю проекта.', oldSrc, NOW) === '');
+  const srcs = [{ url: 'https://a' }, { url: 'https://b' }, { url: 'https://c' }];
+  ok('C231k: «нашёл 6 источников» при трёх плашках — зацепка; верное число — молчание',
+    /6/.test(sourceCountIssue('Я нашёл 6 источников и сверил их.', 3))
+      && sourceCountIssue('Я нашёл три источника.', 3) === '');
 }
 
 /* ── слой не имеет права упасть ── */

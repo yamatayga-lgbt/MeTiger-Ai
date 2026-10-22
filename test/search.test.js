@@ -140,10 +140,31 @@ console.log('\nS163 — свежесть источников');
       { title: 'Свежая статья', url: 'https://b.by/y', date: '2026-10-09' }], reads: [],
   });
   ok('S180c давний источник помечен в строке, свежий — нет',
-    /https:\/\/a\.by\/x · от 2019-04-02 · ДАВНИЙ/.test(oldBlock)
-      && /https:\/\/b\.by\/y · от 2026-10-09\)/.test(oldBlock) && !/b\.by\/y[^\n]*ДАВНИЙ/.test(oldBlock),
+    /https:\/\/a\.by\/x · от 2019-04-02 · 7 лет назад · ДАВНИЙ/.test(oldBlock)
+      /* 0.231: рядом с датой — возраст словами, чтобы модель не считала сама */
+      && /https:\/\/b\.by\/y · от 2026-10-09 · 13 дн\. назад\)/.test(oldBlock)
+      && !/b\.by\/y[^\n]*ДАВНИЙ/.test(oldBlock),
     oldBlock.split('\n').slice(1, 3).join(' | '));
   ok('S180d модели сказано, что делать с пометкой «ДАВНИЙ»', /ДАВНИЙ» свежесть под вопросом/.test(oldBlock));
+}
+
+/* ── 0.231: сноски, дата из адреса, возраст словами ── */
+{
+  const { cleanCitations, dateFromUrl } = await import('../engine/search.js');
+  ok('S231a: сноска на несуществующий источник снимается, существующая остаётся',
+    cleanCitations('Факт [1], ещё факт [6].', 5) === 'Факт [1], ещё факт.'
+      && cleanCitations('Факт [6].', 0) === 'Факт.'
+      && cleanCitations('Ссылка [1](https://a.by) и [2]', 1) === 'Ссылка [1](https://a.by) и',
+    cleanCitations('Факт [1], ещё факт [6].', 5));
+  ok('S231b: дата берётся из адреса, когда мета-тега нет',
+    dateFromUrl('https://react.dev/blog/2026/09/09/react-19-3') === '2026-09-09'
+      && dateFromUrl('https://example.com/2020/05/hello') === '2020-05-01'
+      && dateFromUrl('https://example.com/page?id=2024') === ''
+      && dateFromUrl('https://example.com/oferta') === '',
+    JSON.stringify([dateFromUrl('https://react.dev/blog/2026/09/09/react-19-3'), dateFromUrl('https://example.com/2020/05/hello')]));
+  const { searchBlock: sb } = await import('../engine/search.js');
+  const b = sb('что нового', { engine: 'google', summary: '', sources: [{ title: 'S', url: 'https://a.by/x', date: '2019-04-02' }], reads: [] });
+  ok('S231c: возраст источника назван словами рядом с датой', /от 2019-04-02 · 7 лет назад · ДАВНИЙ/.test(b), b.split('\n')[1]);
 }
 
 console.log(`\n${pass} ✔, ${fail} ✖`);

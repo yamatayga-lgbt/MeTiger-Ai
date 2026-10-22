@@ -18,6 +18,7 @@ import { preferUncensored } from './brave.js';
 import { buildRequest, rawCall, streamCall, isProviderError, isRefusal, stripThinkTags } from './shape.js';
 import { detect as detectSkills, blockOf as skillsBlockOf, toolsOf as skillTools } from './skills.js';
 import { gatherTools } from './tools.js';
+import { cleanCitations } from './search.js';
 import { sharedImggen, packImages, wantsImage, editsReady } from './imggen.js';
 import { sharedUsage } from './usage.js';
 import { fit as fitContext, estTokens, clampNumber, CTX_WINDOW_MAX } from './ctxfit.js';
@@ -1067,9 +1068,14 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
              именно на дорогой задаче второй проход окупается. */
           const repairBudget = deepWork.extended ? deepWork.reasoning.repairPasses : check.cfgOf(env).budget;
           let spent = 0;
+          /* Сноска без источника (0.231): «[6]» при пяти плашках — не ссылка, а
+             серая цифра. Снимаем до проверки, чтобы и починка, и человек видели
+             только те номера, за которыми стоит настоящий адрес. */
+          const srcCount = (toolsRes.sources || []).length;
+          out.reply = cleanCitations(out.reply, srcCount);
           let dec = check.decide({
             text: askText, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
-            ok: out.ok, spent, budget: repairBudget, env,
+            sources: toolsRes.sources, ok: out.ok, spent, budget: repairBudget, env,
           });
           checkVerdict = { on: dec.on, notes: dec.notes, fixed: false, skipped: '', passes: 0 };
           while (dec.needFix && dec.notes.length && spent < repairBudget) {
@@ -1109,19 +1115,24 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             spent++;
             checkVerdict.passes = spent;
             /* Чиним только вперёд: пустой или куцый досыл ответ не улучшает, и
-               терять написанное ради него нельзя. */
-            if (fixed && fixed.ok && fixed.reply && String(fixed.reply).trim().length >= 40) {
-              out.reply = fixed.reply;
+               терять написанное ради него нельзя. И принимаем досыл только как
+               ПЕРЕПИСАННЫЙ ответ: «Уточнение: …» вместо ответа (так случилось в
+               проде 0.230) — приписка, а не правка, и человек её уже не ждал. */
+            const take = fixed && fixed.ok && fixed.reply
+              ? check.repairTake(out.reply, fixed.reply)
+              : { reply: '', why: 'починка не удалась — ответ оставлен как есть' };
+            if (take.reply) {
+              out.reply = cleanCitations(take.reply, srcCount);
               checkVerdict.fixed = true;
               /* Провайдера и модель НЕ подменяем: досыл шёл той же головой, а
                  подпись ответа обязана показывать того, кто ответил человеку. */
               dec = check.decide({
                 text: askText, reply: out.reply, block: toolsRes.block, tools: toolsRes.used,
-                ok: out.ok, spent, budget: repairBudget, env,
+                sources: toolsRes.sources, ok: out.ok, spent, budget: repairBudget, env,
               });
               if (dec.notes.length) checkVerdict.notes = dec.notes;
             } else {
-              checkVerdict.skipped = 'починка не удалась — ответ оставлен как есть';
+              checkVerdict.skipped = take.why || 'починка не удалась — ответ оставлен как есть';
               break;
             }
           }
@@ -1151,6 +1162,10 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           };
         }
       }
+      /* Сноски на несуществующий источник снимаются и без самопроверки: ответ
+         с пометкой «пин» или с доказанным числом идёт человеку сразу, а битая
+         цифра в тексте — всё равно битая (0.231). Проверка идемпотентна. */
+      if (out.reply) out.reply = cleanCitations(out.reply, (toolsRes.sources || []).length);
       /* После починки: в счёт входят основная очередь, советы, чтение
          документа, продолжения и сам досыл починки. */
       out.attempts = Math.max(0, attemptSeq - attemptsAtStart);

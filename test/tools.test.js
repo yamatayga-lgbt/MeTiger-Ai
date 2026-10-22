@@ -297,6 +297,24 @@ ok('T35: gatherTools собирает webSteps (search + fetch) для блок�
   ok('T163b: без даты источник остаётся без выдуманной свежести', src[1] && src[1].date === undefined, JSON.stringify(src[1]));
 }
 
+/* 0.231: адрес со скобкой и хвост даты не ломают плашку. */
+{
+  const { extractSources } = await import('../engine/tools.js');
+  const src = extractSources([
+    '1) React (software) — Wikipedia (https://en.wikipedia.org/wiki/React_(software) · от 2020-03-01 · 6 лет назад · ДАВНИЙ источник: данные могли устареть)',
+    '2) React Versions (https://react.dev/versions)',
+  ].join('\n'));
+  ok('T231a: адрес со скобкой не обрезается, заголовок не съедает служебный хвост',
+    src[0].url === 'https://en.wikipedia.org/wiki/React_(software)'
+      && src[0].title === 'React (software)'
+      && src[0].date === '2020-03-01'
+      && src[1].url === 'https://react.dev/versions' && src[1].title === 'React Versions',
+    JSON.stringify(src));
+  ok('T231b: лимит плашек задаётся и не режет список молча на восьми',
+    extractSources('1) A (https://a.by)\n2) B (https://b.by)\n3) C (https://c.by)', 2).length === 2
+      && extractSources('1) A (https://a.by)\n2) B (https://b.by)', 16).length === 2);
+}
+
 /* 0.165: у данных из открытых API есть свой адрес и дата — их видно в плашках.
    Повод: на живом проде ответ про курс дописал «данные на 18 июля 2026» и ссылку
    на ЦБ, которых в данных инструмента не было. Даты и ссылки — только из данных. */

@@ -254,6 +254,40 @@ export function dateOf(html) {
 export const STALE_DAYS = 545;
 
 /**
+ * Дата из адреса страницы (0.231): `react.dev/blog/2026/09/09/react-19-3` — это
+ * 2026-09-09, а мета-тега с датой на странице может не быть вовсе. Год берём
+ * только явным сегментом пути: «/20» внутри id — не дата.
+ */
+export function dateFromUrl(url) {
+  const u = String(url || '');
+  const full = /(?:^|[^0-9])(20\d{2})[/-](\d{1,2})[/-](\d{1,2})(?:[^0-9]|$)/.exec(u);
+  if (full) {
+    const y = Number(full[1]);
+    const m = Number(full[2]);
+    const d = Number(full[3]);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y <= new Date().getFullYear() + 1) {
+      return full[1] + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    }
+  }
+  /* Месяц без дня: «/2020/05/hello» — это май 2020-го. Число месяца не выдумываем,
+     ставим первое: для возраста источника точность до дня не нужна. */
+  const month = /(?:^|[^0-9])(20\d{2})[/-](\d{1,2})(?:[/-]|[^0-9]|$)/.exec(u);
+  if (month) {
+    const y = Number(month[1]);
+    const m = Number(month[2]);
+    if (y >= 1995 && y <= new Date().getFullYear() + 1 && m >= 1 && m <= 12) {
+      return month[1] + '-' + String(m).padStart(2, '0') + '-01';
+    }
+  }
+  const year = /(?:^|\/(?:blog|news|posts?|articles?|p)?[/-]?)(20\d{2})(?:[/?&#-]|$)/i.exec(u);
+  if (year) {
+    const y = Number(year[1]);
+    if (y >= 1995 && y <= new Date().getFullYear() + 1) return String(y) + '-01-01';
+  }
+  return '';
+}
+
+/**
  * Возраст источника по дате страницы (0.180 «Свежесть»).
  *
  * Зачем. Дата у ссылки уже была, но человек читал «· от 2019-04-02» и не понимал,
@@ -268,6 +302,32 @@ export function sourceAge(dateISO, now) {
   const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const days = Math.max(0, Math.floor(((Number(now) || Date.now()) - t) / 86400000));
   return { days, months: Math.floor(days / 30.44), years: Math.floor(days / 365.25), old: days >= STALE_DAYS };
+}
+
+/**
+ * Сноски `[N]` без источника (0.231).
+ *
+ * Голова иногда ставит номер, которого в списке нет («[6]» при пяти плашках), и
+ * человек видит серую цифру, ведущую в никуда. Клиент такую сноску оставлял
+ * текстом намеренно — но лучше её не показывать вовсе: у неё нет адреса.
+ * Сверяем номера с настоящим числом источников и снимаем только выходящие за
+ * список; ссылки `[1](url)` не трогаем, это готовая разметка.
+ */
+export function cleanCitations(reply, count) {
+  const n = Math.max(0, Number(count) || 0);
+  const text = String(reply || '');
+  if (!text) return text;
+  return text
+    .replace(/\[(\d{1,2})\](?!\()/g, (m, d) => {
+      const k = Number(d);
+      return k >= 1 && k <= n ? m : '';
+    })
+    /* «факт [6] .» и «факт [6],» — после снятия номера лишний пробел перед знаком
+       остаётся висеть. */
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .replace(/([(\[])[ \t]+/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+$/gm, '');
 }
 
 /** Строка даты в безопасный вид: только разумные годы, иначе пусто. */
@@ -312,7 +372,7 @@ export async function readPages(fi, sources, q, o) {
       if (ct && !/html|text/.test(ct)) return null;
       const html = (await r.text()).slice(0, 600000);
       const passages = bestPassages(pageText(html), q, opts.passages || 2, opts.passageChars || 420);
-      const date = dateOf(html);
+      const date = dateOf(html) || dateFromUrl(s.url);
       return passages.length ? { url: s.url, passages, date } : null;
     } catch { return null; }
   }));
@@ -323,11 +383,26 @@ export async function readPages(fi, sources, q, o) {
 
 function attachDates(res) {
   /* Дата прочитанной страницы приклеивается к источнику: под ответом и в самом
-     блоке поиска человек и модель видят, насколько сведения свежие. */
+     блоке поиска человек и модель видят, насколько сведения свежие. Если мета-тега
+     на странице нет, дату берём из адреса (0.231). Заодно источники схлопываются
+     по адресу: две записи на одну страницу ломали нумерацию — голова ставила «[6]»
+     по строке блока, а плашек под ответом было пять. */
+  const out = [];
+  const seen = new Set();
   for (const s of res.sources || []) {
-    const r = (res.reads || []).find((x) => x.url === s.url);
+    if (!s || !s.url) continue;
+    const key = canonicalUrl(s.url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const r = (res.reads || []).find((x) => canonicalUrl(x.url) === key);
     if (r && r.date) s.date = r.date;
+    else if (!s.date) {
+      const d = dateFromUrl(s.url);
+      if (d) s.date = d;
+    }
+    out.push(s);
   }
+  res.sources = out;
   return res;
 }
 
@@ -492,6 +567,19 @@ export async function researchSearch({ q, queries, env, fetch: fi, profile: give
   return remember(key, attachDates(res));
 }
 
+/** Возраст источника словами: «6 лет назад», «8 месяцев назад», «3 недели назад». */
+export function ageWords(age) {
+  const a = age || {};
+  const years = Number(a.years) || 0;
+  const months = Number(a.months) || 0;
+  const days = Number(a.days) || 0;
+  if (years >= 1) return years + ' ' + (years % 10 === 1 && years % 100 !== 11 ? 'год' : (years % 10 >= 2 && years % 10 <= 4 && (years % 100 < 10 || years % 100 >= 20) ? 'года' : 'лет')) + ' назад';
+  if (months >= 1) return months + ' мес. назад';
+  if (days >= 14) return Math.floor(days / 7) + ' нед. назад';
+  if (days >= 1) return days + ' дн. назад';
+  return 'этого дня';
+}
+
 /** Блок для модели: источники пронумерованы так же, как плашки под ответом. */
 export function searchBlock(q, res) {
   const profile = res.profile || {};
@@ -508,8 +596,9 @@ export function searchBlock(q, res) {
     /* Давний источник помечаем прямо в строке: модель видит пометку там же, где
        берёт факты, — иначе «• от 2019-…» проходит мимо неё так же, как мимо глаза. */
     const age = s.date ? sourceAge(s.date) : null;
+    const when = age ? ' · ' + ageWords(age) : '';
     const mark = age && age.old ? ' · ДАВНИЙ источник: данные могли устареть' : '';
-    lines.push(`${i + 1}) ${s.title || s.url} (${s.url}${s.date ? ' · от ' + s.date : ''}${mark})`);
+    lines.push(`${i + 1}) ${s.title || s.url} (${s.url}${s.date ? ' · от ' + s.date + when : ''}${mark})`);
     if (read) for (const p of read.passages) lines.push(`   выдержка: ${p}`);
   });
   lines.push('', 'У источников через «· от» указана дата публикации или обновления, где она есть. '

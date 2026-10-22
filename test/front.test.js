@@ -1624,7 +1624,7 @@ console.log('── N · плоский интерфейс (0.144: стекло 
 
     ok('N71: зацепки самопроверки видны человеку словами в подписи ответа',
       /checkNotes\?: string\[\]/.test(apiDeep) && /checkFixed\?: boolean/.test(apiDeep)
-        && /r\.checkNotes \|\| \[\]/.test(apiDeep) && /самопроверка: дописано/.test(apiDeep)
+        && /r\.checkNotes \|\| \[\]/.test(apiDeep) && /самопроверка: исправлено/.test(apiDeep)
         && /checkNotes: \(r\.check && Array\.isArray\(r\.check\.notes\)/.test(entryCheck)
         && /checkFixed: r\.check \? !!r\.check\.fixed : undefined/.test(entryCheck),
       'нет полей самопроверки в подписи или в payload');
@@ -1638,8 +1638,9 @@ console.log('── N · плоский интерфейс (0.144: стекло 
         && /noCheck: true/.test(engineDeep)
         /* ровно один досыл на запрос, даже если попыток было несколько */
         && /let checkDone = false/.test(engineDeep) && /&& !checkDone/.test(engineDeep)
-        /* куцый или упавший досыл ответ не подменяет */
-        && /String\(fixed\.reply\)\.trim\(\)\.length >= 40/.test(engineDeep)
+        /* куцый, упавший или чужой досыл ответ не подменяет; приписка «Уточнение:»
+           вместо ответа отклоняется (0.231) */
+        && /check\.repairTake\(out\.reply, fixed\.reply\)/.test(engineDeep)
         /* досыл не зовёт инструменты заново и не начинается впритык к потолку */
         && /useTools: false, webSearch: false, chatId: undefined/.test(engineDeep)
         && /if \(left < 12000\)/.test(engineDeep)
@@ -1648,7 +1649,7 @@ console.log('── N · плоский интерфейс (0.144: стекло 
         && /mode !== 'off'/.test(checkEngine));
 
     ok('N73: починка не подменяет того, кто ответил — провайдер и модель в подписи прежние',
-      /out\.reply = fixed\.reply/.test(engineDeep)
+      /out\.reply = cleanCitations\(take\.reply, srcCount\)/.test(engineDeep)
         && !/out\.model = fixed\.model/.test(engineDeep)
         && !/out\.provider = fixed\.provider/.test(engineDeep),
       'досыл переписывает автора ответа');
