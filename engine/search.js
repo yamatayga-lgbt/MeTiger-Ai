@@ -246,10 +246,23 @@ export function dateOf(html) {
       const mm = Number(m[2]);
       if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) return m[3] + '-' + String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
     }
-    /* Метки с датой внутри текста: «Published on 12 October 2026». */
-    const en = /(?:published|posted|updated|released)[^\n]{0,40}?(20\d{2})-?(\d{2})-?(\d{2})\b/i.exec(txt);
+    /* Метки с датой внутри текста: «Published on 2026-10-12», «released on
+       October 4, 2021» и «4 October 2021». У статей на docs.python.org другой
+       даты нет вовсе — только эта фраза в первом абзаце. */
+    const en = /(?:published|posted|updated|released)[^\n]{0,40}?(20\d{2})-(\d{2})-(\d{2})\b/i.exec(txt);
     if (en) {
       const cand = saneDate(en[1] + '-' + en[2] + '-' + en[3]);
+      if (cand) return cand;
+    }
+    const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    const md = /(?:published|posted|updated|released)[^\n]{0,40}?\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(20\d{2})\b/i.exec(txt);
+    if (md) {
+      const cand = saneDate(md[3] + '-' + String(MON[md[1].toLowerCase()]).padStart(2, '0') + '-' + String(md[2]).padStart(2, '0'));
+      if (cand) return cand;
+    }
+    const dm = /(?:published|posted|updated|released)[^\n]{0,40}?\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(20\d{2})\b/i.exec(txt);
+    if (dm) {
+      const cand = saneDate(dm[3] + '-' + String(MON[dm[2].toLowerCase()]).padStart(2, '0') + '-' + String(dm[1]).padStart(2, '0'));
       if (cand) return cand;
     }
   }
@@ -647,10 +660,14 @@ export function searchBlock(q, res) {
     lines.push(`${i + 1}) ${s.title || s.url} (${s.url}${s.date ? ' · от ' + s.date + when : ''}${mark})`);
     if (read) for (const p of read.passages) lines.push(`   выдержка: ${p}`);
   });
+  const undated = (res.sources || []).filter((s) => !s.date).length;
   lines.push('', 'У источников через «· от» указана дата публикации или обновления, где она есть. '
     + 'Если данные явно старые (больше года) — скажи об этом человеку словами: на какой год они актуальны. '
     + 'У источника с пометкой «ДАВНИЙ» свежесть под вопросом: опирайся на более свежие источники, '
-    + 'а если свежих нет — честно предупреди, что сведения старого года.');
+    + 'а если свежих нет — честно предупреди, что сведения старого года.'
+    /* 0.231: без даты нельзя судить о свежести — так и говорим, чтобы ответ
+       не выдавал незнакомую статью за сегодняшнюю. */
+    + (undated ? ' У ' + undated + ' источник(ов) дата неизвестна: не называй их сведения свежими и не говори «последняя версия» без даты.' : ''));
 
   if (res.research && Array.isArray(res.summaries) && res.summaries.length) {
     const total = profile.summaryChars || 6500;

@@ -88,7 +88,7 @@ const textOf = (nodes) => nodes.map((n) => (n.type === 'text' ? n.value : '[' + 
 /* ── 0.163: даты источников ──────────────────────────────────────────────────── */
 console.log('\nS163 — свежесть источников');
 {
-  const { dateOf } = await import('../engine/search.js');
+  const { dateOf, searchBlock: sb2 } = await import('../engine/search.js');
   const META = '<html><head><meta property="article:published_time" content="2026-10-05T08:30:00+03:00"></head><body>новость</body></html>';
   const TIME = '<html><body><article><time datetime="2026-09-30">30 сентября</time></article></body></html>';
   const REV = '<html><head><meta content="2025-02-14" name="date"></head><body>x</body></html>';
@@ -150,12 +150,18 @@ console.log('\nS163 — свежесть источников');
 
 /* ── 0.231: дата из заголовка статьи, когда мета-тегов нет ── */
 {
-  const { dateOf } = await import('../engine/search.js');
+  const { dateOf, searchBlock: sb2 } = await import('../engine/search.js');
   const html = '<html><body><h1>Node.js 26.12.1 (Current)</h1>'
     + '<p>2026-10-21, Version 26.12.1 (Current) — заметка о выпуске.</p>'
     + '<p>Текст заметки про выпуск.</p></body></html>';
   ok('S231e: без мета-тега дата берётся из начала текста статьи',
     dateOf(html) === '2026-10-21', JSON.stringify(dateOf(html)));
+  ok('S231g: дата словами при метке выпуска — «released on October 4, 2021»',
+    dateOf('<html><body><p>Python 3.10 was released on October 4, 2021.</p></body></html>') === '2021-10-04'
+      && dateOf('<html><body><p>Released 4 October 2021 by the team with several fixes.</p></body></html>') === '2021-10-04');
+  ok('S231h: без даты модели сказано, что свежесть неизвестна, — чтобы не выдавала статью за сегодняшнюю',
+    /дата неизвестна/.test(sb2('вопрос', { engine: 'google', summary: '', sources: [{ title: 'A', url: 'https://a.by/x' }], reads: [] })),
+  );
   ok('S231f: выдуманные и несуществующие даты по-прежнему не берутся',
     dateOf('<html><body><p>без даты</p></body></html>') === ''
       && dateOf('<html><head><meta property="article:published_time" content="1880-01-01"></head></html>') === '');
