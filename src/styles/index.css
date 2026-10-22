@@ -1554,11 +1554,36 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 6px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-family: var(--font-mono);
   font-size: 11px;
   color: #9aa0ab;
+}
+
+.code-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd0d8;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.code-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .code-block pre {
@@ -1579,6 +1604,7 @@ kbd {
 
 .run-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -1623,6 +1649,80 @@ kbd {
   width: 100%;
   height: 0;
   border: 0;
+}
+
+.run-preview {
+  display: block;
+  width: 100%;
+  min-height: 240px;
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-sm, 8px);
+  background: #ffffff;
+}
+
+.run-preview.expanded {
+  min-height: 460px;
+}
+
+.run-plots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.run-plot-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-sm, 8px);
+  background: #ffffff;
+}
+
+.md-table-wrap {
+  margin: 10px 0;
+}
+
+.md-table-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.md-table-csv {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-soft, var(--muted));
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.md-table-csv:hover {
+  color: var(--text);
+  border-color: var(--border-strong, var(--border));
+}
+
+.file-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.file-share-btn {
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-soft, var(--muted));
+  font-size: 11.5px;
+  line-height: 1.2;
+  cursor: pointer;
 }
 
 .run-note {

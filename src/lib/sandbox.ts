@@ -99,14 +99,27 @@ export function engineLabel(lang: string): string {
  */
 export function buildHtmlDoc(code: string, lang: string): string {
   const src = String(code || '')
-  if (String(lang || '').trim().toLowerCase() === 'css') {
-    return '<!doctype html><html><head><meta charset="utf-8"><style>' + src + '</style></head>'
+  const kind = String(lang || '').trim().toLowerCase()
+  const vp = '<meta name="viewport" content="width=device-width,initial-scale=1">'
+  const baseCss = '<style>*,*::before,*::after{box-sizing:border-box}html,body{margin:0;padding:12px;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45;overflow-x:auto}svg,img,canvas{max-width:100%;height:auto}</style>'
+  if (kind === 'css') {
+    return '<!doctype html><html><head><meta charset="utf-8">' + vp + baseCss + '<style>' + src + '</style></head>'
       + '<body><h3>Превью CSS</h3><p class="mt">Демо-текст в стиле.</p>'
       + '<button class="mt">Кнопка</button><ul><li>пункт</li><li>другой пункт</li></ul></body></html>'
   }
+  if (kind === 'svg') {
+    return '<!doctype html><html><head><meta charset="utf-8">' + vp
+      + '<style>html,body{margin:0;padding:12px;display:flex;justify-content:center;align-items:center;min-height:100%;background:transparent}svg{max-width:100%;height:auto;display:block}</style></head><body>'
+      + src + '</body></html>'
+  }
   const full = /^\s*<!?doctype|<html[\s>]/i.test(src)
-  return full ? src
-    : '<!doctype html><html><head><meta charset="utf-8"></head><body>' + src + '</body></html>'
+  if (full) {
+    if (!/<meta[^>]+name=["']viewport["']/i.test(src) && /<head[\s>]/i.test(src)) {
+      return src.replace(/(<head[^>]*>)/i, '$1' + vp)
+    }
+    return src
+  }
+  return '<!doctype html><html><head><meta charset="utf-8">' + vp + baseCss + '</head><body>' + src + '</body></html>'
 }
 
 /** Проверки до запуска. Каждая с причиной — модель читает этот текст и правит код. */

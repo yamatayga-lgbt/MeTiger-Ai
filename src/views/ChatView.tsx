@@ -36,9 +36,27 @@ function isImgFile(f: { mime: string; kind?: string }): boolean {
   return f.kind === 'image' || /^image\//i.test(f.mime || '')
 }
 
+function canShareFiles(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+}
+
+async function shareGeneratedFile(f: { name: string; mime: string; b64?: string }, href: string) {
+  try {
+    const res = await fetch(href)
+    const blob = await res.blob()
+    const file = new File([blob], f.name, { type: f.mime || 'application/octet-stream' })
+    const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean }
+    if (!nav.canShare || nav.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: f.name })
+      return
+    }
+  } catch { /* отмена шторки или отказ браузера — тихо падаем в скачивание */ }
+}
+
 function FileChips({ files, onOpen }: { files: NonNullable<ChatMessage['files']>; onOpen: (src: string, name: string) => void }) {
   const items = files.map((f) => ({ f, href: fileHref(f), img: isImgFile(f) }))
   const imgs = items.filter((x) => x.img)
+  const shareable = canShareFiles()
   return (
     <div className="msg-files">
       {imgs.length ? (
@@ -58,10 +76,22 @@ function FileChips({ files, onOpen }: { files: NonNullable<ChatMessage['files']>
       ) : null}
       <div className="msg-files-row">
         {items.map((x, i) => (
-          <a key={i} className="file-chip" href={x.href} download={x.f.name} title={x.f.source ? `${x.f.mime} · ${x.f.source}` : x.f.mime}>
-            <span className="file-name">{x.f.name}</span>
-            <span className="file-size">{fileSize(x.f.size)}</span>
-          </a>
+          <span key={i} className="file-chip-group">
+            <a className="file-chip" href={x.href} download={x.f.name} title={x.f.source ? `${x.f.mime} · ${x.f.source}` : x.f.mime}>
+              <span className="file-name">{x.f.name}</span>
+              <span className="file-size">{fileSize(x.f.size)}</span>
+            </a>
+            {shareable && !x.img ? (
+              <button
+                type="button"
+                className="file-share-btn"
+                onClick={() => shareGeneratedFile(x.f, x.href)}
+                title="Отправить файл на телефоне"
+              >
+                Поделиться
+              </button>
+            ) : null}
+          </span>
         ))}
       </div>
     </div>

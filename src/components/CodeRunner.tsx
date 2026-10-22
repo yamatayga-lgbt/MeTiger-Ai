@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Play, RotateCcw } from 'lucide-react'
+import { ArrowUp, Maximize2, Minimize2, Play, RotateCcw, Wrench, X } from 'lucide-react'
 import { buildSrcDoc, buildHtmlDoc, killed, normalize, prepare, sandboxKind, TIMEOUT_MS, MARK } from '../lib/sandbox'
 import { buildPySrcDoc, normalizePy, preparePy, PY_LOAD_TIMEOUT_MS, PY_MARK, PY_RUN_TIMEOUT_MS } from '../lib/pysandbox'
 import { buildSqlSrcDoc, normalizeSql, prepareSql, SQL_LOAD_TIMEOUT_MS, SQL_MARK, SQL_RUN_TIMEOUT_MS } from '../lib/sqlsandbox'
@@ -31,12 +31,13 @@ interface Props {
   onSend?: (text: string) => void
 }
 
-type RunOut = { ok: boolean; output: string; hint?: string; killed?: boolean } | null
+type RunOut = { ok: boolean; output: string; hint?: string; killed?: boolean; images?: string[] } | null
 
 export function CodeRunner({ code, lang, onSend }: Props) {
   const kind = sandboxKind(lang || '') ?? 'js'
   const [doc, setDoc] = useState<string | null>(null)
   const [html, setHtml] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
   const [res, setRes] = useState<RunOut>(null)
   const [ms, setMs] = useState<number | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -149,7 +150,7 @@ export function CodeRunner({ code, lang, onSend }: Props) {
       if (d.type === 'done') {
         clearTimer()
         setBusy(false)
-        const out = normalizePy({ logs: d.logs as string[], value: d.value as string | null, error: d.error as string | null, ms: d.ms as number })
+        const out = normalizePy({ logs: d.logs as string[], value: d.value as string | null, error: d.error as string | null, images: d.images as string[] | undefined, ms: d.ms as number })
         setRes(out)
         setMs(typeof d.ms === 'number' ? d.ms : null)
         setNote(null)
@@ -316,8 +317,9 @@ export function CodeRunner({ code, lang, onSend }: Props) {
           : 'выполняется'
   const idleLabel = kind === 'html' ? 'Превью' : kind === 'json' ? 'Проверить' : 'Запустить'
   const doneLabel = kind === 'html' ? 'Обновить' : 'Ещё раз'
-  const label = busy ? loadingLabel : (out ? doneLabel : idleLabel)
+  const label = busy ? loadingLabel : ((out || html !== null) ? doneLabel : idleLabel)
   const canSend = !!(out && onSend && (kind === 'js' || kind === 'py' || kind === 'sql' || kind === 'ts'))
+  const canFix = !!(canSend && out && !out.ok)
 
   return (
     <div className="code-run">
@@ -326,6 +328,38 @@ export function CodeRunner({ code, lang, onSend }: Props) {
           {busy ? <RotateCcw size={13} /> : <Play size={13} />}
           {label}
         </button>
+        {html !== null ? (
+          <>
+            <button
+              type="button"
+              className="run-btn ghost"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              {expanded ? 'Свернуть' : 'Развернуть'}
+            </button>
+            <button
+              type="button"
+              className="run-btn ghost"
+              onClick={() => { setExpanded(false); setHtml(null) }}
+            >
+              <X size={13} /> Скрыть
+            </button>
+          </>
+        ) : null}
+        {canFix ? (
+          <button
+            type="button"
+            className="run-btn ghost"
+            onClick={() => onSend!(
+              'Почини ошибку в этом коде и верни исправленный рабочий блок ```' + (lang || kind) + ':\n```'
+              + (lang || kind) + '\n' + code.slice(0, 6000) + '\n```\n\nОшибка запуска:\n'
+              + out!.output + (out!.hint ? '\nПодсказка: ' + out!.hint : ''),
+            )}
+          >
+            <Wrench size={13} /> Исправить код
+          </button>
+        ) : null}
         {canSend ? (
           <button
             type="button"
@@ -341,10 +375,17 @@ export function CodeRunner({ code, lang, onSend }: Props) {
         <iframe ref={win} className="run-frame" title="песочница" srcDoc={doc} sandbox="allow-scripts" />
       ) : null}
       {html !== null ? (
-        <iframe className="run-preview" title="превью" srcDoc={html} sandbox="allow-scripts" />
+        <iframe className={'run-preview' + (expanded ? ' expanded' : '')} title="превью" srcDoc={html} sandbox="allow-scripts" />
       ) : null}
       {note ? <div className="run-note">{note}</div> : null}
-      {out && kind !== 'html' ? (
+      {out && out.images && out.images.length ? (
+        <div className="run-plots">
+          {out.images.map((src, idx) => (
+            <img key={idx} src={src} alt={`График ${idx + 1}`} className="run-plot-img" />
+          ))}
+        </div>
+      ) : null}
+      {out && kind !== 'html' && out.output ? (
         <pre className={'run-out' + (out.ok ? '' : out.killed ? ' timeout' : ' err')}>
           {out.output}
           {out.hint ? '\nподсказка: ' + out.hint : ''}

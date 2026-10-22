@@ -95,12 +95,23 @@ export function buildPySrcDoc(): string {
     '  const d=e.data; if(!d||d[M]!==1||d.type!=="run"||!py)return',
     '  py._metigerLogs.length=0',
     '  const t0=performance.now()',
-    '  let value=null,error=null',
+    '  let value=null,error=null,images=[]',
     '  try{',
+    '    const srcCode=String(d.code||"")',
+    '    if(/\\b(?:import|from)\\s+\\w+/.test(srcCode)&&py.loadPackagesFromImports){',
+    '      try{if(/\\bmatplotlib\\b/.test(srcCode))await py.runPythonAsync("import os; os.environ.setdefault(\\"MPLBACKEND\\",\\"AGG\\")")}catch(_){}',
+    '      try{await py.loadPackagesFromImports(srcCode)}catch(_){}',
+    '    }',
     '    const r=await py.runPythonAsync(String(d.code||""))',
     '    value=fmt(r)',
+    '    if(/\\bmatplotlib\\b/.test(srcCode)){',
+    '      try{',
+    '        const pngs=await py.runPythonAsync("import sys,io,base64\\n_mt_imgs=[]\\nif \\"matplotlib.pyplot\\" in sys.modules:\\n _plt=sys.modules[\\"matplotlib.pyplot\\"]\\n for _n in _plt.get_fignums()[:3]:\\n  _b=io.BytesIO();_plt.figure(_n).savefig(_b,format=\\"png\\",bbox_inches=\\"tight\\",dpi=130);_mt_imgs.append(\\"data:image/png;base64,\\"+base64.b64encode(_b.getvalue()).decode())\\n _plt.close(\\"all\\")\\n\\"\\\\n\\".join(_mt_imgs)")',
+    '        if(pngs&&typeof pngs==="string")images=pngs.split("\\n").filter(Boolean)',
+    '      }catch(_){}',
+    '    }',
     '  }catch(e){ error=String(e&&e.message?e.message:e) }',
-    '  send("done",{logs:py._metigerLogs.slice(),value,error,ms:Math.round(performance.now()-t0)})',
+    '  send("done",{logs:py._metigerLogs.slice(),value,error,images,ms:Math.round(performance.now()-t0)})',
     '})',
     'boot()',
     '<\/script></body></html>',
@@ -111,21 +122,23 @@ export interface PyRaw {
   logs?: string[]
   value?: string | null
   error?: string | null
+  images?: string[]
   ms?: number
 }
 
 /** Тот же формат ответа, что у JS-песочницы (sandbox.ts `RunResult`), чтобы UI не ветвился. */
-export function normalizePy(raw: PyRaw): { ok: boolean; output: string; hint?: string; ms?: number } {
+export function normalizePy(raw: PyRaw): { ok: boolean; output: string; hint?: string; images?: string[]; ms?: number } {
   const logs = (raw && Array.isArray(raw.logs) ? raw.logs : []).map((s) => String(s))
+  const imgs = (raw && Array.isArray(raw.images) ? raw.images : []).filter((s) => typeof s === 'string' && s.startsWith('data:image/png;base64,'))
   const shown = raw && raw.value != null ? String(raw.value) : ''
   let output = logs.join('\n')
   if (output && shown) output += '\n→ ' + shown
   else if (shown) output = shown
-  if (!output) output = '(код выполнен, но ничего не вернул и ничего не вывел)'
+  if (!output && !imgs.length) output = '(код выполнен, но ничего не вернул и ничего не вывел)'
   const cut = output.length > 6000 ? output.slice(0, 6000) + '\n…вывод обрезан на 6000 символах' : output
   if (raw && raw.error) {
     const hint = pyHintFor(raw.error)
-    return { ok: false, output: cut + '\n' + raw.error, hint: hint || undefined, ms: raw.ms }
+    return { ok: false, output: (cut ? cut + '\n' : '') + raw.error, hint: hint || undefined, images: imgs.length ? imgs : undefined, ms: raw.ms }
   }
-  return { ok: true, output: cut, ms: raw && raw.ms }
+  return { ok: true, output: cut, images: imgs.length ? imgs : undefined, ms: raw && raw.ms }
 }

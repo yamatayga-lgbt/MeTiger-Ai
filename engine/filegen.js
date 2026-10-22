@@ -499,6 +499,7 @@ function parseTsv(tsv) {
         if (/^\s*\|[\s:|-]+\|\s*$/.test(l)) return null; /* разделитель таблицы */
         cells = l.trim().replace(/^\||\|$/g, '').split('|');
       } else if (l.includes('\t')) cells = l.split('\t');
+      else if (l.includes(';')) cells = l.split(';');
       else if (l.includes(',')) cells = l.split(',');
       else cells = [l];
       return cells.map((c) => c.trim());
@@ -506,35 +507,83 @@ function parseTsv(tsv) {
     .filter((cells) => cells !== null);
 }
 
-/** Простые формулы «=A1*B2», «=SUM(D1:D4)» и «=A1+B2» решаем по разобранной
-    сетке: файл не должен содержать несчитанные формулы. Нерешаемое — как текст. */
+/** Приводит русские/белорусские числа («1 250,50», «-3,5», «42») к числу Excel,
+    не трогая телефоны (+375…), коды с ведущим нулём («0123») и даты («12.10.2026»). */
+function parseSheetNum(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s || s.length >= 16) return null;
+  if (/^\+/.test(s) || /^-?0\d+$/.test(s)) return null;
+  const compact = s.replace(/[\s\u00a0\u202f]/g, '');
+  if (/^-?\d+(?:\.\d+)?$/.test(compact)) return compact;
+  if (/^-?\d+,\d+$/.test(compact)) return compact.replace(',', '.');
+  return null;
+}
+
+function toExcelFormula(formula) {
+  return String(formula || '')
+    .replace(/^=/, '')
+    .replace(/^СУММ\s*\(/i, 'SUM(')
+    .replace(/^СРЗНАЧ\s*\(/i, 'AVERAGE(')
+    .replace(/^МИН\s*\(/i, 'MIN(')
+    .replace(/^МАКС\s*\(/i, 'MAX(')
+    .replace(/;/g, ',')
+    .trim();
+}
+
+/** Простые формулы «=A1*B2», «=СУММ(D2:D8)», «=СРЗНАЧ(B2:B5)», «=B2*1.2», «=A1+B1-C1»
+    решаем по разобранной сетке: файл открывается с готовыми итогами даже на телефоне. */
 function resolveFormula(formula, grid) {
-  const expr = String(formula || '').replace(/^=/, '');
-  const sum = expr.match(/^SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/i);
-  if (sum) {
-    const c1 = sum[1].toUpperCase(), r1 = Number(sum[2]), c2 = sum[3].toUpperCase(), r2 = Number(sum[4]);
-    let total = 0;
+  const expr = toExcelFormula(formula);
+  const cellVal = (rIdx, cIdx) => {
+    const raw = (grid[rIdx] || [])[cIdx];
+    const norm = parseSheetNum(raw);
+    return norm !== null ? Number(norm) : NaN;
+  };
+  const fn = expr.match(/^(SUM|AVERAGE|MIN|MAX)\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$/i);
+  if (fn) {
+    const kind = fn[1].toUpperCase();
+    const c1 = colNameIdx(fn[2]), r1 = Number(fn[3]) - 1;
+    const c2 = colNameIdx(fn[4]), r2 = Number(fn[5]) - 1;
+    const vals = [];
     for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) {
-      for (let ci = 0; ci < 26; ci++) {
-        const col = String.fromCharCode(65 + ci);
-        if ((col < c1 || col > c2) && (col < c2 || col > c1)) continue;
-        const v = Number((grid[r - 1] || [])[colNameIdx(col)]);
-        if (Number.isFinite(v)) total += v;
+      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
+        const v = cellVal(r, c);
+        if (Number.isFinite(v)) vals.push(v);
       }
     }
-    return String(total);
+    if (!vals.length) return kind === 'SUM' ? '0' : String(formula);
+    const total = vals.reduce((a, b) => a + b, 0);
+    const out = kind === 'SUM' ? total
+      : kind === 'AVERAGE' ? total / vals.length
+        : kind === 'MIN' ? Math.min(...vals) : Math.max(...vals);
+    return String(Math.round(out * 1e6) / 1e6);
   }
-  const bin = expr.match(/^([A-Z]+\d+)\s*([+\-*/])\s*([A-Z]+\d+)$/i);
+  const termVal = (tok) => {
+    const t = tok.trim();
+    const m = t.toUpperCase().match(/^([A-Z]+)(\d+)$/);
+    if (m) return cellVal(Number(m[2]) - 1, colNameIdx(m[1]));
+    const n = parseSheetNum(t);
+    return n !== null ? Number(n) : NaN;
+  };
+  const bin = expr.match(/^([A-Z]+\d+|\d+(?:[.,]\d+)?)\s*([+\-*/])\s*([A-Z]+\d+|\d+(?:[.,]\d+)?)$/i);
   if (bin) {
-    const get = (ref) => {
-      const m = ref.toUpperCase().match(/^([A-Z]+)(\d+)$/);
-      const v = Number((grid[Number(m[2]) - 1] || [])[colNameIdx(m[1])]);
-      return Number.isFinite(v) ? v : NaN;
-    };
-    const a = get(bin[1]), b = get(bin[3]);
+    const a = termVal(bin[1]), b = termVal(bin[3]);
     if (!Number.isFinite(a) || !Number.isFinite(b)) return String(formula);
     const v = bin[2] === '+' ? a + b : bin[2] === '-' ? a - b : bin[2] === '*' ? a * b : (b !== 0 ? a / b : NaN);
-    return Number.isFinite(v) ? String(v) : String(formula);
+    return Number.isFinite(v) ? String(Math.round(v * 1e6) / 1e6) : String(formula);
+  }
+  if (/^[A-Z0-9.,+\-\s]+$/i.test(expr) && /[+\-]/.test(expr)) {
+    const parts = expr.replace(/\s+/g, '').match(/[+\-]?[^+\-]+/g) || [];
+    if (parts.length >= 2) {
+      let acc = 0;
+      for (const p of parts) {
+        const sign = p.startsWith('-') ? -1 : 1;
+        const v = termVal(p.replace(/^[+\-]/, ''));
+        if (!Number.isFinite(v)) return String(formula);
+        acc += sign * v;
+      }
+      return String(Math.round(acc * 1e6) / 1e6);
+    }
   }
   return String(formula);
 }
@@ -547,7 +596,11 @@ function colNameIdx(col) { /* 'A' → 0, 'B' → 1 … */
 function makeXlsx(tsv, sheetName) {
   const rows = parseTsv(tsv);
   if (!rows.length) throw new Error('пустая таблица');
-  const maxC = Math.min(12, Math.max(...rows.map((r) => r.length)));
+  const maxC = Math.min(26, Math.max(...rows.map((r) => r.length)));
+  const origFormulas = rows.map((r) => Array.from({ length: maxC }, (_, ci) => {
+    const v = r[ci] == null ? '' : String(r[ci]);
+    return /^=[A-Za-zА-Яа-яЁё]/.test(v) ? toExcelFormula(v) : '';
+  }));
   const grid = rows.map((r) => Array.from({ length: maxC }, (_, ci) => (r[ci] == null ? '' : String(r[ci]))));
   /* Формулы решаем до фикс-точки: SUM может стоять раньше формульных ячеек,
      на которые ссылается, — тогда второй проход её уже считает по числам. */
@@ -564,20 +617,37 @@ function makeXlsx(tsv, sheetName) {
       }
     }
   }
+  const colWidths = Array.from({ length: maxC }, (_, ci) => {
+    let w = 10;
+    for (let ri = 0; ri < grid.length; ri++) {
+      const len = Array.from(String(grid[ri][ci] || '')).length + 3;
+      if (len > w) w = len;
+    }
+    return Math.min(42, w);
+  });
+  const colsXml = '<cols>' + colWidths.map((w, ci) => `<col min="${ci + 1}" max="${ci + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>';
   const body = grid.map((r, ri) => {
     const cells = [];
+    const hAttr = ri === 0 && grid.length > 1 ? ' s="1"' : '';
     for (let ci = 0; ci < maxC; ci++) {
       const v = r[ci];
+      const fExpr = origFormulas[ri][ci];
       const ref = colName(ci) + (ri + 1);
-      if (v !== '' && /^-?\d+(\.\d+)?$/.test(v) && v.length < 16) cells.push(`<c r="${ref}"><v>${escXml(v)}</v></c>`);
-      else if (v !== '') cells.push(`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escXml(v)}</t></is></c>`);
+      const num = parseSheetNum(v);
+      if (fExpr && num !== null) {
+        cells.push(`<c r="${ref}"${hAttr}><f>${escXml(fExpr)}</f><v>${escXml(num)}</v></c>`);
+      } else if (num !== null) {
+        cells.push(`<c r="${ref}"${hAttr}><v>${escXml(num)}</v></c>`);
+      } else if (v !== '') {
+        cells.push(`<c r="${ref}"${hAttr} t="inlineStr"><is><t xml:space="preserve">${escXml(v)}</t></is></c>`);
+      }
     }
     return `<row r="${ri + 1}">${cells.join('')}</row>`;
   }).join('');
   const sheet =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    `<sheetData>${body}</sheetData></worksheet>`;
+    `${colsXml}<sheetData>${body}</sheetData></worksheet>`;
   const workbook =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
@@ -600,11 +670,11 @@ function makeXlsx(tsv, sheetName) {
   const styles =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
-    '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>' +
+    '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+    '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F4F7"/><bgColor indexed="64"/></patternFill></fill></fills>' +
     '<borders count="1"><border/></borders>' +
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>' +
+    '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>' +
     '</styleSheet>';
   const rootRels =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -744,7 +814,7 @@ export function formatFromText(text) {
   /* Презентация проверяется ПЕРВОЙ: «сделай слайды в файле» содержит и «файл», и
      «таблиц»-подобные слова реже, но «презентация» обязана побеждать docx-умолчание. */
   if (/pptx|powerpoint|презентац|слайд/.test(t)) return 'pptx';
-  if (/xlsx|эксель|таблиц[^\s]{0,8}(файлом|в файл)/.test(t) || /\bxls\b/.test(t)) return 'xlsx';
+  if (/xlsx|excel|эксель|таблиц[^\s]{0,8}(файлом|в файл)|(?:смет|ведомост|прайс|калькуляц|табел|реестр)[а-яё]*\s+(?:в\s+)?(?:файл|таблиц)/.test(t) || /\bxls\b/.test(t)) return 'xlsx';
   if (/\bcsv\b|запят[а-яё]*\s+csv/.test(t)) return 'csv';
   if (/html|htm\b|страниц[а-яё]\s+файлом/.test(t)) return 'html';
   if (/\btxt\b|простым\s+текстом|голым\s+текстом|голый\s+текст/.test(t)) return 'txt';

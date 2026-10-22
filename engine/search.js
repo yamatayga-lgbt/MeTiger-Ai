@@ -375,8 +375,8 @@ export async function probeDates(fi, sources, ms) {
   if (!need.length) return sources;
   await Promise.all(need.map(async (s) => {
     try {
-      const r = await fetchT(fi, s.url, { headers: { 'user-agent': UA, accept: 'text/html' } }, ms || 1800);
-      if (!r || !r.ok) return;
+      const r = await fetchT(fi, s.url, { headers: { 'user-agent': UA, accept: 'text/html', range: 'bytes=0-65535' } }, ms || 1800);
+      if (!r || (!r.ok && r.status !== 206 && !(r.status >= 200 && r.status < 300))) return;
       const html = (await r.text()).slice(0, 120000);
       const d = dateOf(html) || dateFromUrl(s.url);
       if (d) s.date = d;
@@ -400,25 +400,61 @@ export function terms(q) {
   return String(q || '').toLowerCase().split(/[^a-zа-яё0-9]+/i).filter((w) => w.length >= 3 && !STOP.has(w)).map((w) => (w.length > 6 ? w.slice(0, w.length - 2) : w));
 }
 
-/** Лучшие абзацы страницы под запрос: по совпадению основ слов, цифры — в плюс. */
+const FACT_UNIT_RE = /\b\d+[.,]?\d*\s*(?:%|₽|\$|€|руб|бел\.?\s*руб|byn|rub|usd|eur|млн|млрд|тыс|км|кг|гг?\.|год[ауе]?|верси[яию]|v\d)/i;
+const FACT_TOKEN_RE = /(?<!\w)(?:\d{1,3}(?:[\s\u00a0]\d{3})*(?:[.,]\d+)?\s*(?:%|₽|\$|€|руб\.?|BYN\b|RUB\b|USD\b|EUR\b|млн|млрд|тыс\.?)|v?\d+\.\d+(?:\.\d+)?\b|\d{2}\.\d{2}\.20\d{2}\b|20\d{2}-\d{2}-\d{2}\b)/gi;
+
+/** Короткие числовые и датные якоря из выдержек источника — чтобы модель не путала цифры соседних ссылок (0.235). */
+export function extractFactHints(passages, limit = 4) {
+  const out = [];
+  const seen = new Set();
+  for (const p of passages || []) {
+    const text = String(p || '');
+    let m;
+    FACT_TOKEN_RE.lastIndex = 0;
+    while ((m = FACT_TOKEN_RE.exec(text)) !== null) {
+      const tok = m[0].replace(/\s+/g, ' ').trim();
+      const key = tok.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(tok);
+        if (out.length >= limit) return out;
+      }
+    }
+  }
+  return out;
+}
+
+/** Лучшие абзацы страницы под запрос: по совпадению основ слов, точные цифры и единицы — в плюс. */
 export function bestPassages(text, q, n, max) {
   const ts = terms(q);
   if (!ts.length) return [];
   const paras = String(text || '').split('\n');
-  const scored = paras.map((p, i) => {
+  const allScored = paras.map((p, i) => {
     const low = p.toLowerCase();
-    let s = 0;
-    for (const t of ts) if (low.indexOf(t) >= 0) s += 1;
-    if (/\d/.test(p)) s += 0.3;
-    return { p, i, s };
-  }).filter((x) => x.s >= Math.min(2, ts.length));
+    let hits = 0;
+    for (const t of ts) if (low.indexOf(t) >= 0) hits += 1;
+    let s = hits;
+    if (hits > 0) {
+      if (FACT_UNIT_RE.test(p)) s += 0.85;
+      else if (/\d/.test(p)) s += 0.35;
+    }
+    return { p, i, s, hits };
+  });
+  let scored = allScored.filter((x) => x.hits >= Math.min(2, ts.length));
+  /* 0.235: если страница формулирует мысль синонимами и совпала только одна ключевая основа
+     (но в абзаце есть предмет и цифры), не выбрасываем прочитанную страницу целиком. */
+  if (!scored.length) scored = allScored.filter((x) => x.hits >= 1);
   scored.sort((a, b) => b.s - a.s);
   return scored.slice(0, n || 2).sort((a, b) => a.i - b.i).map((x) => (x.p.length > (max || 420) ? x.p.slice(0, max || 420).replace(/\s\S*$/, '') + '…' : x.p));
 }
 
+function readableSources(sources, pages) {
+  return (sources || []).filter((s) => s && s.url && !/grounding-api-redirect|youtube\.com|vk\.com|t\.me\//.test(s.url)).slice(0, pages || 3);
+}
+
 export async function readPages(fi, sources, q, o) {
   const opts = o || {};
-  const top = sources.filter((s) => !/grounding-api-redirect|youtube\.com|vk\.com|t\.me\//.test(s.url)).slice(0, opts.pages || 3);
+  const top = readableSources(sources, opts.pages || 3);
   const res = await Promise.all(top.map(async (s) => {
     try {
       const r = await fetchT(fi, s.url, { headers: { 'user-agent': UA, 'accept-language': 'ru,en;q=0.8', accept: 'text/html' } }, opts.ms || 3000);
@@ -426,8 +462,9 @@ export async function readPages(fi, sources, q, o) {
       const ct = (r.headers && r.headers.get && r.headers.get('content-type')) || '';
       if (ct && !/html|text/.test(ct)) return null;
       const html = (await r.text()).slice(0, 600000);
-      const passages = bestPassages(pageText(html), q, opts.passages || 2, opts.passageChars || 420);
       const date = dateOf(html) || dateFromUrl(s.url);
+      if (date && !s.date) s.date = date;
+      const passages = bestPassages(pageText(html), q, opts.passages || 2, opts.passageChars || 420);
       return passages.length ? { url: s.url, passages, date } : null;
     } catch { return null; }
   }));
@@ -499,13 +536,22 @@ export async function smartSearch({ q, env, fetch: fi, deep, level, profile: giv
   const f = fi || ((...a) => fetch(...a));
   const res = await searchOnce({ q, env: e, fetch: f, profile });
   if (!res.ok) return res;
-  res.reads = await readPages(f, res.sources, q, {
-    pages: profile.pages, ms: profile.readMs,
-    passages: profile.passages, passageChars: profile.passageChars,
-  });
+  /* 0.235: чтение главных страниц и добор дат остальных ссылок идут ОДНОВРЕМЕННО,
+     а не друг за другом — экономим до 1,8 с на каждом веб-поиске без лишних запросов. */
+  res.reads = [];
+  attachDates(res);
+  const topSet = new Set(readableSources(res.sources, profile.pages).map((s) => s.url));
+  const restForDates = (res.sources || []).filter((s) => s && s.url && !s.date && !topSet.has(s.url));
+  const [reads] = await Promise.all([
+    readPages(f, res.sources, q, {
+      pages: profile.pages, ms: profile.readMs,
+      passages: profile.passages, passageChars: profile.passageChars,
+    }),
+    probeDates(f, restForDates, 1800),
+  ]);
+  res.reads = reads;
   res.profile = profile;
   attachDates(res);
-  await probeDates(f, res.sources, 1800);
   return remember(key, res);
 }
 
@@ -603,10 +649,18 @@ export async function researchSearch({ q, queries, env, fetch: fi, profile: give
   const candidateCap = Math.min(24, profile.maxSources + 10);
   const candidates = mergeResearchSources(good, candidateCap);
   const sources = await resolveResearchCandidates(f, candidates, profile.maxSources);
-  const reads = await readPages(f, sources, [q].concat(qs).join('\n'), {
-    pages: profile.pages, ms: profile.readMs,
-    passages: profile.passages, passageChars: profile.passageChars,
-  });
+  const tempRes = { sources, reads: [] };
+  attachDates(tempRes);
+  const cleanSources = tempRes.sources;
+  const topSet = new Set(readableSources(cleanSources, profile.pages).map((s) => s.url));
+  const restForDates = cleanSources.filter((s) => s && s.url && !s.date && !topSet.has(s.url));
+  const [reads] = await Promise.all([
+    readPages(f, cleanSources, [q].concat(qs).join('\n'), {
+      pages: profile.pages, ms: profile.readMs,
+      passages: profile.passages, passageChars: profile.passageChars,
+    }),
+    probeDates(f, restForDates, 1800),
+  ]);
   const engines = Array.from(new Set(good.map((p) => p.res.engine).filter(Boolean)));
   const res = {
     ok: true,
@@ -617,12 +671,11 @@ export async function researchSearch({ q, queries, env, fetch: fi, profile: give
     summaries: good.map((p) => ({ query: p.query, summary: String(p.res.summary || '') })),
     gaps: parts.filter((p) => !(p.res && p.res.ok)).map((p) => p.query),
     summary: good.map((p) => String(p.res.summary || '')).join('\n'),
-    sources,
+    sources: cleanSources,
     reads,
     profile,
   };
   attachDates(res);
-  await probeDates(f, res.sources, 1800);
   return remember(key, res);
 }
 
@@ -658,7 +711,11 @@ export function searchBlock(q, res) {
     const when = age ? ' · ' + ageWords(age) : '';
     const mark = age && age.old ? ' · ДАВНИЙ источник: данные могли устареть' : '';
     lines.push(`${i + 1}) ${s.title || s.url} (${s.url}${s.date ? ' · от ' + s.date + when : ''}${mark})`);
-    if (read) for (const p of read.passages) lines.push(`   выдержка: ${p}`);
+    if (read) {
+      for (const p of read.passages) lines.push(`   выдержка: ${p}`);
+      const facts = extractFactHints(read.passages);
+      if (facts.length) lines.push(`   точные цифры [${i + 1}]: ${facts.join(' · ')}`);
+    }
   });
   const undated = (res.sources || []).filter((s) => !s.date).length;
   lines.push('', 'У источников через «· от» указана дата публикации или обновления, где она есть. '
@@ -686,6 +743,6 @@ export function searchBlock(q, res) {
   return lines.join('\n');
 }
 
-export const SEARCH_DIRECTIVE = 'Отвечай по результатам поиска. После каждого факта ставь сноску с номером источника в квадратных скобках — [1], [2] — номера строго из списка источников. Не выдумывай того, чего нет в результатах; если данных нет или они расходятся, так и скажи. Сначала прямой ответ одной-двумя фразами, потом детали.';
+export const SEARCH_DIRECTIVE = 'Отвечай по результатам поиска. После каждого факта, числа и даты ставь сноску с номером именно того источника в квадратных скобках — [1], [2] — откуда взята эта цифра (номера строго из списка источников, не приписывай цифру одного источника другому). Не выдумывай того, чего нет в результатах; если данных нет или они расходятся, так и скажи и приведи оба значения со своими сносками. Сначала прямой ответ одной-двумя фразами, потом детали.';
 
 export const RESEARCH_DIRECTIVE = 'Это глубокое исследование, а не один поиск. Сначала дай короткий вывод, затем доказательства по подвопросам, отдельно — где источники расходятся и что проверить не удалось. После каждого проверяемого факта ставь [номер] строго из списка, даты называй явно. Пересказы одного первоисточника не выдавай за независимые подтверждения; чего в результатах нет, не выдумывай.';

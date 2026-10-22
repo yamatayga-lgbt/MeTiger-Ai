@@ -70,7 +70,66 @@ function utf16(b, le) {
   return s;
 }
 
-/** Байты → строка с определением UTF-16 (его любят Word и Excel). */
+/* Windows-1251 (0x80..0xBF): выгрузки 1С, банков и русского/белорусского Excel (0.235). */
+const CP1251_80_BF = [
+  0x0402, 0x0403, 0x201a, 0x0453, 0x201e, 0x2026, 0x2020, 0x2021, 0x20ac, 0x2030, 0x0409, 0x2039, 0x040a, 0x040c, 0x040b, 0x040f,
+  0x0452, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x0098, 0x2122, 0x0459, 0x203a, 0x045a, 0x045c, 0x045b, 0x045f,
+  0x00a0, 0x040e, 0x045e, 0x0408, 0x00a4, 0x0490, 0x00a6, 0x00a7, 0x0401, 0x00a9, 0x0404, 0x00ab, 0x00ac, 0x00ad, 0x00ae, 0x0407,
+  0x00b0, 0x00b1, 0x0406, 0x0456, 0x0491, 0x00b5, 0x00b6, 0x00b7, 0x0451, 0x2116, 0x0454, 0x00bb, 0x0458, 0x0405, 0x0455, 0x0457,
+];
+
+function isValidUtf8(b) {
+  const len = b.length;
+  let i = 0;
+  while (i < len) {
+    const c = b[i];
+    if (c < 0x80) { i++; continue; }
+    if (c >= 0xc2 && c <= 0xdf) {
+      if (i + 1 >= len || (b[i + 1] & 0xc0) !== 0x80) return false;
+      i += 2; continue;
+    }
+    if (c >= 0xe0 && c <= 0xef) {
+      if (i + 2 >= len || (b[i + 1] & 0xc0) !== 0x80 || (b[i + 2] & 0xc0) !== 0x80) return false;
+      if (c === 0xe0 && b[i + 1] < 0xa0) return false;
+      if (c === 0xed && b[i + 1] >= 0xa0) return false;
+      i += 3; continue;
+    }
+    if (c >= 0xf0 && c <= 0xf4) {
+      if (i + 3 >= len || (b[i + 1] & 0xc0) !== 0x80 || (b[i + 2] & 0xc0) !== 0x80 || (b[i + 3] & 0xc0) !== 0x80) return false;
+      if (c === 0xf0 && b[i + 1] < 0x90) return false;
+      if (c === 0xf4 && b[i + 1] >= 0x90) return false;
+      i += 4; continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function looksCp1251(b) {
+  const n = Math.min(b.length, 8192);
+  let hi = 0, cyr = 0;
+  for (let i = 0; i < n; i++) {
+    const x = b[i];
+    if (x >= 0x80) {
+      hi++;
+      if (x >= 0xc0 || x === 0xa8 || x === 0xb8 || x === 0xa1 || x === 0xa2 || x === 0xb2 || x === 0xb3 || x === 0xb9) cyr++;
+    }
+  }
+  return hi >= 2 && cyr / hi >= 0.7;
+}
+
+export function decodeCp1251(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) {
+    const x = bytes[i];
+    if (x < 0x80) s += String.fromCharCode(x);
+    else if (x >= 0xc0) s += String.fromCharCode(0x0410 + (x - 0xc0));
+    else s += String.fromCharCode(CP1251_80_BF[x - 0x80]);
+  }
+  return s;
+}
+
+/** Байты → строка с определением UTF-16 (Word/Excel) и Windows-1251 (1С/банки РФ и РБ). */
 function toText(bytes) {
   if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return utf16(bytes.subarray(2), true);
   if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return utf16(bytes.subarray(2), false);
@@ -79,6 +138,7 @@ function toText(bytes) {
      что старшие байты пар часто попадают в диапазон BMP-текста, а не выглядят как UTF-8. */
   if (looksUtf16(bytes, true)) return utf16(bytes, true);
   if (looksUtf16(bytes, false)) return utf16(bytes, false);
+  if (!isValidUtf8(bytes) && looksCp1251(bytes)) return decodeCp1251(bytes);
   const raw = decodeUtf8(bytes);
   return raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
 }
@@ -279,6 +339,7 @@ function sheet(xml, sst, dates) {
       const type = t ? t[1] : '';
       const ref = /r="([A-Z]+)\d+"/.exec(attrs);
       const v = /<v[^>]*>([\s\S]*?)<\/v>/.exec(body);
+      const fTag = /<f[^>]*>([\s\S]*?)<\/f>/.exec(body);
       const sAttr = /s="(\d+)"/.exec(attrs);
       const xf = sAttr ? Number(sAttr[1]) : -1;
       let val = '';
@@ -291,6 +352,8 @@ function sheet(xml, sst, dates) {
           const d = excelSerial(val);
           if (d) val = d;
         }
+      } else if (fTag && fTag[1].trim()) {
+        val = '=' + unesc(fTag[1]).trim();
       }
       const idx = ref ? colIndex(ref[1]) : cells.length;
       if (idx < 0) continue;

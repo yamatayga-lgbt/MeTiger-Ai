@@ -1,7 +1,8 @@
-import { memo } from 'react'
+import { memo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Check, Copy, Download } from 'lucide-react'
 import { CodeRunner } from './CodeRunner'
 import { Formula } from './Formula'
 import { remarkMathLite } from '../lib/remarkMath'
@@ -46,6 +47,73 @@ interface Props {
    Замер до: печать в поле — 42 fps в светлой теме и 33 в тёмной, кадры до 83 мс.
    Сравнение идёт по тексту и функции вывода; функцию вызывающая сторона держит
    стабильной (useCallback), иначе memo бесполезен. */
+function CodeCard({ lang, raw, onRunOutput }: { lang: string; raw: string; onRunOutput?: (text: string) => void }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    try {
+      navigator.clipboard?.writeText(raw)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch { /* clipboard недоступен */ }
+  }
+  return (
+    <div className="code-block">
+      <div className="code-head">
+        <span>{lang || 'code'}</span>
+        <span className="code-head-right">
+          <span>{runnable(lang) ? engineLabel(lang) : 'demo'}</span>
+          <button type="button" className="code-copy-btn" onClick={copy} title="Скопировать код">
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            <span>{copied ? 'Скопировано' : 'Копировать'}</span>
+          </button>
+        </span>
+      </div>
+      <pre>
+        <code>{raw}</code>
+      </pre>
+      {runnable(lang) ? <CodeRunner code={raw} lang={lang} onSend={onRunOutput} /> : null}
+    </div>
+  )
+}
+
+function TableCard({ children }: { children?: ReactNode }) {
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const exportCsv = () => {
+    const tbl = wrapRef.current?.querySelector('table')
+    if (!tbl) return
+    const rows = Array.from(tbl.querySelectorAll('tr')).map((tr) =>
+      Array.from(tr.querySelectorAll('th,td')).map((cell) => {
+        let s = (cell.textContent || '').replace(/\s+/g, ' ').trim()
+        if (/^[=+\-@]/.test(s)) s = "'" + s
+        if (/[";\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"'
+        return s
+      }).join(';'),
+    ).filter(Boolean)
+    if (!rows.length) return
+    const blob = new Blob(['\uFEFF' + rows.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'таблица.csv'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000)
+  }
+  return (
+    <div className="md-table-wrap" ref={wrapRef}>
+      <div className="md-table">
+        <table>{children}</table>
+      </div>
+      <div className="md-table-actions">
+        <button type="button" className="md-table-csv" onClick={exportCsv} title="Скачать таблицу для Excel">
+          <Download size={12} /> Скачать CSV
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sources }: Props) {
   /* Формулы уходят из текста ДО разбора: на месте каждой остаётся метка, а сам LaTeX
      лежит в `hidden.items` и попадает в дерево как есть — ни разбор Markdown, ни его
@@ -60,7 +128,7 @@ export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sou
         remarkPlugins={[remarkCitations(sources), remarkGfm, remarkMathLite(hidden.items)]}
         components={{
           /* Блок кода: та же карточка, что была раньше — язык, бейдж
-             «песочница»/«demo», и сама песочница, если язык исполняемый. */
+             «песочница»/«demo», кнопка копирования и сама песочница, если язык исполняемый. */
           pre({ children }: { children?: ReactNode }) {
             const codeEl = Array.isArray(children) ? children[0] : children
             const props = (codeEl && typeof codeEl === 'object' && 'props' in codeEl
@@ -69,18 +137,7 @@ export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sou
             const match = /language-([\w+-]+)/.exec(props.className || '')
             const lang = match ? match[1] : ''
             const raw = flattenText(props.children).replace(/\n$/, '')
-            return (
-              <div className="code-block">
-                <div className="code-head">
-                  <span>{lang || 'code'}</span>
-                  <span>{runnable(lang) ? engineLabel(lang) : 'demo'}</span>
-                </div>
-                <pre>
-                  <code>{raw}</code>
-                </pre>
-                {runnable(lang) ? <CodeRunner code={raw} lang={lang} onSend={onRunOutput} /> : null}
-              </div>
-            )
+            return <CodeCard lang={lang} raw={raw} onRunOutput={onRunOutput} />
           },
           /* Инлайн-код (не внутри pre) — одно слово/вставка посреди строки. */
           code({ children }: { children?: ReactNode }) {
@@ -115,14 +172,10 @@ export const Markdown = memo(function Markdown({ text: rawText, onRunOutput, sou
             // eslint-disable-next-line jsx-a11y/alt-text
             return <img src={src} alt={alt || ''} loading="lazy" className="md-img" />
           },
-          /* Таблица GFM: обёртка даёт горизонтальный скролл на телефоне.
+          /* Таблица GFM: обёртка даёт горизонтальный скролл на телефоне + кнопку выгрузки CSV.
              Сам <table> с display:block ломает колонки — скроллим снаружи. */
           table({ children }: { children?: ReactNode }) {
-            return (
-              <div className="md-table">
-                <table>{children}</table>
-              </div>
-            )
+            return <TableCard>{children}</TableCard>
           },
         } as Components}
       >
