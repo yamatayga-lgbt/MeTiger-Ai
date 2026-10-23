@@ -19,10 +19,11 @@
  * стили) — тоже.
  */
 import { useEffect, useState } from 'react'
-import { Camera, ChevronLeft, FileText, Image as ImageIcon, Paperclip, Upload } from 'lucide-react'
+import { Camera, ChevronLeft, FileText, Image as ImageIcon, Paperclip, Pin, PinOff, Upload } from 'lucide-react'
 import { fileHref, fileSize } from '../lib/api'
 import { listHistory, type HistoryItem } from '../lib/attachHistory'
 import { haptic } from '../lib/haptic'
+import { listPinnedDocs, pinDoc, setPinnedDocEnabled, unpinDoc, type PinnedDoc } from '../lib/pinnedMemory'
 
 interface AttachMenuProps {
   onCamera: () => void
@@ -46,13 +47,36 @@ function timeAgo(ms: number): string {
 export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, onClose }: AttachMenuProps) {
   const [view, setView] = useState<'menu' | 'files'>('menu')
   const [history, setHistory] = useState<HistoryItem[] | null>(null)
+  const [pinned, setPinned] = useState<PinnedDoc[]>([])
+  const [pinNote, setPinNote] = useState('')
 
   useEffect(() => {
     if (view !== 'files') return
     let alive = true
     void listHistory().then((items) => { if (alive) setHistory(items) })
+    void listPinnedDocs().then((docs) => { if (alive) setPinned(docs) })
     return () => { alive = false }
   }, [view])
+
+  const pinnedNames = new Set(pinned.map((d) => d.name))
+
+  const togglePinFromHistory = async (h: HistoryItem) => {
+    haptic('light')
+    const found = pinned.find((d) => d.name === h.name)
+    if (found) {
+      const next = await unpinDoc(found.id)
+      setPinned(next)
+      setPinNote(`Убран из памяти: ${h.name}`)
+      return
+    }
+    const res = await pinDoc({ name: h.name, mime: h.mime, size: h.size, b64: h.b64 })
+    if (res.ok) {
+      setPinned(await listPinnedDocs())
+      setPinNote(`Закреплён для всех чатов: ${h.name}`)
+    } else {
+      setPinNote(res.error)
+    }
+  }
 
   if (view === 'files') {
     return (
@@ -78,6 +102,46 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, on
           Загрузить файлы
         </button>
 
+        {pinNote ? <div className="attach-files-note">{pinNote}</div> : null}
+
+        {pinned.length > 0 ? (
+          <>
+            <div className="attach-files-label">В памяти между чатами</div>
+            <div className="attach-files-pinned">
+              {pinned.map((p) => (
+                <div key={p.id} className="attach-pinned-item">
+                  <span className="attach-files-thumb attach-files-thumb-file"><Pin size={14} /></span>
+                  <span className="attach-files-meta">
+                    <span className="attach-files-name">{p.name}</span>
+                    <span className="attach-files-sub">{fileSize(p.size)} · {p.enabled ? 'включён' : 'пауза'}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="attach-pin-btn"
+                    onClick={() => {
+                      haptic('light')
+                      void setPinnedDocEnabled(p.id, !p.enabled).then(setPinned)
+                    }}
+                  >
+                    {p.enabled ? 'Пауза' : 'Вкл'}
+                  </button>
+                  <button
+                    type="button"
+                    className="attach-pin-icon"
+                    aria-label={`Открепить ${p.name}`}
+                    onClick={() => {
+                      haptic('light')
+                      void unpinDoc(p.id).then(setPinned)
+                    }}
+                  >
+                    <PinOff size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
+
         <div className="attach-files-label">Недавние</div>
         <div className="attach-files-list">
           {history === null ? (
@@ -85,24 +149,39 @@ export function AttachMenu({ onCamera, onPhoto, onUploadFiles, onPickHistory, on
           ) : history.length === 0 ? (
             <div className="attach-files-hint">Пока пусто — то, что вы приложите, появится здесь</div>
           ) : (
-            history.map((h) => (
-              <button
-                key={h.id}
-                type="button"
-                className="attach-files-row"
-                onClick={() => { haptic('light'); onPickHistory(h); onClose() }}
-              >
-                {h.kind === 'image' ? (
-                  <img className="attach-files-thumb" src={fileHref(h)} alt="" />
-                ) : (
-                  <span className="attach-files-thumb attach-files-thumb-file"><FileText size={16} /></span>
-                )}
-                <span className="attach-files-meta">
-                  <span className="attach-files-name">{h.name}</span>
-                  <span className="attach-files-sub">{fileSize(h.size)} · {timeAgo(h.addedAt)}</span>
-                </span>
-              </button>
-            ))
+            history.map((h) => {
+              const isPinned = pinnedNames.has(h.name)
+              return (
+                <div key={h.id} className="attach-files-entry">
+                  <button
+                    type="button"
+                    className="attach-files-row"
+                    onClick={() => { haptic('light'); onPickHistory(h); onClose() }}
+                  >
+                    {h.kind === 'image' ? (
+                      <img className="attach-files-thumb" src={fileHref(h)} alt="" />
+                    ) : (
+                      <span className="attach-files-thumb attach-files-thumb-file"><FileText size={16} /></span>
+                    )}
+                    <span className="attach-files-meta">
+                      <span className="attach-files-name">{h.name}</span>
+                      <span className="attach-files-sub">{fileSize(h.size)} · {timeAgo(h.addedAt)}</span>
+                    </span>
+                  </button>
+                  {h.kind === 'file' ? (
+                    <button
+                      type="button"
+                      className={`attach-pin-icon${isPinned ? ' is-pinned' : ''}`}
+                      aria-label={isPinned ? `Открепить ${h.name} из памяти` : `Закрепить ${h.name} в память`}
+                      title={isPinned ? 'Убрать из памяти чатов' : 'Закрепить в память для всех чатов'}
+                      onClick={() => void togglePinFromHistory(h)}
+                    >
+                      <Pin size={14} />
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })
           )}
         </div>
       </div>

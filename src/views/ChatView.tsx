@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, Copy, Mic, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
+import { ArrowUp, Check, Copy, Mic, Pin, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
@@ -24,6 +24,7 @@ import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
 const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
 import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, pluralRu, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
+import { listPinnedDocs, readPinnedSummary, readProjectMemory, saveProjectMemory, setPinnedDocEnabled } from '../lib/pinnedMemory'
 import { AgentTrace } from '../components/AgentTrace'
 import { fmtAgo, fmtAssistantFooterTime } from '../lib/time'
 import { enterKeySends } from '../lib/platform'
@@ -552,6 +553,36 @@ export function ChatView({
     if (!hasDraft) setVoiceNote(`Не расслышал (${reason || 'нет связи'}) — попробуйте ещё раз`)
   }
 
+  /* 0.237: компактная полоска активной памяти проекта/закреплённых файлов над полем ввода. */
+  const readActiveMemoryBadge = useCallback(() => {
+    const proj = readProjectMemory()
+    const summary = readPinnedSummary().filter((p) => p.enabled)
+    const projTitle = proj.enabled ? (proj.title.trim() || (proj.note.trim() ? 'Памятка проекта' : '')) : ''
+    return { projTitle, pinnedCount: summary.length, pinnedNames: summary.map((p) => p.name) }
+  }, [])
+  const [memBadge, setMemBadge] = useState(readActiveMemoryBadge)
+
+  useEffect(() => {
+    const refresh = () => setMemBadge(readActiveMemoryBadge())
+    refresh()
+    void listPinnedDocs().then(refresh)
+    window.addEventListener('mt-pinned-change', refresh)
+    return () => window.removeEventListener('mt-pinned-change', refresh)
+  }, [readActiveMemoryBadge])
+
+  const pauseAllMemory = async () => {
+    haptic('light')
+    const proj = readProjectMemory()
+    if (proj.enabled && (proj.title.trim() || proj.note.trim())) {
+      saveProjectMemory({ ...proj, enabled: false })
+    }
+    const docsList = await listPinnedDocs()
+    for (const d of docsList) {
+      if (d.enabled) await setPinnedDocEnabled(d.id, false)
+    }
+    setMemBadge(readActiveMemoryBadge())
+  }
+
   const startVoiceInput = () => {
     if (!voiceSupported) {
       setVoiceError('Голосовой ввод не поддерживается в этом браузере')
@@ -1017,6 +1048,31 @@ export function ChatView({
               title={voicePolish ? 'Готово — уточню текст и вставлю в поле' : 'Готово'}
             >
               <Check size={15} />
+            </button>
+          </div>
+        ) : null}
+
+        {memBadge.projTitle || memBadge.pinnedCount > 0 ? (
+          <div className="pinned-strip" role="status" aria-live="polite">
+            <Pin size={13} className="pinned-strip-ic" />
+            <span className="pinned-strip-text" title={memBadge.pinnedNames.join(', ')}>
+              В памяти:{' '}
+              {[
+                memBadge.projTitle,
+                memBadge.pinnedCount > 0
+                  ? `${memBadge.pinnedCount} ${pluralRu(memBadge.pinnedCount, 'файл', 'файла', 'файлов')}`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+            <button
+              type="button"
+              className="pinned-strip-pause"
+              onClick={() => void pauseAllMemory()}
+              title="Поставить память проекта и файлов на паузу"
+            >
+              Пауза
             </button>
           </div>
         ) : null}

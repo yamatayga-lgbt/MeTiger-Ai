@@ -802,6 +802,7 @@ export default function App() {
           signal: ac.signal,
           reqId,
           threadId: chatId,
+          skipPinned: true,
           notify: pushLocalOn(),
           gender: genderForRequest(readGender()),
           persona: personaForRequest(readPersona()),

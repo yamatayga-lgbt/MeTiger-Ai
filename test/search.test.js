@@ -134,15 +134,18 @@ console.log('\nS163 — свежесть источников');
       && sourceAge('', NOW).old === false && sourceAge('не дата', NOW).old === false,
     JSON.stringify([sourceAge('2025-06-01', NOW), sourceAge('2024-10-01', NOW)]));
 
-  /* Дата-обманка: модель видит пометку там же, где берёт факты, — в строке источника. */
+  /* Дата-обманка: модель видит пометку там же, где берёт факты, — в строке источника.
+     Даты считаем относительно текущего дня, чтобы тест не протухал при смене суток. */
+  const freshDate = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
+  const staleDate = new Date(Date.now() - 2600 * 86_400_000).toISOString().slice(0, 10);
   const oldBlock = searchBlock('ставка рефинансирования', {
-    engine: 'google', summary: 'сводка', sources: [{ title: 'Старая статья', url: 'https://a.by/x', date: '2019-04-02' },
-      { title: 'Свежая статья', url: 'https://b.by/y', date: '2026-10-09' }], reads: [],
+    engine: 'google', summary: 'сводка', sources: [{ title: 'Старая статья', url: 'https://a.by/x', date: staleDate },
+      { title: 'Свежая статья', url: 'https://b.by/y', date: freshDate }], reads: [],
   });
   ok('S180c давний источник помечен в строке, свежий — нет',
-    /https:\/\/a\.by\/x · от 2019-04-02 · 7 лет назад · ДАВНИЙ/.test(oldBlock)
+    new RegExp(`https://a\\.by/x · от ${staleDate} · 7 лет назад · ДАВНИЙ`).test(oldBlock)
       /* 0.231: рядом с датой — возраст словами, чтобы модель не считала сама */
-      && /https:\/\/b\.by\/y · от 2026-10-09 · 13 дн\. назад\)/.test(oldBlock)
+      && new RegExp(`https://b\\.by/y · от ${freshDate} · 5 дн\\. назад\\)`).test(oldBlock)
       && !/b\.by\/y[^\n]*ДАВНИЙ/.test(oldBlock),
     oldBlock.split('\n').slice(1, 3).join(' | '));
   ok('S180d модели сказано, что делать с пометкой «ДАВНИЙ»', /ДАВНИЙ» свежесть под вопросом/.test(oldBlock));

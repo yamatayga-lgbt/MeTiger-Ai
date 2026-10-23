@@ -325,6 +325,7 @@ export interface Attachment {
 }
 
 import { looksLikeImage } from './images'
+import { formatProjectBlock, listPinnedDocs, mergePinnedDocs, readProjectMemory } from './pinnedMemory'
 
 export const ATTACH_MAX = 6
 export const ATTACH_FILE_BYTES = 4 * 1024 * 1024
@@ -699,6 +700,8 @@ export async function sendChat(
     persona?: PersonaPayload
     /** Подтверждённая пользователем карточка дела; движок добавит её к текущему запросу как данные. */
     caseContext?: string
+    /** 0.237: не подмешивать закреплённые файлы/память проекта (например, при дописывании хвоста). */
+    skipPinned?: boolean
     /**
      * 0.225: разбудить уведомлением, если человек уйдёт, а ответ досчитается.
      * Клиент ставит флаг только когда уведомления включены; сервер по нему решает,
@@ -789,6 +792,11 @@ export async function sendChat(
   }
   if (opts.signal) opts.signal.addEventListener('abort', () => ac.abort(), { once: true })
   const partial: PartialDraft = { text: '', reasoning: '', webSteps: [] }
+  const pinnedDocs = opts.skipPinned ? [] : await listPinnedDocs()
+  const { attachments: mergedAttachments } = opts.skipPinned
+    ? { attachments: opts.attachments || [] }
+    : mergePinnedDocs(opts.attachments, pinnedDocs, ATTACH_MAX)
+  const effectiveContext = opts.caseContext || (opts.skipPinned ? '' : formatProjectBlock(readProjectMemory()))
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
@@ -803,9 +811,9 @@ export async function sendChat(
         /* Безлимитный контекст (0.193, с 0.194 — всегда): до 200 реплик вместо 8 */
         /* бесконечная память (0.195): уходит вся лента чата */
         history,
-        caseContext: opts.caseContext || undefined,
+        caseContext: effectiveContext || undefined,
         images: opts.images,
-        attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
+        attachments: mergedAttachments.length ? mergedAttachments : undefined,
         model: opts.model || undefined,
         gender: opts.gender || undefined,
         persona: opts.persona || undefined,

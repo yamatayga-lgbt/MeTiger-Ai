@@ -39,6 +39,8 @@ export interface BackupShape {
   media: BackupMedia[]
   /** История вложений («Файлы → Недавние»). */
   history: unknown[]
+  /** 0.237: закреплённые между чатами файлы памяти. */
+  pinned?: unknown[]
 }
 
 /** Достаточно от хранилища: и настоящий localStorage, и подделка в тесте. */
@@ -68,6 +70,7 @@ export function buildBackup(parts: {
   local: Record<string, string>
   media?: BackupMedia[]
   history?: unknown[]
+  pinned?: unknown[]
   now?: number
 }): BackupShape {
   return {
@@ -77,6 +80,7 @@ export function buildBackup(parts: {
     local: parts.local && typeof parts.local === 'object' ? parts.local : {},
     media: Array.isArray(parts.media) ? parts.media : [],
     history: Array.isArray(parts.history) ? parts.history : [],
+    ...(Array.isArray(parts.pinned) && parts.pinned.length ? { pinned: parts.pinned } : {}),
   }
 }
 
@@ -105,6 +109,7 @@ export function parseBackup(text: string): BackupShape {
     local,
     media: Array.isArray(d.media) ? (d.media as BackupMedia[]).filter((m) => m && typeof m.id === 'string' && typeof m.value === 'string') : [],
     history: Array.isArray(d.history) ? d.history : [],
+    ...(Array.isArray(d.pinned) ? { pinned: d.pinned } : {}),
   }
 }
 
@@ -155,13 +160,15 @@ export function applyLocal(storage: StorageLike, local: Record<string, string>):
 import { dumpMedia, restoreMedia } from './chatMedia'
 import { dumpHistory, restoreHistory } from './attachHistory'
 import type { HistoryItem } from './attachHistory'
+import { dumpPinnedDocs, restorePinnedDocs } from './pinnedMemory'
 
 /** Собрать копию со всего устройства. */
 export async function collectBackup(): Promise<BackupShape> {
   const local = typeof localStorage !== 'undefined' ? pickLocal(localStorage as unknown as StorageLike) : {}
   const media = await dumpMedia()
   const history = await dumpHistory()
-  return buildBackup({ local, media, history })
+  const pinned = await dumpPinnedDocs()
+  return buildBackup({ local, media, history, pinned })
 }
 
 /** Отдать копию файлом. Возвращает имя файла — его показываем человеку. */
@@ -199,6 +206,11 @@ export async function restoreBackup(b: BackupShape): Promise<{ local: number; me
     reads = b.history.length ? await restoreHistory(b.history as HistoryItem[]) : 0
   } catch {
     /* история вложений — мелочь по сравнению с перепиской */
+  }
+  try {
+    if (Array.isArray(b.pinned) && b.pinned.length) await restorePinnedDocs(b.pinned)
+  } catch {
+    /* закреплённые файлы не должны блокировать восстановление чатов */
   }
   return { local, media, reads }
 }
