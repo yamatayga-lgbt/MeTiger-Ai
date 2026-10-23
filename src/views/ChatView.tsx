@@ -5,7 +5,7 @@ import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
 import { approxDataUrlBytes, fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages, type ShotMeta } from '../lib/images'
 import { PhotoPrepModal } from '../components/PhotoPrepModal'
-import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, joinLive, VOICE_MAX_SEC, type VoiceSession } from '../lib/voice'
+import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, joinLive, stitchDictation, VOICE_MAX_SEC, type VoiceSession } from '../lib/voice'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
 import { AttachMenu } from '../components/AttachMenu'
@@ -461,6 +461,10 @@ export function ChatView({
   const baseRef = useRef('') // подтверждённый текст (ввод + финальные куски)
   const interimRef = useRef('') // незакреплённый кусок (для синхронного чтения)
   const preVoiceRef = useRef('') // текст до старта — для кнопки «Отмена»
+  /* 0.239: страховочный снимок подтверждённой речи браузера и флаг быстрой отправки
+     одним касанием прямо с голосовой полосы. */
+  const browserSavedRef = useRef('')
+  const quickSendAfterPolishRef = useRef(false)
 
   // таймер записи
   useEffect(() => {
@@ -502,8 +506,20 @@ export function ChatView({
     return () => window.cancelAnimationFrame(id)
   }, [value, active])
 
-  // при уходе со экрана микрофон выключается
-  useEffect(() => () => sessionRef.current?.cancel(), [])
+  // при уходе со экрана микрофон выключается; при возврате интернета тихо дотягиваем запасную запись
+  useEffect(() => {
+    const onOnline = () => {
+      if (sessionRef.current?.canRetry()) {
+        setVoiceNote('')
+        sessionRef.current.retry()
+      }
+    }
+    window.addEventListener('online', onOnline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      sessionRef.current?.cancel()
+    }
+  }, [])
 
   /* Автостоп диктовки (0.188): человек сказал — и замолчал на VOICE_AUTO_MS —
      запись закрывается сама, кнопка «готово» не нужна. Порог тишины намеренный:
@@ -536,7 +552,9 @@ export function ChatView({
   const cancelVoiceInput = () => {
     sessionRef.current?.cancel()
     sessionRef.current = null
+    quickSendAfterPolishRef.current = false
     baseRef.current = preVoiceRef.current
+    browserSavedRef.current = preVoiceRef.current
     interimRef.current = ''
     setValue(preVoiceRef.current)
     setListening(false)
@@ -552,6 +570,12 @@ export function ChatView({
      текст в поле и так сохранён, а если его совсем нет — мягкая заметка. */
   const voicePolishFailed = (reason?: string) => {
     setPolishing(false)
+    quickSendAfterPolishRef.current = false
+    /* 0.239: если сервер не ответил, а до обрыва браузер уже успел сохранить речь —
+       возвращаем её целиком, чтобы ни одно сказанное слово не пропало. */
+    if (!baseRef.current.trim() && browserSavedRef.current.trim()) {
+      baseRef.current = browserSavedRef.current
+    }
     const hasDraft = baseRef.current.trim() !== preVoiceRef.current.trim()
     setValue((current) => (current.trim() ? current : baseRef.current))
     if (!hasDraft) setVoiceNote(`Не расслышал (${reason || 'нет связи'}) — попробуйте ещё раз`)
@@ -598,9 +622,11 @@ export function ChatView({
     setVoiceError('')
     setPolishing(false)
     setVoiceNote('')
+    quickSendAfterPolishRef.current = false
     liveOnRef.current = false
     preVoiceRef.current = value
     baseRef.current = value
+    browserSavedRef.current = value
     interimRef.current = ''
     heardRef.current = false
     lastLoudRef.current = 0
@@ -612,7 +638,8 @@ export function ChatView({
       {
         onFinal: (chunk) => {
           if (liveOnRef.current) return // серверный текст уже главнее
-          baseRef.current = joinText(baseRef.current, chunk)
+          baseRef.current = stitchDictation(baseRef.current, chunk)
+          browserSavedRef.current = baseRef.current
           interimRef.current = ''
           setValue(baseRef.current)
               },
@@ -645,7 +672,7 @@ export function ChatView({
             setVoiceNote('')
           }
           const merged = joinLive(baseRef.current, text)
-          baseRef.current = joinText(baseRef.current, merged)
+          baseRef.current = stitchDictation(baseRef.current, merged)
           setValue(baseRef.current)
         },
         onLiveBusy: (busy) => setLiveBusy(busy),
@@ -666,7 +693,7 @@ export function ChatView({
         /* Точный текст пришёл: он заменяет ВЕСЬ кусок этой сессии, а текст, что был
            в поле до микрофона, остаётся на месте. */
         onPolished: (text) => {
-          const composed = joinText(preVoiceRef.current, text)
+          const composed = stitchDictation(preVoiceRef.current, text)
           baseRef.current = composed
           interimRef.current = ''
           sessionRef.current = null
@@ -674,6 +701,10 @@ export function ChatView({
           setPolishing(false)
           setVoiceError('')
           haptic('light')
+          if (quickSendAfterPolishRef.current) {
+            quickSendAfterPolishRef.current = false
+            if (composed.trim() || shots.length || docs.length) submit(composed)
+          }
         },
         onPolish: (state, reason) => {
           if (state === 'start') {
@@ -714,6 +745,7 @@ export function ChatView({
       setPolishing(false)
     }
     setVoiceNote('')
+    quickSendAfterPolishRef.current = false
     text = text.trim()
     /* Картинка или файл без вопроса — это запрос «посмотри, что я прислал»: движок
        сам решит, что с этим делать. Совсем пустой ход не отправляем. */
@@ -737,6 +769,37 @@ export function ChatView({
     setEditingShotIdx(null)
     setVoiceError('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  }
+
+  /* 0.239: быстрая отправка голосового черновика одним касанием с полосы записи. */
+  const quickSendVoice = () => {
+    if (typing) return
+    if (listening) {
+      const ready = stopVoiceInput().trim()
+      if (ready || shots.length > 0 || docs.length > 0) {
+        sessionRef.current?.cancel()
+        sessionRef.current = null
+        setPolishing(false)
+        submit(ready)
+        return
+      }
+      // Серверный путь без браузерного черновика: отправим автоматически сразу по готовности.
+      quickSendAfterPolishRef.current = true
+      setVoiceNote('Отправлю сразу после расшифровки…')
+      return
+    }
+    if (polishing) {
+      const ready = value.trim()
+      if (ready || shots.length > 0 || docs.length > 0) {
+        sessionRef.current?.cancel()
+        sessionRef.current = null
+        setPolishing(false)
+        submit(ready)
+        return
+      }
+      quickSendAfterPolishRef.current = true
+      setVoiceNote('Отправлю сразу после расшифровки…')
+    }
   }
 
   const addFiles = async (list: FileList | File[] | null, fromCamera = false) => {
@@ -1091,6 +1154,17 @@ export function ChatView({
             >
               <Check size={15} />
             </button>
+            {!typing ? (
+              <button
+                type="button"
+                className="voice-ic is-send"
+                onClick={quickSendVoice}
+                aria-label="Сразу отправить"
+                title="Остановить запись и сразу отправить сообщение"
+              >
+                <ArrowUp size={15} />
+              </button>
+            ) : null}
           </div>
         ) : null}
 

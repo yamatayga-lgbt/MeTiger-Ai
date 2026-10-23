@@ -37,16 +37,80 @@ export function joinLive(prev: string, next: string): string {
   const prevWords = prev.trim().split(/\s+/).filter(Boolean).map(clean)
   const nextWords = next.trim().split(/\s+/).filter(Boolean)
   let drop = 0
-  /* До трёх слов: на стыке повторяется слово или короткая фраза, не больше. */
-  for (let k = Math.min(3, prevWords.length, nextWords.length); k >= 1; k--) {
+  /* До 8 слов: на стыке пауз и длинных серверных кусков убираем весь повтор хвоста. */
+  for (let k = Math.min(8, prevWords.length, nextWords.length); k >= 1; k--) {
     const tail = prevWords.slice(prevWords.length - k).join(' ')
     const head = nextWords.slice(0, k).map(clean).join(' ')
-    if (tail === head) {
+    if (tail === head && tail.length > 0) {
       drop = k
       break
     }
   }
   return nextWords.slice(drop).join(' ').trim()
+}
+
+/**
+ * 0.239: Безударная склейка пауз при голосовой диктовке с телефона.
+ *
+ * Решает три реальные беды мобильного распознавания на ходу:
+ * 1) На Android Chrome движок после паузы часто присылает кумулятивный повтор
+ *    уже сказанного («посчитай смету» → «посчитай смету с доставкой») — отсекаем
+ *    совпадающий хвост до 12 слов и полный дубль фразы.
+ * 2) Знак препинания в начале нового куска («, а потом») приклеивается к слову
+ *    без лишнего пробела перед запятой.
+ * 3) После точки, вопросительного/восклицательного знака или новой строки первая
+ *    буква следующей фразы поднимается в заглавную автоматически.
+ */
+export function stitchDictation(prev: string, next: string): string {
+  const a = String(prev || '').replace(/[ \t]+$/g, '')
+  const bRaw = String(next || '').trim()
+  if (!bRaw) return a
+  if (!a.trim()) {
+    return bRaw.charAt(0).toUpperCase() + bRaw.slice(1)
+  }
+
+  const clean = (w: string) => w.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, '')
+  const prevTokens = a.trim().split(/\s+/).filter(Boolean)
+  const nextTokens = bRaw.split(/\s+/).filter(Boolean)
+  const prevClean = prevTokens.map(clean)
+  const nextClean = nextTokens.map(clean)
+
+  // Полный повтор последнего куска (частый баг перезапуска SpeechRecognition после паузы).
+  if (
+    nextClean.length > 0 &&
+    nextClean.length <= prevClean.length &&
+    prevClean.slice(prevClean.length - nextClean.length).join(' ') === nextClean.join(' ')
+  ) {
+    return a
+  }
+
+  let drop = 0
+  const maxOverlap = Math.min(12, prevClean.length, nextClean.length)
+  for (let k = maxOverlap; k >= 1; k--) {
+    const tail = prevClean.slice(prevClean.length - k).join(' ')
+    const head = nextClean.slice(0, k).join(' ')
+    if (tail && tail === head) {
+      drop = k
+      break
+    }
+  }
+
+  let tailText = nextTokens.slice(drop).join(' ').trim()
+  if (!tailText) return a
+
+  // Если предыдущая фраза закончилась концом предложения или переводом строки — заглавная буква.
+  if (/(?:[.!?…]|\n)\s*$/.test(a)) {
+    tailText = tailText.replace(/^([\p{L}])/u, (m) => m.toUpperCase())
+  }
+
+  // Если новый кусок начинается со знака препинания — лепим без пробела.
+  if (/^[,.;:!?)]/.test(tailText)) {
+    return a + tailText
+  }
+  if (a.endsWith('\n')) {
+    return a + tailText
+  }
+  return a + ' ' + tailText
 }
 
 /* ============================================================
@@ -65,8 +129,8 @@ export function joinLive(prev: string, next: string): string {
 const PUNCT: [RegExp, string][] = [
   [/(?<![\p{L}\p{N}])(?:точка|период|full stop|period)(?![\p{L}\p{N}])/giu, '.'],
   [/(?<![\p{L}\p{N}])(?:запятая|запятой|comma)(?![\p{L}\p{N}])/giu, ','],
-  [/(?<![\p{L}\p{N}])(?:вопросительный знак|question mark)(?![\p{L}\p{N}])/giu, '?'],
-  [/(?<![\p{L}\p{N}])(?:восклицательный знак|exclamation mark|exclamation point)(?![\p{L}\p{N}])/giu, '!'],
+  [/(?<![\p{L}\p{N}])(?:вопросительный знак|знак вопроса|question mark)(?![\p{L}\p{N}])/giu, '?'],
+  [/(?<![\p{L}\p{N}])(?:восклицательный знак|знак восклицания|exclamation mark|exclamation point)(?![\p{L}\p{N}])/giu, '!'],
   [/(?<![\p{L}\p{N}])(?:двоеточие|colon)(?![\p{L}\p{N}])/giu, ':'],
   [/(?<![\p{L}\p{N}])(?:точка с запятой|semicolon)(?![\p{L}\p{N}])/giu, ';'],
   [/(?<![\p{L}\p{N}])(?:тире|дефис|dash)(?![\p{L}\p{N}])/giu, ' — '],
@@ -463,8 +527,19 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
   }
 
   // --- слой 1: черновик браузером (пока сервер не догнал) ---
+  let uncommittedInterim = ''
+  let restartTimer: ReturnType<typeof setTimeout> | null = null
+
+  const flushUncommittedInterim = () => {
+    const chunk = uncommittedInterim.trim()
+    uncommittedInterim = ''
+    if (chunk && !cancelled) {
+      handlers.onFinal(chunk)
+    }
+  }
+
   const startDraft = () => {
-    if (!Ctor || srDead) return
+    if (!Ctor || srDead || stopped || cancelled) return
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
@@ -472,6 +547,7 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
     rec.lang = lang
 
     rec.onresult = (ev) => {
+      const interimParts: string[] = []
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const r = ev.results[i]
         /* Пунктуация голосом (0.188): «точка», «запятая», «новая строка» —
@@ -480,14 +556,25 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
         const text = punctuate((r[0]?.transcript || '').trim())
         if (!text.trim()) continue
         draftGot = true
-        if (r.isFinal) handlers.onFinal(text)
-        else handlers.onInterim(text)
+        if (r.isFinal) {
+          uncommittedInterim = ''
+          handlers.onFinal(text)
+        } else {
+          interimParts.push(text)
+        }
+      }
+      if (interimParts.length > 0) {
+        const combined = interimParts.join(' ').trim()
+        uncommittedInterim = combined
+        handlers.onInterim(combined)
       }
     }
 
     rec.onerror = (ev) => {
       const code = ev?.error || ''
       if (code === 'no-speech' || code === 'aborted') return
+      // Сохраняем уже произнесённый кусок до переключения на серверный путь.
+      flushUncommittedInterim()
       if (!srDead) {
         srDead = true
         handlers.onDraftFail?.(
@@ -499,11 +586,21 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
     }
 
     rec.onend = () => {
-      if (stopped || srDead) return
+      /* 0.239: на телефоне пауза в 1,5–2 с часто завершает текущий сеанс Web Speech API
+         без финального флага isFinal. Закрепляем надиктованный кусок ДО перезапуска,
+         чтобы следующая фраза после паузы не затёрла предыдущую. */
+      flushUncommittedInterim()
+      if (stopped || srDead || cancelled) return
       try {
         rec?.start()
       } catch {
-        /* noop */
+        /* В мобильном WebKit мгновенный rec.start() внутри onend иногда бросает
+           InvalidStateError — пересоздаём распознаватель через короткую паузу. */
+        if (restartTimer) clearTimeout(restartTimer)
+        restartTimer = setTimeout(() => {
+          restartTimer = null
+          if (!stopped && !srDead && !cancelled) startDraft()
+        }, 90)
       }
     }
 
@@ -519,7 +616,12 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
     stop() {
       if (stopped) return
       stopped = true
+      if (restartTimer) {
+        clearTimeout(restartTimer)
+        restartTimer = null
+      }
       clearTimeout(capId)
+      flushUncommittedInterim()
       try {
         rec?.stop()
       } catch {
@@ -540,6 +642,11 @@ export function startVoice(handlers: VoiceHandlers, lang: string): VoiceSession 
     },
     cancel() {
       cancelled = true
+      uncommittedInterim = ''
+      if (restartTimer) {
+        clearTimeout(restartTimer)
+        restartTimer = null
+      }
       clearTimeout(capId)
       stopped = true
       try {
