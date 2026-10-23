@@ -86,8 +86,10 @@ if (!existsSync(join(process.cwd(), 'node_modules', 'react')) || !existsSync(joi
   ok('G1: подпись с вердиктом совета попадает в разметку',
     /msg-meta/.test(html) && /разошлись 1\/2/.test(html), html.slice(html.indexOf('msg-meta') - 40, html.indexOf('msg-meta') + 240));
   ok('G2: тон доехал до класса — цвет не «на глаз», а по факту совета', /msg-meta is-warn/.test(html));
-  ok('G3: строка источника (модель/провайдер/режим/мс) в разметке больше не светится — это Агент, а не витрина чужих моделей',
-    !/gpt-oss-120b/.test(html) && !/2541 мс/.test(html) && !/msg-src/.test(html) && /разошлись 1\/2/.test(html));
+  /* 0.240: владелец явно вернул полупрозрачную подпись названия модели под каждым
+     ответом (.msg-model), при этом служебный хвост провайдера/режима/мс не светится. */
+  ok('G3: в футере ответа полупрозрачно светится название модели (.msg-model), но сырой хвост (провайдер/режим/мс) скрыт',
+    /msg-model/.test(html) && /openai\/gpt-oss-120b/.test(html) && !/2541 мс/.test(html) && !/math\/smart/.test(html) && !/msg-src/.test(html) && /разошлись 1\/2/.test(html));
   const quiet = renderToStaticMarkup(
     React.createElement(ChatView, {
       user: { first_name: 'Тигр' },

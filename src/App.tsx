@@ -377,6 +377,7 @@ export default function App() {
                 text: r.reply,
                 ts: Date.now(),
                 src: sourceLine(r),
+                model: r.model || undefined,
                 advice: advice?.text || '',
                 adviceTone: advice?.tone,
                 files: r.files && r.files.length ? r.files : undefined,
@@ -719,6 +720,7 @@ export default function App() {
         const meta = r.ok || r.partial
           ? {
               src: sourceLine(r),
+              model: r.model || undefined,
               advice: advice?.text || '',
               adviceTone: advice?.tone,
               /* файлы и навыки живут только в этой сессии — см. persist: base64 в
@@ -833,6 +835,7 @@ export default function App() {
                         ? {
                             ...m,
                             text: joinContinuation(m.text, r.reply),
+                            model: m.model || r.model || undefined,
                             warn: r.partial ? '⚠️ Ответ неполный: ' + (r.error || 'хвост не пришёл') : undefined,
                           }
                         : m,

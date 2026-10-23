@@ -4513,9 +4513,11 @@ button.rows-row:hover {
 
 .msg-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   padding: 0 2px;
+  min-width: 0;
 }
 
 .msg-footer-right {
@@ -4542,6 +4544,18 @@ button.rows-row:hover {
   font-size: 11px;
   color: var(--text-3);
   white-space: nowrap;
+}
+
+.msg-model {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-3);
+  opacity: 0.46;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
 }
 
 /* ------------------------------------------------------------ вложения: превью над

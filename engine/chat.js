@@ -369,13 +369,13 @@ export function createEngine(opts) {
     const rawReply = String(parsed.reply || '').trim();
     if (!rawReply) return { ok: false, why: 'пустой ответ', status: res.status };
     if (isProviderError(rawReply)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
-    const fr = freedom.salvageOrRefuse(rawReply, env);
+    const fr = freedom.salvageOrRefuse(rawReply, env, { prompt: req.userText });
     if (fr.refused) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
     /* 0.198: вежливый отказ без «не могу» — тоже отказ, и в тексте тоже. «Я не
        анализирую и не комментирую…» или «выходит за рамки моих правил» не должны
        доезжать до человека как ГОЛОС ПРИЛОЖЕНИЯ: это мягкий отказ — очередь идёт
        дальше, работает эскалация (до двух попыток в других рамках). */
-    if (freedom.isPoliteRefusal(fr.text)) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
+    if (freedom.isPoliteRefusal(fr.text, { prompt: req.userText })) { note(id, 'refused'); return { ok: false, why: 'ответ-отказ', status: res.status, soft: true }; }
     /* «Зеркало лексики» (0.203, словарь понятий — 0.204): ответ есть, но модель
        по дороге перевела слова человека на клинические («дрочка» → «стимуляция»).
        Это не отказ — ответ не выбрасываем и голову не меняем; обратная замена
@@ -1351,8 +1351,8 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             system: pristine.system + freedom.escalationBlock(env, { reframed: true, step: 1, adult: adultAsk, model, danger: !allowReframe }),
             history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
             text: toolsRes.block
-              ? freedom.reframePrompt(text, { creative: creativeHere, intent }) + '\n\n' + toolsRes.block
-              : freedom.reframePrompt(text, { creative: creativeHere, intent }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
+              ? freedom.reframePrompt(text, { creative: creativeHere, adult: adultAsk, intent }) + '\n\n' + toolsRes.block
+              : freedom.reframePrompt(text, { creative: creativeHere, adult: adultAsk, intent }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
           })
           : fitFor(id, model);
         const curMessages = fitNow.history.concat([{ role: 'user', content: fitNow.text }]);
@@ -1364,7 +1364,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           reasoningEffort: effectiveReasoningEffort,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.userText = text; req.agentGender = genderEff.agent;
         let r = await attemptOne(id, model, req, left);
         /* 429 на этом ключе — та же модель сразу на другом ключе того же провайдера:
            лимит считается на ключ, а модель уже выбрана как лучшая для задачи. */
@@ -1380,7 +1380,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
             presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
             reasoningEffort: effectiveReasoningEffort,
           });
-          req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent; req2.lexSource = lexSource; req2.agentGender = genderEff.agent;
+          req2.tier = tier; req2.keyIdx = keyIdx; req2.model = model; req2.intent = intent; req2.lexSource = lexSource; req2.userText = text; req2.agentGender = genderEff.agent;
           r = await attemptOne(id, model, req2, deadline - Date.now());
         }
         /* Не сошлось — черновик, который уже потёк в окно, надо убрать, а не бросать
@@ -1508,8 +1508,8 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           system: pristine.system + freedom.escalationBlock(env, { reframed: true, split: true, step: 2, adult: adultAsk, model, danger: !allowReframe }),
           history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
           text: toolsRes.block
-            ? freedom.reframePrompt(text, { creative: creativeAsk, intent }) + '\n\n' + toolsRes.block
-            : freedom.reframePrompt(text, { creative: creativeAsk, intent }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
+            ? freedom.reframePrompt(text, { creative: creativeAsk, adult: adultAsk, intent }) + '\n\n' + toolsRes.block
+            : freedom.reframePrompt(text, { creative: creativeAsk, adult: adultAsk, intent }) + freedom.reframeMark(env, { model, danger: !allowReframe }),
         });
         const curMessages = refit.history.concat([{ role: 'user', content: refit.text }]);
         const req = buildRequest({
@@ -1519,7 +1519,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           reasoningEffort: effectiveReasoningEffort,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.userText = text; req.agentGender = genderEff.agent;
         const r = await attemptOne(id, model, req, left);
         if (r.ok) {
           ctxNotes = (refit.notes || []).slice();
@@ -1640,7 +1640,7 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
           presencePenalty: input.presencePenalty, frequencyPenalty: input.frequencyPenalty,
           reasoningEffort: effectiveReasoningEffort,
         });
-        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.agentGender = genderEff.agent;
+        req.tier = tier; req.keyIdx = keyIdx; req.model = model; req.intent = intent; req.lexSource = lexSource; req.userText = text; req.agentGender = genderEff.agent;
         const r = await attemptOne(id, model, req, left);
         const tooThin = r.ok && pass.stage !== 'detail' && String(r.reply || '').trim().length < 30;
         if (r.ok && !tooThin) {

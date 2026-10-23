@@ -23,7 +23,7 @@ import { lazy as lazyLoad, Suspense as LazyBoundary } from 'react'
    кусок интерфейса. Грузится отдельным файлом при первом ответе; до загрузки текст
    виден как есть (pre-wrap), так что пустого места не бывает. */
 const Markdown = lazyLoad(() => import('../components/Markdown').then((m) => ({ default: m.Markdown })))
-import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, pickAttachments, pluralRu, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
+import { ATTACH_ACCEPT, ATTACH_MAX, attachmentKind, fileHref, fileToAttachment, fileSize, modelLabel, pickAttachments, pluralRu, sourceDate, type Attachment, type WebStep, type ImageStep } from '../lib/api'
 import { addToHistory, dataUrlToB64, type HistoryItem } from '../lib/attachHistory'
 import { listPinnedDocs, readPinnedSummary, readProjectMemory, saveProjectMemory, setPinnedDocEnabled } from '../lib/pinnedMemory'
 import { AgentTrace } from '../components/AgentTrace'
@@ -147,9 +147,10 @@ async function copyText(text: string): Promise<boolean> {
     он шёл). Иконка меняется на галочку на полторы секунды после удачного
     копирования — обратная связь без тоста, который на телефоне лишний.
     Кнопки «озвучить» больше нет (0.188, решение владельца): озвучку убрали совсем. */
-function MsgFooter({ text, time, align = 'left' }: {
+function MsgFooter({ text, time, model, align = 'left' }: {
   text: string
   time: string
+  model?: string
   align?: 'left' | 'right'
 }) {
   const [copied, setCopied] = useState(false)
@@ -169,6 +170,7 @@ function MsgFooter({ text, time, align = 'left' }: {
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
       {time ? <span className="msg-time">{time}</span> : null}
+      {model ? <span className="msg-model" title={model}>{model}</span> : null}
     </div>
   )
 }
@@ -1077,16 +1079,20 @@ export function ChatView({
                       ))}
                     </div>
                   ) : null}
-                  {/* Модель/провайдер/режим и счётчик мс намеренно не показываем — это
-                      Агент, а не витрина чужих моделей (0.058). Из тайминга остаётся
-                      только «Thought for N seconds» выше, когда агент правда думал. */}
+                  {/* Провайдер, режим и сырые миллисекунды не показываем (0.058), а
+                      само имя модели выводится полупрозрачной строкой в футере под
+                      каждым ответом по прямому решению владельца (0.240). */}
                   {m.advice ? (
                     <div className={`msg-meta${m.adviceTone ? ' is-' + m.adviceTone : ''}`}>
                       <span className="msg-advice">{m.advice}</span>
                     </div>
                   ) : null}
                   {m.text ? (
-                    <MsgFooter text={m.text} time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)} />
+                    <MsgFooter
+                      text={m.text}
+                      time={fmtAssistantFooterTime(m.ms, m.ts, nowTick)}
+                      model={modelLabel(m)}
+                    />
                   ) : null}
                 </div>
               </div>

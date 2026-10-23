@@ -74,6 +74,7 @@ type RawMessage = {
   text?: unknown
   ts?: unknown
   src?: unknown
+  model?: unknown
   advice?: unknown
   adviceTone?: unknown
   ms?: unknown
@@ -119,6 +120,7 @@ function sanitizeMessage(m: RawMessage): Chat['messages'][number] | null {
     ...(typeof m.ts === 'number' && isFinite(m.ts) ? { ts: m.ts } : {}),
     /* подпись движка — строки, и только строки: из хранилища может прилететь что угодно */
     ...(typeof m.src === 'string' ? { src: m.src } : {}),
+    ...(typeof m.model === 'string' && m.model.trim() ? { model: m.model.trim() } : {}),
     ...(typeof m.advice === 'string' ? { advice: m.advice } : {}),
     ...(tone ? { adviceTone: tone } : {}),
     /* сколько шёл ответ — для той же строки рядом с «N минут назад» */

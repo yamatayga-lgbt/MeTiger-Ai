@@ -193,6 +193,8 @@ export interface PartialDraft {
   text: string
   reasoning: string
   webSteps?: WebStep[]
+  model?: string
+  provider?: string
 }
 
 async function readDraftStream(
@@ -214,6 +216,8 @@ async function readDraftStream(
   const dec = new TextDecoder()
   let buf = ''
   let draft: string | null = null
+  let lastModel = ''
+  let lastProvider = ''
   const imgSteps: ImageStep[] = []
   const emptyFinal = (): Partial<ChatResult> | null => null
   let final = emptyFinal()
@@ -238,9 +242,13 @@ async function readDraftStream(
           if (onImageSteps) onImageSteps(imgSteps.slice())
         }
       } else if (ev.kind === 'draft' && ev.channel === 'reasoning') {
+        if (ev.model) lastModel = String(ev.model)
+        if (ev.provider) lastProvider = String(ev.provider)
         reason = (reason || '') + String(ev.text || '')
         if (onReasoning) onReasoning(reason)
       } else if (ev.kind === 'draft') {
+        if (ev.model) lastModel = String(ev.model)
+        if (ev.provider) lastProvider = String(ev.provider)
         draft = (draft || '') + String(ev.text || '')
         if (onDraft) onDraft(draft)
       } else if (ev.kind === 'drop') {
@@ -248,6 +256,8 @@ async function readDraftStream(
         // иначе половина текста предыдущей головы висит под новой
         draft = null
         reason = null
+        lastModel = ''
+        lastProvider = ''
         if (onDraft) onDraft(null)
         if (onReasoning) onReasoning(null)
       } else if (ev.kind === 'final' && ev.payload && typeof ev.payload === 'object') {
@@ -266,6 +276,8 @@ async function readDraftStream(
       out.text = draft || ''
       out.reasoning = reason || ''
       out.webSteps = webSteps.slice()
+      out.model = lastModel || undefined
+      out.provider = lastProvider || undefined
     }
   }
   for (;;) {
@@ -858,6 +870,8 @@ export async function sendChat(
         return {
           ok: false,
           reply: partial.text,
+          model: partial.model,
+          provider: partial.provider,
           reasoning: partial.reasoning || undefined,
           webSteps: partial.webSteps && partial.webSteps.length ? partial.webSteps : undefined,
           partial: !!partial.text,
@@ -888,6 +902,8 @@ export async function sendChat(
       return {
         ok: false,
         reply: partial.text,
+        model: partial.model,
+        provider: partial.provider,
         reasoning: partial.reasoning || undefined,
         webSteps: partial.webSteps && partial.webSteps.length ? partial.webSteps : undefined,
         partial: true,
@@ -1065,4 +1081,27 @@ export function sourceLine(r: ChatResult): string {
        не обещает) */
     (r.gender && r.gender !== 'auto' ? ` · род: ${r.gender === 'female' ? 'женский' : 'мужской'}` : '')
   )
+}
+
+/**
+ * Чистое имя модели для полупрозрачной подписи под ответом (0.240).
+ * Читает прямое поле `model`, а для старых сообщений из localStorage вынимает
+ * второй сегмент из `src` («provider · model · intent/tier · ms»). Служебные
+ * заглушки движка («?», «vision-stop») наружу не выходят.
+ */
+export function modelLabel(input: { model?: string; src?: string } | null | undefined): string {
+  if (!input) return ''
+  const clean = (raw: string): string => {
+    const m = String(raw || '').trim()
+    if (!m || m === '?' || m === 'vision-stop' || m === 'engine') return ''
+    return m
+  }
+  const direct = clean(input.model || '')
+  if (direct) return direct
+  const parts = String(input.src || '').split(' · ')
+  if (parts.length >= 2) {
+    if (String(parts[0] || '').trim() === 'engine') return ''
+    return clean(parts[1] || '')
+  }
+  return ''
 }
