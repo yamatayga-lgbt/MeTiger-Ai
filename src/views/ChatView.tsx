@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, Check, Copy, Mic, Pin, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
+import { ArrowUp, Check, Copy, Crop, Mic, Pin, Plus, SlidersHorizontal, Square, X } from 'lucide-react'
 import { haptic } from '../lib/haptic'
 import { type Person } from '../lib/user'
 import type { ChatMessage } from '../lib/mock'
-import { fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages } from '../lib/images'
+import { approxDataUrlBytes, fileToDataUrl, filesFromTransfer, MAX_IMAGES, pickImages, type ShotMeta } from '../lib/images'
+import { PhotoPrepModal } from '../components/PhotoPrepModal'
 import { isVoiceSupported, isPolishSupported, startVoice, voiceLang, joinLive, VOICE_MAX_SEC, type VoiceSession } from '../lib/voice'
 import { DEFAULT_GEN_PARAMS, type GenParams } from '../lib/models'
 import { ParamsPopover } from '../components/ParamsPopover'
@@ -354,6 +355,8 @@ export function ChatView({
     }
   }, [])
   const [shots, setShots] = useState<string[]>([])
+  const [shotMetas, setShotMetas] = useState<ShotMeta[]>([])
+  const [editingShotIdx, setEditingShotIdx] = useState<number | null>(null)
   const [shotError, setShotError] = useState('')
   /* Перетаскивание показываем словами: без подсветки человек не знает, что на окно можно ронять. */
   const [dropping, setDropping] = useState(false)
@@ -470,16 +473,17 @@ export function ChatView({
   // видит локальное состояние ChatView (меню вложений, параметры, просмотр
   // картинки), а клавиатурный Esc должен работать одинаково для всех них.
   useEffect(() => {
-    if (!addMenuOpen && !paramsOpen && !lightbox) return
+    if (!addMenuOpen && !paramsOpen && !lightbox && editingShotIdx === null) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       setAddMenuOpen(false)
       setParamsOpen(false)
       setLightbox(null)
+      setEditingShotIdx(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [addMenuOpen, paramsOpen, lightbox])
+  }, [addMenuOpen, paramsOpen, lightbox, editingShotIdx])
 
   // авто-высота поля: при наборе, голосе и когда чат снова виден. Пока родитель
   // display:none, scrollHeight = 0 — такую высоту не ставим, иначе поле схлопнется.
@@ -729,24 +733,40 @@ export function ChatView({
     setDocs([])
     setDocError('')
     setShotError('')
+    setShotMetas([])
+    setEditingShotIdx(null)
     setVoiceError('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
-  const addFiles = async (list: FileList | File[] | null) => {
+  const addFiles = async (list: FileList | File[] | null, fromCamera = false) => {
     const all = list ? Array.from(list) : []
     if (!all.length) return
     /* Сколько картинок ещё влезает по MAX_IMAGES; всё, что сверх, раньше молча
        отрезалось — ни превью, ни ошибки, ни сообщения. Человек понимал это как «фото
        не отправляются». */
+    const baseIdx = shots.length
     const room = Math.max(0, MAX_IMAGES - shots.length)
     const picked = pickImages(all).slice(0, room)
     const tooManyImages = all.filter((f) => attachmentKind(f) === 'image').length - picked.length
     const next: string[] = []
+    const nextMetas: ShotMeta[] = []
     for (const f of picked) {
-      const r = await fileToDataUrl(f)
+      const r = await fileToDataUrl(f, undefined, { keepSource: true })
       if (r.ok) {
         next.push(r.dataUrl)
+        const sentBytes = r.meta?.sentBytes ?? approxDataUrlBytes(r.dataUrl)
+        nextMetas.push(
+          r.meta || {
+            origBytes: f.size || sentBytes,
+            sentBytes,
+            savedPct: 0,
+            width: 0,
+            height: 0,
+            isDoc: false,
+            sourceDataUrl: r.dataUrl,
+          },
+        )
         /* В историю «Файлы → Недавние» кладём то же сжатое превью, что уйдёт
            модели, — не исходное фото телефона (весит мегабайты зря). */
         void addToHistory({
@@ -759,7 +779,15 @@ export function ChatView({
       } else setShotError(r.error)
     }
     if (tooManyImages > 0) setShotError(`картинок приложено ${tooManyImages} сверх меры — беру столько, сколько помещается (${MAX_IMAGES})`)
-    if (next.length) setShots((prev) => prev.concat(next).slice(0, MAX_IMAGES))
+    if (next.length) {
+      setShots((prev) => prev.concat(next).slice(0, MAX_IMAGES))
+      setShotMetas((prev) => prev.concat(nextMetas).slice(0, MAX_IMAGES))
+      /* 0.238: снимок с камеры телефона сразу открывает быстрое кадрирование/поворот/режим чека
+         (сам сжатый снимок уже лежит в списке — закрытие окна ничего не потеряет). */
+      if (fromCamera && next.length === 1) {
+        setEditingShotIdx(baseIdx)
+      }
+    }
     /* остальное — документы и аудио: их не превьюим, а читаем на сервере */
     const rest = all.filter((f) => attachmentKind(f) !== 'image')
     if (rest.length) {
@@ -790,7 +818,21 @@ export function ChatView({
     haptic('light')
     if (h.kind === 'image') {
       if (shots.length >= MAX_IMAGES) { setShotError(`картинок уже ${MAX_IMAGES} — больше не влезет, уберите одну`); return }
-      setShots((prev) => prev.concat(fileHref(h)).slice(0, MAX_IMAGES))
+      const href = fileHref(h)
+      setShots((prev) => prev.concat(href).slice(0, MAX_IMAGES))
+      setShotMetas((prev) =>
+        prev
+          .concat({
+            origBytes: h.size,
+            sentBytes: h.size,
+            savedPct: 0,
+            width: 0,
+            height: 0,
+            isDoc: false,
+            sourceDataUrl: href,
+          })
+          .slice(0, MAX_IMAGES),
+      )
       return
     }
     if (docs.length >= ATTACH_MAX) { setDocError(`файлов уже ${ATTACH_MAX} — больше не влезет, уберите один`); return }
@@ -1079,18 +1121,42 @@ export function ChatView({
 
         {shots.length || docs.length || shotError || docError ? (
           <div className="attach-strip">
-            {shots.map((src, i) => (
-              <div className="attach-chip" key={i}>
-                <img src={src} alt="" />
-                <button
-                  type="button"
-                  aria-label={'убрать картинку ' + (i + 1)}
-                  onClick={() => setShots((prev) => prev.filter((_, j) => j !== i))}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+            {shots.map((src, i) => {
+              const meta = shotMetas[i]
+              return (
+                <div className="attach-chip" key={i}>
+                  <img src={src} alt="" onClick={() => setEditingShotIdx(i)} />
+                  {meta ? (
+                    <span className="attach-chip-badge">
+                      {meta.isDoc ? 'Чек · ' : ''}
+                      {fileSize(meta.sentBytes)}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="attach-chip-crop"
+                    aria-label={'кадрировать картинку ' + (i + 1)}
+                    title="Кадрировать, повернуть или усилить чёткость текста"
+                    onClick={() => {
+                      haptic('light')
+                      setEditingShotIdx(i)
+                    }}
+                  >
+                    <Crop size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={'убрать картинку ' + (i + 1)}
+                    onClick={() => {
+                      setShots((prev) => prev.filter((_, j) => j !== i))
+                      setShotMetas((prev) => prev.filter((_, j) => j !== i))
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )
+            })}
             {docs.map((d, i) => (
               <div className="doc-chip" key={`d${i}`} title={`${d.name} · ${d.kind === 'voice' ? 'голос' : 'файл'}`}>
                 <span className="doc-chip-name">{d.name}</span>
@@ -1193,7 +1259,7 @@ export function ChatView({
                 accept="image/*"
                 capture="environment"
                 hidden
-                onChange={(e) => void addFiles(e.target.files)}
+                onChange={(e) => void addFiles(e.target.files, true)}
               />
               {/* Фото — системная галерея устройства, без camera-capture. */}
               <input
@@ -1292,6 +1358,20 @@ export function ChatView({
         ) : null}
         {voiceNote ? <div className="voice-note">{voiceNote}</div> : null}
       </div>
+      {editingShotIdx !== null && shots[editingShotIdx] ? (
+        <PhotoPrepModal
+          sourceDataUrl={shotMetas[editingShotIdx]?.sourceDataUrl || shots[editingShotIdx]}
+          initialDoc={Boolean(shotMetas[editingShotIdx]?.isDoc)}
+          origBytes={shotMetas[editingShotIdx]?.origBytes || approxDataUrlBytes(shots[editingShotIdx])}
+          onClose={() => setEditingShotIdx(null)}
+          onApply={(nextUrl, nextMeta) => {
+            const idx = editingShotIdx
+            setShots((prev) => prev.map((s, j) => (j === idx ? nextUrl : s)))
+            setShotMetas((prev) => prev.map((m, j) => (j === idx ? nextMeta : m)))
+            setEditingShotIdx(null)
+          }}
+        />
+      ) : null}
       {lightbox ? (
         <div className="lightbox" onClick={() => setLightbox(null)}>
           <button type="button" className="lightbox-close" aria-label="Закрыть" onClick={() => setLightbox(null)}>
