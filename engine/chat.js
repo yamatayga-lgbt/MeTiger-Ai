@@ -1346,9 +1346,10 @@ const pristine = { system: system + (lexBlock ? '\n\n' + lexBlock : '') + (image
            pristine, и человеку достаётся правда именно про эту попытку, а не
            заметка от той модели, которая в итоге не ответила. */
         const creativeHere = CREATIVE_ASK_RE.test(String(text || ''));
+        const escStep = reframedCalls >= 1 ? 2 : 1;
         const fitNow = useReframe
           ? fitContext({
-            system: pristine.system + freedom.escalationBlock(env, { reframed: true, step: 1, adult: adultAsk, model, danger: !allowReframe }),
+            system: pristine.system + freedom.escalationBlock(env, { reframed: true, split: escStep >= 2, step: escStep, adult: adultAsk, model, danger: !allowReframe }),
             history: pristine.history, images, env, maxOut: maxTokensWanted, window: windowFor(id, model),
             text: toolsRes.block
               ? freedom.reframePrompt(text, { creative: creativeHere, adult: adultAsk, intent }) + '\n\n' + toolsRes.block

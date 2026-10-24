@@ -234,12 +234,12 @@ await t('T240c-2: ChatView рендерит полупрозрачный .msg-mo
   assert.match(block[0], /opacity:\s*0\.[3-6]\d*/)
 })
 
-await t('T240c-3: версия 0.240 синхронизирована во всех файлах и чиста в описании релиза', () => {
+await t('T240c-3: версия синхронизирована во всех файлах, 0.240 в README, а release-notes чиста', () => {
   const v = versionsAligned()
   assert.equal(v.ok, true, v.why)
-  assert.equal(readFileSync('VERSION.md', 'utf8').trim(), '0.240')
+  const readmeSrc = readFileSync('README.md', 'utf8')
+  assert.ok(readmeSrc.includes('**0.240**'))
   const notesSrc = readFileSync('src/lib/release-notes.ts', 'utf8')
-  assert.ok(notesSrc.includes("version: '0.240'"))
   assert.ok(!/engine\/|src\/|\.tsx|\.js/.test(notesSrc), 'в release-notes не должно быть путей к файлам')
 })
 

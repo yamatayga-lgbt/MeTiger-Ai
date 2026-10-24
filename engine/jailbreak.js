@@ -25,7 +25,7 @@
  */
 
 import {
-  JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_STEP2, JB_FAMILY, JB_MATCH, JB_MARK, JB_SIZES,
+  JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_STEP2, JB_FAMILY, JB_MATCH, JB_PROFILE, JB_PROFILE_MATCH, JB_MARK, JB_SIZES,
 } from './jailbreak.data.js';
 
 export const JB_MODES = ['refusal', 'always', 'off'];
@@ -50,6 +50,15 @@ export function familyOf(model) {
   return '';
 }
 
+/** Точный функциональный профиль архитектуры модели (deepseek, qwen, glm, kimi, minimax, nemotron, longcat, mercury, google, claude, openai, mistral). */
+export function profileOf(model) {
+  const m = String(model || '');
+  for (const [re, id] of JB_PROFILE_MATCH) {
+    if (re.test(m)) return id;
+  }
+  return '';
+}
+
 /**
  * Текст блока. info: { model, danger, escalated }.
  * `danger` — тот самый floor: если запрос про настоящую опасность, блока нет ни при
@@ -64,6 +73,8 @@ export function block(env, info) {
   if (Number(o.step) >= 2) parts.push(JB_STEP2);
   const fam = JB_FAMILY[familyOf(o.model)];
   if (fam) parts.push(fam);
+  const prof = JB_PROFILE[profileOf(o.model)];
+  if (prof) parts.push(prof);
   return '\n\n' + parts.join('\n');
 }
 
@@ -85,9 +96,10 @@ export function stats(env) {
     on: cfg.on,
     mark: cfg.mark,
     families: JB_MATCH.map(([, id]) => id),
+    profiles: JB_PROFILE_MATCH.map(([, id]) => id),
     chars: sample.length,
     sizes: JB_SIZES,
   };
 }
 
-export { JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_STEP2, JB_MARK, JB_FAMILY, JB_MATCH, JB_SIZES };
+export { JB_CORE, JB_ROUTE, JB_FLOOR, JB_NOFORMAT, JB_STEP2, JB_MARK, JB_FAMILY, JB_MATCH, JB_PROFILE, JB_PROFILE_MATCH, JB_SIZES };
